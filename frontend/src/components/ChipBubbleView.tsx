@@ -49,8 +49,12 @@ export function ChipBubbleView({ bubbleData, closePrice }: Props) {
     [],
   );
 
-  const handleBubbleClick = useCallback((broker: string) => {
-    setSelectedBroker((prev) => (prev === broker ? null : broker));
+  const handleBubbleClick = useCallback((broker: string | null) => {
+    if (broker === null) {
+      setSelectedBroker(null);
+    } else {
+      setSelectedBroker((prev) => (prev === broker ? null : broker));
+    }
   }, []);
 
   const allPriceAggs = useMemo(() => {
@@ -84,7 +88,15 @@ export function ChipBubbleView({ bubbleData, closePrice }: Props) {
     return { buyRows: b.slice(0, MAX_TRADE_ROWS), sellRows: s.slice(0, MAX_TRADE_ROWS) };
   }, [bubbleData]);
 
-  const handleClear = () => setSelectedBroker(null);
+  const filteredBuyRows = useMemo(() => {
+    if (!selectedBroker) return buyRows;
+    return buyRows.filter((r) => r.broker === selectedBroker);
+  }, [buyRows, selectedBroker]);
+
+  const filteredSellRows = useMemo(() => {
+    if (!selectedBroker) return sellRows;
+    return sellRows.filter((r) => r.broker === selectedBroker);
+  }, [sellRows, selectedBroker]);
 
   return (
     <div className="h-full grid grid-cols-[1fr_400px] gap-0 overflow-hidden">
@@ -116,32 +128,16 @@ export function ChipBubbleView({ bubbleData, closePrice }: Props) {
           )}
         </div>
 
-        {/* Filter indicator */}
-        {selectedBroker && (
-          <div className="px-3 py-1.5 bg-accent/[0.06] border-b border-line flex items-center justify-between shrink-0">
-            <span className="text-sm text-ink-muted">
-              篩選: <span className="text-ink font-medium">{selectedBroker}</span>
-            </span>
-            <button
-              type="button"
-              onClick={handleClear}
-              className="text-xs text-ink-dim hover:text-accent px-2 py-0.5 border border-line cursor-pointer"
-            >
-              清除
-            </button>
-          </div>
-        )}
-
         {/* Side-by-side buy/sell lists */}
         <div className="flex-1 min-h-0 grid grid-cols-2 divide-x divide-line">
           <TradeList
-            rows={buyRows}
+            rows={filteredBuyRows}
             side="buy"
             selectedBroker={selectedBroker}
             onSelect={handleBubbleClick}
           />
           <TradeList
-            rows={sellRows}
+            rows={filteredSellRows}
             side="sell"
             selectedBroker={selectedBroker}
             onSelect={handleBubbleClick}

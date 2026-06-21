@@ -67,8 +67,8 @@ export interface BubbleChartProps {
   selectedBroker?: string | null;
   /** Hover callback for tooltip (null = mouse left). */
   onBubbleHover?: (payload: BubbleHoverPayload | null, x: number, y: number) => void;
-  /** Click callback — selects the clicked broker. */
-  onBubbleClick?: (broker: string) => void;
+  /** Click callback — broker name when clicking a bubble, null when clicking empty area. */
+  onBubbleClick?: (broker: string | null) => void;
 }
 
 interface Bubble {
@@ -155,7 +155,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
       const svgRect = svg?.getBoundingClientRect();
       if (!svgRect) return;
       const hit = hitTest(e.clientX, e.clientY, svgRect);
-      if (hit) onBubbleClick?.(hit.payload.broker);
+      onBubbleClick?.(hit ? hit.payload.broker : null);
     },
     [hitTest, onBubbleClick],
   );
