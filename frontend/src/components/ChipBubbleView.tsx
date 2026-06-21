@@ -182,7 +182,7 @@ const TradeList = memo(function TradeList({
   rows: TradeRow[];
   side: "buy" | "sell";
   selectedBroker: string | null;
-  onSelect: (broker: string) => void;
+  onSelect: (broker: string | null) => void;
 }) {
   const isBuy = side === "buy";
   const colorClass = isBuy ? "text-accent" : "text-bear";
