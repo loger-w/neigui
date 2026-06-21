@@ -28,11 +28,14 @@ async def load_symbols() -> None:
             )
             resp.raise_for_status()
             data = resp.json().get("data", [])
-            _symbols = [
-                {"symbol": r["stock_id"], "name": r.get("stock_name", "")}
-                for r in data
-                if r.get("stock_id") and r.get("type") in ("twse", "otc", "")
-            ]
+            seen: set[str] = set()
+            deduped: list[dict] = []
+            for r in data:
+                sid = r.get("stock_id", "")
+                if sid and sid not in seen and r.get("type") in ("twse", "otc", ""):
+                    seen.add(sid)
+                    deduped.append({"symbol": sid, "name": r.get("stock_name", "")})
+            _symbols = deduped
             logger.info("Loaded %d symbols from FinMind", len(_symbols))
     except Exception as exc:
         logger.warning("Failed to load symbols: %s", exc)
