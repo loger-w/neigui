@@ -32,7 +32,7 @@ async def load_symbols() -> None:
             deduped: list[dict] = []
             for r in data:
                 sid = r.get("stock_id", "")
-                if sid and sid not in seen and r.get("type") in ("twse", "otc", ""):
+                if sid and sid not in seen and r.get("type") in ("twse", "tpex", "otc"):
                     seen.add(sid)
                     deduped.append({"symbol": sid, "name": r.get("stock_name", "")})
             _symbols = deduped

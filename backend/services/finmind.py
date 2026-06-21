@@ -301,25 +301,37 @@ class FinMindClient:
         if uncached_dates:
             start = min(uncached_dates)
             end = max(uncached_dates)
+
+            # Try SecIdAgg batch first (one call for all dates)
+            by_date: dict[str, list] = {}
             try:
                 raw = await self._get(
                     f"{_FINMIND_BASE}/taiwan_stock_trading_daily_report_secid_agg",
                     {"data_id": symbol, "start_date": start, "end_date": end},
                 )
+                for r in raw:
+                    d = r.get("date", "")
+                    if d not in by_date:
+                        by_date[d] = []
+                    by_date[d].append(r)
             except Exception as exc:
                 logger.warning("SecIdAgg batch fetch failed: %s", exc)
-                raw = []
 
-            by_date: dict[str, list] = {}
-            for r in raw:
-                d = r.get("date", "")
-                if d not in by_date:
-                    by_date[d] = []
-                by_date[d].append(r)
-
+            # Compute major_net; fallback to per-day TradingDailyReport if SecIdAgg returned nothing
             for d in uncached_dates:
                 rows = by_date.get(d, [])
-                major_net = _compute_major_net_agg(rows)
+                if rows:
+                    major_net = _compute_major_net_agg(rows)
+                else:
+                    try:
+                        day_raw = await self._get(
+                            f"{_FINMIND_BASE}/taiwan_stock_trading_daily_report",
+                            {"data_id": symbol, "date": d},
+                        )
+                        major_net = _compute_major_net(day_raw)
+                    except Exception as exc:
+                        logger.warning("TradingDailyReport fallback failed for %s %s: %s", symbol, d, exc)
+                        major_net = 0
                 entry = {"date": d, "major_net": major_net}
                 if d != today:
                     self._write_cache(f"{symbol}_{d}_major", entry)
