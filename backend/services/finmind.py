@@ -320,8 +320,10 @@ class FinMindClient:
             # Compute major_net; fallback to per-day TradingDailyReport if SecIdAgg returned nothing
             for d in uncached_dates:
                 rows = by_date.get(d, [])
+                got_data = False
                 if rows:
                     major_net = _compute_major_net_agg(rows)
+                    got_data = True
                 else:
                     try:
                         day_raw = await self._get(
@@ -329,11 +331,12 @@ class FinMindClient:
                             {"data_id": symbol, "date": d},
                         )
                         major_net = _compute_major_net(day_raw)
+                        got_data = True
                     except Exception as exc:
                         logger.warning("TradingDailyReport fallback failed for %s %s: %s", symbol, d, exc)
                         major_net = 0
                 entry = {"date": d, "major_net": major_net}
-                if d != today:
+                if d != today and got_data:
                     self._write_cache(f"{symbol}_{d}_major", entry)
                 cached_results[d] = entry
 
