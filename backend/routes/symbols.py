@@ -23,7 +23,8 @@ async def load_symbols() -> None:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(
                 "https://api.finmindtrade.com/api/v4/data",
-                params={"dataset": "TaiwanStockInfo", "token": token},
+                params={"dataset": "TaiwanStockInfo"},
+                headers={"Authorization": f"Bearer {token}"},
             )
             resp.raise_for_status()
             data = resp.json().get("data", [])

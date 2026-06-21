@@ -35,5 +35,8 @@ def atomic_write_json(path: Path, payload: Any) -> None:
 def read_json(path: Path, default: Any = None) -> Any:
     if not path.exists():
         return default
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        return default

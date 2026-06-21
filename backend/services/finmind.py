@@ -33,7 +33,7 @@ def get_finmind() -> FinMindClient:
 
 
 # ---------------------------------------------------------------------------
-# Rate limiter (separate from Fubon)
+# Rate limiter
 # ---------------------------------------------------------------------------
 
 _fm_limiter: TokenBucket | None = None
