@@ -12,7 +12,9 @@ load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from routes.symbols import load_symbols
     from services.finmind import get_finmind
+    await load_symbols()
     yield
     client = get_finmind()
     await client.close()
