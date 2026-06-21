@@ -13,11 +13,11 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from routes.symbols import load_symbols
-    from services.finmind import get_finmind
+    import services.finmind as fm_mod
     await load_symbols()
     yield
-    client = get_finmind()
-    await client.close()
+    if fm_mod._client is not None:
+        await fm_mod._client.close()
 
 
 app = FastAPI(title="Chip Overview", version="0.1.0", lifespan=lifespan)
