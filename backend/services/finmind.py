@@ -16,7 +16,7 @@ from services.rate_limiter import TokenBucket
 logger = logging.getLogger(__name__)
 
 _FINMIND_BASE = "https://api.finmindtrade.com/api/v4"
-_CACHE_VERSION = 1
+_CACHE_VERSION = 2
 
 # ---------------------------------------------------------------------------
 # Singleton
