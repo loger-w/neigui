@@ -233,6 +233,142 @@ def test_broker_net_from_truncated_lots():
     assert result[0]["net"] == 1234
 
 
+@pytest.mark.asyncio
+async def test_history_secid_agg_full_success():
+    """SecIdAgg returns all dates — no fallback calls."""
+    from services.finmind import FinMindClient
+    candle_rows = [
+        {"date": "2026-06-18", "stock_id": "2330",
+         "open": 100, "max": 105, "min": 99, "close": 103, "Trading_Volume": 10000},
+        {"date": "2026-06-19", "stock_id": "2330",
+         "open": 103, "max": 108, "min": 102, "close": 107, "Trading_Volume": 12000},
+    ]
+    agg_rows = [
+        {"date": "2026-06-18", "buy": 5000000, "sell": 1000000},
+        {"date": "2026-06-19", "buy": 3000000, "sell": 2000000},
+    ]
+    mc = _mock_http(
+        _fm_response(candle_rows),
+        _fm_response([INST_ROW]),
+        _fm_response([MARGIN_ROW]),
+        _fm_response(agg_rows),
+    )
+    client = FinMindClient()
+    client._http = mc
+    r = await client.fetch_chip_history("2330")
+    assert len(r["major"]) == 2
+    assert r["major"][0]["major_net"] == 4000
+    assert r["major"][1]["major_net"] == 1000
+    assert mc.get.await_count == 4
+
+
+@pytest.mark.asyncio
+async def test_history_secid_agg_full_failure():
+    """SecIdAgg fails entirely — all dates use parallel fallback."""
+    from services.finmind import FinMindClient
+    import httpx
+
+    candle_rows = [
+        {"date": "2026-06-18", "stock_id": "2330",
+         "open": 100, "max": 105, "min": 99, "close": 103, "Trading_Volume": 10000},
+        {"date": "2026-06-19", "stock_id": "2330",
+         "open": 103, "max": 108, "min": 102, "close": 107, "Trading_Volume": 12000},
+    ]
+    broker_day_18 = [
+        {"securities_trader": "A", "securities_trader_id": "A1",
+         "price": 100.0, "buy": 3000000, "sell": 1000000},
+    ]
+    broker_day_19 = [
+        {"securities_trader": "B", "securities_trader_id": "B1",
+         "price": 100.0, "buy": 1000000, "sell": 4000000},
+    ]
+
+    mock_req = MagicMock()
+    mock_resp = MagicMock()
+    secid_error = httpx.HTTPStatusError("500", request=mock_req, response=mock_resp)
+
+    mc = _mock_http(
+        _fm_response(candle_rows),
+        _fm_response([INST_ROW]),
+        _fm_response([MARGIN_ROW]),
+        secid_error,
+        _fm_response(broker_day_18),
+        _fm_response(broker_day_19),
+    )
+    # _safe_get_secid_agg catches exceptions, so we need side_effect for the 4th call
+    original_side_effect = mc.get.side_effect
+    call_count = 0
+    async def side_effect_fn(*args, **kwargs):
+        nonlocal call_count
+        idx = call_count
+        call_count += 1
+        item = list(original_side_effect)[idx] if hasattr(original_side_effect, '__iter__') else None
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    responses = [
+        _fm_response(candle_rows),
+        _fm_response([INST_ROW]),
+        _fm_response([MARGIN_ROW]),
+        secid_error,
+        _fm_response(broker_day_18),
+        _fm_response(broker_day_19),
+    ]
+    call_idx = 0
+    async def mock_get(*args, **kwargs):
+        nonlocal call_idx
+        i = call_idx
+        call_idx += 1
+        item = responses[i]
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    mc.get = AsyncMock(side_effect=mock_get)
+
+    client = FinMindClient()
+    client._http = mc
+    r = await client.fetch_chip_history("2330")
+    assert len(r["major"]) == 2
+    assert r["major"][0]["major_net"] == 2000
+    assert r["major"][1]["major_net"] == -3000
+    assert mc.get.await_count == 6
+
+
+@pytest.mark.asyncio
+async def test_history_secid_agg_partial_success():
+    """SecIdAgg returns only 1 of 2 dates — the other falls back."""
+    from services.finmind import FinMindClient
+    candle_rows = [
+        {"date": "2026-06-18", "stock_id": "2330",
+         "open": 100, "max": 105, "min": 99, "close": 103, "Trading_Volume": 10000},
+        {"date": "2026-06-19", "stock_id": "2330",
+         "open": 103, "max": 108, "min": 102, "close": 107, "Trading_Volume": 12000},
+    ]
+    agg_rows = [
+        {"date": "2026-06-18", "buy": 5000000, "sell": 1000000},
+    ]
+    broker_day_19 = [
+        {"securities_trader": "B", "securities_trader_id": "B1",
+         "price": 100.0, "buy": 1000000, "sell": 4000000},
+    ]
+    mc = _mock_http(
+        _fm_response(candle_rows),
+        _fm_response([INST_ROW]),
+        _fm_response([MARGIN_ROW]),
+        _fm_response(agg_rows),
+        _fm_response(broker_day_19),
+    )
+    client = FinMindClient()
+    client._http = mc
+    r = await client.fetch_chip_history("2330")
+    assert len(r["major"]) == 2
+    assert r["major"][0]["major_net"] == 4000
+    assert r["major"][1]["major_net"] == -3000
+    assert mc.get.await_count == 5
+
+
 def test_no_token_raises(monkeypatch):
     monkeypatch.setenv("FINMIND_TOKEN", "")
     from services.finmind import FinMindClient

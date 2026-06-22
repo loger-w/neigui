@@ -231,7 +231,7 @@ class FinMindClient:
         start = end - timedelta(days=90)
         s, e = start.isoformat(), end.isoformat()
 
-        candles_raw, inst_raw, margin_raw = await asyncio.gather(
+        candles_raw, inst_raw, margin_raw, secid_raw = await asyncio.gather(
             self._get(
                 f"{_FINMIND_BASE}/data",
                 {"dataset": "TaiwanStockPrice",
@@ -247,6 +247,7 @@ class FinMindClient:
                 {"dataset": "TaiwanStockMarginPurchaseShortSale",
                  "data_id": symbol, "start_date": s, "end_date": e},
             ),
+            self._safe_get_secid_agg(symbol, s, e),
         )
 
         candles = [
@@ -261,8 +262,21 @@ class FinMindClient:
             for r in candles_raw
         ]
 
+        by_date: dict[str, list] = {}
+        for r in secid_raw:
+            d = r.get("date", "")
+            if d not in by_date:
+                by_date[d] = []
+            by_date[d].append(r)
+
         trading_dates = [c["date"] for c in candles]
-        major_series = await self._fetch_major_series(symbol, trading_dates)
+        logger.info(
+            "SecIdAgg coverage for %s: %d/%d dates",
+            symbol, len(by_date), len(trading_dates),
+        )
+        major_series = await self._fetch_major_series(
+            symbol, trading_dates, pre_fetched_by_date=by_date,
+        )
 
         result = {
             "symbol": symbol,
@@ -276,16 +290,32 @@ class FinMindClient:
         self._write_cache(cache_key, result)
         return result
 
+    async def _safe_get_secid_agg(
+        self, symbol: str, start: str, end: str,
+    ) -> list:
+        try:
+            return await self._get(
+                f"{_FINMIND_BASE}/taiwan_stock_trading_daily_report_secid_agg",
+                {"data_id": symbol, "start_date": start, "end_date": end},
+            )
+        except Exception as exc:
+            logger.warning("SecIdAgg batch fetch failed: %s", exc)
+            return []
+
     # -- major net series (top-15 broker net per day) ----------------------
 
     async def _fetch_major_series(
-        self, symbol: str, trading_dates: list[str],
+        self,
+        symbol: str,
+        trading_dates: list[str],
+        pre_fetched_by_date: dict[str, list] | None = None,
     ) -> list[dict]:
-        """Fetch major net series via SecIdAgg (single batch API call)."""
+        """Fetch major net series using pre-fetched SecIdAgg data + parallel fallback."""
         if not trading_dates:
             return []
 
         today = date.today().isoformat()
+        by_date = pre_fetched_by_date if pre_fetched_by_date is not None else {}
 
         cached_results: dict[str, dict] = {}
         uncached_dates: list[str] = []
@@ -299,46 +329,40 @@ class FinMindClient:
             uncached_dates.append(d)
 
         if uncached_dates:
-            start = min(uncached_dates)
-            end = max(uncached_dates)
-
-            # Try SecIdAgg batch first (one call for all dates)
-            by_date: dict[str, list] = {}
-            try:
-                raw = await self._get(
-                    f"{_FINMIND_BASE}/taiwan_stock_trading_daily_report_secid_agg",
-                    {"data_id": symbol, "start_date": start, "end_date": end},
-                )
-                for r in raw:
-                    d = r.get("date", "")
-                    if d not in by_date:
-                        by_date[d] = []
-                    by_date[d].append(r)
-            except Exception as exc:
-                logger.warning("SecIdAgg batch fetch failed: %s", exc)
-
-            # Compute major_net; fallback to per-day TradingDailyReport if SecIdAgg returned nothing
+            fallback_dates: list[str] = []
             for d in uncached_dates:
                 rows = by_date.get(d, [])
-                got_data = False
                 if rows:
                     major_net = _compute_major_net_agg(rows)
-                    got_data = True
+                    entry = {"date": d, "major_net": major_net}
+                    if d != today:
+                        self._write_cache(f"{symbol}_{d}_major", entry)
+                    cached_results[d] = entry
                 else:
+                    fallback_dates.append(d)
+
+            if fallback_dates:
+                async def _fetch_one(d: str) -> tuple[str, dict, bool]:
                     try:
                         day_raw = await self._get(
                             f"{_FINMIND_BASE}/taiwan_stock_trading_daily_report",
                             {"data_id": symbol, "date": d},
                         )
-                        major_net = _compute_major_net(day_raw)
-                        got_data = True
+                        return d, {"date": d, "major_net": _compute_major_net(day_raw)}, True
                     except Exception as exc:
-                        logger.warning("TradingDailyReport fallback failed for %s %s: %s", symbol, d, exc)
-                        major_net = 0
-                entry = {"date": d, "major_net": major_net}
-                if d != today and got_data:
-                    self._write_cache(f"{symbol}_{d}_major", entry)
-                cached_results[d] = entry
+                        logger.warning(
+                            "TradingDailyReport fallback failed for %s %s: %s",
+                            symbol, d, exc,
+                        )
+                        return d, {"date": d, "major_net": 0}, False
+
+                results = await asyncio.gather(
+                    *[_fetch_one(d) for d in fallback_dates],
+                )
+                for d, entry, got_data in results:
+                    if d != today and got_data:
+                        self._write_cache(f"{symbol}_{d}_major", entry)
+                    cached_results[d] = entry
 
         return [cached_results.get(d, {"date": d, "major_net": 0})
                 for d in trading_dates]
