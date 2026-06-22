@@ -16,7 +16,7 @@ from services.rate_limiter import TokenBucket
 logger = logging.getLogger(__name__)
 
 _FINMIND_BASE = "https://api.finmindtrade.com/api/v4"
-_CACHE_VERSION = 2
+_CACHE_VERSION = 3
 
 # ---------------------------------------------------------------------------
 # Singleton
@@ -238,7 +238,7 @@ class FinMindClient:
         start = end - timedelta(days=90)
         s, e = start.isoformat(), end.isoformat()
 
-        candles_raw, inst_raw, margin_raw, secid_raw = await asyncio.gather(
+        candles_raw, inst_raw, margin_raw = await asyncio.gather(
             self._get(
                 f"{_FINMIND_BASE}/data",
                 {"dataset": "TaiwanStockPrice",
@@ -254,7 +254,6 @@ class FinMindClient:
                 {"dataset": "TaiwanStockMarginPurchaseShortSale",
                  "data_id": symbol, "start_date": s, "end_date": e},
             ),
-            self._safe_get_secid_agg(symbol, s, e),
         )
 
         candles = [
@@ -269,21 +268,12 @@ class FinMindClient:
             for r in candles_raw
         ]
 
-        by_date: dict[str, list] = {}
-        for r in secid_raw:
-            d = r.get("date", "")
-            if d not in by_date:
-                by_date[d] = []
-            by_date[d].append(r)
-
         trading_dates = [c["date"] for c in candles]
-        logger.info(
-            "SecIdAgg coverage for %s: %d/%d dates",
-            symbol, len(by_date), len(trading_dates),
-        )
-        major_series = await self._fetch_major_series(
-            symbol, trading_dates, pre_fetched_by_date=by_date,
-        )
+        # No SecIdAgg pre-fetch: that endpoint now REQUIRES a per-broker
+        # `securities_trader_id` filter, so a corpus-wide fetch would 400.
+        # Fall back to the per-date TradingDailyReport path inside
+        # _fetch_major_series — already proven to deliver correct values.
+        major_series = await self._fetch_major_series(symbol, trading_dates)
 
         result = {
             "symbol": symbol,
@@ -298,15 +288,22 @@ class FinMindClient:
         return result
 
     async def _safe_get_secid_agg(
-        self, symbol: str, start: str, end: str,
+        self, symbol: str, start: str, end: str, trader_id: str,
     ) -> list:
+        """FinMind's SecIdAgg endpoint REQUIRES `securities_trader_id`. Returns
+        [] on any HTTP/network/parse failure (the caller treats missing rows
+        as "no data for this broker", which is the same outcome as an
+        unavailable upstream)."""
         try:
             return await self._get(
                 f"{_FINMIND_BASE}/taiwan_stock_trading_daily_report_secid_agg",
-                {"data_id": symbol, "start_date": start, "end_date": end},
+                {"data_id": symbol, "start_date": start, "end_date": end,
+                 "securities_trader_id": trader_id},
             )
         except Exception as exc:
-            logger.warning("SecIdAgg batch fetch failed: %s", exc)
+            logger.warning(
+                "SecIdAgg fetch failed for %s/%s: %s", symbol, trader_id, exc,
+            )
             return []
 
     # -- broker history -----------------------------------------------------
@@ -314,49 +311,75 @@ class FinMindClient:
     async def fetch_broker_history(
         self, symbol: str, ids: list[str], refresh: bool = False,
     ) -> dict:
+        """`ids` are broker_ids (FinMind `securities_trader_id`) — same values
+        the frontend already receives in `top_brokers[].broker_id`. The cache
+        is partial per-symbol: brokers fetched in prior requests stay cached
+        across sessions; new ids on this request are fetched + merged."""
         cache_key = f"{symbol}_broker_history"
         if not refresh:
             cached = self._read_cache(cache_key)
-            # Bug #2 fix: 15-min TTL when cached entry is from today; pre-today
-            # cache always falls through to re-fetch the new day's bar.
-            if (
-                cached is not None
-                and cached.get("last_date", "") >= date.today().isoformat()
-                and not self._is_stale(cached, max_age_minutes=15)
-            ):
+            if cached is not None and self._has_fresh_subset(cached, ids):
                 return _filter_broker_history(cached, ids)
 
-        # _run_once dedups concurrent callers by symbol (NOT ids), so the task
-        # MUST return the full payload — each caller filters its own subset.
-        # Otherwise the second caller with different `ids` would receive the
-        # first caller's filtered subset.
         payload = await self._run_once(
-            f"broker_history_{symbol}",
-            lambda: self._do_fetch_broker_history(symbol, cache_key),
+            f"broker_history_{symbol}_{','.join(sorted(set(ids)))}",
+            lambda: self._do_fetch_broker_history(symbol, cache_key, ids),
         )
         return _filter_broker_history(payload, ids)
 
+    @staticmethod
+    def _has_fresh_subset(cached: dict, ids: list[str]) -> bool:
+        """True iff cache covers every requested id AND is today-dated AND
+        within the 15-min TTL — i.e. we can return without any fetch."""
+        if cached.get("last_date", "") < date.today().isoformat():
+            return False
+        if FinMindClient._is_stale(cached, max_age_minutes=15):
+            return False
+        brokers = cached.get("brokers", {})
+        return all(bid in brokers for bid in ids)
+
     async def _do_fetch_broker_history(
-        self, symbol: str, cache_key: str,
+        self, symbol: str, cache_key: str, ids: list[str],
     ) -> dict:
+        existing = self._read_cache(cache_key) or {
+            "symbol": symbol, "fetched_at": "", "last_date": "",
+            "brokers": {},
+        }
+        existing_brokers: dict[str, list] = dict(existing.get("brokers", {}))
+
+        # Refetch all requested ids — caller decides freshness; we always
+        # overwrite to pick up newly-traded dates. Brokers absent from `ids`
+        # but present in cache stay cached (sticky across sessions).
         end = date.today()
         start = end - timedelta(days=90)
-        rows = await self._safe_get_secid_agg(
-            symbol, start.isoformat(), end.isoformat(),
+        results = await asyncio.gather(
+            *[
+                self._safe_get_secid_agg(symbol, start.isoformat(), end.isoformat(), bid)
+                for bid in ids
+            ],
+            return_exceptions=True,
         )
+        any_success = False
+        for bid, res in zip(ids, results):
+            if isinstance(res, BaseException) or not res:
+                # Keep previously-cached series for this id if any; otherwise
+                # an empty list (so the frontend renders 0 bars, not nothing).
+                if bid not in existing_brokers:
+                    existing_brokers[bid] = []
+                continue
+            any_success = True
+            parsed = _parse_broker_history(res)
+            existing_brokers[bid] = parsed.get(bid, [])
 
-        if not rows:
-            stale = self._read_cache(cache_key)
-            if stale is not None:
-                return stale  # full payload, caller filters
+        # No new data AND no prior cache → upstream is genuinely unavailable.
+        if not any_success and not existing.get("last_date"):
             raise ValueError("secid_agg_unavailable")
 
-        brokers = _parse_broker_history(rows)
         payload = {
             "symbol": symbol,
             "fetched_at": datetime.now().isoformat(timespec="seconds"),
             "last_date": end.isoformat(),
-            "brokers": brokers,
+            "brokers": existing_brokers,
         }
         self._write_cache(cache_key, payload)
         return payload
@@ -474,56 +497,56 @@ def _compute_major_net_agg(rows: list) -> int:
 
 
 def _parse_broker_history(rows: list) -> dict[str, list[dict]]:
-    """Group SecIdAgg rows by broker NAME, aggregating (name, date) duplicates.
+    """Group SecIdAgg rows by `securities_trader_id`, aggregating (id, date)
+    duplicates and converting shares → lots.
 
     Returns:
-        {broker_name: [{date, buy, sell, net}, ...]}  values in 張 (lots).
+        {broker_id: [{date, buy, sell, net}, ...]}  values in 張 (lots).
 
-    Bug #1 fix: the join key is the broker NAME (`securities_trader`), NOT
-    `securities_trader_id`. `top_brokers` (from /taiwan_stock_trading_daily_report)
-    and broker history (from /taiwan_stock_trading_daily_report_secid_agg) use
-    different id namespaces — only the name is shared between them.
+    SecIdAgg row schema differs from TradingDailyReport:
+        - quantities live in `buy_volume`/`sell_volume`, NOT `buy`/`sell`.
+        - filtered server-side by `securities_trader_id`, so a response only
+          contains rows for one broker; we still key by id (not name) so the
+          API matches what the frontend already has in `top_brokers[].broker_id`.
 
-    Rows with blank/whitespace-only `securities_trader` are skipped.
+    Rows with blank/whitespace-only `securities_trader_id` are skipped.
     """
     agg: dict[tuple[str, str], dict] = {}
     for r in rows:
-        name = str(r.get("securities_trader", "")).strip()
-        if not name:
+        bid = str(r.get("securities_trader_id", "")).strip()
+        if not bid:
             continue
         d = r.get("date", "")
-        key = (name, d)
+        key = (bid, d)
         if key not in agg:
             agg[key] = {"buy_shares": 0, "sell_shares": 0}
-        agg[key]["buy_shares"] += int(r.get("buy", 0))
-        agg[key]["sell_shares"] += int(r.get("sell", 0))
+        agg[key]["buy_shares"] += int(r.get("buy_volume", 0))
+        agg[key]["sell_shares"] += int(r.get("sell_volume", 0))
 
     result: dict[str, list[dict]] = {}
-    for (name, d), v in agg.items():
+    for (bid, d), v in agg.items():
         buy_lots = _to_lots(v["buy_shares"])
         sell_lots = _to_lots(v["sell_shares"])
-        if name not in result:
-            result[name] = []
-        result[name].append({
+        if bid not in result:
+            result[bid] = []
+        result[bid].append({
             "date": d,
             "buy": buy_lots,
             "sell": sell_lots,
             "net": buy_lots - sell_lots,
         })
 
-    for name in result:
-        result[name].sort(key=lambda x: x["date"])
+    for bid in result:
+        result[bid].sort(key=lambda x: x["date"])
     return result
 
 
 def _filter_broker_history(payload: dict, ids: list[str]) -> dict:
-    """Return a copy of payload with brokers narrowed to requested keys.
+    """Return a copy of payload with brokers narrowed to requested broker_ids.
 
-    Bug #1 fix: keys are broker NAMES (see `_parse_broker_history`). The
-    `ids` parameter name is preserved for API/URL stability — values are
-    broker names. Missing keys are returned as empty lists for backwards
-    compatibility, but a WARNING is logged so that future namespace drift
-    fails loudly instead of silently.
+    Missing keys are returned as empty lists (the frontend renders a 0-bar
+    row rather than crashing), but a WARNING is logged so that an unexpected
+    upstream gap surfaces in the log instead of silently producing zeros.
     """
     all_brokers = payload.get("brokers", {})
     missing = [k for k in ids if k not in all_brokers]

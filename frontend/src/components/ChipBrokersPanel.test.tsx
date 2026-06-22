@@ -58,7 +58,7 @@ describe("ChipBrokersPanel F4 — symbol/date + 三大法人 removed", () => {
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
         dayTotalLots={1000}
-        selectedBrokerNames={new Set()}
+        selectedBrokerIds={new Set()}
         onToggleBroker={noop}
         onClearAllBrokers={noop}
       />,
@@ -74,7 +74,7 @@ describe("ChipBrokersPanel F4 — symbol/date + 三大法人 removed", () => {
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
         dayTotalLots={1000}
-        selectedBrokerNames={new Set()}
+        selectedBrokerIds={new Set()}
         onToggleBroker={noop}
         onClearAllBrokers={noop}
       />,
@@ -95,7 +95,7 @@ describe("ChipBrokersPanel F7 — 主力買賣超 above 融資融券", () => {
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
         dayTotalLots={1000}
-        selectedBrokerNames={new Set()}
+        selectedBrokerIds={new Set()}
         onToggleBroker={noop}
         onClearAllBrokers={noop}
       />,
@@ -115,7 +115,7 @@ describe("ChipBrokersPanel loading indicator (Cluster B 🟢)", () => {
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
         dayTotalLots={1000}
-        selectedBrokerNames={new Set()}
+        selectedBrokerIds={new Set()}
         onToggleBroker={noop}
         onClearAllBrokers={noop}
         loading
@@ -130,7 +130,7 @@ describe("ChipBrokersPanel loading indicator (Cluster B 🟢)", () => {
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
         dayTotalLots={1000}
-        selectedBrokerNames={new Set()}
+        selectedBrokerIds={new Set()}
         onToggleBroker={noop}
         onClearAllBrokers={noop}
         loading={false}
@@ -145,7 +145,7 @@ describe("ChipBrokersPanel loading indicator (Cluster B 🟢)", () => {
       <ChipBrokersPanel
         summary={null}
         dayTotalLots={0}
-        selectedBrokerNames={new Set()}
+        selectedBrokerIds={new Set()}
         onToggleBroker={noop}
         onClearAllBrokers={noop}
         loading
@@ -164,7 +164,7 @@ describe("ChipBrokersPanel F5 — buyers + sellers in separate scrollable halves
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
         dayTotalLots={1000}
-        selectedBrokerNames={new Set()}
+        selectedBrokerIds={new Set()}
         onToggleBroker={noop}
         onClearAllBrokers={noop}
       />,
@@ -178,7 +178,7 @@ describe("ChipBrokersPanel F5 — buyers + sellers in separate scrollable halves
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
         dayTotalLots={1000}
-        selectedBrokerNames={new Set()}
+        selectedBrokerIds={new Set()}
         onToggleBroker={noop}
         onClearAllBrokers={noop}
       />,
@@ -189,20 +189,22 @@ describe("ChipBrokersPanel F5 — buyers + sellers in separate scrollable halves
     expect(container.querySelector("[data-testid=volume-scroll]")).toBeTruthy();
   });
 
-  it("clicking buyer + seller checkbox each fires onToggleBroker(name)", () => {
+  it("clicking buyer + seller checkbox each fires onToggleBroker(broker_id)", () => {
     const onToggle = vi.fn();
     const { getByLabelText } = render(
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
         dayTotalLots={1000}
-        selectedBrokerNames={new Set()}
+        selectedBrokerIds={new Set()}
         onToggleBroker={onToggle}
         onClearAllBrokers={noop}
       />,
     );
     fireEvent.click(getByLabelText("勾選 Buyer-0"));
     fireEvent.click(getByLabelText("勾選 Seller-0"));
-    expect(onToggle).toHaveBeenCalledWith("Buyer-0");
-    expect(onToggle).toHaveBeenCalledWith("Seller-0");
+    // Selection is keyed by broker_id, not name — that's the value the
+    // SecIdAgg broker_history endpoint filters on.
+    expect(onToggle).toHaveBeenCalledWith("B0");
+    expect(onToggle).toHaveBeenCalledWith("S0");
   });
 });

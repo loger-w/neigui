@@ -1,4 +1,12 @@
-"""Tests for broker-history parsing and fetch."""
+"""Tests for broker-history parsing and fetch.
+
+Contract: broker history is keyed by FinMind `securities_trader_id` because
+FinMind's SecIdAgg endpoint requires `securities_trader_id` as a query filter
+(no-filter calls return 400). The frontend already has these ids in
+`top_brokers[].broker_id`, so the same value flows through the round-trip.
+
+SecIdAgg row fields: `buy_volume` / `sell_volume` (NOT `buy` / `sell`).
+"""
 from __future__ import annotations
 
 import asyncio
@@ -17,55 +25,107 @@ from services.finmind import FinMindClient, _filter_broker_history, _parse_broke
 # ---------------------------------------------------------------------------
 
 
-def test_parse_broker_history_computes_net_in_lots():
+def test_parse_broker_history_groups_by_broker_id_and_uses_volume_fields():
     rows = [
-        {"securities_trader": "X", "date": "2026-06-20",
-         "buy": 120000, "sell": 50000},
+        {"securities_trader_id": "9800", "securities_trader": "元大",
+         "date": "2026-06-20", "buy_volume": 120000, "sell_volume": 50000},
     ]
     result = _parse_broker_history(rows)
     # 120000 shares → 120 lots; 50000 → 50; net = 70
-    assert result["X"][0] == {"date": "2026-06-20", "buy": 120, "sell": 50, "net": 70}
+    assert result["9800"][0] == {
+        "date": "2026-06-20", "buy": 120, "sell": 50, "net": 70,
+    }
 
 
 def test_parse_broker_history_truncates_shares_to_lots():
     rows = [
-        {"securities_trader": "X", "date": "2026-06-20",
-         "buy": 1500, "sell": 999},
+        {"securities_trader_id": "X1", "date": "2026-06-20",
+         "buy_volume": 1500, "sell_volume": 999},
     ]
     # 1500 → 1 lot (truncate); 999 → 0
     result = _parse_broker_history(rows)
-    assert result["X"][0]["buy"] == 1
-    assert result["X"][0]["sell"] == 0
+    assert result["X1"][0]["buy"] == 1
+    assert result["X1"][0]["sell"] == 0
 
 
 def test_parse_broker_history_aggregates_duplicate_date_rows():
     rows = [
-        {"securities_trader": "Z", "date": "2026-06-20",
-         "buy": 1000, "sell": 0},
-        {"securities_trader": "Z", "date": "2026-06-20",
-         "buy": 2000, "sell": 500},
+        {"securities_trader_id": "Z9", "date": "2026-06-20",
+         "buy_volume": 1000, "sell_volume": 0},
+        {"securities_trader_id": "Z9", "date": "2026-06-20",
+         "buy_volume": 2000, "sell_volume": 500},
     ]
     result = _parse_broker_history(rows)
-    assert len(result["Z"]) == 1
+    assert len(result["Z9"]) == 1
     # buy = 3 lots, sell = 0 lots (500 truncated)
-    assert result["Z"][0] == {"date": "2026-06-20", "buy": 3, "sell": 0, "net": 3}
+    assert result["Z9"][0] == {"date": "2026-06-20", "buy": 3, "sell": 0, "net": 3}
 
 
 def test_parse_broker_history_empty_input():
     assert _parse_broker_history([]) == {}
 
 
-def test_parse_broker_history_strips_broker_name_whitespace():
+def test_parse_broker_history_skips_blank_broker_id():
     rows = [
-        {"securities_trader": " 凱基 ", "date": "2026-06-20",
-         "buy": 1000, "sell": 0},
+        {"securities_trader_id": "", "date": "2026-06-20",
+         "buy_volume": 1000, "sell_volume": 0},
+        {"securities_trader_id": "  ", "date": "2026-06-20",
+         "buy_volume": 1000, "sell_volume": 0},
+        {"securities_trader_id": "Y3", "date": "2026-06-20",
+         "buy_volume": 1000, "sell_volume": 0},
     ]
     result = _parse_broker_history(rows)
-    assert list(result.keys()) == ["凱基"]
+    assert list(result.keys()) == ["Y3"]
+
+
+def test_parse_broker_history_sorts_dates_ascending():
+    rows = [
+        {"securities_trader_id": "A", "date": "2026-06-22",
+         "buy_volume": 1000, "sell_volume": 0},
+        {"securities_trader_id": "A", "date": "2026-06-20",
+         "buy_volume": 1000, "sell_volume": 0},
+        {"securities_trader_id": "A", "date": "2026-06-21",
+         "buy_volume": 1000, "sell_volume": 0},
+    ]
+    result = _parse_broker_history(rows)
+    assert [d["date"] for d in result["A"]] == [
+        "2026-06-20", "2026-06-21", "2026-06-22",
+    ]
 
 
 # ---------------------------------------------------------------------------
-# fetch_broker_history (Task 2 — written together so we lock interfaces)
+# _filter_broker_history
+# ---------------------------------------------------------------------------
+
+
+def test_filter_broker_history_logs_warning_on_missing_keys(caplog):
+    payload = {
+        "symbol": "2330", "fetched_at": "", "last_date": "",
+        "brokers": {"9800": [{"date": "d", "buy": 1, "sell": 0, "net": 1}]},
+    }
+    with caplog.at_level(logging.WARNING, logger="services.finmind"):
+        result = _filter_broker_history(payload, ["9800", "MISSING"])
+    assert result["brokers"]["MISSING"] == []
+    assert any("MISSING" in r.message for r in caplog.records), (
+        f"expected warning naming the missing key; got {[r.message for r in caplog.records]}"
+    )
+
+
+def test_filter_broker_history_narrows_to_requested_subset():
+    payload = {
+        "symbol": "2330", "fetched_at": "", "last_date": "",
+        "brokers": {
+            "A": [{"date": "d", "buy": 1, "sell": 0, "net": 1}],
+            "B": [{"date": "d", "buy": 2, "sell": 0, "net": 2}],
+            "C": [{"date": "d", "buy": 3, "sell": 0, "net": 3}],
+        },
+    }
+    result = _filter_broker_history(payload, ["A", "C"])
+    assert set(result["brokers"].keys()) == {"A", "C"}
+
+
+# ---------------------------------------------------------------------------
+# _safe_get_secid_agg
 # ---------------------------------------------------------------------------
 
 
@@ -78,264 +138,211 @@ def client(monkeypatch, tmp_path):
     return FinMindClient()
 
 
-# ---------------------------------------------------------------------------
-# Bug #1 — name-based join (NEW behavior)
-# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_safe_get_secid_agg_passes_trader_id_param(client, monkeypatch):
+    """SecIdAgg endpoint requires `securities_trader_id` — a missing arg makes
+    the call 400. Asserting the param flows through here catches the most
+    common regression (someone refactors and drops the arg)."""
+    captured = {}
 
+    async def fake_get(url, params):
+        captured["url"] = url
+        captured["params"] = dict(params)
+        return []
 
-def test_parse_broker_history_groups_by_broker_name():
-    """_parse_broker_history must group by `securities_trader` (NAME), because
-    `top_brokers` (sourced from TradingDailyReport) and broker history
-    (sourced from SecIdAgg) use different id namespaces but the same NAME."""
-    rows = [
-        {"securities_trader_id": "9201A", "securities_trader": "凱基台北",
-         "date": "2026-06-20", "buy": 100000, "sell": 50000},
-        {"securities_trader_id": "9202B", "securities_trader": "富邦台北",
-         "date": "2026-06-20", "buy": 30000, "sell": 80000},
-        {"securities_trader_id": "9201A", "securities_trader": "凱基台北",
-         "date": "2026-06-21", "buy": 20000, "sell": 0},
-    ]
-    result = _parse_broker_history(rows)
-    assert set(result.keys()) == {"凱基台北", "富邦台北"}
-    assert len(result["凱基台北"]) == 2
-
-
-def test_parse_broker_history_skips_blank_broker_name():
-    """Rows with blank/whitespace `securities_trader` are skipped (the join
-    key is the name; an empty name cannot be matched against `top_brokers`)."""
-    rows = [
-        {"securities_trader_id": "X1", "securities_trader": "",
-         "date": "2026-06-20", "buy": 1000, "sell": 0},
-        {"securities_trader_id": "X2", "securities_trader": "  ",
-         "date": "2026-06-20", "buy": 1000, "sell": 0},
-        {"securities_trader_id": "X3", "securities_trader": "凱基",
-         "date": "2026-06-20", "buy": 1000, "sell": 0},
-    ]
-    result = _parse_broker_history(rows)
-    assert list(result.keys()) == ["凱基"]
+    monkeypatch.setattr(client, "_get", fake_get)
+    await client._safe_get_secid_agg("2330", "2026-03-25", "2026-06-22", "9800")
+    assert captured["params"].get("securities_trader_id") == "9800"
+    assert captured["params"].get("data_id") == "2330"
 
 
 @pytest.mark.asyncio
-async def test_fetch_broker_history_name_based_join(client, monkeypatch):
-    """Requesting by broker NAME must return that broker's history even when
-    the underlying SecIdAgg `securities_trader_id` differs from the id the
-    frontend would receive from /taiwan_stock_trading_daily_report."""
-    mock_rows = [
-        {"securities_trader_id": "9201A", "securities_trader": "凱基台北",
-         "date": "2026-06-20", "buy": 1000, "sell": 0},
-        {"securities_trader_id": "9202B", "securities_trader": "富邦台北",
-         "date": "2026-06-20", "buy": 2000, "sell": 0},
-    ]
-    monkeypatch.setattr(
-        client, "_safe_get_secid_agg", AsyncMock(return_value=mock_rows),
-    )
-    result = await client.fetch_broker_history("2330", ["凱基台北"])
-    assert "凱基台北" in result["brokers"]
-    assert len(result["brokers"]["凱基台北"]) == 1
-    assert result["brokers"]["凱基台北"][0]["buy"] == 1
+async def test_safe_get_secid_agg_returns_empty_on_error(client, monkeypatch):
+    async def boom(*a, **kw):
+        raise RuntimeError("upstream 502")
+
+    monkeypatch.setattr(client, "_get", boom)
+    result = await client._safe_get_secid_agg("2330", "s", "e", "9800")
+    assert result == []
 
 
-def test_filter_broker_history_logs_warning_on_missing_keys(caplog):
-    """Defensive log: silent {key: []} substitution had hidden Bug #1 for weeks.
-    `_filter_broker_history` must emit a WARNING when requested keys are
-    absent from the payload, while still returning the empty-list shape
-    (so the frontend renders a 0-bar row instead of crashing)."""
-    payload = {
-        "symbol": "2330", "fetched_at": "", "last_date": "",
-        "brokers": {"凱基台北": [{"date": "d", "buy": 1, "sell": 0, "net": 1}]},
+# ---------------------------------------------------------------------------
+# fetch_broker_history
+# ---------------------------------------------------------------------------
+
+
+def _row(trader_id: str, d: str, buy: int, sell: int = 0) -> dict:
+    return {
+        "securities_trader_id": trader_id,
+        "securities_trader": f"broker-{trader_id}",
+        "date": d,
+        "buy_volume": buy,
+        "sell_volume": sell,
     }
-    with caplog.at_level(logging.WARNING, logger="services.finmind"):
-        result = _filter_broker_history(payload, ["凱基台北", "不存在的分點"])
-    assert result["brokers"]["不存在的分點"] == []
-    assert any("不存在的分點" in r.message for r in caplog.records), (
-        f"expected warning naming the missing key; got {[r.message for r in caplog.records]}"
-    )
 
 
 @pytest.mark.asyncio
-async def test_fetch_broker_history_filters_to_requested_ids(client, monkeypatch):
-    mock_rows = [
-        {"securities_trader": "A", "date": "2026-06-20", "buy": 1000, "sell": 0},
-        {"securities_trader": "B", "date": "2026-06-20", "buy": 2000, "sell": 0},
-        {"securities_trader": "C", "date": "2026-06-20", "buy": 3000, "sell": 0},
-    ]
+async def test_fetch_broker_history_calls_secid_agg_per_id(client, monkeypatch):
+    """One requested id → exactly one SecIdAgg call carrying that trader_id."""
+    seen_ids: list[str] = []
+
+    async def fake_secid(symbol, start, end, trader_id):
+        seen_ids.append(trader_id)
+        return [_row(trader_id, "2026-06-20", 1000)]
+
+    monkeypatch.setattr(client, "_safe_get_secid_agg", fake_secid)
+    result = await client.fetch_broker_history("2330", ["9800", "8440"])
+    assert sorted(seen_ids) == ["8440", "9800"]
+    assert result["brokers"]["9800"][0]["buy"] == 1
+    assert result["brokers"]["8440"][0]["buy"] == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_broker_history_returns_empty_list_for_unknown_id(
+    client, monkeypatch,
+):
+    async def fake_secid(symbol, start, end, trader_id):
+        return [_row("9800", "2026-06-20", 1000)] if trader_id == "9800" else []
+
+    monkeypatch.setattr(client, "_safe_get_secid_agg", fake_secid)
+    result = await client.fetch_broker_history("2330", ["9800", "MISSING"])
+    assert result["brokers"]["9800"]
+    assert result["brokers"]["MISSING"] == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_broker_history_raises_when_all_ids_empty_and_no_cache(
+    client, monkeypatch,
+):
     monkeypatch.setattr(
-        client, "_safe_get_secid_agg", AsyncMock(return_value=mock_rows),
+        client, "_safe_get_secid_agg", AsyncMock(return_value=[]),
     )
-    result = await client.fetch_broker_history("2330", ["A", "B"])
-    assert set(result["brokers"].keys()) == {"A", "B"}
-    assert "C" not in result["brokers"]
+    with pytest.raises(ValueError, match="secid_agg_unavailable"):
+        await client.fetch_broker_history("2330", ["9800"])
 
 
 @pytest.mark.asyncio
-async def test_fetch_broker_history_caches_full_payload(
+async def test_fetch_broker_history_caches_partial_payload(
     client, monkeypatch, tmp_path,
 ):
-    mock_rows = [
-        {"securities_trader": "A", "date": "2026-06-20", "buy": 1000, "sell": 0},
-        {"securities_trader": "B", "date": "2026-06-20", "buy": 2000, "sell": 0},
-    ]
-    monkeypatch.setattr(
-        client, "_safe_get_secid_agg", AsyncMock(return_value=mock_rows),
-    )
-    await client.fetch_broker_history("2330", ["A"])
+    async def fake_secid(symbol, start, end, trader_id):
+        return [_row(trader_id, "2026-06-20", 1000)]
+
+    monkeypatch.setattr(client, "_safe_get_secid_agg", fake_secid)
+    await client.fetch_broker_history("2330", ["9800"])
     cache_path = tmp_path / "2330_broker_history.json"
     assert cache_path.exists()
     cached = json.loads(cache_path.read_text(encoding="utf-8"))
-    # cache stores ALL brokers, not just requested
-    assert set(cached["brokers"].keys()) == {"A", "B"}
+    assert set(cached["brokers"].keys()) == {"9800"}
 
 
 @pytest.mark.asyncio
-async def test_fetch_broker_history_cache_hit_when_fresh_and_today(
+async def test_fetch_broker_history_merges_with_existing_cache(
     client, monkeypatch, tmp_path,
 ):
-    """Cache hit ONLY when last_date == today AND fetched_at is within TTL."""
+    """Selecting a new broker must NOT evict previously-cached brokers."""
     today = date.today().isoformat()
-    fresh = datetime.now().isoformat(timespec="seconds")
+    seed = {
+        "_cache_version": 3, "symbol": "2330",
+        "fetched_at": "2026-06-20T10:00:00",
+        "last_date": "2026-06-20",
+        "brokers": {"9800": [{"date": today, "buy": 5, "sell": 0, "net": 5}]},
+    }
+    (tmp_path / "2330_broker_history.json").write_text(
+        json.dumps(seed), encoding="utf-8",
+    )
+
+    async def fake_secid(symbol, start, end, trader_id):
+        return [_row(trader_id, today, 2000)] if trader_id == "8440" else []
+
+    monkeypatch.setattr(client, "_safe_get_secid_agg", fake_secid)
+    await client.fetch_broker_history("2330", ["8440"])
+
+    cached = json.loads((tmp_path / "2330_broker_history.json").read_text(encoding="utf-8"))
+    assert set(cached["brokers"].keys()) == {"9800", "8440"}
+    # Original 9800 series preserved verbatim
+    assert cached["brokers"]["9800"][0]["buy"] == 5
+
+
+@pytest.mark.asyncio
+async def test_fetch_broker_history_fresh_cache_subset_skips_fetch(
+    client, monkeypatch, tmp_path,
+):
+    """When all requested ids are in a fresh today-dated cache, no SecIdAgg
+    call is made."""
+    today = date.today().isoformat()
     cache_payload = {
-        "_cache_version": 2,
-        "symbol": "2330",
-        "fetched_at": fresh,
+        "_cache_version": 3, "symbol": "2330",
+        "fetched_at": datetime.now().isoformat(timespec="seconds"),
         "last_date": today,
-        "brokers": {"A": [{"date": today, "buy": 5, "sell": 0, "net": 5}]},
+        "brokers": {"9800": [{"date": today, "buy": 5, "sell": 0, "net": 5}]},
     }
     (tmp_path / "2330_broker_history.json").write_text(
         json.dumps(cache_payload), encoding="utf-8",
     )
     mock_fetch = AsyncMock(return_value=[])
     monkeypatch.setattr(client, "_safe_get_secid_agg", mock_fetch)
-    result = await client.fetch_broker_history("2330", ["A"])
-    assert result["brokers"]["A"][0]["net"] == 5
-    mock_fetch.assert_not_called()  # fresh cache hit
+    result = await client.fetch_broker_history("2330", ["9800"])
+    assert result["brokers"]["9800"][0]["net"] == 5
+    mock_fetch.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_fetch_broker_history_refetches_when_stale_and_today(
+async def test_fetch_broker_history_refetches_when_cache_stale_today(
     client, monkeypatch, tmp_path,
 ):
-    """Bug #2 fix: stale cache (older than TTL) must re-fetch on plain GET
-    (browser F5 sends refresh=false). Previously: cache with last_date==today
-    was served indefinitely until next-day rollover; F5 returned the same JSON
-    written hours ago."""
+    """Stale (older than 15-min TTL) today-dated cache must refetch on a plain
+    GET — browser F5 sends refresh=false but still expects fresh data."""
     today = date.today().isoformat()
-    stale_fetched_at = (datetime.now() - timedelta(hours=1)).isoformat(
-        timespec="seconds",
-    )
+    stale = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
     cache_payload = {
-        "_cache_version": 2,
-        "symbol": "2330",
-        "fetched_at": stale_fetched_at,
-        "last_date": today,
-        "brokers": {"A": [{"date": today, "buy": 5, "sell": 0, "net": 5}]},
+        "_cache_version": 3, "symbol": "2330",
+        "fetched_at": stale, "last_date": today,
+        "brokers": {"9800": [{"date": today, "buy": 5, "sell": 0, "net": 5}]},
     }
     (tmp_path / "2330_broker_history.json").write_text(
         json.dumps(cache_payload), encoding="utf-8",
     )
-    fresh_rows = [
-        {"securities_trader": "A", "date": today, "buy": 99000, "sell": 0},
-    ]
-    mock_fetch = AsyncMock(return_value=fresh_rows)
+    mock_fetch = AsyncMock(return_value=[_row("9800", today, 99000)])
     monkeypatch.setattr(client, "_safe_get_secid_agg", mock_fetch)
-    result = await client.fetch_broker_history("2330", ["A"])
-    mock_fetch.assert_called_once()  # bug #2 — was 0
-    assert result["brokers"]["A"][0]["buy"] == 99  # fresh, not 5
+    result = await client.fetch_broker_history("2330", ["9800"])
+    mock_fetch.assert_called_once()
+    assert result["brokers"]["9800"][0]["buy"] == 99
 
 
 @pytest.mark.asyncio
-async def test_fetch_broker_history_returns_empty_list_for_missing_broker(
-    client, monkeypatch,
-):
-    mock_rows = [
-        {"securities_trader": "A", "date": "2026-06-20", "buy": 1000, "sell": 0},
-    ]
-    monkeypatch.setattr(
-        client, "_safe_get_secid_agg", AsyncMock(return_value=mock_rows),
-    )
-    result = await client.fetch_broker_history("2330", ["A", "MISSING"])
-    assert result["brokers"]["A"]
-    assert result["brokers"]["MISSING"] == []
-
-
-@pytest.mark.asyncio
-async def test_fetch_broker_history_raises_when_secid_agg_empty(client, monkeypatch):
-    monkeypatch.setattr(
-        client, "_safe_get_secid_agg", AsyncMock(return_value=[]),
-    )
-    with pytest.raises(ValueError, match="secid_agg_unavailable"):
-        await client.fetch_broker_history("2330", ["A"])
-
-
-@pytest.mark.asyncio
-async def test_fetch_broker_history_serves_stale_cache_when_secid_agg_fails(
-    client, monkeypatch, tmp_path,
-):
-    """If SecIdAgg returns empty but stale cache exists, serve the stale cache."""
-    stale_payload = {
-        "_cache_version": 2, "symbol": "2330",
-        "fetched_at": "2026-06-20T10:00:00",
-        "last_date": "2026-06-20",  # < today
-        "brokers": {"A": [{"date": "2026-06-20", "buy": 5, "sell": 0, "net": 5}]},
-    }
-    (tmp_path / "2330_broker_history.json").write_text(
-        json.dumps(stale_payload), encoding="utf-8",
-    )
-    monkeypatch.setattr(
-        client, "_safe_get_secid_agg", AsyncMock(return_value=[]),
-    )
-    result = await client.fetch_broker_history("2330", ["A"])
-    assert result["brokers"]["A"][0]["net"] == 5
-
-
-@pytest.mark.asyncio
-async def test_fetch_broker_history_dedup_concurrent_calls(client, monkeypatch):
+async def test_fetch_broker_history_dedup_concurrent_same_ids(client, monkeypatch):
     call_count = 0
 
-    async def slow_fetch(*args, **kwargs):
+    async def slow_secid(symbol, start, end, trader_id):
         nonlocal call_count
         call_count += 1
         await asyncio.sleep(0.05)
-        return [{"securities_trader": "A", "date": "2026-06-20",
-                 "buy": 1000, "sell": 0}]
+        return [_row(trader_id, "2026-06-20", 1000)]
 
-    monkeypatch.setattr(client, "_safe_get_secid_agg", slow_fetch)
-    results = await asyncio.gather(
-        client.fetch_broker_history("2330", ["A"]),
-        client.fetch_broker_history("2330", ["A"]),
-        client.fetch_broker_history("2330", ["A"]),
+    monkeypatch.setattr(client, "_safe_get_secid_agg", slow_secid)
+    await asyncio.gather(
+        client.fetch_broker_history("2330", ["9800"]),
+        client.fetch_broker_history("2330", ["9800"]),
+        client.fetch_broker_history("2330", ["9800"]),
     )
-    assert call_count == 1  # _run_once dedup
-    assert all(r["brokers"]["A"] for r in results)
+    # _run_once dedups by (symbol, sorted-ids), so the three identical calls
+    # collapse into one underlying SecIdAgg fetch.
+    assert call_count == 1
 
 
 @pytest.mark.asyncio
-async def test_fetch_broker_history_concurrent_different_ids_get_correct_subset(
+async def test_fetch_broker_history_concurrent_different_ids_each_get_subset(
     client, monkeypatch,
 ):
-    """Two concurrent callers with different `ids` must each receive only
-    their own subset, NOT the first caller's filtered result."""
-    call_count = 0
+    async def slow_secid(symbol, start, end, trader_id):
+        await asyncio.sleep(0.02)
+        return [_row(trader_id, "2026-06-20", 1000)]
 
-    async def slow_fetch(*args, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        await asyncio.sleep(0.05)
-        return [
-            {"securities_trader": "A", "date": "2026-06-20",
-             "buy": 1000, "sell": 0},
-            {"securities_trader": "B", "date": "2026-06-20",
-             "buy": 2000, "sell": 0},
-        ]
-
-    monkeypatch.setattr(client, "_safe_get_secid_agg", slow_fetch)
+    monkeypatch.setattr(client, "_safe_get_secid_agg", slow_secid)
     res_a, res_b = await asyncio.gather(
-        client.fetch_broker_history("2330", ["A"]),
-        client.fetch_broker_history("2330", ["B"]),
+        client.fetch_broker_history("2330", ["9800"]),
+        client.fetch_broker_history("2330", ["8440"]),
     )
-    assert call_count == 1  # only one underlying fetch
-    assert "A" in res_a["brokers"]
-    assert res_a["brokers"]["A"][0]["net"] == 1
-    assert "B" not in res_a["brokers"]
-    assert "B" in res_b["brokers"]
-    assert res_b["brokers"]["B"][0]["net"] == 2
-    assert "A" not in res_b["brokers"]
+    assert "9800" in res_a["brokers"] and "8440" not in res_a["brokers"]
+    assert "8440" in res_b["brokers"] and "9800" not in res_b["brokers"]

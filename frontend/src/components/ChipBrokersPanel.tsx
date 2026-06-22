@@ -6,11 +6,11 @@ import { Checkbox } from "./ui/checkbox";
 interface Props {
   summary: ChipSummary | null;
   dayTotalLots: number;
-  // Bug #1 fix: selection keyed by broker NAME (matches top_brokers and
-  // SecIdAgg's `securities_trader`; the previous broker_id namespace was
-  // inconsistent across the two FinMind endpoints).
-  selectedBrokerNames: Set<string>;
-  onToggleBroker: (brokerName: string) => void;
+  // Selection keyed by broker_id (FinMind `securities_trader_id`): that's the
+  // value the SecIdAgg broker_history endpoint filters on. Display names come
+  // from `summary.top_brokers` for the same id.
+  selectedBrokerIds: Set<string>;
+  onToggleBroker: (brokerId: string) => void;
   onClearAllBrokers: () => void;
   /** F3 (Cluster B 🟢): summary refetch is in flight. When true AND summary
    *  is present, the panel shows a small inline "載入中…" caption and sets
@@ -95,7 +95,7 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
 }
 
 export function ChipBrokersPanel({
-  summary, dayTotalLots, selectedBrokerNames,
+  summary, dayTotalLots, selectedBrokerIds,
   onToggleBroker, onClearAllBrokers, loading,
 }: Props) {
   const [mode, setMode] = useState<Mode>("net");
@@ -112,6 +112,13 @@ export function ChipBrokersPanel({
       sellers.slice(0, 15).reduce((s, b) => s + b.net, 0),
     [buyers, sellers],
   );
+  // id → name lookup for the selected-chip pills. Falls back to the id itself
+  // when the broker drops out of the current date's top_brokers list (rare).
+  const idToName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const b of allBrokers) m.set(b.broker_id, b.name);
+    return m;
+  }, [allBrokers]);
 
   if (!summary) {
     return (
@@ -122,7 +129,7 @@ export function ChipBrokersPanel({
   }
 
   const { margin } = summary;
-  const N = selectedBrokerNames.size;
+  const N = selectedBrokerIds.size;
   const netHeaderCols = "grid-cols-[22px_32px_1fr_90px_80px_80px]";
   const volHeaderCols = "grid-cols-[22px_32px_1fr_64px_64px_76px]";
 
@@ -206,20 +213,23 @@ export function ChipBrokersPanel({
       {N > 0 && (
         <div className="px-3 py-2 border-b border-line bg-bg-deep/40 flex flex-wrap gap-1.5 items-center">
           <span className="text-xs text-ink-dim">已選 {N} 個分點:</span>
-          {Array.from(selectedBrokerNames).map((name) => (
-            <span
-              key={name}
-              className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-[#b794f4]/15 border border-[#b794f4]/40 text-[#b794f4]"
-            >
-              {name}
-              <button
-                type="button"
-                onClick={() => onToggleBroker(name)}
-                aria-label={`移除 ${name}`}
-                className="hover:text-bear cursor-pointer"
-              >×</button>
-            </span>
-          ))}
+          {Array.from(selectedBrokerIds).map((bid) => {
+            const name = idToName.get(bid) ?? bid;
+            return (
+              <span
+                key={bid}
+                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-[#b794f4]/15 border border-[#b794f4]/40 text-[#b794f4]"
+              >
+                {name}
+                <button
+                  type="button"
+                  onClick={() => onToggleBroker(bid)}
+                  aria-label={`移除 ${name}`}
+                  className="hover:text-bear cursor-pointer"
+                >×</button>
+              </span>
+            );
+          })}
           {N > 1 && (
             <button
               type="button"
@@ -256,8 +266,8 @@ export function ChipBrokersPanel({
                     rank={i + 1}
                     broker={b}
                     mode="net"
-                    selected={selectedBrokerNames.has(b.name)}
-                    onToggle={() => onToggleBroker(b.name)}
+                    selected={selectedBrokerIds.has(b.broker_id)}
+                    onToggle={() => onToggleBroker(b.broker_id)}
                   />
                 ))
               ) : (
@@ -286,8 +296,8 @@ export function ChipBrokersPanel({
                     rank={i + 1}
                     broker={b}
                     mode="net"
-                    selected={selectedBrokerNames.has(b.name)}
-                    onToggle={() => onToggleBroker(b.name)}
+                    selected={selectedBrokerIds.has(b.broker_id)}
+                    onToggle={() => onToggleBroker(b.broker_id)}
                   />
                 ))
               ) : (
@@ -314,8 +324,8 @@ export function ChipBrokersPanel({
                 rank={i + 1}
                 broker={b}
                 mode="volume"
-                selected={selectedBrokerNames.has(b.name)}
-                onToggle={() => onToggleBroker(b.name)}
+                selected={selectedBrokerIds.has(b.broker_id)}
+                onToggle={() => onToggleBroker(b.broker_id)}
               />
             ))}
           </div>

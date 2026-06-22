@@ -216,8 +216,8 @@ export interface ChipBrokerHistory {
   symbol: string;
   fetched_at: string;
   last_date: string;
-  /** Keyed by broker NAME (`securities_trader`); see Bug #1 — the SecIdAgg
-   *  `securities_trader_id` does not share a namespace with `top_brokers`. */
+  /** Keyed by broker_id (FinMind `securities_trader_id`); the same value
+   *  `top_brokers[].broker_id` carries. */
   brokers: Record<string, BrokerDaily[]>;
 }
 

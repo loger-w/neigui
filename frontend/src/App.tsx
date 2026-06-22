@@ -26,11 +26,11 @@ export default function App() {
   const [symbolName, setSymbolName] = useState<string | null>(null);
   const [date, setDate] = useState(todayStr);
   const [tab, setTab] = useState<Tab>("overview");
-  // Bug #1 fix: broker selection keyed by NAME (matches top_brokers + broker
-  // history; the previous broker_id keyed both off /taiwan_stock_trading_daily_report
-  // ids which the SecIdAgg endpoint does not share, so broker_history always
-  // returned empty arrays for the selected brokers).
-  const [selectedBrokerNames, setSelectedBrokerNames] = useState<Set<string>>(
+  // Broker selection is keyed by broker_id (FinMind `securities_trader_id`):
+  // the SecIdAgg endpoint requires that exact id as a query filter, so this
+  // is the value that round-trips through the broker_history fetch. Display
+  // names come from `summary.top_brokers` for the same id.
+  const [selectedBrokerIds, setSelectedBrokerIds] = useState<Set<string>>(
     () => new Set(),
   );
   const userPickedDate = useRef(false);
@@ -40,7 +40,7 @@ export default function App() {
     refresh: refreshChip,
   } = useChipData(symbol, date);
   const bubbleHook = useChipBubble(symbol, date);
-  const brokerHistoryHook = useBrokerHistory(symbol, selectedBrokerNames);
+  const brokerHistoryHook = useBrokerHistory(symbol, selectedBrokerIds);
 
   useEffect(() => {
     if (userPickedDate.current) return;
@@ -73,22 +73,22 @@ export default function App() {
     [date, history],
   );
 
-  const handleToggleBroker = useCallback((name: string) => {
-    setSelectedBrokerNames((prev) => {
+  const handleToggleBroker = useCallback((brokerId: string) => {
+    setSelectedBrokerIds((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+      if (next.has(brokerId)) next.delete(brokerId);
+      else next.add(brokerId);
       return next;
     });
   }, []);
 
   const handleClearAllBrokers = useCallback(() => {
-    setSelectedBrokerNames(new Set());
+    setSelectedBrokerIds(new Set());
   }, []);
 
   const refresh = () => {
     refreshChip();
-    if (selectedBrokerNames.size > 0) brokerHistoryHook.refresh();
+    if (selectedBrokerIds.size > 0) brokerHistoryHook.refresh();
     if (tab === "bubble") bubbleHook.refresh();
   };
   const isLoading = loading || bubbleHook.loading;
@@ -96,7 +96,7 @@ export default function App() {
   const handlePick = (sym: string, name: string | null) => {
     setSymbol(sym);
     setSymbolName(name);
-    setSelectedBrokerNames(new Set());
+    setSelectedBrokerIds(new Set());
     userPickedDate.current = false;
   };
 
@@ -174,7 +174,7 @@ export default function App() {
               <ChipKlineChart
                 history={history}
                 selectedDate={date}
-                selectedBrokerNames={selectedBrokerNames}
+                selectedBrokerIds={selectedBrokerIds}
                 brokerSeries={brokerHistoryHook.series}
                 onPickDate={handlePickDate}
                 onClearAllBrokers={handleClearAllBrokers}
@@ -184,7 +184,7 @@ export default function App() {
               <ChipBrokersPanel
                 summary={summary}
                 dayTotalLots={dayTotalLots}
-                selectedBrokerNames={selectedBrokerNames}
+                selectedBrokerIds={selectedBrokerIds}
                 onToggleBroker={handleToggleBroker}
                 onClearAllBrokers={handleClearAllBrokers}
                 loading={summaryLoading}

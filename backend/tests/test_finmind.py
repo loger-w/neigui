@@ -235,40 +235,12 @@ def test_broker_net_from_truncated_lots():
 
 
 @pytest.mark.asyncio
-async def test_history_secid_agg_full_success():
-    """SecIdAgg returns all dates — no fallback calls."""
+async def test_history_major_series_via_per_date_fallback():
+    """`_do_fetch_history` no longer pre-fetches SecIdAgg (the endpoint
+    requires a per-broker filter, so a corpus-wide call always 400'd). The
+    major series is computed entirely via per-date TradingDailyReport calls.
+    """
     from services.finmind import FinMindClient
-    candle_rows = [
-        {"date": "2026-06-18", "stock_id": "2330",
-         "open": 100, "max": 105, "min": 99, "close": 103, "Trading_Volume": 10000},
-        {"date": "2026-06-19", "stock_id": "2330",
-         "open": 103, "max": 108, "min": 102, "close": 107, "Trading_Volume": 12000},
-    ]
-    agg_rows = [
-        {"date": "2026-06-18", "buy": 5000000, "sell": 1000000},
-        {"date": "2026-06-19", "buy": 3000000, "sell": 2000000},
-    ]
-    mc = _mock_http(
-        _fm_response(candle_rows),
-        _fm_response([INST_ROW]),
-        _fm_response([MARGIN_ROW]),
-        _fm_response(agg_rows),
-    )
-    client = FinMindClient()
-    client._http = mc
-    r = await client.fetch_chip_history("2330")
-    assert len(r["major"]) == 2
-    assert r["major"][0]["major_net"] == 4000
-    assert r["major"][1]["major_net"] == 1000
-    assert mc.get.await_count == 4
-
-
-@pytest.mark.asyncio
-async def test_history_secid_agg_full_failure():
-    """SecIdAgg fails entirely — all dates use parallel fallback."""
-    from services.finmind import FinMindClient
-    import httpx
-
     candle_rows = [
         {"date": "2026-06-18", "stock_id": "2330",
          "open": 100, "max": 105, "min": 99, "close": 103, "Trading_Volume": 10000},
@@ -284,70 +256,20 @@ async def test_history_secid_agg_full_failure():
          "price": 100.0, "buy": 1000000, "sell": 4000000},
     ]
 
-    mock_req = MagicMock()
-    mock_resp = MagicMock()
-    secid_error = httpx.HTTPStatusError("500", request=mock_req, response=mock_resp)
-
-    responses = [
-        _fm_response(candle_rows),
-        _fm_response([INST_ROW]),
-        _fm_response([MARGIN_ROW]),
-        secid_error,
-        _fm_response(broker_day_18),
-        _fm_response(broker_day_19),
-    ]
-    call_idx = 0
-    async def mock_get(*args, **kwargs):
-        nonlocal call_idx
-        i = call_idx
-        call_idx += 1
-        item = responses[i]
-        if isinstance(item, Exception):
-            raise item
-        return item
-
-    mc = AsyncMock()
-    mc.get = AsyncMock(side_effect=mock_get)
-
-    client = FinMindClient()
-    client._http = mc
-    r = await client.fetch_chip_history("2330")
-    assert len(r["major"]) == 2
-    assert r["major"][0]["major_net"] == 2000
-    assert r["major"][1]["major_net"] == -3000
-    assert mc.get.await_count == 6
-
-
-@pytest.mark.asyncio
-async def test_history_secid_agg_partial_success():
-    """SecIdAgg returns only 1 of 2 dates — the other falls back."""
-    from services.finmind import FinMindClient
-    candle_rows = [
-        {"date": "2026-06-18", "stock_id": "2330",
-         "open": 100, "max": 105, "min": 99, "close": 103, "Trading_Volume": 10000},
-        {"date": "2026-06-19", "stock_id": "2330",
-         "open": 103, "max": 108, "min": 102, "close": 107, "Trading_Volume": 12000},
-    ]
-    agg_rows = [
-        {"date": "2026-06-18", "buy": 5000000, "sell": 1000000},
-    ]
-    broker_day_19 = [
-        {"securities_trader": "B", "securities_trader_id": "B1",
-         "price": 100.0, "buy": 1000000, "sell": 4000000},
-    ]
     mc = _mock_http(
         _fm_response(candle_rows),
         _fm_response([INST_ROW]),
         _fm_response([MARGIN_ROW]),
-        _fm_response(agg_rows),
+        _fm_response(broker_day_18),
         _fm_response(broker_day_19),
     )
     client = FinMindClient()
     client._http = mc
     r = await client.fetch_chip_history("2330")
     assert len(r["major"]) == 2
-    assert r["major"][0]["major_net"] == 4000
+    assert r["major"][0]["major_net"] == 2000
     assert r["major"][1]["major_net"] == -3000
+    # 3 corpus fetches (price/inst/margin) + 2 per-date TradingDailyReport
     assert mc.get.await_count == 5
 
 
