@@ -128,3 +128,82 @@ describe("KlineChartSvg click + selectedIndex", () => {
     expect(i).toBeLessThan(candles.length);
   });
 });
+
+// Bug #3 — info-row / value label must honor selectedIndex when hoverIndex is
+// null. Previously fell back to `n - 1`, so mouseleave snapped display to the
+// LATEST candle even when the user had picked an older date. Fix is a 3-tier
+// fallback hover → selected → last in all four SVG components.
+describe("Bug #3 — info text honors selectedIndex when hoverIndex is null", () => {
+  const candles: DailyCandle[] = Array.from({ length: 10 }, (_, i) => ({
+    date: `2026-06-${String(10 + i).padStart(2, "0")}`,
+    open: 100, high: 105, low: 95, close: 100, volume: 0,
+  }));
+
+  it("KlineChartSvg OHLCV header uses selectedIndex when hoverIndex is null", () => {
+    const { container } = render(
+      <KlineChartSvg
+        candles={candles} width={500} height={300}
+        selectedIndex={3} hoverIndex={null}
+      />,
+    );
+    // OHLCV header renders date with slashes; unique to that row.
+    expect(container.textContent).toContain("2026/06/13");
+    expect(container.textContent).not.toContain("2026/06/19");
+  });
+
+  it("KlineChartSvg OHLCV header prefers hoverIndex over selectedIndex", () => {
+    const { container } = render(
+      <KlineChartSvg
+        candles={candles} width={500} height={300}
+        selectedIndex={3} hoverIndex={5}
+      />,
+    );
+    expect(container.textContent).toContain("2026/06/15");
+    expect(container.textContent).not.toContain("2026/06/13");
+  });
+
+  it("KlineChartSvg OHLCV header falls back to last candle when both null", () => {
+    const { container } = render(
+      <KlineChartSvg
+        candles={candles} width={500} height={300}
+        selectedIndex={null} hoverIndex={null}
+      />,
+    );
+    expect(container.textContent).toContain("2026/06/19");
+  });
+
+  it("InstBarSvg label uses selectedIndex when hoverIndex is null", () => {
+    const { container } = render(
+      <InstBarSvg
+        data={[10, 20, 30, 40]} width={400} height={50} label="外資"
+        selectedIndex={2} hoverIndex={null}
+      />,
+    );
+    expect(container.textContent).toContain("+30 張");
+    expect(container.textContent).not.toContain("+40 張");
+  });
+
+  it("MarginLineSvg label uses selectedIndex when hoverIndex is null", () => {
+    const { container } = render(
+      <MarginLineSvg
+        marginData={[10, 20, 30]} shortData={[5, 15, 25]}
+        width={400} height={50} label="融資融券"
+        selectedIndex={1} hoverIndex={null}
+      />,
+    );
+    expect(container.textContent).toContain("融資 +20 張");
+    expect(container.textContent).toContain("融券 +15 張");
+    expect(container.textContent).not.toContain("融資 +30 張");
+  });
+
+  it("BrokerAggBarSvg label uses selectedIndex when hoverIndex is null", () => {
+    const { container } = render(
+      <BrokerAggBarSvg
+        data={[10, 20, 30]} width={400} height={50} label="分點 (1)"
+        selectedIndex={1} hoverIndex={null}
+      />,
+    );
+    expect(container.textContent).toContain("+20 張");
+    expect(container.textContent).not.toContain("+30 張");
+  });
+});

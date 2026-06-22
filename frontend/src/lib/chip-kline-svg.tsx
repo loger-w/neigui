@@ -144,9 +144,14 @@ function KlineChartSvgImpl({
   };
 
   // ── OHLCV info row ─────────────────────────────────────────────────────
+  // 3-tier fallback: hoverIndex → selectedIndex → last candle.
+  // Without selectedIndex tier the header would snap to the latest candle on
+  // mouseleave, masquerading as "hover changed the picked date" (Bug #3).
   const infoIdx = hoverIndex != null && hoverIndex >= 0 && hoverIndex < n
     ? hoverIndex
-    : n - 1;
+    : selectedIndex != null && selectedIndex >= 0 && selectedIndex < n
+      ? selectedIndex
+      : n - 1;
   const infoCandle = candles[infoIdx];
   const prevClose = infoIdx > 0 ? candles[infoIdx - 1].close : infoCandle.open;
   const change = infoCandle.close - prevClose;

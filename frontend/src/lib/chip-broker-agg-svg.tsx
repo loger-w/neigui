@@ -39,10 +39,13 @@ export const BrokerAggBarSvg = memo(function BrokerAggBarSvg({
   const barW = data.length > 0 ? Math.max(1, (plotW / data.length) * 0.7) : 1;
   const step = data.length > 0 ? plotW / data.length : 1;
 
+  // hover → selected → last (Bug #3 fix).
   const valIdx =
     hoverIndex != null && hoverIndex >= 0 && hoverIndex < data.length
       ? hoverIndex
-      : data.length - 1;
+      : selectedIndex != null && selectedIndex >= 0 && selectedIndex < data.length
+        ? selectedIndex
+        : data.length - 1;
   const valRaw = data[valIdx] ?? 0;
   const valColor = valRaw >= 0 ? BULL : BEAR;
 

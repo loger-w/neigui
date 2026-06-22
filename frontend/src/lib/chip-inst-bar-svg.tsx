@@ -70,10 +70,13 @@ export const InstBarSvg = memo(function InstBarSvg({
   const barW = Math.max(1, (plotW / data.length) * 0.7);
   const step = plotW / data.length;
 
-  // value display: hovered index or last
+  // value display: hover → selected → last (Bug #3 fix — keeps label aligned
+  // with the user's picked date when the cursor leaves the chart).
   const valIdx = hoverIndex != null && hoverIndex >= 0 && hoverIndex < data.length
     ? hoverIndex
-    : data.length - 1;
+    : selectedIndex != null && selectedIndex >= 0 && selectedIndex < data.length
+      ? selectedIndex
+      : data.length - 1;
   const valRaw = data[valIdx];
   const valColor = valRaw >= 0 ? BULL : BEAR;
 
@@ -193,10 +196,12 @@ export const MarginLineSvg = memo(function MarginLineSvg({
   const toPoints = (arr: number[]) =>
     arr.map((v, i) => `${scaleX(i)},${scaleY(v)}`).join(" ");
 
-  // value display: hovered index or last
+  // value display: hover → selected → last (Bug #3 fix).
   const valIdx = hoverIndex != null && hoverIndex >= 0 && hoverIndex < len
     ? hoverIndex
-    : len - 1;
+    : selectedIndex != null && selectedIndex >= 0 && selectedIndex < len
+      ? selectedIndex
+      : len - 1;
   const marginVal = valIdx < marginData.length ? marginData[valIdx] : 0;
   const shortVal = valIdx < shortData.length ? shortData[valIdx] : 0;
   const mBal = marginBalanceData && valIdx < marginBalanceData.length ? marginBalanceData[valIdx] : 0;
