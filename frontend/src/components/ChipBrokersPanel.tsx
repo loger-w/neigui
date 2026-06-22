@@ -12,6 +12,11 @@ interface Props {
   selectedBrokerNames: Set<string>;
   onToggleBroker: (brokerName: string) => void;
   onClearAllBrokers: () => void;
+  /** F3 (Cluster B 🟢): summary refetch is in flight. When true AND summary
+   *  is present, the panel shows a small inline "載入中…" caption and sets
+   *  aria-busy so screen readers announce the busy state. Previous summary
+   *  stays visible — no empty placeholder flash. */
+  loading?: boolean;
 }
 
 type Mode = "net" | "volume";
@@ -91,7 +96,7 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
 
 export function ChipBrokersPanel({
   summary, dayTotalLots, selectedBrokerNames,
-  onToggleBroker, onClearAllBrokers,
+  onToggleBroker, onClearAllBrokers, loading,
 }: Props) {
   const [mode, setMode] = useState<Mode>("net");
 
@@ -122,7 +127,19 @@ export function ChipBrokersPanel({
   const volHeaderCols = "grid-cols-[22px_32px_1fr_64px_64px_76px]";
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div
+      className="h-full flex flex-col overflow-hidden"
+      aria-busy={loading || undefined}
+    >
+      {/* Cluster B 🟢: localized loading caption — only shown while a refetch
+          is in flight AND prior summary still on screen. Date-pick flow no
+          longer empties the panel briefly. */}
+      {loading && (
+        <div className="px-3 py-1 text-xs text-ink-dim border-b border-line bg-bg-deep/30">
+          載入中…
+        </div>
+      )}
+
       {/* F7: 主力買賣超 above 融資融券 (was below). F4 also removed the
           right-side symbol/date header and 三大法人 block — that data lives
           in the K-line sub-charts on the left. */}

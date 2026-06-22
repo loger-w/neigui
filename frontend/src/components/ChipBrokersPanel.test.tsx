@@ -109,6 +109,55 @@ describe("ChipBrokersPanel F7 — 主力買賣超 above 融資融券", () => {
   });
 });
 
+describe("ChipBrokersPanel loading indicator (Cluster B 🟢)", () => {
+  it("shows '載入中…' caption + aria-busy when loading=true and summary present", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerNames={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        loading
+      />,
+    );
+    expect(container.textContent).toContain("載入中…");
+    expect(container.querySelector("[aria-busy=true]")).toBeTruthy();
+  });
+
+  it("does NOT show loading caption when loading=false", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerNames={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        loading={false}
+      />,
+    );
+    expect(container.textContent).not.toContain("載入中…");
+    expect(container.querySelector("[aria-busy=true]")).toBeFalsy();
+  });
+
+  it("placeholder shows when summary is null regardless of loading", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={null}
+        dayTotalLots={0}
+        selectedBrokerNames={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        loading
+      />,
+    );
+    expect(container.textContent).toContain("請搜尋股票代號");
+    // Loading caption only renders when summary exists (would be redundant
+    // alongside the empty-state placeholder).
+    expect(container.textContent).not.toContain("載入中…");
+  });
+});
+
 describe("ChipBrokersPanel F5 — buyers + sellers in separate scrollable halves", () => {
   it("net mode has two scrollable halves (data-testids buyers-scroll + sellers-scroll)", () => {
     const { container } = render(

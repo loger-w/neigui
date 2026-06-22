@@ -35,9 +35,10 @@ export default function App() {
   );
   const userPickedDate = useRef(false);
 
-  const { summary, history, loading, error, refresh: refreshChip } = useChipData(
-    symbol, date,
-  );
+  const {
+    summary, history, loading, summaryLoading, error,
+    refresh: refreshChip,
+  } = useChipData(symbol, date);
   const bubbleHook = useChipBubble(symbol, date);
   const brokerHistoryHook = useBrokerHistory(symbol, selectedBrokerNames);
 
@@ -186,6 +187,7 @@ export default function App() {
                 selectedBrokerNames={selectedBrokerNames}
                 onToggleBroker={handleToggleBroker}
                 onClearAllBrokers={handleClearAllBrokers}
+                loading={summaryLoading}
               />
             </div>
           </div>
