@@ -52,7 +52,12 @@ export default function App() {
     if (!summary?.date) return 0;
     const c = history?.candles.find((c) => c.date === summary.date);
     if (c) return c.volume;
-    return summary.top_brokers.reduce((s, b) => s + b.buy + b.sell, 0);
+    // Fallback when the date is outside the K-line's 90-day window.
+    // Every traded lot is counted both as a buy (by one broker) AND a sell
+    // (by another), so `sum(buy + sell)` ≈ 2 × volume. `sum(buy + sell) / 2`
+    // recovers the actual lot count.
+    const doubled = summary.top_brokers.reduce((s, b) => s + b.buy + b.sell, 0);
+    return Math.floor(doubled / 2);
   }, [history, summary]);
 
   const handlePickDate = useCallback(

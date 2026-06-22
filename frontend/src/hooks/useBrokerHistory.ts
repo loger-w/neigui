@@ -22,6 +22,10 @@ export function useBrokerHistory(
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Bump seqRef so any in-flight fetch from the previous symbol
+    // is treated as stale when it resolves and does not write its
+    // result into the freshly-cleared cache for the new symbol.
+    seqRef.current += 1;
     cacheRef.current.clear();
     setSeries(new Map());
     setError(null);

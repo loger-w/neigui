@@ -132,4 +132,29 @@ describe("useBrokerHistory", () => {
     expect(result.current.series.has("A")).toBe(false);
     expect(result.current.series.get("B")?.[0].net).toBe(9);
   });
+
+  it("does not leak cache from a prior symbol when that symbol's fetch resolves late", async () => {
+    let resolveFirst!: (v: ChipBrokerHistory) => void;
+    const firstPromise = new Promise<ChipBrokerHistory>((r) => { resolveFirst = r; });
+    vi.spyOn(api, "chipBrokerHistory")
+      .mockImplementationOnce(() => firstPromise)              // symbol 2330, broker A
+      .mockResolvedValueOnce(                                  // symbol 2454, broker A
+        mkPayload({ A: [{ date: "d", buy: 99, sell: 0, net: 99 }] }),
+      );
+    const { result, rerender } = renderHook(
+      ({ symbol, ids }: { symbol: string; ids: Set<string> }) =>
+        useBrokerHistory(symbol, ids),
+      { initialProps: { symbol: "2330", ids: new Set(["A"]) } },
+    );
+    // Switch symbol BEFORE the 2330 fetch resolves; empty ids first (App
+    // resets ids on symbol change), then re-select A under 2454.
+    rerender({ symbol: "2454", ids: new Set<string>() });
+    rerender({ symbol: "2454", ids: new Set(["A"]) });
+    await waitFor(() => expect(result.current.series.get("A")?.[0].net).toBe(99));
+    // Now resolve the stale 2330 fetch.
+    resolveFirst(mkPayload({ A: [{ date: "d", buy: 1, sell: 0, net: 1 }] }));
+    await new Promise((r) => setTimeout(r, 30));
+    // The stale fetch must NOT have overwritten the 2454 cache.
+    expect(result.current.series.get("A")?.[0].net).toBe(99);
+  });
 });

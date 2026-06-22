@@ -218,9 +218,24 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
     ? trades.filter((t) => t.broker === selectedBroker)
     : layoutTrades;
 
-  const minPrice = Math.min(...prices);
-  const maxPrice = Math.max(...prices);
-  const maxVolume = Math.max(...volumes);
+  // Axis ranges: when a broker is selected, extend them to fit that broker's
+  // trades — otherwise a non-top-100 broker with price or volume outside the
+  // layoutTrades extrema would render off the visible chart area.
+  const priceExtras: number[] = [];
+  const volExtras: number[] = [];
+  if (selectedBroker) {
+    for (const t of visibleTrades) {
+      priceExtras.push(t.price);
+      if (t.buy > VOLUME_THRESHOLD) volExtras.push(t.buy);
+      if (t.sell > VOLUME_THRESHOLD) volExtras.push(t.sell);
+    }
+  }
+
+  const allPrices = priceExtras.length ? [...prices, ...priceExtras] : prices;
+  const allVolumes = volExtras.length ? [...volumes, ...volExtras] : volumes;
+  const minPrice = Math.min(...allPrices);
+  const maxPrice = Math.max(...allPrices);
+  const maxVolume = Math.max(...allVolumes);
 
   // Add a small padding to price range so bubbles don't touch edges
   const pricePad = maxPrice === minPrice ? 1 : (maxPrice - minPrice) * 0.08;
@@ -395,6 +410,20 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           />
         );
       })}
+
+      {/* When a broker is selected but their trades all fall below
+          VOLUME_THRESHOLD, show a hint instead of rendering an empty chart */}
+      {selectedBroker && bubbles.length === 0 && (
+        <text
+          x={width / 2}
+          y={height / 2}
+          textAnchor="middle"
+          fill={COLOR.text}
+          fontSize={13}
+        >
+          {selectedBroker} 今日無顯著成交量
+        </text>
+      )}
 
       {/* Invisible overlay for mouse interaction (single handler instead of per-bubble) */}
       <rect
