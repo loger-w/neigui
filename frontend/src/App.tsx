@@ -106,10 +106,10 @@ export default function App() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <header className="shrink-0 px-6 pt-5 pb-3 border-b border-line">
-        <div className="flex items-center justify-between mb-3">
-          <h1 className="text-2xl text-ink font-semibold">籌碼分析</h1>
-        </div>
+        {/* F8: 籌碼分析 title + SymbolSearch + symbol/name + date + refresh
+            collapsed onto a single horizontal row. */}
         <div className="flex items-center gap-3">
+          <h1 className="text-2xl text-ink font-semibold mr-2">籌碼分析</h1>
           <div className="w-[220px]">
             <SymbolSearch onPick={handlePick} />
           </div>
