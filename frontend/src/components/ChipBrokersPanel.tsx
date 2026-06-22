@@ -117,40 +117,21 @@ export function ChipBrokersPanel({
     );
   }
 
-  const { institutional, margin } = summary;
+  const { margin } = summary;
   const N = selectedBrokerNames.size;
+  const netHeaderCols = "grid-cols-[22px_32px_1fr_90px_80px_80px]";
+  const volHeaderCols = "grid-cols-[22px_32px_1fr_64px_64px_76px]";
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <div className="px-3 py-3 border-b border-line">
-        <div className="flex items-baseline gap-2">
-          <span className="font-serif text-lg text-ink font-medium">{summary.symbol}</span>
-          <span className="text-xs text-ink-dim">{summary.date}</span>
-        </div>
-      </div>
-
-      <div className="px-3 py-2.5 border-b border-line">
-        <div className="text-sm text-ink-dim uppercase tracking-wider mb-2">三大法人</div>
-        <div className="grid grid-cols-3 gap-2 text-base">
-          <div>
-            <div className="text-ink-dim mb-0.5">外資</div>
-            <div className={`tabular-nums font-medium ${institutional.foreign.net >= 0 ? "text-accent" : "text-bear"}`}>
-              {institutional.foreign.net > 0 ? "+" : ""}{fmtVol(institutional.foreign.net)} 張
-            </div>
-          </div>
-          <div>
-            <div className="text-ink-dim mb-0.5">投信</div>
-            <div className={`tabular-nums font-medium ${institutional.trust.net >= 0 ? "text-accent" : "text-bear"}`}>
-              {institutional.trust.net > 0 ? "+" : ""}{fmtVol(institutional.trust.net)} 張
-            </div>
-          </div>
-          <div>
-            <div className="text-ink-dim mb-0.5">自營商</div>
-            <div className={`tabular-nums font-medium ${institutional.dealer.net >= 0 ? "text-accent" : "text-bear"}`}>
-              {institutional.dealer.net > 0 ? "+" : ""}{fmtVol(institutional.dealer.net)} 張
-            </div>
-          </div>
-        </div>
+      {/* F7: 主力買賣超 above 融資融券 (was below). F4 also removed the
+          right-side symbol/date header and 三大法人 block — that data lives
+          in the K-line sub-charts on the left. */}
+      <div className="px-3 py-2 border-b border-line flex items-center justify-between text-base">
+        <span className="text-ink-dim">主力買賣超</span>
+        <span className={`tabular-nums font-medium ${majorNet >= 0 ? "text-accent" : "text-bear"}`}>
+          {majorNet > 0 ? "+" : ""}{fmtVol(majorNet)} 張
+        </span>
       </div>
 
       <div className="px-3 py-2.5 border-b border-line">
@@ -179,15 +160,7 @@ export function ChipBrokersPanel({
         </div>
       </div>
 
-      {/* Major net (kept) */}
-      <div className="px-3 py-2 border-b border-line flex items-center justify-between text-base">
-        <span className="text-ink-dim">主力買賣超</span>
-        <span className={`tabular-nums font-medium ${majorNet >= 0 ? "text-accent" : "text-bear"}`}>
-          {majorNet > 0 ? "+" : ""}{fmtVol(majorNet)} 張
-        </span>
-      </div>
-
-      {/* Selectbar (F2) */}
+      {/* Mode tabs */}
       <div className="px-3 py-2 border-b border-line flex gap-0">
         <button
           type="button"
@@ -213,7 +186,7 @@ export function ChipBrokersPanel({
         </button>
       </div>
 
-      {/* Chips region (F4) */}
+      {/* Selected-broker chips */}
       {N > 0 && (
         <div className="px-3 py-2 border-b border-line bg-bg-deep/40 flex flex-wrap gap-1.5 items-center">
           <span className="text-xs text-ink-dim">已選 {N} 個分點:</span>
@@ -241,24 +214,57 @@ export function ChipBrokersPanel({
         </div>
       )}
 
-      {/* Broker list */}
-      <div className="flex-1 overflow-y-auto min-h-0 scroll-editorial">
+      {/* Broker list — F5: net mode splits into two half-height scroll halves */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {mode === "net" ? (
           <>
-            <div className="sticky top-0 z-[2] grid grid-cols-[22px_32px_1fr_90px_80px_80px] text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep">
-              <span></span>
-              <span>#</span>
-              <span>分點</span>
-              <span className="text-right">淨買賣</span>
-              <span className="text-right">買張</span>
-              <span className="text-right">賣張</span>
+            <div
+              data-testid="buyers-scroll"
+              className="flex-1 min-h-0 overflow-y-auto scroll-editorial"
+            >
+              <div className={`sticky top-0 z-[2] grid ${netHeaderCols} text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep`}>
+                <span></span>
+                <span>#</span>
+                <span>分點</span>
+                <span className="text-right">淨買賣</span>
+                <span className="text-right">買張</span>
+                <span className="text-right">賣張</span>
+              </div>
+              <div className="px-2 py-1 text-2xs text-accent bg-accent/[0.04] uppercase tracking-wider">
+                買超
+              </div>
+              {buyers.length > 0 ? (
+                buyers.slice(0, 15).map((b, i) => (
+                  <BrokerRow
+                    key={b.broker_id}
+                    rank={i + 1}
+                    broker={b}
+                    mode="net"
+                    selected={selectedBrokerNames.has(b.name)}
+                    onToggle={() => onToggleBroker(b.name)}
+                  />
+                ))
+              ) : (
+                <div className="px-2 py-3 text-xs text-ink-dim italic">無買超分點</div>
+              )}
             </div>
-            {buyers.length > 0 && (
-              <div className="border-b border-line">
-                <div className="px-2 py-1 text-2xs text-accent bg-accent/[0.04] uppercase tracking-wider">
-                  買超
-                </div>
-                {buyers.slice(0, 15).map((b, i) => (
+            <div
+              data-testid="sellers-scroll"
+              className="flex-1 min-h-0 overflow-y-auto scroll-editorial border-t border-line"
+            >
+              <div className={`sticky top-0 z-[2] grid ${netHeaderCols} text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep`}>
+                <span></span>
+                <span>#</span>
+                <span>分點</span>
+                <span className="text-right">淨買賣</span>
+                <span className="text-right">買張</span>
+                <span className="text-right">賣張</span>
+              </div>
+              <div className="px-2 py-1 text-2xs text-bear bg-bear/[0.04] uppercase tracking-wider">
+                賣超
+              </div>
+              {sellers.length > 0 ? (
+                sellers.slice(0, 15).map((b, i) => (
                   <BrokerRow
                     key={b.broker_id}
                     rank={i + 1}
@@ -267,30 +273,18 @@ export function ChipBrokersPanel({
                     selected={selectedBrokerNames.has(b.name)}
                     onToggle={() => onToggleBroker(b.name)}
                   />
-                ))}
-              </div>
-            )}
-            {sellers.length > 0 && (
-              <div>
-                <div className="px-2 py-1 text-2xs text-bear bg-bear/[0.04] uppercase tracking-wider">
-                  賣超
-                </div>
-                {sellers.slice(0, 15).map((b, i) => (
-                  <BrokerRow
-                    key={b.broker_id}
-                    rank={i + 1}
-                    broker={b}
-                    mode="net"
-                    selected={selectedBrokerNames.has(b.name)}
-                    onToggle={() => onToggleBroker(b.name)}
-                  />
-                ))}
-              </div>
-            )}
+                ))
+              ) : (
+                <div className="px-2 py-3 text-xs text-ink-dim italic">無賣超分點</div>
+              )}
+            </div>
           </>
         ) : (
-          <>
-            <div className="sticky top-0 z-[2] grid grid-cols-[22px_32px_1fr_64px_64px_76px] text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep">
+          <div
+            data-testid="volume-scroll"
+            className="flex-1 min-h-0 overflow-y-auto scroll-editorial"
+          >
+            <div className={`sticky top-0 z-[2] grid ${volHeaderCols} text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep`}>
               <span></span>
               <span>#</span>
               <span>分點</span>
@@ -308,7 +302,7 @@ export function ChipBrokersPanel({
                 onToggle={() => onToggleBroker(b.name)}
               />
             ))}
-          </>
+          </div>
         )}
       </div>
     </div>
