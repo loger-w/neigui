@@ -27,7 +27,7 @@ async def get_chip_summary(
         raise HTTPException(status_code=502, detail={"error": "finmind_error"})
     except ValueError as exc:
         raise HTTPException(status_code=503, detail={"error": str(exc)})
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected chip error for %s", symbol)
         raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
 
@@ -46,7 +46,7 @@ async def get_chip_bubble(
         raise HTTPException(status_code=502, detail={"error": "finmind_error"})
     except ValueError as exc:
         raise HTTPException(status_code=503, detail={"error": str(exc)})
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected chip bubble error for %s", symbol)
         raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
 

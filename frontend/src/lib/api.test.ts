@@ -90,6 +90,19 @@ describe("api cache", () => {
     expect(cached!.data).toEqual(MOCK_HISTORY);
   });
 
+  it("chipBrokerHistory builds URL with comma-joined ids and refresh", async () => {
+    const fetchMock = mockFetch({
+      symbol: "2330", fetched_at: "", last_date: "", brokers: {},
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.chipBrokerHistory("2330", ["A", "B"], true);
+    const url = (fetchMock.mock.calls[0][0] as URL).toString();
+    expect(url).toContain("/api/chip/2330/broker_history");
+    expect(url).toContain("ids=A%2CB");
+    expect(url).toContain("refresh=true");
+  });
+
   it("different symbols have different cache keys", async () => {
     const fetchMock = mockFetch(MOCK_HISTORY);
     vi.stubGlobal("fetch", fetchMock);

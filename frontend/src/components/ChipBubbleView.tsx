@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useRef, useState, memo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import type { ChipBubbleData } from "../lib/chip-data";
 import { aggregateByPrice, fmtVol } from "../lib/chip-data";
 import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg";
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
+import { BrokerSearch } from "./BrokerSearch";
 
 interface TradeRow {
   broker: string;
@@ -14,12 +15,23 @@ interface TradeRow {
 interface Props {
   bubbleData: ChipBubbleData | null;
   closePrice?: number;
+  symbol: string;
 }
 
 const MAX_TRADE_ROWS = 200;
 
-export function ChipBubbleView({ bubbleData, closePrice }: Props) {
+export function ChipBubbleView({ bubbleData, closePrice, symbol }: Props) {
   const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
+
+  // Reset selection ONLY on symbol change (NOT on date / bubbleData change)
+  useEffect(() => {
+    setSelectedBroker(null);
+  }, [symbol]);
+
+  const uniqueBrokerCount = useMemo(
+    () => new Set(bubbleData?.trades.map((t) => t.broker) ?? []).size,
+    [bubbleData],
+  );
 
   const bubbleRef = useRef<HTMLDivElement | null>(null);
   const priceBarRef = useRef<HTMLDivElement | null>(null);
@@ -100,23 +112,39 @@ export function ChipBubbleView({ bubbleData, closePrice }: Props) {
 
   return (
     <div className="h-full grid grid-cols-[1fr_400px] gap-0 overflow-hidden">
-      {/* Left: Bubble chart */}
-      <div ref={bubbleRef} className="h-full min-h-0 overflow-hidden border-r border-line">
-        {!bubbleData ? (
-          <div className="h-full flex items-center justify-center text-ink-dim font-serif italic text-sm">
-            請搜尋股票代號以載入泡泡圖
-          </div>
-        ) : bubbleSize.width > 0 && bubbleSize.height > 0 ? (
-          <BubbleChartSvg
-            trades={bubbleData.trades}
-            width={bubbleSize.width}
-            height={bubbleSize.height}
-            closePrice={closePrice}
-            selectedBroker={selectedBroker}
-            onBubbleHover={handleBubbleHover}
-            onBubbleClick={handleBubbleClick}
+      {/* Left: header search bar + bubble chart */}
+      <div className="h-full flex flex-col min-h-0 border-r border-line overflow-hidden">
+        <div className="shrink-0 h-10 px-3 border-b border-line bg-bg-deep/30 flex items-center gap-3">
+          <BrokerSearch
+            trades={bubbleData?.trades ?? []}
+            value={selectedBroker}
+            onChange={setSelectedBroker}
           />
-        ) : null}
+          <span className="text-xs text-ink-dim">
+            {selectedBroker ? (
+              <>已篩選 <span className="text-[#f0b429] font-medium">1</span> 個分點</>
+            ) : (
+              <>今日共 <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點</>
+            )}
+          </span>
+        </div>
+        <div ref={bubbleRef} className="flex-1 min-h-0 overflow-hidden">
+          {!bubbleData ? (
+            <div className="h-full flex items-center justify-center text-ink-dim font-serif italic text-sm">
+              請搜尋股票代號以載入泡泡圖
+            </div>
+          ) : bubbleSize.width > 0 && bubbleSize.height > 0 ? (
+            <BubbleChartSvg
+              trades={bubbleData.trades}
+              width={bubbleSize.width}
+              height={bubbleSize.height}
+              closePrice={closePrice}
+              selectedBroker={selectedBroker}
+              onBubbleHover={handleBubbleHover}
+              onBubbleClick={handleBubbleClick}
+            />
+          ) : null}
+        </div>
       </div>
 
       {/* Right: Price bars + side-by-side buy/sell trade lists */}

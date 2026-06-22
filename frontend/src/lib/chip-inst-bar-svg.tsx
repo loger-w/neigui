@@ -40,6 +40,7 @@ export interface InstBarProps {
   height: number;
   label?: string;
   hoverIndex?: number | null;
+  selectedIndex?: number | null;
 }
 
 export const InstBarSvg = memo(function InstBarSvg({
@@ -48,6 +49,7 @@ export const InstBarSvg = memo(function InstBarSvg({
   height,
   label,
   hoverIndex,
+  selectedIndex,
 }: InstBarProps) {
   if (data.length === 0) {
     return (
@@ -122,6 +124,16 @@ export const InstBarSvg = memo(function InstBarSvg({
           strokeDasharray="4 3"
         />
       )}
+
+      {/* selected-day cursor (gold, persistent) */}
+      {selectedIndex != null && selectedIndex >= 0 && selectedIndex < data.length && (
+        <line
+          data-testid="sel-cursor"
+          x1={KLINE_PAD_L + step * selectedIndex + step / 2} y1={0}
+          x2={KLINE_PAD_L + step * selectedIndex + step / 2} y2={height}
+          stroke={CHIP.ma5} strokeWidth={1}
+        />
+      )}
     </svg>
   );
 });
@@ -137,6 +149,7 @@ export interface MarginLineProps {
   height: number;
   label?: string;
   hoverIndex?: number | null;
+  selectedIndex?: number | null;
 }
 
 export const MarginLineSvg = memo(function MarginLineSvg({
@@ -148,6 +161,7 @@ export const MarginLineSvg = memo(function MarginLineSvg({
   height,
   label,
   hoverIndex,
+  selectedIndex,
 }: MarginLineProps) {
   const len = Math.max(marginData.length, shortData.length);
   if (len === 0) {
@@ -240,6 +254,16 @@ export const MarginLineSvg = memo(function MarginLineSvg({
           x2={scaleX(hoverIndex)} y2={height}
           stroke={CHIP.inkDim} strokeWidth={1}
           strokeDasharray="4 3"
+        />
+      )}
+
+      {/* selected-day cursor (gold, persistent) */}
+      {selectedIndex != null && selectedIndex >= 0 && selectedIndex < len && (
+        <line
+          data-testid="sel-cursor"
+          x1={scaleX(selectedIndex)} y1={0}
+          x2={scaleX(selectedIndex)} y2={height}
+          stroke={CHIP.ma5} strokeWidth={1}
         />
       )}
     </svg>

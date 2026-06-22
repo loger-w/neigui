@@ -1,4 +1,4 @@
-import type { ChipSummary, ChipBubbleData, ChipHistory } from "./chip-data";
+import type { ChipSummary, ChipBubbleData, ChipHistory, ChipBrokerHistory } from "./chip-data";
 
 const BASE = "/api";
 
@@ -83,6 +83,15 @@ export const api = {
     const params: Record<string, string> = {};
     if (refresh) params.refresh = "true";
     return get(`${BASE}/chip/${symbol}/history`, params);
+  },
+  chipBrokerHistory(
+    symbol: string,
+    ids: string[],
+    refresh?: boolean,
+  ): Promise<ChipBrokerHistory> {
+    const params: Record<string, string> = { ids: ids.join(",") };
+    if (refresh) params.refresh = "true";
+    return get(`${BASE}/chip/${symbol}/broker_history`, params);
   },
   symbols(search: string): Promise<Array<{ symbol: string; name: string }>> {
     return get(`${BASE}/symbols`, { search });

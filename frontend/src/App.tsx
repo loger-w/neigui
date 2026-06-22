@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SymbolSearch } from "./components/SymbolSearch";
 import { ChipBrokersPanel } from "./components/ChipBrokersPanel";
 import { ChipKlineChart } from "./components/ChipKlineChart";
@@ -24,9 +24,14 @@ export default function App() {
   const [symbolName, setSymbolName] = useState<string | null>(null);
   const [date, setDate] = useState(todayStr);
   const [tab, setTab] = useState<Tab>("overview");
+  const [selectedBrokerIds, setSelectedBrokerIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const userPickedDate = useRef(false);
 
-  const { summary, history, loading, error, refresh: refreshChip } = useChipData(symbol, date);
+  const { summary, history, loading, error, refresh: refreshChip } = useChipData(
+    symbol, date,
+  );
   const bubbleHook = useChipBubble(symbol, date);
 
   useEffect(() => {
@@ -38,6 +43,39 @@ export default function App() {
     }
   }, [history, date]);
 
+  const dayTotalLots = useMemo(() => {
+    if (!summary?.date) return 0;
+    const c = history?.candles.find((c) => c.date === summary.date);
+    if (c) return c.volume;
+    return summary.top_brokers.reduce((s, b) => s + b.buy + b.sell, 0);
+  }, [history, summary]);
+
+  const handlePickDate = useCallback(
+    (d: string) => {
+      if (d === date) return;
+      const lastCandle = history?.candles?.[history.candles.length - 1];
+      userPickedDate.current = lastCandle ? d !== lastCandle.date : true;
+      setDate(d);
+    },
+    [date, history],
+  );
+
+  const handleToggleBroker = useCallback(
+    (id: string, _name: string) => {
+      setSelectedBrokerIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handleClearAllBrokers = useCallback(() => {
+    setSelectedBrokerIds(new Set());
+  }, []);
+
   const refresh = () => {
     refreshChip();
     if (tab === "bubble") bubbleHook.refresh();
@@ -47,8 +85,14 @@ export default function App() {
   const handlePick = (sym: string, name: string | null) => {
     setSymbol(sym);
     setSymbolName(name);
+    setSelectedBrokerIds(new Set());
     userPickedDate.current = false;
   };
+
+  const closePrice = useMemo(() => {
+    const c = history?.candles.find((c) => c.date === date);
+    return c?.close ?? history?.candles?.[history.candles.length - 1]?.close;
+  }, [history, date]);
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -117,10 +161,23 @@ export default function App() {
         <div hidden={tab !== "overview"} className="h-full">
           <div className="h-full grid grid-cols-[1fr_420px] overflow-hidden">
             <div className="h-full overflow-hidden border-r border-line">
-              <ChipKlineChart history={history} />
+              <ChipKlineChart
+                history={history}
+                symbol={symbol}
+                selectedDate={date}
+                selectedBrokerIds={selectedBrokerIds}
+                onPickDate={handlePickDate}
+                onClearAllBrokers={handleClearAllBrokers}
+              />
             </div>
             <div className="h-full overflow-hidden">
-              <ChipBrokersPanel summary={summary} />
+              <ChipBrokersPanel
+                summary={summary}
+                dayTotalLots={dayTotalLots}
+                selectedBrokerIds={selectedBrokerIds}
+                onToggleBroker={handleToggleBroker}
+                onClearAllBrokers={handleClearAllBrokers}
+              />
             </div>
           </div>
         </div>
@@ -133,8 +190,9 @@ export default function App() {
             }
           >
             <ChipBubbleView
+              symbol={symbol}
               bubbleData={bubbleHook.data}
-              closePrice={history?.candles?.find(c => c.date === date)?.close ?? history?.candles?.[history.candles.length - 1]?.close}
+              closePrice={closePrice}
             />
           </Suspense>
         </div>

@@ -61,11 +61,17 @@ interface KlineChartProps {
   height: number;
   hoverIndex?: number | null;
   onHoverIndex?: (index: number | null) => void;
+  selectedIndex?: number | null;
+  onClickIndex?: (index: number) => void;
 }
 
 export const KlineChartSvg = memo(KlineChartSvgImpl);
 
-function KlineChartSvgImpl({ candles, width, height, hoverIndex, onHoverIndex }: KlineChartProps) {
+function KlineChartSvgImpl({
+  candles, width, height,
+  hoverIndex, onHoverIndex,
+  selectedIndex, onClickIndex,
+}: KlineChartProps) {
   if (candles.length === 0) return null;
 
   const t = CHIP_THEME;
@@ -164,6 +170,15 @@ function KlineChartSvgImpl({ candles, width, height, hoverIndex, onHoverIndex }:
 
   const handleMouseLeave = () => {
     if (onHoverIndex) onHoverIndex(null);
+  };
+
+  const handleClick = (e: React.MouseEvent<SVGRectElement>) => {
+    if (!onClickIndex) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const idx = Math.floor((mouseX - padL) / slotW);
+    if (idx < 0 || idx >= n) return;
+    onClickIndex(idx);
   };
 
   return (
@@ -299,12 +314,36 @@ function KlineChartSvgImpl({ candles, width, height, hoverIndex, onHoverIndex }:
         MA20
       </text>
 
+      {/* selected-day cursor (gold, persistent) */}
+      {selectedIndex != null && selectedIndex >= 0 && selectedIndex < n && (
+        <g data-testid="sel-cursor">
+          <line
+            x1={xOf(selectedIndex)} y1={0}
+            x2={xOf(selectedIndex)} y2={height}
+            stroke={t.ma5} strokeWidth={2}
+          />
+          <rect
+            x={xOf(selectedIndex) + 4} y={1}
+            width={72} height={14}
+            fill={t.bg} stroke={t.ma5} strokeWidth={1}
+          />
+          <text
+            x={xOf(selectedIndex) + 8} y={12}
+            fontSize={11} fill={t.ma5} fontFamily={t.font}
+          >
+            {candles[selectedIndex].date}
+          </text>
+        </g>
+      )}
+
       {/* invisible overlay for mouse interaction */}
       <rect
+        data-testid="overlay"
         x={0} y={0} width={width} height={height}
         fill="transparent"
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
+        onClick={handleClick}
         style={{ cursor: "crosshair" }}
       />
     </svg>

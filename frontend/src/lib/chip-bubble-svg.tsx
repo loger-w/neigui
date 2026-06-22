@@ -265,13 +265,14 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   const bubbles: Bubble[] = [];
   let idx = 0;
   for (const t of visibleTrades) {
+    const isSel = selectedBroker != null && t.broker === selectedBroker;
     if (t.buy > VOLUME_THRESHOLD) {
       bubbles.push({
         cx: centerX + (t.buy / volMax) * halfW,
         cy: sY(t.price),
         r: bubbleRadius(t.buy, maxVolume, MIN_R, MAX_R),
         fill: COLOR.buyFill,
-        stroke: COLOR.buyStroke,
+        stroke: isSel ? CHIP.ma5 : COLOR.buyStroke,
         key: `b-${t.broker_id}-${t.price}-${idx}`,
         payload: { broker: t.broker, volume: t.buy, price: t.price, side: "buy" },
       });
@@ -282,7 +283,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         cy: sY(t.price),
         r: bubbleRadius(t.sell, maxVolume, MIN_R, MAX_R),
         fill: COLOR.sellFill,
-        stroke: COLOR.sellStroke,
+        stroke: isSel ? CHIP.ma5 : COLOR.sellStroke,
         key: `s-${t.broker_id}-${t.price}-${idx}`,
         payload: { broker: t.broker, volume: t.sell, price: t.price, side: "sell" },
       });
@@ -365,28 +366,6 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         );
       })}
 
-      {/* Side labels at bottom */}
-      <text
-        x={PADDING.left + 4}
-        y={height - PADDING.bottom + 16}
-        textAnchor="start"
-        fill={COLOR.sellStroke}
-        fontSize={11}
-        fontWeight={600}
-      >
-        {"← 賣"}
-      </text>
-      <text
-        x={width - PADDING.right - 4}
-        y={height - PADDING.bottom + 16}
-        textAnchor="end"
-        fill={COLOR.buyStroke}
-        fontSize={11}
-        fontWeight={600}
-      >
-        {"買 →"}
-      </text>
-
       {/* Close price dashed line */}
       {closePrice != null && closePrice >= yLow && closePrice <= yHigh && (
         <line
@@ -401,18 +380,21 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
       )}
 
       {/* Bubbles — no per-element event handlers; overlay rect does hit testing */}
-      {bubbles.map((b) => (
-        <circle
-          key={b.key}
-          cx={b.cx}
-          cy={b.cy}
-          r={b.r}
-          fill={b.fill}
-          stroke={b.stroke}
-          strokeWidth={1}
-          pointerEvents="none"
-        />
-      ))}
+      {bubbles.map((b) => {
+        const isSel = b.stroke === CHIP.ma5;
+        return (
+          <circle
+            key={b.key}
+            cx={b.cx}
+            cy={b.cy}
+            r={b.r}
+            fill={b.fill}
+            stroke={b.stroke}
+            strokeWidth={isSel ? 2 : 1}
+            pointerEvents="none"
+          />
+        );
+      })}
 
       {/* Invisible overlay for mouse interaction (single handler instead of per-bubble) */}
       <rect

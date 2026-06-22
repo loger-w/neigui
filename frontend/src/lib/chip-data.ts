@@ -169,3 +169,55 @@ export function aggregateByPrice(trades: BrokerTrade[]): PriceAgg[] {
     .map(([price, e]) => ({ price, ...e }))
     .sort((a, b) => b.price - a.price);
 }
+
+// -- Broker history (F4) ----------------------------------------------------
+
+export interface BrokerDaily {
+  date: string;
+  buy: number;
+  sell: number;
+  net: number;
+}
+
+export interface ChipBrokerHistory {
+  symbol: string;
+  fetched_at: string;
+  last_date: string;
+  brokers: Record<string, BrokerDaily[]>;
+}
+
+// -- Top-by-volume (F2) -----------------------------------------------------
+
+export interface TopVolumeBroker extends TopBroker {
+  total: number;
+  daytradeRate: number | null;
+}
+
+/**
+ * Rank brokers by (buy + sell) descending, top 15.
+ * daytradeRate = min(buy, sell) / max(buy, sell), but only when:
+ *   - dayTotalLots > 0
+ *   - broker total ≥ 1% of dayTotalLots
+ *   - max(buy, sell) > 0
+ * Otherwise null (UI displays "—").
+ */
+export function topByVolume(
+  brokers: TopBroker[],
+  dayTotalLots: number,
+): TopVolumeBroker[] {
+  const threshold = dayTotalLots > 0
+    ? Math.max(1, Math.floor(dayTotalLots * 0.01))
+    : Infinity;
+  return brokers
+    .map((b) => {
+      const total = b.buy + b.sell;
+      const maxAbs = Math.max(b.buy, b.sell);
+      const daytradeRate =
+        dayTotalLots > 0 && total >= threshold && maxAbs > 0
+          ? Math.min(b.buy, b.sell) / maxAbs
+          : null;
+      return { ...b, total, daytradeRate };
+    })
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 15);
+}
