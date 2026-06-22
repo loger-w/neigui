@@ -302,6 +302,47 @@ class FinMindClient:
             logger.warning("SecIdAgg batch fetch failed: %s", exc)
             return []
 
+    # -- broker history -----------------------------------------------------
+
+    async def fetch_broker_history(
+        self, symbol: str, ids: list[str], refresh: bool = False,
+    ) -> dict:
+        cache_key = f"{symbol}_broker_history"
+        if not refresh:
+            cached = self._read_cache(cache_key)
+            if cached is not None and cached.get("last_date", "") >= date.today().isoformat():
+                return _filter_broker_history(cached, ids)
+
+        return await self._run_once(
+            f"broker_history_{symbol}",
+            lambda: self._do_fetch_broker_history(symbol, ids, cache_key),
+        )
+
+    async def _do_fetch_broker_history(
+        self, symbol: str, ids: list[str], cache_key: str,
+    ) -> dict:
+        end = date.today()
+        start = end - timedelta(days=90)
+        rows = await self._safe_get_secid_agg(
+            symbol, start.isoformat(), end.isoformat(),
+        )
+
+        if not rows:
+            stale = self._read_cache(cache_key)
+            if stale is not None:
+                return _filter_broker_history(stale, ids)
+            raise ValueError("secid_agg_unavailable")
+
+        brokers = _parse_broker_history(rows)
+        payload = {
+            "symbol": symbol,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "last_date": end.isoformat(),
+            "brokers": brokers,
+        }
+        self._write_cache(cache_key, payload)
+        return _filter_broker_history(payload, ids)
+
     # -- major net series (top-15 broker net per day) ----------------------
 
     async def _fetch_major_series(
@@ -412,6 +453,54 @@ def _compute_major_net_agg(rows: list) -> int:
     buyers = sorted([n for n in nets if n > 0], reverse=True)[:15]
     sellers = sorted([n for n in nets if n < 0])[:15]
     return sum(buyers) + sum(sellers)
+
+
+def _parse_broker_history(rows: list) -> dict[str, list[dict]]:
+    """Group SecIdAgg rows by broker_id, aggregating (broker_id, date) duplicates.
+
+    Returns:
+        {broker_id: [{date, buy, sell, net}, ...]}  values in 張 (lots).
+    Rows with blank/whitespace-only securities_trader_id are skipped.
+    """
+    agg: dict[tuple[str, str], dict] = {}
+    for r in rows:
+        tid = str(r.get("securities_trader_id", "")).strip()
+        if not tid:
+            continue
+        d = r.get("date", "")
+        key = (tid, d)
+        if key not in agg:
+            agg[key] = {"buy_shares": 0, "sell_shares": 0}
+        agg[key]["buy_shares"] += int(r.get("buy", 0))
+        agg[key]["sell_shares"] += int(r.get("sell", 0))
+
+    result: dict[str, list[dict]] = {}
+    for (tid, d), v in agg.items():
+        buy_lots = _to_lots(v["buy_shares"])
+        sell_lots = _to_lots(v["sell_shares"])
+        if tid not in result:
+            result[tid] = []
+        result[tid].append({
+            "date": d,
+            "buy": buy_lots,
+            "sell": sell_lots,
+            "net": buy_lots - sell_lots,
+        })
+
+    for tid in result:
+        result[tid].sort(key=lambda x: x["date"])
+    return result
+
+
+def _filter_broker_history(payload: dict, ids: list[str]) -> dict:
+    """Return a copy of payload with brokers narrowed to requested ids."""
+    all_brokers = payload.get("brokers", {})
+    return {
+        "symbol": payload.get("symbol", ""),
+        "fetched_at": payload.get("fetched_at", ""),
+        "last_date": payload.get("last_date", ""),
+        "brokers": {bid: all_brokers.get(bid, []) for bid in ids},
+    }
 
 
 def _parse_institutional(rows: list) -> dict:

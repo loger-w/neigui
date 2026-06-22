@@ -63,8 +63,31 @@ async def get_chip_history(
         raise HTTPException(status_code=502, detail={"error": "finmind_error"})
     except ValueError as exc:
         raise HTTPException(status_code=503, detail={"error": str(exc)})
-    except Exception as exc:
+    except Exception:
         logger.exception("Unexpected chip history error for %s", symbol)
+        raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
+
+
+@router.get("/api/chip/{symbol}/broker_history")
+async def get_chip_broker_history(
+    symbol: str,
+    ids: str = Query(default=""),
+    refresh: bool = Query(default=False),
+) -> dict:
+    id_list = [s.strip() for s in ids.split(",") if s.strip()]
+    if not id_list:
+        raise HTTPException(status_code=400, detail={"error": "ids_required"})
+    if len(id_list) > 20:
+        raise HTTPException(status_code=400, detail={"error": "too_many_ids"})
+    try:
+        return await get_finmind().fetch_broker_history(symbol, id_list, refresh)
+    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
+        logger.warning("FinMind broker_history error for %s: %s", symbol, exc)
+        raise HTTPException(status_code=502, detail={"error": "finmind_error"})
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail={"error": str(exc)})
+    except Exception:
+        logger.exception("Unexpected chip broker_history error for %s", symbol)
         raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
 
 
