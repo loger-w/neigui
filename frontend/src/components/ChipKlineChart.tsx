@@ -61,6 +61,11 @@ export function ChipKlineChart({
     [onPickDate, derived],
   );
 
+  // Loading-gate intent: this component must NEVER receive or branch on a
+  // loading prop. F3 requires that picking a candle re-renders only the right
+  // panel — the K-line stays visible throughout. Re-renders here are driven
+  // strictly by changes to history / selectedDate / selectedBrokerNames /
+  // brokerSeries; never by a "summary loading" flag.
   if (!derived) {
     return (
       <div
