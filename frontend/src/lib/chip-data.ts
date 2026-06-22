@@ -183,6 +183,8 @@ export interface ChipBrokerHistory {
   symbol: string;
   fetched_at: string;
   last_date: string;
+  /** Keyed by broker NAME (`securities_trader`); see Bug #1 — the SecIdAgg
+   *  `securities_trader_id` does not share a namespace with `top_brokers`. */
   brokers: Record<string, BrokerDaily[]>;
 }
 

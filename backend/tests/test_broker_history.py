@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import date
 from unittest.mock import AsyncMock
 
 import pytest
 
-from services.finmind import FinMindClient, _parse_broker_history
+from services.finmind import FinMindClient, _filter_broker_history, _parse_broker_history
 
 
 # ---------------------------------------------------------------------------
@@ -16,24 +17,9 @@ from services.finmind import FinMindClient, _parse_broker_history
 # ---------------------------------------------------------------------------
 
 
-def test_parse_broker_history_groups_by_broker_id():
-    rows = [
-        {"securities_trader_id": "9201", "securities_trader": "凱基",
-         "date": "2026-06-20", "buy": 100000, "sell": 50000},
-        {"securities_trader_id": "9202", "securities_trader": "富邦",
-         "date": "2026-06-20", "buy": 30000, "sell": 80000},
-        {"securities_trader_id": "9201", "securities_trader": "凱基",
-         "date": "2026-06-21", "buy": 20000, "sell": 0},
-    ]
-    result = _parse_broker_history(rows)
-    assert set(result.keys()) == {"9201", "9202"}
-    assert len(result["9201"]) == 2
-    assert len(result["9202"]) == 1
-
-
 def test_parse_broker_history_computes_net_in_lots():
     rows = [
-        {"securities_trader_id": "X", "date": "2026-06-20",
+        {"securities_trader": "X", "date": "2026-06-20",
          "buy": 120000, "sell": 50000},
     ]
     result = _parse_broker_history(rows)
@@ -43,7 +29,7 @@ def test_parse_broker_history_computes_net_in_lots():
 
 def test_parse_broker_history_truncates_shares_to_lots():
     rows = [
-        {"securities_trader_id": "X", "date": "2026-06-20",
+        {"securities_trader": "X", "date": "2026-06-20",
          "buy": 1500, "sell": 999},
     ]
     # 1500 → 1 lot (truncate); 999 → 0
@@ -52,21 +38,11 @@ def test_parse_broker_history_truncates_shares_to_lots():
     assert result["X"][0]["sell"] == 0
 
 
-def test_parse_broker_history_skips_blank_broker_id():
-    rows = [
-        {"securities_trader_id": "", "date": "2026-06-20", "buy": 1000, "sell": 0},
-        {"securities_trader_id": "  ", "date": "2026-06-20", "buy": 1000, "sell": 0},
-        {"securities_trader_id": "Y", "date": "2026-06-20", "buy": 1000, "sell": 0},
-    ]
-    result = _parse_broker_history(rows)
-    assert list(result.keys()) == ["Y"]
-
-
 def test_parse_broker_history_aggregates_duplicate_date_rows():
     rows = [
-        {"securities_trader_id": "Z", "date": "2026-06-20",
+        {"securities_trader": "Z", "date": "2026-06-20",
          "buy": 1000, "sell": 0},
-        {"securities_trader_id": "Z", "date": "2026-06-20",
+        {"securities_trader": "Z", "date": "2026-06-20",
          "buy": 2000, "sell": 500},
     ]
     result = _parse_broker_history(rows)
@@ -79,13 +55,13 @@ def test_parse_broker_history_empty_input():
     assert _parse_broker_history([]) == {}
 
 
-def test_parse_broker_history_strips_broker_id_whitespace():
+def test_parse_broker_history_strips_broker_name_whitespace():
     rows = [
-        {"securities_trader_id": " 9201 ", "date": "2026-06-20",
+        {"securities_trader": " 凱基 ", "date": "2026-06-20",
          "buy": 1000, "sell": 0},
     ]
     result = _parse_broker_history(rows)
-    assert list(result.keys()) == ["9201"]
+    assert list(result.keys()) == ["凱基"]
 
 
 # ---------------------------------------------------------------------------
@@ -102,12 +78,86 @@ def client(monkeypatch, tmp_path):
     return FinMindClient()
 
 
+# ---------------------------------------------------------------------------
+# Bug #1 — name-based join (NEW behavior)
+# ---------------------------------------------------------------------------
+
+
+def test_parse_broker_history_groups_by_broker_name():
+    """_parse_broker_history must group by `securities_trader` (NAME), because
+    `top_brokers` (sourced from TradingDailyReport) and broker history
+    (sourced from SecIdAgg) use different id namespaces but the same NAME."""
+    rows = [
+        {"securities_trader_id": "9201A", "securities_trader": "凱基台北",
+         "date": "2026-06-20", "buy": 100000, "sell": 50000},
+        {"securities_trader_id": "9202B", "securities_trader": "富邦台北",
+         "date": "2026-06-20", "buy": 30000, "sell": 80000},
+        {"securities_trader_id": "9201A", "securities_trader": "凱基台北",
+         "date": "2026-06-21", "buy": 20000, "sell": 0},
+    ]
+    result = _parse_broker_history(rows)
+    assert set(result.keys()) == {"凱基台北", "富邦台北"}
+    assert len(result["凱基台北"]) == 2
+
+
+def test_parse_broker_history_skips_blank_broker_name():
+    """Rows with blank/whitespace `securities_trader` are skipped (the join
+    key is the name; an empty name cannot be matched against `top_brokers`)."""
+    rows = [
+        {"securities_trader_id": "X1", "securities_trader": "",
+         "date": "2026-06-20", "buy": 1000, "sell": 0},
+        {"securities_trader_id": "X2", "securities_trader": "  ",
+         "date": "2026-06-20", "buy": 1000, "sell": 0},
+        {"securities_trader_id": "X3", "securities_trader": "凱基",
+         "date": "2026-06-20", "buy": 1000, "sell": 0},
+    ]
+    result = _parse_broker_history(rows)
+    assert list(result.keys()) == ["凱基"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_broker_history_name_based_join(client, monkeypatch):
+    """Requesting by broker NAME must return that broker's history even when
+    the underlying SecIdAgg `securities_trader_id` differs from the id the
+    frontend would receive from /taiwan_stock_trading_daily_report."""
+    mock_rows = [
+        {"securities_trader_id": "9201A", "securities_trader": "凱基台北",
+         "date": "2026-06-20", "buy": 1000, "sell": 0},
+        {"securities_trader_id": "9202B", "securities_trader": "富邦台北",
+         "date": "2026-06-20", "buy": 2000, "sell": 0},
+    ]
+    monkeypatch.setattr(
+        client, "_safe_get_secid_agg", AsyncMock(return_value=mock_rows),
+    )
+    result = await client.fetch_broker_history("2330", ["凱基台北"])
+    assert "凱基台北" in result["brokers"]
+    assert len(result["brokers"]["凱基台北"]) == 1
+    assert result["brokers"]["凱基台北"][0]["buy"] == 1
+
+
+def test_filter_broker_history_logs_warning_on_missing_keys(caplog):
+    """Defensive log: silent {key: []} substitution had hidden Bug #1 for weeks.
+    `_filter_broker_history` must emit a WARNING when requested keys are
+    absent from the payload, while still returning the empty-list shape
+    (so the frontend renders a 0-bar row instead of crashing)."""
+    payload = {
+        "symbol": "2330", "fetched_at": "", "last_date": "",
+        "brokers": {"凱基台北": [{"date": "d", "buy": 1, "sell": 0, "net": 1}]},
+    }
+    with caplog.at_level(logging.WARNING, logger="services.finmind"):
+        result = _filter_broker_history(payload, ["凱基台北", "不存在的分點"])
+    assert result["brokers"]["不存在的分點"] == []
+    assert any("不存在的分點" in r.message for r in caplog.records), (
+        f"expected warning naming the missing key; got {[r.message for r in caplog.records]}"
+    )
+
+
 @pytest.mark.asyncio
 async def test_fetch_broker_history_filters_to_requested_ids(client, monkeypatch):
     mock_rows = [
-        {"securities_trader_id": "A", "date": "2026-06-20", "buy": 1000, "sell": 0},
-        {"securities_trader_id": "B", "date": "2026-06-20", "buy": 2000, "sell": 0},
-        {"securities_trader_id": "C", "date": "2026-06-20", "buy": 3000, "sell": 0},
+        {"securities_trader": "A", "date": "2026-06-20", "buy": 1000, "sell": 0},
+        {"securities_trader": "B", "date": "2026-06-20", "buy": 2000, "sell": 0},
+        {"securities_trader": "C", "date": "2026-06-20", "buy": 3000, "sell": 0},
     ]
     monkeypatch.setattr(
         client, "_safe_get_secid_agg", AsyncMock(return_value=mock_rows),
@@ -122,8 +172,8 @@ async def test_fetch_broker_history_caches_full_payload(
     client, monkeypatch, tmp_path,
 ):
     mock_rows = [
-        {"securities_trader_id": "A", "date": "2026-06-20", "buy": 1000, "sell": 0},
-        {"securities_trader_id": "B", "date": "2026-06-20", "buy": 2000, "sell": 0},
+        {"securities_trader": "A", "date": "2026-06-20", "buy": 1000, "sell": 0},
+        {"securities_trader": "B", "date": "2026-06-20", "buy": 2000, "sell": 0},
     ]
     monkeypatch.setattr(
         client, "_safe_get_secid_agg", AsyncMock(return_value=mock_rows),
@@ -159,11 +209,11 @@ async def test_fetch_broker_history_uses_cache_when_last_date_today(
 
 
 @pytest.mark.asyncio
-async def test_fetch_broker_history_returns_empty_list_for_missing_broker_id(
+async def test_fetch_broker_history_returns_empty_list_for_missing_broker(
     client, monkeypatch,
 ):
     mock_rows = [
-        {"securities_trader_id": "A", "date": "2026-06-20", "buy": 1000, "sell": 0},
+        {"securities_trader": "A", "date": "2026-06-20", "buy": 1000, "sell": 0},
     ]
     monkeypatch.setattr(
         client, "_safe_get_secid_agg", AsyncMock(return_value=mock_rows),
@@ -211,7 +261,7 @@ async def test_fetch_broker_history_dedup_concurrent_calls(client, monkeypatch):
         nonlocal call_count
         call_count += 1
         await asyncio.sleep(0.05)
-        return [{"securities_trader_id": "A", "date": "2026-06-20",
+        return [{"securities_trader": "A", "date": "2026-06-20",
                  "buy": 1000, "sell": 0}]
 
     monkeypatch.setattr(client, "_safe_get_secid_agg", slow_fetch)
@@ -237,9 +287,9 @@ async def test_fetch_broker_history_concurrent_different_ids_get_correct_subset(
         call_count += 1
         await asyncio.sleep(0.05)
         return [
-            {"securities_trader_id": "A", "date": "2026-06-20",
+            {"securities_trader": "A", "date": "2026-06-20",
              "buy": 1000, "sell": 0},
-            {"securities_trader_id": "B", "date": "2026-06-20",
+            {"securities_trader": "B", "date": "2026-06-20",
              "buy": 2000, "sell": 0},
         ]
 

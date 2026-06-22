@@ -5,9 +5,11 @@ import { splitBrokers, fmtVol, topByVolume } from "../lib/chip-data";
 interface Props {
   summary: ChipSummary | null;
   dayTotalLots: number;
-  selectedBrokerIds: Set<string>;
-  selectedBrokerNames: Map<string, string>;
-  onToggleBroker: (brokerId: string, brokerName: string) => void;
+  // Bug #1 fix: selection keyed by broker NAME (matches top_brokers and
+  // SecIdAgg's `securities_trader`; the previous broker_id namespace was
+  // inconsistent across the two FinMind endpoints).
+  selectedBrokerNames: Set<string>;
+  onToggleBroker: (brokerName: string) => void;
   onClearAllBrokers: () => void;
 }
 
@@ -89,7 +91,7 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
 }
 
 export function ChipBrokersPanel({
-  summary, dayTotalLots, selectedBrokerIds, selectedBrokerNames,
+  summary, dayTotalLots, selectedBrokerNames,
   onToggleBroker, onClearAllBrokers,
 }: Props) {
   const [mode, setMode] = useState<Mode>("net");
@@ -116,7 +118,7 @@ export function ChipBrokersPanel({
   }
 
   const { institutional, margin } = summary;
-  const N = selectedBrokerIds.size;
+  const N = selectedBrokerNames.size;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -215,24 +217,20 @@ export function ChipBrokersPanel({
       {N > 0 && (
         <div className="px-3 py-2 border-b border-line bg-bg-deep/40 flex flex-wrap gap-1.5 items-center">
           <span className="text-xs text-ink-dim">已選 {N} 個分點:</span>
-          {Array.from(selectedBrokerIds).map((id) => {
-            const known = allBrokers.find((b) => b.broker_id === id);
-            const name = selectedBrokerNames.get(id) ?? known?.name ?? id;
-            return (
-              <span
-                key={id}
-                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-[#b794f4]/15 border border-[#b794f4]/40 text-[#b794f4]"
-              >
-                {name}
-                <button
-                  type="button"
-                  onClick={() => onToggleBroker(id, name)}
-                  aria-label={`移除 ${name}`}
-                  className="hover:text-bear cursor-pointer"
-                >×</button>
-              </span>
-            );
-          })}
+          {Array.from(selectedBrokerNames).map((name) => (
+            <span
+              key={name}
+              className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-[#b794f4]/15 border border-[#b794f4]/40 text-[#b794f4]"
+            >
+              {name}
+              <button
+                type="button"
+                onClick={() => onToggleBroker(name)}
+                aria-label={`移除 ${name}`}
+                className="hover:text-bear cursor-pointer"
+              >×</button>
+            </span>
+          ))}
           {N > 1 && (
             <button
               type="button"
@@ -266,8 +264,8 @@ export function ChipBrokersPanel({
                     rank={i + 1}
                     broker={b}
                     mode="net"
-                    selected={selectedBrokerIds.has(b.broker_id)}
-                    onToggle={() => onToggleBroker(b.broker_id, b.name)}
+                    selected={selectedBrokerNames.has(b.name)}
+                    onToggle={() => onToggleBroker(b.name)}
                   />
                 ))}
               </div>
@@ -283,8 +281,8 @@ export function ChipBrokersPanel({
                     rank={i + 1}
                     broker={b}
                     mode="net"
-                    selected={selectedBrokerIds.has(b.broker_id)}
-                    onToggle={() => onToggleBroker(b.broker_id, b.name)}
+                    selected={selectedBrokerNames.has(b.name)}
+                    onToggle={() => onToggleBroker(b.name)}
                   />
                 ))}
               </div>
@@ -306,8 +304,8 @@ export function ChipBrokersPanel({
                 rank={i + 1}
                 broker={b}
                 mode="volume"
-                selected={selectedBrokerIds.has(b.broker_id)}
-                onToggle={() => onToggleBroker(b.broker_id, b.name)}
+                selected={selectedBrokerNames.has(b.name)}
+                onToggle={() => onToggleBroker(b.name)}
               />
             ))}
           </>

@@ -8,7 +8,7 @@ function stableKey(set: Set<string>): string {
 
 export function useBrokerHistory(
   symbol: string,
-  brokerIds: Set<string>,
+  brokerNames: Set<string>,
 ): {
   series: Map<string, BrokerDaily[]>;
   loading: boolean;
@@ -31,16 +31,16 @@ export function useBrokerHistory(
     setError(null);
   }, [symbol]);
 
-  const idsKey = stableKey(brokerIds);
+  const idsKey = stableKey(brokerNames);
 
   const fetchMissing = useCallback(
     async (forceAll: boolean) => {
-      if (!symbol || brokerIds.size === 0) {
+      if (!symbol || brokerNames.size === 0) {
         setSeries(new Map());
         setLoading(false);
         return;
       }
-      const requested = Array.from(brokerIds);
+      const requested = Array.from(brokerNames);
       const missing = forceAll
         ? requested
         : requested.filter((id) => !cacheRef.current.has(id));

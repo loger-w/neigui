@@ -461,45 +461,64 @@ def _compute_major_net_agg(rows: list) -> int:
 
 
 def _parse_broker_history(rows: list) -> dict[str, list[dict]]:
-    """Group SecIdAgg rows by broker_id, aggregating (broker_id, date) duplicates.
+    """Group SecIdAgg rows by broker NAME, aggregating (name, date) duplicates.
 
     Returns:
-        {broker_id: [{date, buy, sell, net}, ...]}  values in 張 (lots).
-    Rows with blank/whitespace-only securities_trader_id are skipped.
+        {broker_name: [{date, buy, sell, net}, ...]}  values in 張 (lots).
+
+    Bug #1 fix: the join key is the broker NAME (`securities_trader`), NOT
+    `securities_trader_id`. `top_brokers` (from /taiwan_stock_trading_daily_report)
+    and broker history (from /taiwan_stock_trading_daily_report_secid_agg) use
+    different id namespaces — only the name is shared between them.
+
+    Rows with blank/whitespace-only `securities_trader` are skipped.
     """
     agg: dict[tuple[str, str], dict] = {}
     for r in rows:
-        tid = str(r.get("securities_trader_id", "")).strip()
-        if not tid:
+        name = str(r.get("securities_trader", "")).strip()
+        if not name:
             continue
         d = r.get("date", "")
-        key = (tid, d)
+        key = (name, d)
         if key not in agg:
             agg[key] = {"buy_shares": 0, "sell_shares": 0}
         agg[key]["buy_shares"] += int(r.get("buy", 0))
         agg[key]["sell_shares"] += int(r.get("sell", 0))
 
     result: dict[str, list[dict]] = {}
-    for (tid, d), v in agg.items():
+    for (name, d), v in agg.items():
         buy_lots = _to_lots(v["buy_shares"])
         sell_lots = _to_lots(v["sell_shares"])
-        if tid not in result:
-            result[tid] = []
-        result[tid].append({
+        if name not in result:
+            result[name] = []
+        result[name].append({
             "date": d,
             "buy": buy_lots,
             "sell": sell_lots,
             "net": buy_lots - sell_lots,
         })
 
-    for tid in result:
-        result[tid].sort(key=lambda x: x["date"])
+    for name in result:
+        result[name].sort(key=lambda x: x["date"])
     return result
 
 
 def _filter_broker_history(payload: dict, ids: list[str]) -> dict:
-    """Return a copy of payload with brokers narrowed to requested ids."""
+    """Return a copy of payload with brokers narrowed to requested keys.
+
+    Bug #1 fix: keys are broker NAMES (see `_parse_broker_history`). The
+    `ids` parameter name is preserved for API/URL stability — values are
+    broker names. Missing keys are returned as empty lists for backwards
+    compatibility, but a WARNING is logged so that future namespace drift
+    fails loudly instead of silently.
+    """
     all_brokers = payload.get("brokers", {})
+    missing = [k for k in ids if k not in all_brokers]
+    if missing:
+        logger.warning(
+            "broker_history: %d requested key(s) not in payload: %s",
+            len(missing), missing,
+        )
     return {
         "symbol": payload.get("symbol", ""),
         "fetched_at": payload.get("fetched_at", ""),

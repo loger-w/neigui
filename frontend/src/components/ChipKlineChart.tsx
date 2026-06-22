@@ -8,14 +8,15 @@ import { useContainerSize } from "../hooks/useContainerSize";
 interface Props {
   history: ChipHistory | null;
   selectedDate: string;
-  selectedBrokerIds: Set<string>;
+  // Bug #1 fix: selection keyed by broker NAME (was `selectedBrokerNames`).
+  selectedBrokerNames: Set<string>;
   brokerSeries: Map<string, BrokerDaily[]>;
   onPickDate: (date: string) => void;
   onClearAllBrokers: () => void;
 }
 
 export function ChipKlineChart({
-  history, selectedDate, selectedBrokerIds, brokerSeries,
+  history, selectedDate, selectedBrokerNames, brokerSeries,
   onPickDate, onClearAllBrokers,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -85,7 +86,7 @@ export function ChipKlineChart({
   const w = width || 600;
   const totalH = height || 500;
 
-  const showBrokerRow = selectedBrokerIds.size > 0;
+  const showBrokerRow = selectedBrokerNames.size > 0;
   const gap = 6;
   // K-line takes 3.5 parts; remainder split across sub-charts.
   // Total = 3.5 + 5 (or 6 if broker row visible).
@@ -183,7 +184,7 @@ export function ChipKlineChart({
               data={brokerAggSeries}
               width={w}
               height={lastSubH}
-              label={`分點 (${selectedBrokerIds.size})`}
+              label={`分點 (${selectedBrokerNames.size})`}
               hoverIndex={hoverIndex}
               selectedIndex={selectedIndex}
             />
