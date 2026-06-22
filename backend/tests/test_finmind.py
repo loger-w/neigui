@@ -287,26 +287,6 @@ async def test_history_secid_agg_full_failure():
     mock_resp = MagicMock()
     secid_error = httpx.HTTPStatusError("500", request=mock_req, response=mock_resp)
 
-    mc = _mock_http(
-        _fm_response(candle_rows),
-        _fm_response([INST_ROW]),
-        _fm_response([MARGIN_ROW]),
-        secid_error,
-        _fm_response(broker_day_18),
-        _fm_response(broker_day_19),
-    )
-    # _safe_get_secid_agg catches exceptions, so we need side_effect for the 4th call
-    original_side_effect = mc.get.side_effect
-    call_count = 0
-    async def side_effect_fn(*args, **kwargs):
-        nonlocal call_count
-        idx = call_count
-        call_count += 1
-        item = list(original_side_effect)[idx] if hasattr(original_side_effect, '__iter__') else None
-        if isinstance(item, Exception):
-            raise item
-        return item
-
     responses = [
         _fm_response(candle_rows),
         _fm_response([INST_ROW]),
@@ -325,6 +305,7 @@ async def test_history_secid_agg_full_failure():
             raise item
         return item
 
+    mc = AsyncMock()
     mc.get = AsyncMock(side_effect=mock_get)
 
     client = FinMindClient()

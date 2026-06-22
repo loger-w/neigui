@@ -2,9 +2,11 @@ import type { ChipSummary, ChipBubbleData, ChipHistory } from "./chip-data";
 
 const BASE = "/api";
 
-const _cache = new Map<string, { data: unknown; ts: number }>();
+const _cache = new Map<string, { data: unknown; ts: number; seq: number }>();
 const CACHE_TTL = 5 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 100;
+const _seqMap = new Map<string, number>();
+let _seqCounter = 0;
 
 function cacheKey(path: string, params?: Record<string, string>): string {
   const p = { ...params };
@@ -18,6 +20,9 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
   const key = cacheKey(path, params);
   const isRefresh = params?.refresh === "true";
 
+  const seq = ++_seqCounter;
+  _seqMap.set(key, seq);
+
   if (isRefresh) {
     _cache.delete(key);
   } else {
@@ -30,7 +35,7 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
   const url = new URL(path, window.location.origin);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
-      if (v) url.searchParams.set(k, v);
+      if (v != null && v !== "") url.searchParams.set(k, v);
     }
   }
   const resp = await fetch(url.toString());
@@ -40,10 +45,12 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
   }
   const data: T = await resp.json();
 
-  _cache.set(key, { data, ts: Date.now() });
-  if (_cache.size > CACHE_MAX_ENTRIES) {
-    const oldest = _cache.keys().next().value;
-    if (oldest !== undefined) _cache.delete(oldest);
+  if (_seqMap.get(key) === seq) {
+    _cache.set(key, { data, ts: Date.now(), seq });
+    if (_cache.size > CACHE_MAX_ENTRIES) {
+      const oldest = _cache.keys().next().value;
+      if (oldest !== undefined) _cache.delete(oldest);
+    }
   }
 
   return data;
@@ -51,6 +58,7 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
 
 export function clearApiCache(): void {
   _cache.clear();
+  _seqMap.clear();
 }
 
 export { _cache as __testCache, CACHE_TTL, CACHE_MAX_ENTRIES };
