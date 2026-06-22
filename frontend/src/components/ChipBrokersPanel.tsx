@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { ChipSummary, TopBroker, TopVolumeBroker } from "../lib/chip-data";
 import { splitBrokers, fmtVol, topByVolume } from "../lib/chip-data";
+import { Checkbox } from "./ui/checkbox";
 
 interface Props {
   summary: ChipSummary | null;
@@ -53,12 +54,10 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
 
   return (
     <div className={`grid ${cls} items-center text-sm py-2 px-2 border-b border-line/40 hover:bg-bg-deep/50 ${selected ? "bg-[#b794f4]/[0.06]" : ""}`}>
-      <input
-        type="checkbox"
+      <Checkbox
         checked={selected}
-        onChange={onToggle}
+        onCheckedChange={onToggle}
         aria-label={`勾選 ${broker.name}`}
-        className="w-3.5 h-3.5 accent-[#b794f4] cursor-pointer"
       />
       <span className="text-ink-dim tabular-nums">{rank}</span>
       <span className="flex items-center gap-1.5 truncate text-ink-muted">

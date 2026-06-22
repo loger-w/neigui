@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { SymbolSearch } from "./components/SymbolSearch";
 import { ChipBrokersPanel } from "./components/ChipBrokersPanel";
 import { ChipKlineChart } from "./components/ChipKlineChart";
+import { DateField } from "./components/ui/date-field";
 import { useChipData } from "./hooks/useChipData";
 import { useChipBubble } from "./hooks/useChipBubble";
 import { useBrokerHistory } from "./hooks/useBrokerHistory";
@@ -119,11 +120,10 @@ export default function App() {
               {symbolName && <span className="text-ink-muted">{symbolName}</span>}
             </div>
           )}
-          <input
-            type="date"
+          <DateField
             value={date}
+            aria-label="選擇日期"
             onChange={(e) => { userPickedDate.current = true; setDate(e.target.value); }}
-            className="bg-bg-deep border border-line text-ink px-2.5 py-1.5 text-sm outline-none focus:border-accent tabular-nums"
           />
           <button
             type="button"
