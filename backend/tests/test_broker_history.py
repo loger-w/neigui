@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -187,14 +187,16 @@ async def test_fetch_broker_history_caches_full_payload(
 
 
 @pytest.mark.asyncio
-async def test_fetch_broker_history_uses_cache_when_last_date_today(
+async def test_fetch_broker_history_cache_hit_when_fresh_and_today(
     client, monkeypatch, tmp_path,
 ):
+    """Cache hit ONLY when last_date == today AND fetched_at is within TTL."""
     today = date.today().isoformat()
+    fresh = datetime.now().isoformat(timespec="seconds")
     cache_payload = {
         "_cache_version": 2,
         "symbol": "2330",
-        "fetched_at": "2026-06-22T10:00:00",
+        "fetched_at": fresh,
         "last_date": today,
         "brokers": {"A": [{"date": today, "buy": 5, "sell": 0, "net": 5}]},
     }
@@ -205,7 +207,39 @@ async def test_fetch_broker_history_uses_cache_when_last_date_today(
     monkeypatch.setattr(client, "_safe_get_secid_agg", mock_fetch)
     result = await client.fetch_broker_history("2330", ["A"])
     assert result["brokers"]["A"][0]["net"] == 5
-    mock_fetch.assert_not_called()  # cache hit
+    mock_fetch.assert_not_called()  # fresh cache hit
+
+
+@pytest.mark.asyncio
+async def test_fetch_broker_history_refetches_when_stale_and_today(
+    client, monkeypatch, tmp_path,
+):
+    """Bug #2 fix: stale cache (older than TTL) must re-fetch on plain GET
+    (browser F5 sends refresh=false). Previously: cache with last_date==today
+    was served indefinitely until next-day rollover; F5 returned the same JSON
+    written hours ago."""
+    today = date.today().isoformat()
+    stale_fetched_at = (datetime.now() - timedelta(hours=1)).isoformat(
+        timespec="seconds",
+    )
+    cache_payload = {
+        "_cache_version": 2,
+        "symbol": "2330",
+        "fetched_at": stale_fetched_at,
+        "last_date": today,
+        "brokers": {"A": [{"date": today, "buy": 5, "sell": 0, "net": 5}]},
+    }
+    (tmp_path / "2330_broker_history.json").write_text(
+        json.dumps(cache_payload), encoding="utf-8",
+    )
+    fresh_rows = [
+        {"securities_trader": "A", "date": today, "buy": 99000, "sell": 0},
+    ]
+    mock_fetch = AsyncMock(return_value=fresh_rows)
+    monkeypatch.setattr(client, "_safe_get_secid_agg", mock_fetch)
+    result = await client.fetch_broker_history("2330", ["A"])
+    mock_fetch.assert_called_once()  # bug #2 — was 0
+    assert result["brokers"]["A"][0]["buy"] == 99  # fresh, not 5
 
 
 @pytest.mark.asyncio

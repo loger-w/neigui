@@ -1,6 +1,7 @@
 """Tests for services/finmind.py — FinMind API client."""
 
 import json
+from datetime import date, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -355,3 +356,111 @@ def test_no_token_raises(monkeypatch):
     from services.finmind import FinMindClient
     with pytest.raises(ValueError, match="FINMIND_TOKEN"):
         FinMindClient()
+
+
+# ---------------------------------------------------------------------------
+# Bug #2 — fetch_chip_history cache TTL (15-min staleness)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_chip_history_cache_hit_when_fresh_and_today(tmp_path):
+    """Fresh cache (within TTL) for today is served — no FinMind call."""
+    from services.finmind import FinMindClient, _CACHE_VERSION
+    today = date.today().isoformat()
+    fresh = datetime.now().isoformat(timespec="seconds")
+    cached = {
+        "_cache_version": _CACHE_VERSION,
+        "symbol": "2330",
+        "fetched_at": fresh,
+        "last_date": today,
+        "candles": [], "institutional": [], "margin": [], "major": [],
+    }
+    chip_dir = tmp_path / "cache" / "chip"
+    chip_dir.mkdir(parents=True)
+    (chip_dir / "2330_history.json").write_text(json.dumps(cached))
+    client = FinMindClient()
+    mc = AsyncMock()
+    mc.get = AsyncMock(side_effect=AssertionError("must not call FinMind"))
+    client._http = mc
+    r = await client.fetch_chip_history("2330")
+    assert r["fetched_at"] == fresh
+    mc.get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_chip_history_refetches_when_stale_and_today(tmp_path):
+    """Bug #2 fix: cached entry with last_date==today but fetched_at older
+    than the 15-min TTL must trigger a re-fetch on plain GET (browser F5
+    sends refresh=false). Previously cache was served indefinitely until
+    next-day rollover."""
+    from services.finmind import FinMindClient, _CACHE_VERSION
+    today = date.today().isoformat()
+    stale_fetched_at = (datetime.now() - timedelta(hours=1)).isoformat(
+        timespec="seconds",
+    )
+    cached = {
+        "_cache_version": _CACHE_VERSION,
+        "symbol": "2330",
+        "fetched_at": stale_fetched_at,
+        "last_date": today,
+        "candles": [], "institutional": [], "margin": [], "major": [],
+    }
+    chip_dir = tmp_path / "cache" / "chip"
+    chip_dir.mkdir(parents=True)
+    (chip_dir / "2330_history.json").write_text(json.dumps(cached))
+    candle_rows = [
+        {"date": today, "stock_id": "2330",
+         "open": 100, "max": 105, "min": 99, "close": 103, "Trading_Volume": 10000},
+    ]
+    agg_rows = [
+        {"date": today, "buy": 5000000, "sell": 1000000},
+    ]
+    mc = _mock_http(
+        _fm_response(candle_rows),
+        _fm_response([INST_ROW]),
+        _fm_response([MARGIN_ROW]),
+        _fm_response(agg_rows),
+    )
+    client = FinMindClient()
+    client._http = mc
+    r = await client.fetch_chip_history("2330")
+    assert r["fetched_at"] != stale_fetched_at  # re-fetched
+    assert mc.get.await_count == 4  # all 4 endpoints hit
+
+
+@pytest.mark.asyncio
+async def test_fetch_chip_history_cache_hit_when_pre_today(tmp_path):
+    """Cache with last_date < today is NEVER served regardless of freshness —
+    we need the new day's bar. (Same gate as before the TTL fix.)"""
+    from services.finmind import FinMindClient, _CACHE_VERSION
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    fresh = datetime.now().isoformat(timespec="seconds")
+    cached = {
+        "_cache_version": _CACHE_VERSION,
+        "symbol": "2330",
+        "fetched_at": fresh,
+        "last_date": yesterday,
+        "candles": [], "institutional": [], "margin": [], "major": [],
+    }
+    chip_dir = tmp_path / "cache" / "chip"
+    chip_dir.mkdir(parents=True)
+    (chip_dir / "2330_history.json").write_text(json.dumps(cached))
+    candle_rows = [
+        {"date": yesterday, "stock_id": "2330",
+         "open": 100, "max": 105, "min": 99, "close": 103, "Trading_Volume": 10000},
+    ]
+    agg_rows = [
+        {"date": yesterday, "buy": 5000000, "sell": 1000000},
+    ]
+    mc = _mock_http(
+        _fm_response(candle_rows),
+        _fm_response([INST_ROW]),
+        _fm_response([MARGIN_ROW]),
+        _fm_response(agg_rows),
+    )
+    client = FinMindClient()
+    client._http = mc
+    await client.fetch_chip_history("2330")
+    # All 4 endpoints called; agg_rows cover all dates so no fallback fires.
+    assert mc.get.await_count == 4

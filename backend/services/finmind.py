@@ -218,7 +218,14 @@ class FinMindClient:
             cached = self._read_cache(cache_key)
             if cached is not None:
                 last = cached.get("last_date", "")
-                if last >= date.today().isoformat():
+                # Bug #2 fix: once last_date == today, the cache was previously
+                # served indefinitely until next-day rollover, so browser F5
+                # (refresh=false) returned the same JSON written hours ago.
+                # Now apply 15-min TTL when cache is from today; pre-today
+                # always falls through and re-fetches the new day's bar.
+                if last >= date.today().isoformat() and not self._is_stale(
+                    cached, max_age_minutes=15,
+                ):
                     return cached
 
         return await self._run_once(
@@ -310,7 +317,13 @@ class FinMindClient:
         cache_key = f"{symbol}_broker_history"
         if not refresh:
             cached = self._read_cache(cache_key)
-            if cached is not None and cached.get("last_date", "") >= date.today().isoformat():
+            # Bug #2 fix: 15-min TTL when cached entry is from today; pre-today
+            # cache always falls through to re-fetch the new day's bar.
+            if (
+                cached is not None
+                and cached.get("last_date", "") >= date.today().isoformat()
+                and not self._is_stale(cached, max_age_minutes=15)
+            ):
                 return _filter_broker_history(cached, ids)
 
         # _run_once dedups concurrent callers by symbol (NOT ids), so the task
