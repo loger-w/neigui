@@ -58,4 +58,16 @@ describe("Checkbox", () => {
     const { getByLabelText } = render(<Checkbox aria-label="勾選 富邦台北" />);
     expect(getByLabelText("勾選 富邦台北")).toBeTruthy();
   });
+
+  // Bug fix: the sr-only <input> is position:absolute, so without a positioned
+  // ancestor it escapes any scroll container's overflow:hidden clipping and
+  // anchors to the body — its static-flow position then bloats html.scrollHeight
+  // and triggers an outer scrollbar on the 籌碼總覽 panel. The `<label>` must be
+  // position:relative so the input is contained within the label box.
+  it("label is the positioning containing block for the sr-only input", () => {
+    const { container } = render(<Checkbox aria-label="x" />);
+    const label = container.querySelector("label");
+    expect(label).toBeTruthy();
+    expect(label!.className).toMatch(/\brelative\b/);
+  });
 });

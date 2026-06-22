@@ -28,7 +28,12 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
     return (
       <label
         className={cn(
-          "inline-flex items-center cursor-pointer select-none",
+          // `relative` makes the label the containing block for the sr-only
+          // input below; otherwise position:absolute walks up to <body>, the
+          // input's static-flow position spills past the viewport, and
+          // html.scrollHeight grows enough to spawn an outer scrollbar on the
+          // 籌碼總覽 panel.
+          "relative inline-flex items-center cursor-pointer select-none",
           disabled && "cursor-not-allowed opacity-50",
           className,
         )}
