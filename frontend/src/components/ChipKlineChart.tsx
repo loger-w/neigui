@@ -22,6 +22,10 @@ export function ChipKlineChart({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { width, height } = useContainerSize(containerRef);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  // F6: horizontal price crosshair Y coordinate. Local-only; sub-charts do
+  // NOT receive it (their Y-axis carries no meaningful price/value mapping
+  // for a per-row crosshair).
+  const [hoverY, setHoverY] = useState<number | null>(null);
 
   const derived = useMemo(() => {
     if (!history) return null;
@@ -114,6 +118,8 @@ export function ChipKlineChart({
             height={klineH}
             hoverIndex={hoverIndex}
             onHoverIndex={setHoverIndex}
+            hoverY={hoverY}
+            onHoverY={setHoverY}
             selectedIndex={selectedIndex}
             onClickIndex={handleClickIndex}
           />

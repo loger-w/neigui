@@ -61,6 +61,11 @@ interface KlineChartProps {
   height: number;
   hoverIndex?: number | null;
   onHoverIndex?: (index: number | null) => void;
+  /** F6: cursor Y in chart coordinates (null when outside the price area).
+   *  Owned by the parent so the same value drives both the visual horizontal
+   *  crosshair and any future sibling indicators. */
+  hoverY?: number | null;
+  onHoverY?: (y: number | null) => void;
   selectedIndex?: number | null;
   onClickIndex?: (index: number) => void;
 }
@@ -70,6 +75,7 @@ export const KlineChartSvg = memo(KlineChartSvgImpl);
 function KlineChartSvgImpl({
   candles, width, height,
   hoverIndex, onHoverIndex,
+  hoverY, onHoverY,
   selectedIndex, onClickIndex,
 }: KlineChartProps) {
   if (candles.length === 0) return null;
@@ -162,19 +168,25 @@ function KlineChartSvgImpl({
 
   // ── mouse interaction ──────────────────────────────────────────────────
   const handleMouseMove = (e: React.MouseEvent<SVGRectElement>) => {
-    if (!onHoverIndex) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
-    const idx = Math.floor((mouseX - padL) / slotW);
-    if (idx >= 0 && idx < n) {
-      onHoverIndex(idx);
-    } else {
-      onHoverIndex(null);
+    const mouseY = e.clientY - rect.top;
+    if (onHoverIndex) {
+      const idx = Math.floor((mouseX - padL) / slotW);
+      if (idx >= 0 && idx < n) onHoverIndex(idx);
+      else onHoverIndex(null);
+    }
+    if (onHoverY) {
+      // F6: only fire when cursor is inside the price area (NOT the volume
+      // sub-area, where horizontal Y has no meaningful price).
+      if (mouseY >= padT && mouseY < volTop) onHoverY(mouseY);
+      else onHoverY(null);
     }
   };
 
   const handleMouseLeave = () => {
     if (onHoverIndex) onHoverIndex(null);
+    if (onHoverY) onHoverY(null);
   };
 
   const handleClick = (e: React.MouseEvent<SVGRectElement>) => {
@@ -289,6 +301,40 @@ function KlineChartSvgImpl({
           stroke={t.inkDim} strokeWidth={1}
           strokeDasharray="4 3"
         />
+      )}
+
+      {/* F6: horizontal price crosshair + right-axis price chip.
+          Only rendered inside the price area; volume sub-area excluded. */}
+      {hoverY != null && hoverY >= padT && hoverY < volTop && (
+        <g>
+          <line
+            data-testid="hover-hline"
+            x1={padL} y1={hoverY}
+            x2={width - padR} y2={hoverY}
+            stroke={t.inkDim} strokeWidth={1}
+            strokeDasharray="4 3"
+          />
+          {/* price = pMax - (y - padT) / chartH * (pMax - pMin)  (inverse of klineScaleY) */}
+          {(() => {
+            const price = pMax - ((hoverY - padT) / chartH) * (pMax - pMin);
+            return (
+              <g data-testid="hover-price-label">
+                <rect
+                  x={width - padR + 2} y={hoverY - 8}
+                  width={42} height={16}
+                  fill={t.bg} stroke={t.inkDim} strokeWidth={1}
+                />
+                <text
+                  x={width - padR + 6} y={hoverY + 4}
+                  fontSize={11} fill={t.ink} fontFamily={t.font}
+                  style={{ fontVariantNumeric: "tabular-nums" }}
+                >
+                  {fmtPrice(price)}
+                </text>
+              </g>
+            );
+          })()}
+        </g>
       )}
 
       {/* OHLCV info row (top-left) */}
