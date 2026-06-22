@@ -1,27 +1,26 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import type { ChipHistory } from "../lib/chip-data";
+import type { BrokerDaily, ChipHistory } from "../lib/chip-data";
 import { KlineChartSvg } from "../lib/chip-kline-svg";
 import { InstBarSvg, MarginLineSvg } from "../lib/chip-inst-bar-svg";
 import { BrokerAggBarSvg } from "../lib/chip-broker-agg-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
-import { useBrokerHistory } from "../hooks/useBrokerHistory";
 
 interface Props {
   history: ChipHistory | null;
-  symbol: string;
   selectedDate: string;
   selectedBrokerIds: Set<string>;
+  brokerSeries: Map<string, BrokerDaily[]>;
   onPickDate: (date: string) => void;
   onClearAllBrokers: () => void;
 }
 
 export function ChipKlineChart({
-  history, symbol, selectedDate, selectedBrokerIds, onPickDate, onClearAllBrokers,
+  history, selectedDate, selectedBrokerIds, brokerSeries,
+  onPickDate, onClearAllBrokers,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { width, height } = useContainerSize(containerRef);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const brokerHistory = useBrokerHistory(symbol, selectedBrokerIds);
 
   const derived = useMemo(() => {
     if (!history) return null;
@@ -45,13 +44,13 @@ export function ChipKlineChart({
   const brokerAggSeries = useMemo(() => {
     if (!derived) return [] as number[];
     const dateNet = new Map<string, number>();
-    for (const arr of brokerHistory.series.values()) {
+    for (const arr of brokerSeries.values()) {
       for (const d of arr) {
         dateNet.set(d.date, (dateNet.get(d.date) ?? 0) + d.net);
       }
     }
     return derived.candles.map((c) => dateNet.get(c.date) ?? 0);
-  }, [derived, brokerHistory.series]);
+  }, [derived, brokerSeries]);
 
   const handleClickIndex = useCallback(
     (i: number) => {

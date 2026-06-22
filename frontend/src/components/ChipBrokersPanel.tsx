@@ -6,6 +6,7 @@ interface Props {
   summary: ChipSummary | null;
   dayTotalLots: number;
   selectedBrokerIds: Set<string>;
+  selectedBrokerNames: Map<string, string>;
   onToggleBroker: (brokerId: string, brokerName: string) => void;
   onClearAllBrokers: () => void;
 }
@@ -88,7 +89,8 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
 }
 
 export function ChipBrokersPanel({
-  summary, dayTotalLots, selectedBrokerIds, onToggleBroker, onClearAllBrokers,
+  summary, dayTotalLots, selectedBrokerIds, selectedBrokerNames,
+  onToggleBroker, onClearAllBrokers,
 }: Props) {
   const [mode, setMode] = useState<Mode>("net");
 
@@ -215,7 +217,7 @@ export function ChipBrokersPanel({
           <span className="text-xs text-ink-dim">已選 {N} 個分點:</span>
           {Array.from(selectedBrokerIds).map((id) => {
             const known = allBrokers.find((b) => b.broker_id === id);
-            const name = known?.name ?? id;
+            const name = selectedBrokerNames.get(id) ?? known?.name ?? id;
             return (
               <span
                 key={id}

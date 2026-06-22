@@ -4,6 +4,7 @@ import { ChipBrokersPanel } from "./components/ChipBrokersPanel";
 import { ChipKlineChart } from "./components/ChipKlineChart";
 import { useChipData } from "./hooks/useChipData";
 import { useChipBubble } from "./hooks/useChipBubble";
+import { useBrokerHistory } from "./hooks/useBrokerHistory";
 
 const ChipBubbleView = lazy(() =>
   import("./components/ChipBubbleView").then((m) => ({ default: m.ChipBubbleView })),
@@ -27,12 +28,16 @@ export default function App() {
   const [selectedBrokerIds, setSelectedBrokerIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [selectedBrokerNames, setSelectedBrokerNames] = useState<Map<string, string>>(
+    () => new Map(),
+  );
   const userPickedDate = useRef(false);
 
   const { summary, history, loading, error, refresh: refreshChip } = useChipData(
     symbol, date,
   );
   const bubbleHook = useChipBubble(symbol, date);
+  const brokerHistoryHook = useBrokerHistory(symbol, selectedBrokerIds);
 
   useEffect(() => {
     if (userPickedDate.current) return;
@@ -61,11 +66,17 @@ export default function App() {
   );
 
   const handleToggleBroker = useCallback(
-    (id: string, _name: string) => {
+    (id: string, name: string) => {
       setSelectedBrokerIds((prev) => {
         const next = new Set(prev);
         if (next.has(id)) next.delete(id);
         else next.add(id);
+        return next;
+      });
+      setSelectedBrokerNames((prev) => {
+        if (prev.has(id)) return prev;          // remember earliest name
+        const next = new Map(prev);
+        next.set(id, name);
         return next;
       });
     },
@@ -74,10 +85,12 @@ export default function App() {
 
   const handleClearAllBrokers = useCallback(() => {
     setSelectedBrokerIds(new Set());
+    setSelectedBrokerNames(new Map());
   }, []);
 
   const refresh = () => {
     refreshChip();
+    if (selectedBrokerIds.size > 0) brokerHistoryHook.refresh();
     if (tab === "bubble") bubbleHook.refresh();
   };
   const isLoading = loading || bubbleHook.loading;
@@ -86,6 +99,7 @@ export default function App() {
     setSymbol(sym);
     setSymbolName(name);
     setSelectedBrokerIds(new Set());
+    setSelectedBrokerNames(new Map());
     userPickedDate.current = false;
   };
 
@@ -163,9 +177,9 @@ export default function App() {
             <div className="h-full overflow-hidden border-r border-line">
               <ChipKlineChart
                 history={history}
-                symbol={symbol}
                 selectedDate={date}
                 selectedBrokerIds={selectedBrokerIds}
+                brokerSeries={brokerHistoryHook.series}
                 onPickDate={handlePickDate}
                 onClearAllBrokers={handleClearAllBrokers}
               />
@@ -175,6 +189,7 @@ export default function App() {
                 summary={summary}
                 dayTotalLots={dayTotalLots}
                 selectedBrokerIds={selectedBrokerIds}
+                selectedBrokerNames={selectedBrokerNames}
                 onToggleBroker={handleToggleBroker}
                 onClearAllBrokers={handleClearAllBrokers}
               />

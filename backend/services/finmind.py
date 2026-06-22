@@ -313,13 +313,18 @@ class FinMindClient:
             if cached is not None and cached.get("last_date", "") >= date.today().isoformat():
                 return _filter_broker_history(cached, ids)
 
-        return await self._run_once(
+        # _run_once dedups concurrent callers by symbol (NOT ids), so the task
+        # MUST return the full payload — each caller filters its own subset.
+        # Otherwise the second caller with different `ids` would receive the
+        # first caller's filtered subset.
+        payload = await self._run_once(
             f"broker_history_{symbol}",
-            lambda: self._do_fetch_broker_history(symbol, ids, cache_key),
+            lambda: self._do_fetch_broker_history(symbol, cache_key),
         )
+        return _filter_broker_history(payload, ids)
 
     async def _do_fetch_broker_history(
-        self, symbol: str, ids: list[str], cache_key: str,
+        self, symbol: str, cache_key: str,
     ) -> dict:
         end = date.today()
         start = end - timedelta(days=90)
@@ -330,7 +335,7 @@ class FinMindClient:
         if not rows:
             stale = self._read_cache(cache_key)
             if stale is not None:
-                return _filter_broker_history(stale, ids)
+                return stale  # full payload, caller filters
             raise ValueError("secid_agg_unavailable")
 
         brokers = _parse_broker_history(rows)
@@ -341,7 +346,7 @@ class FinMindClient:
             "brokers": brokers,
         }
         self._write_cache(cache_key, payload)
-        return _filter_broker_history(payload, ids)
+        return payload
 
     # -- major net series (top-15 broker net per day) ----------------------
 

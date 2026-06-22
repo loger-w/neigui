@@ -49,6 +49,13 @@ export function BrokerSearch({ trades, value, onChange }: Props) {
     setQuery(value ?? "");
   }, [value]);
 
+  useEffect(
+    () => () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    },
+    [],
+  );
+
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => setDebounced(query), 200);

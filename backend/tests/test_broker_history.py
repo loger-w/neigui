@@ -222,3 +222,36 @@ async def test_fetch_broker_history_dedup_concurrent_calls(client, monkeypatch):
     )
     assert call_count == 1  # _run_once dedup
     assert all(r["brokers"]["A"] for r in results)
+
+
+@pytest.mark.asyncio
+async def test_fetch_broker_history_concurrent_different_ids_get_correct_subset(
+    client, monkeypatch,
+):
+    """Two concurrent callers with different `ids` must each receive only
+    their own subset, NOT the first caller's filtered result."""
+    call_count = 0
+
+    async def slow_fetch(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        await asyncio.sleep(0.05)
+        return [
+            {"securities_trader_id": "A", "date": "2026-06-20",
+             "buy": 1000, "sell": 0},
+            {"securities_trader_id": "B", "date": "2026-06-20",
+             "buy": 2000, "sell": 0},
+        ]
+
+    monkeypatch.setattr(client, "_safe_get_secid_agg", slow_fetch)
+    res_a, res_b = await asyncio.gather(
+        client.fetch_broker_history("2330", ["A"]),
+        client.fetch_broker_history("2330", ["B"]),
+    )
+    assert call_count == 1  # only one underlying fetch
+    assert "A" in res_a["brokers"]
+    assert res_a["brokers"]["A"][0]["net"] == 1
+    assert "B" not in res_a["brokers"]
+    assert "B" in res_b["brokers"]
+    assert res_b["brokers"]["B"][0]["net"] == 2
+    assert "A" not in res_b["brokers"]
