@@ -170,6 +170,39 @@ export function aggregateByPrice(trades: BrokerTrade[]): PriceAgg[] {
     .sort((a, b) => b.price - a.price);
 }
 
+export interface TradeRow {
+  broker: string;
+  volume: number;
+  price: number;
+}
+
+/**
+ * Build {buyRows, sellRows} for the bubble-view side panel.
+ *
+ * When `selectedBroker` is null, returns the top `maxRows` overall by volume.
+ * When `selectedBroker` is set, the filter is applied FIRST and then sliced —
+ * so a small-volume broker's price levels are not lost behind a global top-N
+ * cap that they couldn't make.
+ */
+export function buildTradeRows(
+  trades: BrokerTrade[],
+  selectedBroker: string | null,
+  maxRows: number,
+): { buyRows: TradeRow[]; sellRows: TradeRow[] } {
+  const source = selectedBroker
+    ? trades.filter((t) => t.broker === selectedBroker)
+    : trades;
+  const buys: TradeRow[] = [];
+  const sells: TradeRow[] = [];
+  for (const t of source) {
+    if (t.buy > 0) buys.push({ broker: t.broker, volume: t.buy, price: t.price });
+    if (t.sell > 0) sells.push({ broker: t.broker, volume: t.sell, price: t.price });
+  }
+  buys.sort((a, b) => b.volume - a.volume);
+  sells.sort((a, b) => b.volume - a.volume);
+  return { buyRows: buys.slice(0, maxRows), sellRows: sells.slice(0, maxRows) };
+}
+
 // -- Broker history (F4) ----------------------------------------------------
 
 export interface BrokerDaily {

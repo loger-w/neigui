@@ -1,16 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
-import type { ChipBubbleData } from "../lib/chip-data";
-import { aggregateByPrice, fmtVol } from "../lib/chip-data";
+import type { ChipBubbleData, TradeRow } from "../lib/chip-data";
+import { aggregateByPrice, buildTradeRows, fmtVol } from "../lib/chip-data";
 import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg";
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
 import { BrokerSearch } from "./BrokerSearch";
-
-interface TradeRow {
-  broker: string;
-  volume: number;
-  price: number;
-}
 
 interface Props {
   bubbleData: ChipBubbleData | null;
@@ -87,28 +81,13 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol }: Props) {
     );
   }, [bubbleData, selectedBroker, allPriceAggs]);
 
-  const { buyRows, sellRows } = useMemo(() => {
+  // Bug fix: filter must precede the top-N slice. Building the rows then
+  // slicing drops every row that fell behind the global top-200 cap, which
+  // was hiding most of a small-volume broker's price levels after filter.
+  const { buyRows: filteredBuyRows, sellRows: filteredSellRows } = useMemo(() => {
     if (!bubbleData) return { buyRows: [] as TradeRow[], sellRows: [] as TradeRow[] };
-    const b: TradeRow[] = [];
-    const s: TradeRow[] = [];
-    for (const t of bubbleData.trades) {
-      if (t.buy > 0) b.push({ broker: t.broker, volume: t.buy, price: t.price });
-      if (t.sell > 0) s.push({ broker: t.broker, volume: t.sell, price: t.price });
-    }
-    b.sort((a, c) => c.volume - a.volume);
-    s.sort((a, c) => c.volume - a.volume);
-    return { buyRows: b.slice(0, MAX_TRADE_ROWS), sellRows: s.slice(0, MAX_TRADE_ROWS) };
-  }, [bubbleData]);
-
-  const filteredBuyRows = useMemo(() => {
-    if (!selectedBroker) return buyRows;
-    return buyRows.filter((r) => r.broker === selectedBroker);
-  }, [buyRows, selectedBroker]);
-
-  const filteredSellRows = useMemo(() => {
-    if (!selectedBroker) return sellRows;
-    return sellRows.filter((r) => r.broker === selectedBroker);
-  }, [sellRows, selectedBroker]);
+    return buildTradeRows(bubbleData.trades, selectedBroker, MAX_TRADE_ROWS);
+  }, [bubbleData, selectedBroker]);
 
   return (
     <div className="h-full grid grid-cols-[1fr_400px] gap-0 overflow-hidden">

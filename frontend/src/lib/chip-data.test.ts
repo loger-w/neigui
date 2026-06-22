@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitBrokers, aggregateByPrice, aggregateByBroker, fmtVol, topByVolume } from "./chip-data";
+import { splitBrokers, aggregateByPrice, aggregateByBroker, fmtVol, topByVolume, buildTradeRows } from "./chip-data";
 import type { TopBroker, BrokerTrade } from "./chip-data";
 
 function mkBroker(name: string, buy: number, sell: number): TopBroker {
@@ -114,5 +114,61 @@ describe("fmtVol", () => {
   it("formats with locale separators", () => {
     expect(fmtVol(1234567)).toContain("1");
     expect(fmtVol(0)).toBe("0");
+  });
+});
+
+describe("buildTradeRows", () => {
+  function mkTrade(broker: string, price: number, buy: number, sell: number): BrokerTrade {
+    return { broker, broker_id: broker, price, buy, sell };
+  }
+
+  it("with no selection: returns top-N by volume across all brokers", () => {
+    const trades = [
+      mkTrade("A", 100, 500, 0),
+      mkTrade("B", 101, 200, 0),
+      mkTrade("C", 102, 10, 0),
+    ];
+    const { buyRows } = buildTradeRows(trades, null, 2);
+    expect(buyRows).toEqual([
+      { broker: "A", volume: 500, price: 100 },
+      { broker: "B", volume: 200, price: 101 },
+    ]);
+  });
+
+  // Bug fix: filter must happen BEFORE the top-N slice. Previously the slice
+  // ran over ALL trades first; small-volume rows for the selected broker
+  // (e.g. 康和新竹 buy=1 at 2500) got cut behind the global top-200 cap and
+  // disappeared after the per-broker filter step.
+  it("with selection: small-volume rows for the broker survive the top-N cap", () => {
+    const trades: BrokerTrade[] = [];
+    // 250 noise brokers each with one big buy that would dominate top-200
+    for (let i = 0; i < 250; i++) {
+      trades.push(mkTrade(`noise${i}`, 200 + i, 999, 0));
+    }
+    // small broker with 4 modest price levels
+    trades.push(mkTrade("康和新竹", 2495, 0, 15));
+    trades.push(mkTrade("康和新竹", 2500, 1, 1));
+    trades.push(mkTrade("康和新竹", 2505, 154, 1));
+    trades.push(mkTrade("康和新竹", 2510, 2, 2));
+
+    const { buyRows, sellRows } = buildTradeRows(trades, "康和新竹", 200);
+    const buyVols = buyRows.map((r) => r.volume).sort((a, b) => a - b);
+    const sellVols = sellRows.map((r) => r.volume).sort((a, b) => a - b);
+    // All non-zero rows for the broker survive: buys at 2500/2505/2510 (1/154/2),
+    // sells at 2495/2500/2505/2510 (15/1/1/2). None hidden by the global cap.
+    expect(buyVols).toEqual([1, 2, 154]);
+    expect(sellVols).toEqual([1, 1, 2, 15]);
+    expect(buyRows.every((r) => r.broker === "康和新竹")).toBe(true);
+    expect(sellRows.every((r) => r.broker === "康和新竹")).toBe(true);
+  });
+
+  it("sorts rows by volume descending after filter", () => {
+    const trades = [
+      mkTrade("X", 10, 5, 0),
+      mkTrade("X", 11, 100, 0),
+      mkTrade("X", 12, 50, 0),
+    ];
+    const { buyRows } = buildTradeRows(trades, "X", 10);
+    expect(buyRows.map((r) => r.volume)).toEqual([100, 50, 5]);
   });
 });
