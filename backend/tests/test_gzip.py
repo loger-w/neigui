@@ -64,6 +64,4 @@ def test_no_gzip_small_response(mock_fm):
         headers={"Accept-Encoding": "gzip"},
     )
     assert resp.status_code == 200
-    raw = json.dumps(SMALL_RESPONSE).encode()
-    if len(raw) < 1000:
-        assert resp.headers.get("content-encoding") != "gzip"
+    assert resp.headers.get("content-encoding") != "gzip"

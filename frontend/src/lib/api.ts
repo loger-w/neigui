@@ -49,7 +49,10 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
     _cache.set(key, { data, ts: Date.now(), seq });
     if (_cache.size > CACHE_MAX_ENTRIES) {
       const oldest = _cache.keys().next().value;
-      if (oldest !== undefined) _cache.delete(oldest);
+      if (oldest !== undefined) {
+        _cache.delete(oldest);
+        _seqMap.delete(oldest);
+      }
     }
   }
 

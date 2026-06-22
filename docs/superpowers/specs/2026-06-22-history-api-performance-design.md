@@ -1,7 +1,7 @@
 # History API 效能優化設計文件
 
 **日期**: 2026-06-22
-**狀態**: Draft
+**狀態**: Implemented
 **範圍**: `/api/chip/{symbol}/history` 端點效能優化 + 前端快取
 
 ---
