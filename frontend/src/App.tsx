@@ -6,9 +6,14 @@ import { DateField } from "./components/ui/date-field";
 import { useChipData } from "./hooks/useChipData";
 import { useChipBubble } from "./hooks/useChipBubble";
 import { useBrokerHistory } from "./hooks/useBrokerHistory";
+import { ModeSwitch, type Mode } from "./components/ModeSwitch";
 
 const ChipBubbleView = lazy(() =>
   import("./components/ChipBubbleView").then((m) => ({ default: m.ChipBubbleView })),
+);
+
+const OptionsPage = lazy(() =>
+  import("./components/OptionsPage").then((m) => ({ default: m.OptionsPage })),
 );
 
 type Tab = "overview" | "bubble";
@@ -22,6 +27,11 @@ function todayStr(): string {
 }
 
 export default function App() {
+  const [mode, setMode] = useState<Mode>(() =>
+    (localStorage.getItem("mode") as Mode) || "equity"
+  );
+  useEffect(() => { localStorage.setItem("mode", mode); }, [mode]);
+
   const [symbol, setSymbol] = useState("");
   const [symbolName, setSymbolName] = useState<string | null>(null);
   const [date, setDate] = useState(todayStr);
@@ -107,6 +117,9 @@ export default function App() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
+      <ModeSwitch value={mode} onChange={setMode} />
+      {mode === "equity" ? (
+      <div className="flex-1 flex flex-col overflow-hidden">
       <header className="shrink-0 px-6 pt-5 pb-3 border-b border-line">
         {/* F8: 籌碼分析 title + SymbolSearch + symbol/name + date + refresh
             collapsed onto a single horizontal row. */}
@@ -222,6 +235,18 @@ export default function App() {
           </Suspense>
         </div>
       </div>
+      </div>
+      ) : (
+        <Suspense
+          fallback={
+            <div className="flex-1 flex items-center justify-center text-ink-dim text-sm">
+              載入選擇權頁面...
+            </div>
+          }
+        >
+          <OptionsPage />
+        </Suspense>
+      )}
     </div>
   );
 }
