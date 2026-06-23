@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ChipBubbleData, TradeRow } from "../lib/chip-data";
 import { aggregateByPrice, buildTradeRows, fmtVol } from "../lib/chip-data";
 import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg";
@@ -184,6 +185,11 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol }: Props) {
   );
 }
 
+// Per-row pixel height — must match the visual height (py-1 = 4+4 + text
+// line-height ≈ 22px). Used by the virtualizer to compute scroll bounds.
+// If the row styling changes (padding/font-size/line-height), update this.
+const ROW_HEIGHT_PX = 22;
+
 const TradeList = memo(function TradeList({
   rows,
   side,
@@ -200,6 +206,20 @@ const TradeList = memo(function TradeList({
   const bgClass = isBuy ? "bg-accent/[0.04]" : "bg-bear/[0.04]";
   const activeClass = isBuy ? "bg-accent/[0.08]" : "bg-bear/[0.08]";
 
+  // Virtualize the row list: high-volume stocks (e.g. 3481) produce 50 000+
+  // rows once the per-list cap was removed. Rendering them all as React
+  // children locks the main thread for several seconds on filter clear.
+  // The virtualizer keeps only the visible window (~30 rows) in the tree.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => ROW_HEIGHT_PX,
+    overscan: 8,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const totalSize = rowVirtualizer.getTotalSize();
+
   return (
     <div className="flex flex-col overflow-hidden">
       <div
@@ -209,25 +229,41 @@ const TradeList = memo(function TradeList({
         <span className="text-right">張數</span>
         <span className="text-right">價位</span>
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0 scroll-editorial">
-        {rows.map((r, i) => (
-          <button
-            key={`${side[0]}${i}`}
-            type="button"
-            onClick={() => onSelect(r.broker)}
-            className={`w-full grid grid-cols-[1fr_56px_56px] text-xs px-2 py-1 border-b border-line/20 cursor-pointer transition-colors ${
-              selectedBroker === r.broker
-                ? `${activeClass} text-ink`
-                : "hover:bg-bg-deep/50 text-ink-muted"
-            }`}
-          >
-            <span className="text-left truncate">{r.broker}</span>
-            <span className={`text-right tabular-nums ${colorClass}`}>
-              {fmtVol(r.volume)}
-            </span>
-            <span className="text-right tabular-nums">{r.price}</span>
-          </button>
-        ))}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto min-h-0 scroll-editorial"
+      >
+        <div style={{ height: totalSize, position: "relative", width: "100%" }}>
+          {virtualRows.map((vi) => {
+            const r = rows[vi.index];
+            return (
+              <button
+                key={vi.key}
+                type="button"
+                onClick={() => onSelect(r.broker)}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${vi.start}px)`,
+                  height: vi.size,
+                }}
+                className={`grid grid-cols-[1fr_56px_56px] items-center text-xs px-2 border-b border-line/20 cursor-pointer transition-colors ${
+                  selectedBroker === r.broker
+                    ? `${activeClass} text-ink`
+                    : "hover:bg-bg-deep/50 text-ink-muted"
+                }`}
+              >
+                <span className="text-left truncate">{r.broker}</span>
+                <span className={`text-right tabular-nums ${colorClass}`}>
+                  {fmtVol(r.volume)}
+                </span>
+                <span className="text-right tabular-nums">{r.price}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
