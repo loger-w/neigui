@@ -190,8 +190,10 @@ export function ChipBrokersPanel({
         </div>
       </div>
 
-      {/* Mode tabs */}
-      <div className="px-3 py-2 border-b border-line flex gap-0">
+      {/* Mode tabs — only the active button carries an underline; the section
+          header below provides the single dividing line, so tabs visually
+          merge into the content without a stacked-borders gap. */}
+      <div className="px-3 pt-2 flex gap-0">
         <button
           type="button"
           onClick={() => setMode("net")}
