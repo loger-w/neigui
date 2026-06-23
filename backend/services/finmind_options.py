@@ -158,3 +158,68 @@ def parse_oi_large_traders(
         })
 
     return {"current": current, "series": series}
+
+
+def parse_strike_volume(
+    rows: list[dict], contract_date: str, top_n: int,
+    option_id: str = "TXO",
+) -> dict:
+    """Parse TaiwanOptionDaily rows into top-N strike volume per side.
+
+    Phase-0 rules:
+    - Filter on option_id (default TXO) AND contract_date.
+    - Sum volume across trading_session ∈ {position, after_market}; take MAX of OI
+      across sessions (OI is a cumulative snapshot per session).
+    - Drop strikes with summed volume == 0 (typically illiquid OTM).
+    - oi_change = today aggregated OI − prev-trading-day aggregated OI for that strike;
+      0 if no prev row exists.
+    """
+    matched = [
+        r for r in rows
+        if r.get("option_id") == option_id
+        and r.get("contract_date") == contract_date
+    ]
+    if not matched:
+        return {"call": [], "put": []}
+
+    # Aggregate (date, call_put, strike) across trading_session.
+    agg: dict[tuple[str, str, float], dict] = {}
+    for r in matched:
+        cp = str(r.get("call_put", "")).lower()
+        if cp not in ("call", "put"):
+            continue
+        try:
+            strike = float(r["strike_price"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        key = (r["date"], cp, strike)
+        vol = int(r.get("volume", 0) or 0)
+        oi = int(r.get("open_interest", 0) or 0)
+        bucket = agg.setdefault(key, {"volume": 0, "oi": 0})
+        bucket["volume"] += vol
+        if oi > bucket["oi"]:
+            bucket["oi"] = oi
+
+    if not agg:
+        return {"call": [], "put": []}
+
+    dates = sorted({k[0] for k in agg})
+    today = dates[-1]
+    prev = dates[-2] if len(dates) >= 2 else None
+
+    def side(cp_value: str) -> list[dict]:
+        items = [(strike, v) for (d, cp, strike), v in agg.items()
+                 if d == today and cp == cp_value and v["volume"] > 0]
+        items.sort(key=lambda t: t[1]["volume"], reverse=True)
+        out: list[dict] = []
+        for strike, v in items[:top_n]:
+            prev_v = agg.get((prev, cp_value, strike), {"oi": 0}) if prev else {"oi": 0}
+            out.append({
+                "strike": int(strike) if strike == int(strike) else strike,
+                "volume": v["volume"],
+                "oi": v["oi"],
+                "oi_change": (v["oi"] - prev_v["oi"]) if prev else 0,
+            })
+        return out
+
+    return {"call": side("call"), "put": side("put")}

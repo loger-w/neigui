@@ -180,3 +180,96 @@ def test_parse_oi_large_traders_empty_returns_zero_current():
         "top10_all":  {"long": 0, "short": 0, "net": 0},
     }
     assert out["series"] == []
+
+
+def _od_row(date_, ct, cp, strike, vol, oi, *, session="position", option_id="TXO"):
+    return {"date": date_, "option_id": option_id, "contract_date": ct,
+            "call_put": cp, "strike_price": float(strike),
+            "volume": vol, "open_interest": oi, "trading_session": session}
+
+
+def test_parse_strike_volume_picks_top_n_per_side():
+    from services.finmind_options import parse_strike_volume
+    today = "2026-06-23"
+    rows = [
+        _od_row(today, "202607", "call", 22000, 18500, 35200),
+        _od_row(today, "202607", "call", 22100, 12100, 30000),
+        _od_row(today, "202607", "call", 21900,  9400, 22000),
+        _od_row(today, "202607", "call", 21800,  3000, 12000),
+        _od_row(today, "202607", "put",  21500, 14200, 28100),
+        _od_row(today, "202607", "put",  21000,  9800, 18000),
+    ]
+    out = parse_strike_volume(rows, "202607", top_n=2)
+    assert [c["strike"] for c in out["call"]] == [22000, 22100]
+    assert [p["strike"] for p in out["put"]]  == [21500, 21000]
+    assert out["call"][0]["volume"] == 18500
+    assert out["call"][0]["oi"]     == 35200
+
+
+def test_parse_strike_volume_sums_trading_sessions():
+    """position + after_market both contribute to volume; OI takes max."""
+    from services.finmind_options import parse_strike_volume
+    rows = [
+        _od_row("2026-06-23", "202607", "call", 22000, 12000, 35200, session="position"),
+        _od_row("2026-06-23", "202607", "call", 22000,  6500, 35400, session="after_market"),
+    ]
+    out = parse_strike_volume(rows, "202607", top_n=1)
+    assert out["call"][0]["volume"] == 12000 + 6500
+    assert out["call"][0]["oi"] == 35400  # max of (35200, 35400)
+
+
+def test_parse_strike_volume_computes_oi_change_against_prev_day():
+    from services.finmind_options import parse_strike_volume
+    rows = [
+        _od_row("2026-06-20", "202607", "call", 22000, 14000, 33100),
+        _od_row("2026-06-23", "202607", "call", 22000, 18500, 35200),
+    ]
+    out = parse_strike_volume(rows, "202607", top_n=1)
+    assert out["call"][0]["oi_change"] == 35200 - 33100
+
+
+def test_parse_strike_volume_first_day_oi_change_zero():
+    from services.finmind_options import parse_strike_volume
+    rows = [_od_row("2026-06-23", "202607", "call", 22000, 18500, 35200)]
+    out = parse_strike_volume(rows, "202607", top_n=1)
+    assert out["call"][0]["oi_change"] == 0
+
+
+def test_parse_strike_volume_filters_by_contract_date():
+    from services.finmind_options import parse_strike_volume
+    rows = [
+        _od_row("2026-06-23", "202607", "call", 22000, 99999, 35200),
+        _od_row("2026-06-23", "202608", "call", 22000, 18500, 30000),
+    ]
+    out = parse_strike_volume(rows, "202607", top_n=1)
+    assert out["call"][0]["volume"] == 99999
+
+
+def test_parse_strike_volume_filters_by_option_id():
+    from services.finmind_options import parse_strike_volume
+    rows = [
+        _od_row("2026-06-23", "202607", "call", 22000, 99_999, 30000, option_id="TEO"),
+        _od_row("2026-06-23", "202607", "call", 22000,    100, 35200, option_id="TXO"),
+    ]
+    out = parse_strike_volume(rows, "202607", top_n=1, option_id="TXO")
+    assert out["call"][0]["volume"] == 100
+
+
+def test_parse_strike_volume_drops_zero_volume_rows():
+    """Phase 0 noted ~70% of TXO rows have volume=0 (illiquid OTM strikes).
+    Those should not occupy top-N slots, even with top_n large."""
+    from services.finmind_options import parse_strike_volume
+    rows = [
+        _od_row("2026-06-23", "202607", "call", 22000,  10, 5),
+        _od_row("2026-06-23", "202607", "call", 22100,   0, 7),
+        _od_row("2026-06-23", "202607", "call", 22200,   0, 9),
+    ]
+    out = parse_strike_volume(rows, "202607", top_n=10)
+    assert len(out["call"]) == 1
+    assert out["call"][0]["strike"] == 22000
+
+
+def test_parse_strike_volume_empty_returns_empty_lists():
+    from services.finmind_options import parse_strike_volume
+    out = parse_strike_volume([], "202607", top_n=10)
+    assert out == {"call": [], "put": []}
