@@ -54,6 +54,38 @@ const MIN_R = 3;
 const MAX_R = 22;
 const VOLUME_THRESHOLD = 5; // ignore volumes <= 5
 
+// Small helper: a full-size SVG showing a single centered hint message.
+// Used for "no data" / "no volume" / "broker has no notable trades" states
+// where we want to occupy the chart area without rendering bubbles.
+function HintSvg({
+  width,
+  height,
+  text,
+}: {
+  width: number;
+  height: number;
+  text: string;
+}) {
+  return (
+    <svg
+      width={width}
+      height={height}
+      viewBox={`0 0 ${width} ${height}`}
+      style={{ fontFamily: FONT }}
+    >
+      <text
+        x={width / 2}
+        y={height / 2}
+        textAnchor="middle"
+        fill={COLOR.text}
+        fontSize={13}
+      >
+        {text}
+      </text>
+    </svg>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -77,6 +109,7 @@ interface Bubble {
   r: number;
   fill: string;
   stroke: string;
+  brokerId: string;
   key: string;
   payload: BubbleHoverPayload;
 }
@@ -163,98 +196,73 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   // --- End hooks section ---
 
   if (layoutTrades.length === 0) {
-    return (
-      <svg
-        width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        style={{ fontFamily: FONT }}
-      >
-        <text
-          x={width / 2}
-          y={height / 2}
-          textAnchor="middle"
-          fill={COLOR.text}
-          fontSize={13}
-        >
-          No trade data
-        </text>
-      </svg>
-    );
+    return <HintSvg width={width} height={height} text="No trade data" />;
   }
 
-  // -- Visible trades (F2: filter BEFORE empty-state, so a broker search
-  // still renders that broker's bubbles even on globally-low-volume days).
-  // Use ALL trades when filtering so brokers outside the top-100 still appear.
-  const visibleTrades = selectedBroker
+  // Axes for the unfiltered top-100 view. F11: these are reused under broker
+  // filter so positions never re-flow when the user toggles a broker.
+  const layoutPrices: number[] = [];
+  const layoutVolumes: number[] = [];
+  for (const t of layoutTrades) {
+    layoutPrices.push(t.price);
+    if (t.buy > VOLUME_THRESHOLD) layoutVolumes.push(t.buy);
+    if (t.sell > VOLUME_THRESHOLD) layoutVolumes.push(t.sell);
+  }
+
+  // Matched broker's trades — computed ONCE and reused by the F2 axis
+  // fallback below and the F11 render source further down.
+  const matchedBrokerTrades: BrokerTrade[] | null = selectedBroker
     ? trades.filter((t) => t.broker === selectedBroker)
+    : null;
+
+  // F2 fallback: when the global top-100 view would be empty (quiet day),
+  // derive axes from the selected broker's own data so a broker search
+  // still shows them — even sub-threshold.
+  const useBrokerAxes = layoutVolumes.length === 0 && !!selectedBroker;
+
+  let prices: number[];
+  let volumes: number[];
+  if (useBrokerAxes) {
+    prices = [];
+    volumes = [];
+    for (const t of matchedBrokerTrades!) {
+      prices.push(t.price);
+      if (t.buy > 0) volumes.push(t.buy);
+      if (t.sell > 0) volumes.push(t.sell);
+    }
+  } else {
+    prices = layoutPrices;
+    volumes = layoutVolumes;
+  }
+
+  // Empty-state — nothing to plot. Either the chosen axis source has no
+  // significant volume (per-broker hint when filtering) or the global view
+  // is empty and no broker is selected.
+  if (volumes.length === 0) {
+    return (
+      <HintSvg
+        width={width}
+        height={height}
+        text={
+          selectedBroker
+            ? `${selectedBroker} 今日無顯著成交量`
+            : "No significant volume"
+        }
+      />
+    );
+  }
+
+  // Render source: when filtering, render only the matched broker's trades
+  // with threshold bypassed (sub-threshold and outside-top-100 brokers
+  // still surface). Unfiltered: top-100 gated by VOLUME_THRESHOLD.
+  const renderTrades: BrokerTrade[] = selectedBroker
+    ? matchedBrokerTrades!
     : layoutTrades;
-
-  // F2: selected broker absent from today's trades — show per-broker hint
-  // (preserves chip-bubble-svg.tsx:416-426 semantics for the empty case).
-  if (selectedBroker && visibleTrades.length === 0) {
-    return (
-      <svg
-        width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        style={{ fontFamily: FONT }}
-      >
-        <text
-          x={width / 2}
-          y={height / 2}
-          textAnchor="middle"
-          fill={COLOR.text}
-          fontSize={13}
-        >
-          {selectedBroker} 今日無顯著成交量
-        </text>
-      </svg>
-    );
-  }
-
-  // F2: in single-broker mode, bypass VOLUME_THRESHOLD so even small trades
-  // for the searched broker render (the user explicitly asked to see *that
-  // broker's* data even on low-volume days).
   const threshold = selectedBroker ? 0 : VOLUME_THRESHOLD;
-
-  // Derive axis ranges from visibleTrades (axis follows broker filter).
-  const prices: number[] = [];
-  const volumes: number[] = [];
-  for (const t of visibleTrades) {
-    prices.push(t.price);
-    if (t.buy > threshold) volumes.push(t.buy);
-    if (t.sell > threshold) volumes.push(t.sell);
-  }
-
-  // Global empty-state — ONLY when no broker selected (F2).
-  if (volumes.length === 0 && !selectedBroker) {
-    return (
-      <svg
-        width={width}
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        style={{ fontFamily: FONT }}
-      >
-        <text
-          x={width / 2}
-          y={height / 2}
-          textAnchor="middle"
-          fill={COLOR.text}
-          fontSize={13}
-        >
-          No significant volume
-        </text>
-      </svg>
-    );
-  }
 
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
-  // Fallback when broker selected but all rows have buy=sell=0 (extreme edge):
-  // volumes is []; use 1 to keep axis math finite — bubbles=[] flows through
-  // and the per-broker hint at the end renders.
-  const maxVolume = volumes.length > 0 ? Math.max(...volumes) : 1;
+  const maxVolume = Math.max(...volumes);
 
   // Add a small padding to price range so bubbles don't touch edges
   const pricePad = maxPrice === minPrice ? 1 : (maxPrice - minPrice) * 0.08;
@@ -297,11 +305,17 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
 
   // -- Build bubble data (butterfly: sell left, buy right) -----------------
   // F1: no yellow CHIP.ma5 stroke for selected broker; the header chip
-  // "已篩選 1 個分點" + the fact that only one broker's bubbles render
+  // "已篩選 1 個分點" + only the matched broker's bubbles remaining onscreen
   // already communicates the filter state.
+  // F11: `renderTrades` is already pre-filtered to the matched broker (and
+  // threshold pre-set to 0) when a filter is active, so this loop renders
+  // EVERY matched trade — even sub-threshold ones and brokers outside the
+  // top-100. Axes were derived from `layoutTrades`, so each matched bubble
+  // sits at the SAME pixel position it would in the unfiltered view — the
+  // chart never re-flows on filter toggle.
   const bubbles: Bubble[] = [];
   let idx = 0;
-  for (const t of visibleTrades) {
+  for (const t of renderTrades) {
     if (t.buy > threshold) {
       bubbles.push({
         cx: centerX + (t.buy / volMax) * halfW,
@@ -309,6 +323,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         r: bubbleRadius(t.buy, maxVolume, MIN_R, MAX_R),
         fill: COLOR.buyFill,
         stroke: COLOR.buyStroke,
+        brokerId: t.broker_id,
         key: `b-${t.broker_id}-${t.price}-${idx}`,
         payload: { broker: t.broker, volume: t.buy, price: t.price, side: "buy" },
       });
@@ -320,6 +335,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         r: bubbleRadius(t.sell, maxVolume, MIN_R, MAX_R),
         fill: COLOR.sellFill,
         stroke: COLOR.sellStroke,
+        brokerId: t.broker_id,
         key: `s-${t.broker_id}-${t.price}-${idx}`,
         payload: { broker: t.broker, volume: t.sell, price: t.price, side: "sell" },
       });
@@ -425,6 +441,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           fill={b.fill}
           stroke={b.stroke}
           strokeWidth={1}
+          data-broker-id={b.brokerId}
           pointerEvents="none"
         />
       ))}
