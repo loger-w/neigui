@@ -30,3 +30,12 @@
 .date-field-input::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
+
+/* Indeterminate loading bar: a narrow accent strip glides across a faint
+ * track. Used on the panel top edge to signal in-flight refetch without
+ * stealing layout space (2 px tall). Pairs with aria-busy on the parent.
+ * Elements using this should also set `motion-reduce:animate-none`. */
+@keyframes loading-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}

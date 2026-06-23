@@ -138,12 +138,19 @@ export function ChipBrokersPanel({
       className="h-full flex flex-col overflow-hidden"
       aria-busy={loading || undefined}
     >
-      {/* Cluster B 🟢: localized loading caption — only shown while a refetch
-          is in flight AND prior summary still on screen. Date-pick flow no
-          longer empties the panel briefly. */}
+      {/* Cluster B 🟢: localized loading indicator — only shown while a refetch
+          is in flight AND prior summary still on screen. A 2 px-tall scanning
+          accent bar replaces the prior "載入中…" caption: zero layout shift,
+          previous values stay readable, motion communicates activity without
+          text. Screen readers still announce busy state via aria-busy on the
+          panel root above. */}
       {loading && (
-        <div className="px-3 py-1 text-xs text-ink-dim border-b border-line bg-bg-deep/30">
-          載入中…
+        <div
+          data-testid="panel-loading-indicator"
+          aria-hidden="true"
+          className="relative h-0.5 overflow-hidden bg-line/30 shrink-0"
+        >
+          <div className="absolute inset-y-0 left-0 w-1/4 bg-accent animate-[loading-shimmer_1.4s_ease-in-out_infinite] motion-reduce:animate-none motion-reduce:opacity-60" />
         </div>
       )}
 

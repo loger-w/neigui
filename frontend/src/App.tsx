@@ -130,9 +130,23 @@ export default function App() {
             type="button"
             onClick={refresh}
             disabled={isLoading || !symbol}
-            className="px-3 py-1.5 text-sm border border-line text-ink-muted hover:text-ink hover:border-accent disabled:opacity-40 disabled:cursor-default transition-colors cursor-pointer"
+            aria-label={isLoading ? "資料載入中" : "重新整理"}
+            aria-busy={isLoading || undefined}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-line text-ink-muted hover:text-ink hover:border-accent disabled:opacity-50 disabled:cursor-default transition-colors cursor-pointer"
           >
-            {isLoading ? "載入中..." : "重新整理"}
+            {isLoading && (
+              <svg
+                data-testid="refresh-spinner"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden="true"
+                className="size-3.5 animate-spin text-accent motion-reduce:animate-none"
+              >
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+            )}
+            重新整理
           </button>
         </div>
         <div className="flex mt-3 gap-0 border-b border-line -mb-[1px]">

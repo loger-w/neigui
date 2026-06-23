@@ -110,7 +110,7 @@ describe("ChipBrokersPanel F7 — 主力買賣超 above 融資融券", () => {
 });
 
 describe("ChipBrokersPanel loading indicator (Cluster B 🟢)", () => {
-  it("shows '載入中…' caption + aria-busy when loading=true and summary present", () => {
+  it("renders visual loading indicator + aria-busy when loading=true and summary present", () => {
     const { container } = render(
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
@@ -121,11 +121,15 @@ describe("ChipBrokersPanel loading indicator (Cluster B 🟢)", () => {
         loading
       />,
     );
-    expect(container.textContent).toContain("載入中…");
+    // The text caption was replaced with a 2 px scanning accent bar; the
+    // contract is "user can perceive loading", asserted via the data-testid
+    // and aria-busy on the panel root.
+    expect(container.querySelector("[data-testid=panel-loading-indicator]")).toBeTruthy();
     expect(container.querySelector("[aria-busy=true]")).toBeTruthy();
+    expect(container.textContent).not.toContain("載入中");
   });
 
-  it("does NOT show loading caption when loading=false", () => {
+  it("does NOT render loading indicator when loading=false", () => {
     const { container } = render(
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
@@ -136,7 +140,7 @@ describe("ChipBrokersPanel loading indicator (Cluster B 🟢)", () => {
         loading={false}
       />,
     );
-    expect(container.textContent).not.toContain("載入中…");
+    expect(container.querySelector("[data-testid=panel-loading-indicator]")).toBeFalsy();
     expect(container.querySelector("[aria-busy=true]")).toBeFalsy();
   });
 
@@ -152,9 +156,9 @@ describe("ChipBrokersPanel loading indicator (Cluster B 🟢)", () => {
       />,
     );
     expect(container.textContent).toContain("請搜尋股票代號");
-    // Loading caption only renders when summary exists (would be redundant
-    // alongside the empty-state placeholder).
-    expect(container.textContent).not.toContain("載入中…");
+    // The loading indicator only renders when summary exists (would be
+    // redundant alongside the empty-state placeholder).
+    expect(container.querySelector("[data-testid=panel-loading-indicator]")).toBeFalsy();
   });
 });
 
