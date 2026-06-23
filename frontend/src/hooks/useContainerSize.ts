@@ -14,6 +14,16 @@ export function useContainerSize(ref: React.RefObject<HTMLDivElement | null>): C
     const w = Math.round(rect.width);
     const h = Math.round(rect.height);
     setSize((prev) => {
+      // Hold last-good size when the element collapses to 0×0. This usually
+      // means the element (or an ancestor) is in `display: none` — e.g. an
+      // inactive tab — and writing zeros into state causes the next re-show
+      // to flash a fallback-sized chart for a frame or two before
+      // ResizeObserver fires the real dimensions again. Skipping the zero
+      // write keeps the chart at its previous correct size, so unhiding the
+      // tab paints the right size immediately.
+      if (w === 0 && h === 0 && (prev.width > 0 || prev.height > 0)) {
+        return prev;
+      }
       if (prev.width === w && prev.height === h) return prev;
       return { width: w, height: h };
     });
