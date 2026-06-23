@@ -61,3 +61,122 @@ def test_list_active_contracts_excludes_settled_week():
     items_day_of = list_active_contracts(settle_wed)
     assert items_day_before[0]["settlement"] == "2026-06-24"
     assert items_day_of[0]["settlement"] != "2026-06-24"
+
+
+def _oi_row(date_, put_call, contract_type="202607", option_id="TXO", **fields):
+    """Build a TaiwanOptionOpenInterestLargeTraders row. Phase-0 field names."""
+    base = {
+        "date": date_, "option_id": option_id, "contract_type": contract_type,
+        "put_call": put_call,
+        "buy_top5_trader_open_interest":      0, "sell_top5_trader_open_interest":      0,
+        "buy_top10_trader_open_interest":     0, "sell_top10_trader_open_interest":     0,
+        "buy_top5_specific_open_interest":    0, "sell_top5_specific_open_interest":    0,
+        "buy_top10_specific_open_interest":   0, "sell_top10_specific_open_interest":   0,
+    }
+    base.update(fields)
+    return base
+
+
+def test_parse_oi_large_traders_aggregates_call_put_via_delta_equivalent():
+    """long = call.buy + put.sell; short = call.sell + put.buy. Per spec §2.2."""
+    from services.finmind_options import parse_oi_large_traders
+    rows = [
+        _oi_row("2026-06-23", "call",
+                buy_top10_trader_open_interest=18000,
+                sell_top10_trader_open_interest=12000),
+        _oi_row("2026-06-23", "put",
+                buy_top10_trader_open_interest=9000,
+                sell_top10_trader_open_interest=13000),
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607")
+    # long  = call.buy(18000) + put.sell(13000) = 31000
+    # short = call.sell(12000) + put.buy(9000)  = 21000
+    assert out["current"]["top10_all"] == {"long": 31000, "short": 21000, "net": 10000}
+
+
+def test_parse_oi_large_traders_fills_all_four_groups():
+    from services.finmind_options import parse_oi_large_traders
+    rows = [
+        _oi_row("2026-06-23", "call",
+                buy_top5_trader_open_interest=100,    sell_top5_trader_open_interest=50,
+                buy_top10_trader_open_interest=200,   sell_top10_trader_open_interest=120,
+                buy_top5_specific_open_interest=80,   sell_top5_specific_open_interest=30,
+                buy_top10_specific_open_interest=140, sell_top10_specific_open_interest=60),
+        _oi_row("2026-06-23", "put",
+                buy_top5_trader_open_interest=40,     sell_top5_trader_open_interest=70,
+                buy_top10_trader_open_interest=90,    sell_top10_trader_open_interest=160,
+                buy_top5_specific_open_interest=20,   sell_top5_specific_open_interest=55,
+                buy_top10_specific_open_interest=45,  sell_top10_specific_open_interest=110),
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607")
+    assert out["current"]["top5_all"]   == {"long": 100 + 70, "short": 50  + 40,  "net":  80}   # 170 - 90
+    assert out["current"]["top10_all"]  == {"long": 200 + 160, "short": 120 + 90,  "net": 150}   # 360 - 210
+    assert out["current"]["top5_prop"]  == {"long": 80 + 55,   "short": 30  + 20,  "net":  85}   # 135 - 50
+    assert out["current"]["top10_prop"] == {"long": 140 + 110, "short": 60  + 45,  "net": 145}   # 250 - 105
+
+
+def test_parse_oi_large_traders_series_in_date_order():
+    from services.finmind_options import parse_oi_large_traders
+    rows = [
+        _oi_row("2026-06-23", "call", buy_top10_trader_open_interest=18000, sell_top10_trader_open_interest=12000),
+        _oi_row("2026-06-23", "put",  buy_top10_trader_open_interest=9000,  sell_top10_trader_open_interest=13000),
+        _oi_row("2026-06-20", "call", buy_top10_trader_open_interest=17500, sell_top10_trader_open_interest=11500),
+        _oi_row("2026-06-20", "put",  buy_top10_trader_open_interest=8500,  sell_top10_trader_open_interest=12800),
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607")
+    assert [s["date"] for s in out["series"]] == ["2026-06-20", "2026-06-23"]
+    # date 2026-06-23: top10_all_net = (18000+13000) - (12000+9000) = 31000 - 21000 = 10000
+    assert out["series"][-1]["top10_all_net"] == 10000
+
+
+def test_parse_oi_large_traders_filters_by_contract_type():
+    from services.finmind_options import parse_oi_large_traders
+    rows = [
+        _oi_row("2026-06-23", "call", contract_type="202607",
+                buy_top10_trader_open_interest=999),
+        _oi_row("2026-06-23", "put",  contract_type="202607",
+                sell_top10_trader_open_interest=999),
+        # Different contract_type — must be ignored
+        _oi_row("2026-06-23", "call", contract_type="all",
+                buy_top10_trader_open_interest=10_000_000),
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607")
+    assert out["current"]["top10_all"]["long"] == 999 + 999  # call.buy(999) + put.sell(999)
+
+
+def test_parse_oi_large_traders_filters_by_option_id():
+    from services.finmind_options import parse_oi_large_traders
+    rows = [
+        _oi_row("2026-06-23", "call", option_id="TEO",  # 電子選 — must be ignored
+                buy_top10_trader_open_interest=999_999),
+        _oi_row("2026-06-23", "call", option_id="TXO",
+                buy_top10_trader_open_interest=100),
+        _oi_row("2026-06-23", "put",  option_id="TXO",
+                sell_top10_trader_open_interest=50),
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607", option_id="TXO")
+    assert out["current"]["top10_all"]["long"] == 100 + 50
+
+
+def test_parse_oi_large_traders_missing_one_side_contributes_zero():
+    """If only call (or only put) present for a date, the other side is 0."""
+    from services.finmind_options import parse_oi_large_traders
+    rows = [
+        _oi_row("2026-06-23", "call",
+                buy_top10_trader_open_interest=100, sell_top10_trader_open_interest=50),
+        # No put row for this date
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607")
+    assert out["current"]["top10_all"] == {"long": 100, "short": 50, "net": 50}
+
+
+def test_parse_oi_large_traders_empty_returns_zero_current():
+    from services.finmind_options import parse_oi_large_traders
+    out = parse_oi_large_traders([], contract_type="202607")
+    assert out["current"] == {
+        "top5_prop":  {"long": 0, "short": 0, "net": 0},
+        "top10_prop": {"long": 0, "short": 0, "net": 0},
+        "top5_all":   {"long": 0, "short": 0, "net": 0},
+        "top10_all":  {"long": 0, "short": 0, "net": 0},
+    }
+    assert out["series"] == []
