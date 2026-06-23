@@ -100,3 +100,5 @@ export const api = {
     return get(`${BASE}/symbols/all`);
   },
 };
+
+export { get as __apiGet };
