@@ -1,0 +1,12 @@
+{
+  "today": "2026-06-23",
+  "expected": [
+    {"slot": "W1", "kind": "weekly",  "option_id": "TXO", "contract_date": "202606W4", "contract_type": "week",   "settlement": "2026-06-24"},
+    {"slot": "W2", "kind": "weekly",  "option_id": "TXO", "contract_date": "202607W1", "contract_type": "week",   "settlement": "2026-07-01"},
+    {"slot": "W3", "kind": "weekly",  "option_id": "TXO", "contract_date": "202607W2", "contract_type": "week",   "settlement": "2026-07-08"},
+    {"slot": "W4", "kind": "weekly",  "option_id": "TXO", "contract_date": "202607W4", "contract_type": "week",   "settlement": "2026-07-22"},
+    {"slot": "M0", "kind": "monthly", "option_id": "TXO", "contract_date": "202607",   "contract_type": "202607", "settlement": "2026-07-15"},
+    {"slot": "M1", "kind": "monthly", "option_id": "TXO", "contract_date": "202608",   "contract_type": "202608", "settlement": "2026-08-19"},
+    {"slot": "M2", "kind": "monthly", "option_id": "TXO", "contract_date": "202610",   "contract_type": "202610", "settlement": "2026-10-21"}
+  ]
+}
