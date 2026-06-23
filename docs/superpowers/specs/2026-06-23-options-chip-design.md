@@ -386,3 +386,79 @@ P1 + P2 在同一個 branch 連著做;P0 是 implementation plan 的 sanity chec
 - 與 K 線連動 / 熱門履約價點選 → 跳到該 strike 詳情
 - PCR、Max Pain 等衍生指標
 - 假日表(目前以週三為結算定位,實際週三休假等首次踩到再加)
+
+---
+
+## Phase 0 Schema Validation Result — 2026-06-23
+
+於 2026-06-23 以 Sponsor tier 對 FinMind API 進行 schema probe,涵蓋 `TaiwanOptionOpenInterestLargeTraders`(window 2026-06-15..2026-06-22)與 `TaiwanOptionDaily`(window 2026-05-15..2026-06-22,因 2026-06-19..06-22 為空)兩個 dataset,驗證 spec §2.7 的三項未驗證假設。
+
+### TaiwanOptionOpenInterestLargeTraders
+
+- **實際 row shape**:**一 row 包含全部 8 個 OI 數值欄位**(buy/sell × top5/top10 × trader/specific),即每一 row 同時帶長空雙邊。row 的 unique key = (date, option_id, contract_type, put_call)。spec 假設的「8 欄寬表 shape」與實際相符,**不需要重寫 parser**。
+
+- **欄位對應(parser 名 → FinMind 實際欄位)**:
+  - `date` → `date`
+  - `contract_date` → `contract_type`(注意:此 dataset 沒有 `contract_date` 欄位,maturity 編碼於 `contract_type`)
+  - `top5_prop_long_oi` → `buy_top5_specific_open_interest`
+  - `top5_prop_short_oi` → `sell_top5_specific_open_interest`
+  - `top10_prop_long_oi` → `buy_top10_specific_open_interest`
+  - `top10_prop_short_oi` → `sell_top10_specific_open_interest`
+  - `top5_all_long_oi` → `buy_top5_trader_open_interest`
+  - `top5_all_short_oi` → `sell_top5_trader_open_interest`
+  - `top10_all_long_oi` → `buy_top10_trader_open_interest`
+  - `top10_all_short_oi` → `sell_top10_trader_open_interest`
+
+- **distinct contract identifier 觀察**:
+  - `contract_type` 取值 `{'week', 'all', '<YYYYMM>'}`,在 probe window 內僅見 `['202606', 'all', 'week']`(window 內只有 2026-06-15 一個交易日)。
+  - `option_id` 為 2 字元短碼(`CA`..`OA` 共 30 個)+ 指數選擇權 3 字元(`TXO`/`TEO`/`TFO`/`TGO`)。
+  - `name` 為中文標的名稱(臺指/電子/金融/台積電/鴻海/聯發科…39 個 distinct names),與 `option_id` 1:1 對應。
+  - `put_call` 欄位拼法為 `put_call`(注意:此 dataset 與 TaiwanOptionDaily 的 `call_put` 拼法相反)。
+
+### TaiwanOptionDaily
+
+- **欄位對應(parser 名 → FinMind 實際欄位)**:
+  - `date` → `date`
+  - `data_id` → `option_id`(parser 必須改名)
+  - `contract_date` → `contract_date`
+  - `strike_price` → `strike_price`(float 非 int)
+  - `call_put` → `call_put`
+  - `volume` → `volume`
+  - `open_interest` → `open_interest`
+
+- **distinct `option_id` literals 觀察(40 個,probe field cap 30 + 補列 10 個)**:`TXO`, `TEO`, `TFO`, `TGO`, `CAO`, `CBO`, `CCO`, `CDA`, `CDO`, `CEO`, `CFO`, `CGO`, `CHO`, `CKO`, `CMO`, `CNO`, `CSO`, `CZO`, `DFO`, `DGO`, `DHO`, `DJO`, `DKO`, `DQO`, `DSO`, `DVO`, `DXO`, `GIO`, `GXO`, `HCO`, `HSO`, `IJO`, `IRO`, `NYO`, `OAO`, `OBO`, `OJO`, `OKO`, `OOO`, `OZO`。
+
+- **Call/put 判別值 pair**:小寫 `'call'` / `'put'`(非 C/P,非大寫)。
+
+- **`open_interest` 存在性**:**100% 行皆有 `open_interest` 欄位**(0 / 11,897 missing),parser 可信賴此欄位永遠存在,雖然 illiquid OTM 履約價多為 0。
+
+### Spec deltas needed
+
+- TaiwanOptionDaily: contract identifier field is `option_id` (NOT `data_id`). Parser must rename input accessor from data_id → option_id. The TXO index option uses option_id='TXO' (3 chars), while stock/ETF options use 3-char codes ending in 'O' (e.g. CAO, TEO) — there is NO consistent suffix rule.
+- TaiwanOptionDaily: hidden `trading_session` dimension with values {'position','after_market'}. Same (date, option_id, contract_date, strike_price, call_put) appears TWICE — once per session. Parser MUST group by trading_session or pick one session explicitly, otherwise volume/OI double-counts. Spec did not mention this; Task 3 parser needs a session filter (recommend default = 'position' for regular-session OI, or sum both for total daily turnover).
+- TaiwanOptionDaily: contract_date encodes weekly-vs-monthly in the SUFFIX, not in option_id. Pure YYYYMM (e.g. 202606) = monthly; YYYYMMW{N} = weekly; YYYYMMF{N} = front-week / specific expiry week. Parser must regex-parse the suffix to filter monthly-only contracts as the spec assumed.
+- TaiwanOptionDaily: high/low fields are named `max`/`min`, NOT `high`/`low` (FinMind quirk). Not currently required by Task 3 parser but flagged for any future OHLC extension.
+- TaiwanOptionDaily: strike_price is FLOAT (e.g. 35000.0, 60.0), not int. Parser should coerce or accept float; semantically it IS the strike (not last trade price — last trade is `close`). Confirmed.
+- TaiwanOptionDaily: 2026-06-19..06-22 returned empty (likely market-closed or data-not-yet-available); widening to 2026-05-15..06-22 returned 11,897 rows. Parser must handle empty result and back-fill to the most recent available trading day.
+- TaiwanOptionOpenInterestLargeTraders SHAPE: ONE row per (date, option_id, contract_type, put_call) carrying ALL 8 numeric OI columns (buy/sell × top5/top10 × trader/specific). This MATCHES the Task 2 parser's first assumed shape — NO rewrite needed for row-vs-category shape. However, each row carries BOTH long (buy_*) AND short (sell_*) numbers — there is no separate long-row/short-row split.
+- TaiwanOptionOpenInterestLargeTraders: contract identifier is COMPOSITE — `option_id` (e.g. TXO) AND human-readable `name` (e.g. 臺指). Parser should filter on option_id='TXO' for TAIEX weekly/monthly index options. The `name` field is informational.
+- TaiwanOptionOpenInterestLargeTraders: NO `contract_date` field exists. Maturity is encoded in `contract_type` with 3 values: 'week' (週選), 'all' (該標的全部到期月合計), or '<YYYYMM>' (specific month, e.g. '202606'). Parser must map contract_date → contract_type and interpret these 3 enum values, NOT a YYYYMM date string. Spec assumption of YYYYMM-style contract_date is INCORRECT for this dataset.
+- TaiwanOptionOpenInterestLargeTraders: terminology mismatch. FinMind uses `trader` (前N大交易人 = all-traders, i.e. retail+prop+legal) and `specific` (前N大特定法人 = prop/legal-entity subset). Mapping in oi_lt_field_map: top5/10_all_* → *_trader_*; top5/10_prop_* → *_specific_*. This is the OPPOSITE of intuitive reading where 'all' might mean 'specific' — verify Task 2 parser uses the same convention.
+- TaiwanOptionOpenInterestLargeTraders: each numeric field has a paired `*_per` percentage field (% of market_open_interest). Parser can ignore _per columns or use them for sanity checks. market_open_interest is the per-row denominator.
+- Both datasets: distinct_data_ids in probe response actually holds `option_id` values for both datasets — the FinMind API does not expose a separate `data_id` field on either dataset. Parser-level alias `data_id` → `option_id` is needed.
+- **(新增 by 對抗驗證)** 跨資料集 `option_id` 格式不一致:TaiwanOptionDaily 用 3 字元含 'O' 後綴(`CAO`, `CBO`...,加上指數 `TXO`/`TEO`/`TFO`/`TGO`),TaiwanOptionOpenInterestLargeTraders 用 2 字元短碼(`CA`, `CB`...,加上指數 `TXO`/`TEO`/`TFO`/`TGO`)。stock/ETF 代碼在兩 dataset 不可直接 join,需建立 `CA ↔ CAO` 正規化映射表;指數選擇權代碼則一致。
+- **(新增 by 對抗驗證)** `put_call` vs `call_put` 欄位拼法不一致:TaiwanOptionDaily 用 `call_put`;TaiwanOptionOpenInterestLargeTraders 用 `put_call`。共用 parser 必須分別處理,不可假設同名。
+- **(新增 by 對抗驗證)** `oi_lt_field_map` 需補上 `put_call` 與 `option_id` 兩個欄位映射(用於 filter TXO + 拆 call/put leg);`option_daily_field_map` 需補上 `trading_session` 為一級欄位以強制 parser 套用 session filter(預設 `'position'`)。
+- **(新增 by 對抗驗證)** `market_open_interest` 在大多數 stock-option row 為 0(probe sample 30 個 option_id 中 29 個全零),任何用此值作分母的計算(如重算 `_per`)必須先 guard 除零。其為 per-(date, option_id, contract_type, put_call) leg 的 OI denominator,**非市場總 OI**,不可跨 leg 加總視為總額。
+- **(新增 by 對抗驗證)** `contract_type='all'` 的 row 在 probe sample 為全零;parser 不應預設 `all` row 一定有實值,使用前需逐 row 檢查 `market_open_interest > 0`。
+- **(新增 by 對抗驗證)** `data_id_literals` 清單(40 個 3 字元代碼)僅適用於 TaiwanOptionDaily;TaiwanOptionOpenInterestLargeTraders 使用獨立的 2 字元代碼集(`CA`..`OA` + `TXO`/`TEO`/`TFO`/`TGO`)。Parser 端應維護兩份 literal 白名單,白名單以外的代碼建議報錯而非 silent drop。
+- **(新增 by 對抗驗證)** `contract_type` enum 觀察值僅 `{'week', 'all', '202606'}`(probe 僅一個交易日);結算日附近或月份切換可能擴張為 `{'week', 'all', '<near_YYYYMM>', '<far_YYYYMM>'}`,parser 應採白名單策略,遇到未知值報錯。
+- **(新增 by 對抗驗證)** F-suffix(`YYYYMMF{3,4,5}`)語意未確認:probe 推論為「週選編號 / 特定到期週」,實作前應對照 TAIFEX 商品規格書確認 F-series 確切意義,而非僅憑 W/F 字面區分 weekly。
+- **(新增 by 對抗驗證)** TaiwanOptionDaily 額外有 `settlement_price` 欄位(獨立於 `close`),為當日結算價,未來若需做保證金 / Greeks 衍生計算需採此欄位而非 `close`。
+- **(新增 by 對抗驗證)** TaiwanOptionDaily 中 5,638 個 TXO row 僅 1,697 個 `volume > 0`;parser 在做履約價排行時應先過濾 0 量 row,避免大量 ties 與虛假信號。
+
+### Adversarial verification
+
+- **Lens 1 (mapping correctness):** confirms_mapping=true,recommended_action=`modify_spec`。rationale:逐欄核對 oi_lt_field_map / option_daily_field_map 所有 mapped field name 都在 probe 的 field_names 中出現,long/short × top5/10 × trader(=all)/specific(=prop) 8 欄組合與 sample rows 一致,沒有幻覺欄位。唯需補 (1) 跨資料集 option_id 格式不對齊、(2) data_id_literals 只對 Daily 有效兩條 delta。
+- **Lens 2 (completeness):** confirms_mapping=false,recommended_action=`modify_spec`。rationale:spec_deltas 捕捉到大型 schema 變動(contract_type 改名、trading_session 雙重維度、trader vs specific 術語、data_id→option_id 改名),但漏掉 (a) `data_id_literals` 缺 TXO/TEO/TFO/TGO 等指數代碼、(b) 兩 dataset option_id 格式不同 silent join 失敗、(c) `settlement_price`、market_open_interest 範圍、零量 row 處理。皆為完整性 gap,不影響核心假設。
+- **Lens 3 (parser pitfalls):** confirms_mapping=false,recommended_action=`modify_spec`。rationale:最高風險為 (1) `call_put` vs `put_call` 欄位名 flip,共用 parser 會 KeyError 或 silent 合併 call/put;(2) `oi_lt_field_map` 漏 put_call 與 option_id 欄位、`option_daily_field_map` 漏 trading_session 一級欄位,parser 嚴格依 field_map 實作會繼承 2x 重複計算 bug。其餘 (3) data_id_literals 兩 dataset 共用會 reject LargeTraders 全部 stock-option row、(4) market_open_interest 除零 guard。皆機械式可修,不需人工判斷。
