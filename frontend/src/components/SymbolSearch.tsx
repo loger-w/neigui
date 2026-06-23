@@ -12,9 +12,14 @@ export function SymbolSearch({ onPick, placeholder = "搜尋代號或名稱..." 
   const [results, setResults] = useState<Array<{ symbol: string; name: string }>>([]);
   const [open, setOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reqIdRef = useRef(0);
 
   const search = useCallback((q: string) => {
     if (timerRef.current) clearTimeout(timerRef.current);
+    // Every input change invalidates any in-flight request: if an older
+    // response arrives after a newer one, the seq check below drops it
+    // instead of overwriting the dropdown with stale results.
+    const myReq = ++reqIdRef.current;
     if (!q.trim()) {
       setResults([]);
       setOpen(false);
@@ -23,9 +28,11 @@ export function SymbolSearch({ onPick, placeholder = "搜尋代號或名稱..." 
     timerRef.current = setTimeout(async () => {
       try {
         const r = await api.symbols(q.trim());
+        if (myReq !== reqIdRef.current) return;
         setResults(r);
         setOpen(r.length > 0);
       } catch {
+        if (myReq !== reqIdRef.current) return;
         setResults([]);
       }
     }, 200);
