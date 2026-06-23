@@ -347,3 +347,27 @@ async def test_fetch_oi_large_traders_returns_cached_on_second_call():
     second = await fm.fetch_oi_large_traders(contract, "2025-01-01")
     assert first == second
     assert mc.get.await_count == 1  # second call hit cache
+
+
+@pytest.mark.asyncio
+async def test_fetch_strike_volume_writes_cache_and_returns_shape():
+    from services.finmind import FinMindClient
+    today = "2026-06-23"
+    rows = [
+        _od_row("2026-06-20", "202607", "call", 22000, 14000, 33100),
+        _od_row(today, "202607", "call", 22000, 18500, 35200),
+        _od_row(today, "202607", "call", 22100, 12100, 30000),
+        _od_row(today, "202607", "put",  21500, 14200, 28100),
+    ]
+    mc = _mock_http(_fm_resp(rows))
+    fm = FinMindClient()
+    fm._http = mc
+    contract = {"option_id": "TXO", "contract_date": "202607", "contract_type": "202607"}
+    out = await fm.fetch_strike_volume(contract, today, top_n=2)
+    assert out["contract"] == "TXO202607"
+    assert out["date"] == today
+    assert [c["strike"] for c in out["call"]] == [22000, 22100]
+    assert out["call"][0]["oi_change"] == 35200 - 33100
+    assert [p["strike"] for p in out["put"]] == [21500]
+    from utils.cache import chip_cache_dir
+    assert (chip_cache_dir() / "TXO202607_2026-06-23_strike_vol_top2.json").exists()
