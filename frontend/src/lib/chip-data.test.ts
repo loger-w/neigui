@@ -171,4 +171,37 @@ describe("buildTradeRows", () => {
     const { buyRows } = buildTradeRows(trades, "X", 10);
     expect(buyRows.map((r) => r.volume)).toEqual([100, 50, 5]);
   });
+
+  // F12 (user request): the bubble-view's right side trade list should
+  // surface EVERY broker who traded today, including 1-張 (vol=1) ones. The
+  // caller now passes Number.POSITIVE_INFINITY for maxRows so the cap no
+  // longer trims the long tail.
+  it("with no selection and uncapped maxRows: every non-zero buy/sell row is returned, including vol=1", () => {
+    const trades: BrokerTrade[] = [];
+    // 250 big-volume brokers (would have filled an old 200-row cap by themselves)
+    for (let i = 0; i < 250; i++) {
+      trades.push(mkTrade(`big-${i}`, 100, 1000 + i, 0));
+    }
+    // long tail of 1-張 brokers — these used to disappear behind the cap
+    for (let i = 0; i < 50; i++) {
+      trades.push(mkTrade(`tail-${i}`, 100, 1, 1));
+    }
+
+    const { buyRows, sellRows } = buildTradeRows(
+      trades,
+      null,
+      Number.POSITIVE_INFINITY,
+    );
+
+    // 250 big buys + 50 tail buys → 300 buy rows.
+    expect(buyRows).toHaveLength(300);
+    // 50 tail sells only (big brokers had sell=0).
+    expect(sellRows).toHaveLength(50);
+
+    // Every 1-張 tail broker survives in buyRows AND sellRows.
+    const buyVol1Count = buyRows.filter((r) => r.volume === 1).length;
+    const sellVol1Count = sellRows.filter((r) => r.volume === 1).length;
+    expect(buyVol1Count).toBe(50);
+    expect(sellVol1Count).toBe(50);
+  });
 });

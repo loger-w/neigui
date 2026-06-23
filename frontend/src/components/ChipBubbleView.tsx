@@ -12,7 +12,11 @@ interface Props {
   symbol: string;
 }
 
-const MAX_TRADE_ROWS = 200;
+// F12: surface every broker who traded today, including 1-張 ones. The
+// bubble chart still applies its own threshold/top-100 layout slice; the
+// right-side trade list intentionally does NOT — the user explicitly wants
+// the long tail visible there.
+const MAX_TRADE_ROWS = Number.POSITIVE_INFINITY;
 
 export function ChipBubbleView({ bubbleData, closePrice, symbol }: Props) {
   const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
