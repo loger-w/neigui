@@ -30,13 +30,17 @@ def _today_str() -> str:
     return date.today().isoformat()
 
 
-def _is_zero_oi(payload: dict) -> bool:
-    cur = payload.get("current", {})
-    for grp in ("top5_prop", "top10_prop", "top5_all", "top10_all"):
-        v = cur.get(grp, {})
-        if v.get("long") or v.get("short"):
-            return False
-    return not payload.get("series")
+def _is_stale_for_requested(payload: dict, requested_date: str) -> bool:
+    """A payload is "stale" for the requested date when the parser's actual
+    data is from a different date (or there is no data at all). This is the
+    canonical signal for non-trading-day / pre-publish UX banners.
+
+    See spec §2.5: any time the user's selected date does not correspond
+    to a real FinMind trading row, surface no_trading_day=true so the
+    frontend can render the grey "[date] 無交易" banner.
+    """
+    as_of = payload.get("as_of_date")
+    return as_of is None or as_of != requested_date
 
 
 @router.get("/api/options/oi_large_traders")
@@ -61,7 +65,7 @@ async def get_oi_large_traders(
     except Exception:
         logger.exception("Unexpected options OI error")
         raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
-    if d == _today_str() and _is_zero_oi(out):
+    if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
     return out
 
@@ -91,6 +95,6 @@ async def get_strike_volume(
     except Exception:
         logger.exception("Unexpected options strike-vol error")
         raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
-    if d == _today_str() and not out.get("call") and not out.get("put"):
+    if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
     return out

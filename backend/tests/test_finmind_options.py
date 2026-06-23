@@ -275,7 +275,46 @@ def test_parse_strike_volume_drops_zero_volume_rows():
 def test_parse_strike_volume_empty_returns_empty_lists():
     from services.finmind_options import parse_strike_volume
     out = parse_strike_volume([], "202607", top_n=10)
-    assert out == {"call": [], "put": []}
+    assert out == {"call": [], "put": [], "as_of_date": None}
+
+
+# ---------------------------------------------------------------------------
+# Bug fix: as_of_date exposure for non-trading-day banner detection
+# ---------------------------------------------------------------------------
+
+
+def test_parse_oi_large_traders_exposes_as_of_date():
+    """Banner detection needs to know the actual date `current` represents."""
+    from services.finmind_options import parse_oi_large_traders
+    rows = [
+        _oi_row("2026-06-19", "call",
+                buy_top10_trader_open_interest=100, sell_top10_trader_open_interest=50),
+        _oi_row("2026-06-19", "put",
+                buy_top10_trader_open_interest=40, sell_top10_trader_open_interest=60),
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607")
+    assert out["as_of_date"] == "2026-06-19"
+
+
+def test_parse_oi_large_traders_empty_as_of_date_is_none():
+    from services.finmind_options import parse_oi_large_traders
+    out = parse_oi_large_traders([], contract_type="202607")
+    assert out["as_of_date"] is None
+
+
+def test_parse_strike_volume_exposes_as_of_date():
+    from services.finmind_options import parse_strike_volume
+    rows = [
+        _od_row("2026-06-19", "202607", "call", 22000, 18500, 35200),
+    ]
+    out = parse_strike_volume(rows, "202607", top_n=1)
+    assert out["as_of_date"] == "2026-06-19"
+
+
+def test_parse_strike_volume_empty_as_of_date_is_none():
+    from services.finmind_options import parse_strike_volume
+    out = parse_strike_volume([], "202607", top_n=10)
+    assert out["as_of_date"] is None
 
 
 # ---------------------------------------------------------------------------

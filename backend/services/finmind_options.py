@@ -126,7 +126,7 @@ def parse_oi_large_traders(
         if r.get("option_id") == option_id and r.get("contract_type") == contract_type
     ]
     if not filtered:
-        return {"current": _zero_current(), "series": []}
+        return {"current": _zero_current(), "series": [], "as_of_date": None}
 
     # Group by date, then split call vs put within each date.
     by_date: dict[str, dict[str, dict]] = {}
@@ -140,6 +140,8 @@ def parse_oi_large_traders(
         by_date.setdefault(d, {})[leg] = r
 
     dates_sorted = sorted(by_date.keys())
+    if not dates_sorted:
+        return {"current": _zero_current(), "series": [], "as_of_date": None}
 
     last_date = dates_sorted[-1]
     current = _aggregate_call_put_pair(
@@ -157,7 +159,7 @@ def parse_oi_large_traders(
             "top10_prop_net": agg["top10_prop"]["net"],
         })
 
-    return {"current": current, "series": series}
+    return {"current": current, "series": series, "as_of_date": last_date}
 
 
 def parse_strike_volume(
@@ -180,7 +182,7 @@ def parse_strike_volume(
         and r.get("contract_date") == contract_date
     ]
     if not matched:
-        return {"call": [], "put": []}
+        return {"call": [], "put": [], "as_of_date": None}
 
     # Aggregate (date, call_put, strike) across trading_session.
     agg: dict[tuple[str, str, float], dict] = {}
@@ -201,7 +203,7 @@ def parse_strike_volume(
             bucket["oi"] = oi
 
     if not agg:
-        return {"call": [], "put": []}
+        return {"call": [], "put": [], "as_of_date": None}
 
     dates = sorted({k[0] for k in agg})
     today = dates[-1]
@@ -222,4 +224,4 @@ def parse_strike_volume(
             })
         return out
 
-    return {"call": side("call"), "put": side("put")}
+    return {"call": side("call"), "put": side("put"), "as_of_date": today}

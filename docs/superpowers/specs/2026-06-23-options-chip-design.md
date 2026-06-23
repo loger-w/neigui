@@ -50,6 +50,7 @@ GET /api/options/strike_volume?contract={code}&date={YYYY-MM-DD}&top_n=10&refres
   "contract": "TXO202607",
   "date": "2026-06-23",
   "fetched_at": "2026-06-23T14:30:00",
+  "as_of_date": "2026-06-23",
   "current": {
     "top5_prop":   { "long": 12500, "short": 8200,  "net": 4300 },
     "top10_prop":  { "long": 18000, "short": 11000, "net": 7000 },
@@ -63,6 +64,8 @@ GET /api/options/strike_volume?contract={code}&date={YYYY-MM-DD}&top_n=10&refres
 }
 ```
 
+`as_of_date` = `current` 所在的真實 FinMind 日期(若 `requested date` 為非交易日,fallback 至最近交易日)。`null` 表示完全沒資料。
+
 - `prop` = 特定法人;`all` = 全交易人(含特定法人)
 - `series` 只回 top10 兩條淨額曲線(MVP 不過度;前 5 趨勢之後再加)
 - 單位 = 口
@@ -74,6 +77,7 @@ GET /api/options/strike_volume?contract={code}&date={YYYY-MM-DD}&top_n=10&refres
   "contract": "TXO202607",
   "date": "2026-06-23",
   "fetched_at": "2026-06-23T14:30:00",
+  "as_of_date": "2026-06-23",
   "call": [
     { "strike": 22000, "volume": 18500, "oi": 35200, "oi_change": 2100 },
     ...top_n
@@ -84,6 +88,8 @@ GET /api/options/strike_volume?contract={code}&date={YYYY-MM-DD}&top_n=10&refres
   ]
 }
 ```
+
+`as_of_date` 同 `oi_large_traders`,前端做 banner 觸發判定。
 
 - `top_n` 預設 10,query 可調 1..20,超出回 400
 - `oi_change` = 今日 OI − 前一個交易日 OI(該履約價);前一日無資料 → 0
@@ -152,11 +158,17 @@ def list_active_contracts(today: date) -> list[Contract]: ...
 | `contract_required` | 400 | query 沒帶 contract |
 | `invalid_contract` | 400 | contract 不在 `list_active_contracts` 內 |
 | `top_n_out_of_range` | 400 | top_n < 1 或 > 20 |
-| `no_trading_day` | 200(空 payload + flag)| FinMind 回空 list 且 date == today(假日 / 週末) |
+| `no_trading_day` | 200(payload 含 `no_trading_day: true` flag)| 任何 `requested_date != as_of_date`(包括 `as_of_date` 為 None)— 涵蓋假日 / 週末 / 今日 close 前未發佈三種情境 |
 | `finmind_error` | 502 | httpx HTTP/timeout/connect 異常 |
 | `unexpected_error` | 502 | 其他 |
 
-`no_trading_day` **不**走 HTTPException — 改回正常 200 帶 `{contract, date, no_trading_day: true}`,前端用灰 banner 顯示「[date] 無交易」(非錯誤紅)。
+`no_trading_day` **不**走 HTTPException — 改回正常 200 帶 `{contract, date, as_of_date, no_trading_day: true, …}`。前端用灰 banner 顯示「[date] 無交易」(非錯誤紅)。
+
+`as_of_date` 為 parser 端的真實資料日期(`current` / strike rows 來自哪一天):
+- 用戶請求週六 → FinMind 回到週五為止 → parser `as_of_date = "2026-06-19"` ≠ requested `"2026-06-20"` → 設 `no_trading_day=true`,fallback 資料仍展示但有明確視覺提示
+- 用戶請求今日盤中(close 前 FinMind 尚未發佈) → `as_of_date = "<前一交易日>"` ≠ requested today → 同理 banner 觸發
+- 用戶請求真實交易日且資料完整 → `as_of_date == requested` → 無 banner
+- 完全沒資料(filtered 為空) → `as_of_date = None` → banner 觸發
 
 ### 2.6 程式碼組織
 
