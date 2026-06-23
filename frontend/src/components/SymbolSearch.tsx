@@ -1,54 +1,49 @@
-import { useCallback, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Input } from "./ui/input";
-import { api } from "@/lib/api";
+import { useAllSymbols } from "@/hooks/useAllSymbols";
 
 interface Props {
   onPick: (symbol: string, name: string | null) => void;
   placeholder?: string;
 }
 
+type Sym = { symbol: string; name: string };
+
 export function SymbolSearch({ onPick, placeholder = "搜尋代號或名稱..." }: Props) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Array<{ symbol: string; name: string }>>([]);
   const [open, setOpen] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reqIdRef = useRef(0);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { symbols, loading, error } = useAllSymbols();
 
-  const search = useCallback((q: string) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    // Every input change invalidates any in-flight request: if an older
-    // response arrives after a newer one, the seq check below drops it
-    // instead of overwriting the dropdown with stale results.
-    const myReq = ++reqIdRef.current;
-    if (!q.trim()) {
-      setResults([]);
-      setOpen(false);
-      return;
-    }
-    timerRef.current = setTimeout(async () => {
-      try {
-        const r = await api.symbols(q.trim());
-        if (myReq !== reqIdRef.current) return;
-        setResults(r);
-        setOpen(r.length > 0);
-      } catch {
-        if (myReq !== reqIdRef.current) return;
-        setResults([]);
+  const results = useMemo<Sym[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const out: Sym[] = [];
+    for (const s of symbols) {
+      if (s.symbol.startsWith(q) || s.name.toLowerCase().includes(q)) {
+        out.push(s);
+        if (out.length >= 20) break;
       }
-    }, 200);
-  }, []);
+    }
+    return out;
+  }, [symbols, query]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
     setQuery(v);
-    search(v);
+    setOpen(v.trim().length > 0);
   };
 
-  const handlePick = (s: { symbol: string; name: string }) => {
+  const handlePick = (s: Sym) => {
     setQuery(s.symbol);
     setOpen(false);
     onPick(s.symbol, s.name);
   };
+
+  const hasQuery = query.trim().length > 0;
+  const showLoading = open && loading && hasQuery && results.length === 0;
+  const showError = open && !!error && results.length === 0 && hasQuery;
+  const showDropdown = open && (results.length > 0 || showLoading || showError);
 
   return (
     <div className="relative">
@@ -56,12 +51,21 @@ export function SymbolSearch({ onPick, placeholder = "搜尋代號或名稱..." 
         value={query}
         onChange={handleChange}
         onFocus={() => results.length > 0 && setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() => {
+          if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+          closeTimerRef.current = setTimeout(() => setOpen(false), 150);
+        }}
         placeholder={placeholder}
         className="bg-bg-deep border-line text-ink"
       />
-      {open && (
+      {showDropdown && (
         <div className="absolute z-50 top-full left-0 w-full mt-1 bg-bg-deep border border-line max-h-60 overflow-y-auto">
+          {showLoading && (
+            <div className="px-3 py-2 text-sm text-ink-muted">載入中...</div>
+          )}
+          {showError && (
+            <div className="px-3 py-2 text-sm text-bear">{error}</div>
+          )}
           {results.map((r) => (
             <button
               key={r.symbol}

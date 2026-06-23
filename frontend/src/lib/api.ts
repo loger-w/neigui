@@ -96,4 +96,7 @@ export const api = {
   symbols(search: string): Promise<Array<{ symbol: string; name: string }>> {
     return get(`${BASE}/symbols`, { search });
   },
+  symbolsAll(): Promise<Array<{ symbol: string; name: string }>> {
+    return get(`${BASE}/symbols/all`);
+  },
 };

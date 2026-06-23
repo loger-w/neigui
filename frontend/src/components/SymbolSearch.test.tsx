@@ -2,107 +2,156 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, fireEvent, screen, act, cleanup } from "@testing-library/react";
+import { render, fireEvent, screen, act, cleanup, waitFor } from "@testing-library/react";
 import { SymbolSearch } from "./SymbolSearch";
 import { api } from "@/lib/api";
-
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-  vi.restoreAllMocks();
-});
-
-beforeEach(() => {
-  vi.useFakeTimers();
-});
+import { __resetAllSymbolsCacheForTesting } from "@/hooks/useAllSymbols";
 
 type Sym = { symbol: string; name: string };
 
+const ALL: Sym[] = [
+  { symbol: "2330", name: "台積電" },
+  { symbol: "2317", name: "鴻海" },
+  { symbol: "2308", name: "台達電" },
+  { symbol: "2301", name: "光寶科" },
+  { symbol: "2454", name: "聯發科" },
+  { symbol: "00735L", name: "華頓越南正2" },
+];
+
+beforeEach(() => {
+  __resetAllSymbolsCacheForTesting();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+async function flushLoad() {
+  // Resolve the useEffect-scheduled load() promise and let setState commit.
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 describe("SymbolSearch", () => {
-  it("ignores a stale response that resolves AFTER a newer query's response", async () => {
-    // Two controllable promises — we choose resolve order
-    let resolve23!: (v: Sym[]) => void;
-    let resolve2330!: (v: Sym[]) => void;
-    const p23 = new Promise<Sym[]>((r) => { resolve23 = r; });
-    const p2330 = new Promise<Sym[]>((r) => { resolve2330 = r; });
-
-    const spy = vi.spyOn(api, "symbols").mockImplementation((q: string) => {
-      if (q === "23") return p23;
-      if (q === "2330") return p2330;
-      return Promise.resolve([]);
-    });
-
+  it("filters by symbol prefix after the symbol list loads", async () => {
+    vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
     render(<SymbolSearch onPick={vi.fn()} />);
+    await flushLoad();
+
     const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
-
-    // Type "23" -> fire debounce -> request for "23" goes out
     fireEvent.change(input, { target: { value: "23" } });
-    await act(async () => { vi.advanceTimersByTime(200); });
-    expect(spy).toHaveBeenCalledWith("23");
 
-    // Type "2330" -> fire debounce -> request for "2330" goes out
-    fireEvent.change(input, { target: { value: "2330" } });
-    await act(async () => { vi.advanceTimersByTime(200); });
-    expect(spy).toHaveBeenCalledWith("2330");
-
-    // The newer request ("2330") resolves FIRST with a single hit
-    await act(async () => {
-      resolve2330([{ symbol: "2330", name: "台積電" }]);
-      await Promise.resolve();
-    });
     expect(screen.getByText("台積電")).toBeTruthy();
-
-    // Then the OLDER stale request ("23") resolves with a 23xx list.
-    // It must NOT overwrite the newer result.
-    await act(async () => {
-      resolve23([
-        { symbol: "2301", name: "東元" },
-        { symbol: "2308", name: "台達電" },
-        { symbol: "2330", name: "台積電" },
-      ]);
-      await Promise.resolve();
-    });
-
-    // The dropdown should still reflect the LATEST query "2330" only.
-    // 東元 / 台達電 only exist in the stale response, so seeing them = bug.
-    expect(screen.queryByText("東元")).toBeNull();
-    expect(screen.queryByText("台達電")).toBeNull();
-    expect(screen.getByText("台積電")).toBeTruthy();
+    expect(screen.getByText("鴻海")).toBeTruthy();
+    expect(screen.getByText("台達電")).toBeTruthy();
+    expect(screen.getByText("光寶科")).toBeTruthy();
+    expect(screen.queryByText("聯發科")).toBeNull();
   });
 
-  it("debounces fast typing so only the final query is sent", async () => {
-    const spy = vi.spyOn(api, "symbols").mockResolvedValue([]);
-
+  it("filters by name substring case-insensitively", async () => {
+    vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
     render(<SymbolSearch onPick={vi.fn()} />);
+    await flushLoad();
+
+    fireEvent.change(screen.getByPlaceholderText(/搜尋代號或名稱/), {
+      target: { value: "台" },
+    });
+    expect(screen.getByText("台積電")).toBeTruthy();
+    expect(screen.getByText("台達電")).toBeTruthy();
+    expect(screen.queryByText("聯發科")).toBeNull();
+  });
+
+  it("narrows results as the query gets longer (no stale flicker)", async () => {
+    vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
+    render(<SymbolSearch onPick={vi.fn()} />);
+    await flushLoad();
+
     const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
-
-    fireEvent.change(input, { target: { value: "2" } });
-    await act(async () => { vi.advanceTimersByTime(50); });
     fireEvent.change(input, { target: { value: "23" } });
-    await act(async () => { vi.advanceTimersByTime(50); });
-    fireEvent.change(input, { target: { value: "233" } });
-    await act(async () => { vi.advanceTimersByTime(50); });
-    fireEvent.change(input, { target: { value: "2330" } });
-    await act(async () => { vi.advanceTimersByTime(200); });
+    expect(screen.getByText("光寶科")).toBeTruthy();
 
+    fireEvent.change(input, { target: { value: "2330" } });
+    expect(screen.getByText("台積電")).toBeTruthy();
+    expect(screen.queryByText("光寶科")).toBeNull();
+    expect(screen.queryByText("鴻海")).toBeNull();
+  });
+
+  it("hits the API at most once across many keystrokes", async () => {
+    const spy = vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
+    render(<SymbolSearch onPick={vi.fn()} />);
+    await flushLoad();
+
+    const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
+    for (const v of ["2", "23", "233", "2330", "233", "23", "2"]) {
+      fireEvent.change(input, { target: { value: v } });
+    }
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy).toHaveBeenCalledWith("2330");
+  });
+
+  it("shows 載入中 placeholder while the list is still loading", async () => {
+    let resolveAll!: (v: Sym[]) => void;
+    vi.spyOn(api, "symbolsAll").mockReturnValue(
+      new Promise<Sym[]>((r) => { resolveAll = r; }),
+    );
+    render(<SymbolSearch onPick={vi.fn()} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/搜尋代號或名稱/), {
+      target: { value: "2330" },
+    });
+    expect(screen.getByText("載入中...")).toBeTruthy();
+
+    await act(async () => {
+      resolveAll(ALL);
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("載入中...")).toBeNull();
+      expect(screen.getByText("台積電")).toBeTruthy();
+    });
+  });
+
+  it("caps the dropdown at 20 results even when many symbols match", async () => {
+    const many: Sym[] = Array.from({ length: 50 }, (_, i) => ({
+      symbol: `2${String(i).padStart(3, "0")}`,
+      name: `S${i}`,
+    }));
+    vi.spyOn(api, "symbolsAll").mockResolvedValue(many);
+    render(<SymbolSearch onPick={vi.fn()} />);
+    await flushLoad();
+
+    fireEvent.change(screen.getByPlaceholderText(/搜尋代號或名稱/), {
+      target: { value: "2" },
+    });
+    const items = document.querySelectorAll("button");
+    expect(items.length).toBe(20);
   });
 
   it("closes dropdown and clears results when query is emptied", async () => {
-    vi.spyOn(api, "symbols").mockResolvedValue([
-      { symbol: "2330", name: "台積電" },
-    ]);
-
+    vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
     render(<SymbolSearch onPick={vi.fn()} />);
-    const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
+    await flushLoad();
 
+    const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
     fireEvent.change(input, { target: { value: "2330" } });
-    await act(async () => { vi.advanceTimersByTime(200); });
-    await act(async () => { await Promise.resolve(); });
     expect(screen.getByText("台積電")).toBeTruthy();
 
     fireEvent.change(input, { target: { value: "" } });
     expect(screen.queryByText("台積電")).toBeNull();
+  });
+
+  it("invokes onPick with symbol + name when an item is selected", async () => {
+    vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
+    const onPick = vi.fn();
+    render(<SymbolSearch onPick={onPick} />);
+    await flushLoad();
+
+    fireEvent.change(screen.getByPlaceholderText(/搜尋代號或名稱/), {
+      target: { value: "2330" },
+    });
+    fireEvent.mouseDown(screen.getByText("2330"));
+    expect(onPick).toHaveBeenCalledWith("2330", "台積電");
   });
 });

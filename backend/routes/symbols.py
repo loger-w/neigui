@@ -53,3 +53,8 @@ async def search_symbols(search: str = Query(default="", min_length=1)) -> list[
             if len(results) >= 20:
                 break
     return results
+
+
+@router.get("/api/symbols/all")
+async def all_symbols() -> list[dict]:
+    return _symbols
