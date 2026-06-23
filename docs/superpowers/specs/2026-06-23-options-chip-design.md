@@ -90,27 +90,52 @@ GET /api/options/strike_volume?contract={code}&date={YYYY-MM-DD}&top_n=10&refres
 
 ### 2.2 FinMind dataset 對應
 
-| Endpoint | FinMind dataset | 抓取窗口 |
-|---|---|---|
-| `oi_large_traders.current` + `.series` | `TaiwanOptionOpenInterestLargeTraders` | `start_date = date − 35 calendar days`, `end_date = date`;程式內取最後 1 筆為 current、最後 20 筆為 series |
-| `strike_volume` | `TaiwanOptionDaily` | `start_date = date − 7 calendar days`, `end_date = date`;程式內取最後兩個交易日算 oi_change |
+| Endpoint | FinMind dataset | 抓取窗口 | 過濾 / 聚合 |
+|---|---|---|---|
+| `oi_large_traders.current` + `.series` | `TaiwanOptionOpenInterestLargeTraders` | `start_date = date − 35 calendar days`, `end_date = date`;程式內取最後 1 筆為 current、最後 20 筆為 series | `option_id == 'TXO'` AND `contract_type == <contract.contract_type>`;每天的 (call, put) 兩 row 用 delta-equivalent 公式聚合(下方) |
+| `strike_volume` | `TaiwanOptionDaily` | `start_date = date − 7 calendar days`, `end_date = date`;程式內取最後兩個交易日算 oi_change | `option_id == 'TXO'` AND `contract_date == <contract.contract_date>`;同 (date, strike, call_put) 在 `trading_session ∈ {position, after_market}` 兩 row,parser **加總**為當日全日量 |
 
 選 35 cal days 是為了在連假後仍能涵蓋 20 個交易日;7 cal days 是因為只需要前一個交易日,留 buffer 應付連假。
+
+#### Call / Put 聚合公式(delta-equivalent net OI)
+
+FinMind `TaiwanOptionOpenInterestLargeTraders` 每天每個合約有 2 row(`put_call ∈ {call, put}`),每 row 含 buy/sell 各 4 個 OI 欄位(`top{5,10}_{trader, specific}`)。Parser 把 call/put 兩 row 聚合為「看多/看空」OI:
+
+```
+long  (看多 OI) = call.buy_top{N}_{cat} + put.sell_top{N}_{cat}
+short (看空 OI) = call.sell_top{N}_{cat} + put.buy_top{N}_{cat}
+net = long − short
+```
+
+物理意義:買 Call + 賣 Put 都是看多曝險;賣 Call + 買 Put 都是看空曝險。Net 直接代表「大戶淨多空方向」,是台股期權籌碼分析最常見的單一指標。
+
+此聚合**保留** §2.1 response 的 4 組 × {long, short, net} shape 不變,**parser 內部**處理 call/put 兩 row。
 
 ### 2.3 合約代碼
 
 `backend/services/finmind_options.py` 提供純函式:
 
 ```python
-def list_active_contracts(today: date) -> list[ContractCode]: ...
+def list_active_contracts(today: date) -> list[Contract]: ...
 # 回傳 7 個:
 # - 週選 W1..W4(最近 4 個結算週三,排除月選結算週)
 # - 月選 M0..M2(當月、次月、季月)
 ```
 
-`ContractCode` = `{code: str, label: str, kind: "weekly" | "monthly", settlement: date}`。
+`Contract` = 字典/dataclass:
+- `slot: str` — `W1..W4` / `M0..M2`
+- `kind: "weekly" | "monthly"`
+- `option_id: str` — 一律 `"TXO"`(spec §1.1 只做 TXO)
+- `contract_date: str` — 給 `TaiwanOptionDaily` 用。月選 = `YYYYMM`(e.g. `202607`),週選 = `YYYYMMW{ordinal}`(e.g. `202607W2`)
+- `contract_type: str` — 給 `TaiwanOptionOpenInterestLargeTraders` 用。月選 = `YYYYMM`(同 contract_date),週選 = **`"week"` 字面值**(FinMind 沒有 per-week 大戶 OI 粒度;近週週選整批 aggregate)
+- `label: str` — UI 顯示用
+- `settlement: str` — ISO date
 
-前端 `lib/options-contract.ts` 維持同樣邏輯,但用 TypeScript 重寫(避免前端額外打 backend 一次)。**兩邊靠 unit test 守住 parity**:同樣 input date,兩邊 output 必須完全一致(test fixture 共用 JSON)。
+**權衡:weekly 大戶 OI 為 aggregate**(FinMind 限制)。`list_active_contracts` 仍回傳 4 個 weekly slot(各有獨立 `contract_date` 供 strike_volume 用),但所有 weekly 共享 `contract_type='week'`。UI 在 weekly 被選時顯示 banner(§3.3)。
+
+**忽略 F-suffix**:Phase 0 觀察到 `TaiwanOptionDaily` 有 `YYYYMMF{3,4,5}` 形式的 contract_date(疑似特殊週選 / 季月跨期合約)。本 spec 不處理,`list_active_contracts` 只產出 `^YYYYMM$` 月選 + `^YYYYMMW\d+$` 標準週選;F-suffix 合約若未來需要再加。
+
+前端 `lib/options-contract.ts` 維持同樣邏輯,用 TypeScript 重寫。**兩邊靠 unit test 守住 parity**:同樣 input date,兩邊 output 必須完全一致(test fixture 共用 JSON)。
 
 ### 2.4 快取
 
@@ -226,6 +251,14 @@ OptionsPage
 - 預設選 W1(`list_active_contracts` 已排除已結算的合約,所以 W1 永遠 = 最近未結算的週選結算週三)
 - localStorage 持久化「上次選的 contract kind」(weekly / monthly):重整後 kind 維持,具體哪一個 W1 / M0 由系統依當前日期重算
 - 不持久具體的 contract code 本身(會在跨日 / 跨結算後失效)
+
+#### 週選大戶 OI aggregate banner
+
+當 `contract.kind === "weekly"` 時,在 `<OptionsLargeTradersPanel>` 標頭旁顯示資訊 banner:
+
+> 📌 大戶 OI 為近週週選 aggregate(FinMind `contract_type='week'`),W1..W4 顯示同一份資料。熱門履約價依各週合約獨立。
+
+樣式:`text-ink-dim text-xs px-3 py-1 bg-ink/[0.03] rounded`。不是錯誤、不是警告,純資訊。Monthly 選擇時 banner 隱藏。
 
 ### 3.4 兩個 hooks
 

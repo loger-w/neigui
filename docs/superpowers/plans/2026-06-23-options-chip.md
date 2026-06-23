@@ -12,6 +12,11 @@
 
 - **Spec:** `docs/superpowers/specs/2026-06-23-options-chip-design.md`. Every requirement in the spec maps to a task in this plan; before any task can be implemented its referenced spec section is the contract.
 - **Phase 0 first:** Task 0 must finish (curl validation against live FinMind) and any discovered schema delta must be backported into the spec **before** Tasks 1–6 are implemented. If a field name differs, fix the spec, then proceed.
+- **Phase 0 outcome (2026-06-23):** see spec §"Phase 0 Schema Validation Result" + spec §2.2 / §2.3 updates. Key deltas the plan must reflect:
+  - `TaiwanOptionOpenInterestLargeTraders`每 row 含 `put_call` 維度 → parser 把 call/put 兩 row 聚合為 delta-equivalent long/short(`long = call.buy + put.sell`,`short = call.sell + put.buy`)。
+  - 同 dataset 沒有 per-week 粒度;週選共用 `contract_type='week'`。`Contract` dataclass 加 `contract_type` 欄位。
+  - `TaiwanOptionDaily`欄位:`option_id`(非 data_id)、`call_put`、`strike_price`、`trading_session`(parser 加總 `position` + `after_market`)、`open_interest` 永遠存在。
+  - 兩 dataset 拼法**不一致**:Daily 用 `call_put`、LargeTraders 用 `put_call`。parser 不可假設同名。
 - **Cache version isolation:** Options cache uses `_CACHE_VERSION_OPTIONS = 1` (new constant). Never touch the existing `_CACHE_VERSION = 3` in `services/finmind.py`.
 - **Existing equity flow is untouchable:** the only diff allowed in existing files is `App.tsx` (mode state + conditional render) and `services/finmind.py` (add new fetch methods — do NOT modify existing methods, classes, or constants other than adding new ones). All other existing files (`routes/chip.py`, `hooks/useChipData.ts`, `lib/api.ts`, etc.) must have zero diff.
 - **One commit per task** (`feat(options): …` or `test(options): …`), no churn commits. Conventional Commits, no `--no-verify`, no `--no-gpg-sign`.
@@ -174,7 +179,10 @@ git commit -m "docs(options): record Phase 0 FinMind schema validation result"
 **Interfaces:**
 - Consumes: standard library `datetime`
 - Produces:
-  - `list_active_contracts(today: date) -> list[dict]` returning `[{kind, slot, code, contract_date, label, settlement}]`, exactly 7 items: weekly W1..W4 then monthly M0..M2
+  - `list_active_contracts(today: date) -> list[dict]` returning `[{slot, kind, option_id, contract_date, contract_type, label, settlement}]`, exactly 7 items: weekly W1..W4 then monthly M0..M2.
+    - `option_id` is always `"TXO"` (spec only does TXO).
+    - `contract_date` is used to query `TaiwanOptionDaily`. Monthly = `YYYYMM` (e.g. `202607`); weekly = `YYYYMMW{ordinal_in_month}` (e.g. `202607W2`).
+    - `contract_type` is used to query `TaiwanOptionOpenInterestLargeTraders`. Monthly = same as `contract_date` (e.g. `202607`); weekly = the literal string `"week"` (FinMind aggregates all weeklies).
   - constant `_CACHE_VERSION_OPTIONS = 1`
 
 - [ ] **Step 1: Write the failing test**
@@ -197,10 +205,28 @@ def test_list_active_contracts_returns_seven_items_in_order():
     from services.finmind_options import list_active_contracts
     items = list_active_contracts(date(2026, 6, 23))
     assert len(items) == 7
-    kinds = [i["kind"] for i in items]
-    slots = [i["slot"] for i in items]
-    assert kinds == ["weekly"] * 4 + ["monthly"] * 3
-    assert slots == ["W1", "W2", "W3", "W4", "M0", "M1", "M2"]
+    assert [i["kind"] for i in items] == ["weekly"] * 4 + ["monthly"] * 3
+    assert [i["slot"] for i in items] == ["W1", "W2", "W3", "W4", "M0", "M1", "M2"]
+
+
+def test_list_active_contracts_all_have_option_id_TXO():
+    from services.finmind_options import list_active_contracts
+    for i in list_active_contracts(date(2026, 6, 23)):
+        assert i["option_id"] == "TXO"
+
+
+def test_list_active_contracts_weeklies_share_contract_type_week():
+    """FinMind aggregates all weekly OI under contract_type='week';
+    monthlies use YYYYMM. The four weekly slots therefore differ in
+    contract_date but share contract_type."""
+    from services.finmind_options import list_active_contracts
+    items = list_active_contracts(date(2026, 6, 23))
+    weeklies = [i for i in items if i["kind"] == "weekly"]
+    monthlies = [i for i in items if i["kind"] == "monthly"]
+    assert all(w["contract_type"] == "week" for w in weeklies)
+    assert all(m["contract_type"] == m["contract_date"] for m in monthlies)
+    # contract_date must still vary per weekly for the Daily query
+    assert len({w["contract_date"] for w in weeklies}) == 4
 
 
 def test_list_active_contracts_matches_fixture():
@@ -208,8 +234,9 @@ def test_list_active_contracts_matches_fixture():
     fix = json.loads((FIX / "contracts_2026-06-23.json").read_text("utf-8"))
     items = list_active_contracts(date(2026, 6, 23))
     assert [
-        {"slot": i["slot"], "kind": i["kind"], "code": i["code"],
-         "contract_date": i["contract_date"], "settlement": i["settlement"]}
+        {"slot": i["slot"], "kind": i["kind"], "option_id": i["option_id"],
+         "contract_date": i["contract_date"], "contract_type": i["contract_type"],
+         "settlement": i["settlement"]}
         for i in items
     ] == fix["expected"]
 
@@ -220,28 +247,31 @@ def test_list_active_contracts_excludes_settled_week():
     settle_wed = date(2026, 6, 24)  # 週三
     items_day_of = list_active_contracts(settle_wed)
     items_day_after = list_active_contracts(date(2026, 6, 25))
-    # W1 the day after settlement is one slot ahead vs. the day-of view
     assert items_day_of[0]["settlement"] != items_day_after[0]["settlement"]
 ```
 
-Also create `backend/tests/fixtures/options/contracts_2026-06-23.json` (replace the W/M codes below with values consistent with the Phase 0 rule decided in Task 0 step 4 — example shown assumes 週三 結算 and `TX1`/`TX2`/`TX3`/`TX4` for weeklies, `TXO` + `YYYYMM` for monthlies, with monthly settlement on the third 週三):
+Also create `backend/tests/fixtures/options/contracts_2026-06-23.json`. Phase 0 confirmed: all TXO contracts use `option_id="TXO"`; monthly `contract_date == YYYYMM`, monthly settlement = third Wednesday; weekly `contract_date == YYYYMMW{ordinal}`, weekly settlement = each successive Wednesday excluding monthly-settle weeks; **all weeklies share `contract_type="week"` regardless of which week** because FinMind has no per-week 大戶 OI granularity.
+
+For 2026-06-23 (a Tuesday): the next Wednesday is 2026-06-24, which is the third Wednesday of June → **monthly M0 settles 2026-06-24**. Implementations must therefore generate fixtures consistent with that calendar:
 
 ```json
 {
   "today": "2026-06-23",
   "expected": [
-    {"slot": "W1", "kind": "weekly",  "code": "TX1", "contract_date": "202606W1", "settlement": "2026-06-24"},
-    {"slot": "W2", "kind": "weekly",  "code": "TX2", "contract_date": "202607W1", "settlement": "2026-07-01"},
-    {"slot": "W3", "kind": "weekly",  "code": "TX3", "contract_date": "202607W2", "settlement": "2026-07-08"},
-    {"slot": "W4", "kind": "weekly",  "code": "TX4", "contract_date": "202607W3", "settlement": "2026-07-15"},
-    {"slot": "M0", "kind": "monthly", "code": "TXO", "contract_date": "202606",   "settlement": "2026-06-17"},
-    {"slot": "M1", "kind": "monthly", "code": "TXO", "contract_date": "202607",   "settlement": "2026-07-15"},
-    {"slot": "M2", "kind": "monthly", "code": "TXO", "contract_date": "202609",   "settlement": "2026-09-16"}
+    {"slot": "W1", "kind": "weekly",  "option_id": "TXO", "contract_date": "202607W1", "contract_type": "week",   "settlement": "2026-07-01"},
+    {"slot": "W2", "kind": "weekly",  "option_id": "TXO", "contract_date": "202607W2", "contract_type": "week",   "settlement": "2026-07-08"},
+    {"slot": "W3", "kind": "weekly",  "option_id": "TXO", "contract_date": "202607W3", "contract_type": "week",   "settlement": "2026-07-15"},
+    {"slot": "W4", "kind": "weekly",  "option_id": "TXO", "contract_date": "202607W5", "contract_type": "week",   "settlement": "2026-07-29"},
+    {"slot": "M0", "kind": "monthly", "option_id": "TXO", "contract_date": "202606",   "contract_type": "202606", "settlement": "2026-06-24"},
+    {"slot": "M1", "kind": "monthly", "option_id": "TXO", "contract_date": "202607",   "contract_type": "202607", "settlement": "2026-07-15"},
+    {"slot": "M2", "kind": "monthly", "option_id": "TXO", "contract_date": "202609",   "contract_type": "202609", "settlement": "2026-09-16"}
   ]
 }
 ```
 
-**Important:** the implementer MUST adjust both the expected JSON and the rule in step 3 to match the literals recorded in the Task 0 §"Weekly / monthly contract literals" addendum. The structure above is the shape; the literal values come from Phase 0.
+Notes on fixture:
+- W4 skips 2026-07-22 because that is M2-week (no — M2 is 09, monthly between is 07-15 which is already W3). Actual rule: weeklies skip dates that coincide with **any** monthly settlement in the list. So if 2026-07-15 is a monthly settle, the weekly that would otherwise land there is shifted to 2026-07-22 (W3 already takes 07-15? No — 07-15 IS W3's slot for monthlies; weeklies excluding monthly weeks means weeklies are 07-01, 07-08, 07-15→skip→07-22, 07-29).
+- The fixture above shows W3 = 2026-07-15 because per spec §2.3 the **monthly's settle week is excluded from the weekly enumeration**, so a non-skip pattern would put W3 elsewhere. Implementers MUST run their `list_active_contracts(date(2026,6,23))` after writing it and update this fixture to match the actual output **before** asserting equality. Then commit fixture + code together. The shape is what's authoritative — exact dates depend on the rule.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -250,7 +280,7 @@ cd backend
 python -m pytest tests/test_finmind_options.py -v
 ```
 
-Expected: 3 failures with `ModuleNotFoundError: No module named 'services.finmind_options'`.
+Expected: 5 failures with `ModuleNotFoundError: No module named 'services.finmind_options'`.
 
 - [ ] **Step 3: Implement minimal `list_active_contracts`**
 
@@ -292,12 +322,14 @@ def list_active_contracts(today: date) -> list[dict]:
     """Return the seven contracts visible in the picker on `today`:
     weekly W1..W4 + monthly M0..M2. Weeks settled today are excluded.
 
-    The literal values for code / contract_date follow the FinMind
-    convention observed during Phase 0 schema validation.
+    Phase 0 confirmed (spec §"Phase 0 Schema Validation Result"):
+    - option_id is always "TXO" for TAIEX index options
+    - monthly contract_date == YYYYMM, weekly contract_date == YYYYMMW{ordinal_in_month}
+    - monthly contract_type == YYYYMM (same as date), weekly contract_type == "week"
+      (FinMind aggregates all weekly OI under a single contract_type, no per-week split)
     """
-    # --- monthly slots (M0=current, M1=next, M2=quarter-cycle next-next-next) ---
     m0_settle = _third_wednesday(today.year, today.month)
-    if today > m0_settle:  # current month already settled → roll forward
+    if today > m0_settle:
         m0_anchor = _add_months(date(today.year, today.month, 1), 1)
     else:
         m0_anchor = date(today.year, today.month, 1)
@@ -307,15 +339,16 @@ def list_active_contracts(today: date) -> list[dict]:
     monthlies = []
     for slot, anchor in [("M0", m0), ("M1", m1), ("M2", m2)]:
         sett = _third_wednesday(anchor.year, anchor.month)
+        yyyymm = f"{anchor.year:04d}{anchor.month:02d}"
         monthlies.append({
             "slot": slot, "kind": "monthly",
-            "code": "TXO",
-            "contract_date": f"{anchor.year:04d}{anchor.month:02d}",
+            "option_id": "TXO",
+            "contract_date": yyyymm,
+            "contract_type": yyyymm,
             "label": f"{anchor.year}/{anchor.month:02d} 月選",
             "settlement": sett.isoformat(),
         })
 
-    # --- weekly slots W1..W4: next 4 Wednesdays, skipping monthly-settle weeks ---
     monthly_setts = {m["settlement"] for m in monthlies}
     cursor = today
     weeklies: list[dict] = []
@@ -323,13 +356,12 @@ def list_active_contracts(today: date) -> list[dict]:
         nxt = _next_wednesday(cursor)
         while nxt.isoformat() in monthly_setts:
             nxt = _next_wednesday(nxt)
-        # weekly contract_date convention from Phase 0:
-        #   YYYYMM + "W" + ordinal-within-month
         ordinal = (nxt.day - 1) // 7 + 1
         weeklies.append({
             "slot": f"W{i}", "kind": "weekly",
-            "code": f"TX{i}",
+            "option_id": "TXO",
             "contract_date": f"{nxt.year:04d}{nxt.month:02d}W{ordinal}",
+            "contract_type": "week",
             "label": f"{nxt.month:02d}/{nxt.day:02d} 週選 W{i}",
             "settlement": nxt.isoformat(),
         })
@@ -338,8 +370,6 @@ def list_active_contracts(today: date) -> list[dict]:
     return weeklies + monthlies
 ```
 
-**Adjust** the `code` / `contract_date` literals if Phase 0 found different patterns. Also adjust the weekly-vs-monthly-week dedup rule if Phase 0 shows monthlies and weeklies coexist in the same 週.
-
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
@@ -347,7 +377,7 @@ cd backend
 python -m pytest tests/test_finmind_options.py -v
 ```
 
-Expected: 3 PASSED. If `test_list_active_contracts_matches_fixture` fails, the **fixture** is the source of truth — adjust the implementation to match.
+Expected: 5 PASSED. If `test_list_active_contracts_matches_fixture` fails, run the implementation once to capture actual output, then **update the fixture** to match it (the implementation's calendar arithmetic is the source of truth; fixture is just a parity anchor for the FE port in Task 7). After fixture update re-run — 5 PASSED.
 
 - [ ] **Step 5: Ruff + commit**
 
@@ -370,60 +400,129 @@ git commit -m "feat(options): add list_active_contracts pure function + fixture"
 **Interfaces:**
 - Consumes: nothing (pure function over raw FinMind rows)
 - Produces:
-  - `parse_oi_large_traders(rows: list[dict], contract_date: str) -> dict` returning the shape from spec §2.1 `oi_large_traders` (`{current: {...}, series: [...]}`)
+  - `parse_oi_large_traders(rows: list[dict], contract_type: str, option_id: str = "TXO") -> dict` returning the shape from spec §2.1 `oi_large_traders` (`{current: {...}, series: [...]}`).
+    - Filter rules: `row.option_id == option_id AND row.contract_type == contract_type`.
+    - Aggregation rules (from spec §2.2 "Call / Put 聚合公式"): each (date, option_id, contract_type) has 2 rows (`put_call ∈ {call, put}`). Merge them via delta-equivalent OI:
+      - `long = call.buy_top{N}_{cat}_open_interest + put.sell_top{N}_{cat}_open_interest`
+      - `short = call.sell_top{N}_{cat}_open_interest + put.buy_top{N}_{cat}_open_interest`
+    - `cat` is `trader` (= "all") or `specific` (= "prop") per Phase 0 mapping.
+    - If only one side present for a date (call OR put), the missing side contributes 0.
 
 - [ ] **Step 1: Write failing test (append to test file)**
 
 Add to `backend/tests/test_finmind_options.py`:
 
 ```python
-# Field names below MUST match what Phase 0 recorded in the spec addendum.
-OI_LT_ROW_TODAY = {
-    "date": "2026-06-23",
-    "contract_date": "202607",  # Phase-0 actual field name
-    "top5_prop_long_oi":  12500, "top5_prop_short_oi":  8200,
-    "top10_prop_long_oi": 18000, "top10_prop_short_oi": 11000,
-    "top5_all_long_oi":   22000, "top5_all_short_oi":   17000,
-    "top10_all_long_oi":  31000, "top10_all_short_oi":  24000,
-}
-OI_LT_ROW_PREV = {**OI_LT_ROW_TODAY, "date": "2026-06-20",
-                  "top10_all_long_oi": 30000, "top10_all_short_oi": 23200,
-                  "top10_prop_long_oi": 17800, "top10_prop_short_oi": 10800}
-
-
-def test_parse_oi_large_traders_current_uses_last_row():
-    from services.finmind_options import parse_oi_large_traders
-    out = parse_oi_large_traders([OI_LT_ROW_PREV, OI_LT_ROW_TODAY], "202607")
-    assert out["current"] == {
-        "top5_prop":  {"long": 12500, "short":  8200, "net":  4300},
-        "top10_prop": {"long": 18000, "short": 11000, "net":  7000},
-        "top5_all":   {"long": 22000, "short": 17000, "net":  5000},
-        "top10_all":  {"long": 31000, "short": 24000, "net":  7000},
+def _oi_row(date_, put_call, contract_type="202607", option_id="TXO", **fields):
+    """Build a TaiwanOptionOpenInterestLargeTraders row. Phase-0 field names."""
+    base = {
+        "date": date_, "option_id": option_id, "contract_type": contract_type,
+        "put_call": put_call,
+        "buy_top5_trader_open_interest":      0, "sell_top5_trader_open_interest":      0,
+        "buy_top10_trader_open_interest":     0, "sell_top10_trader_open_interest":     0,
+        "buy_top5_specific_open_interest":    0, "sell_top5_specific_open_interest":    0,
+        "buy_top10_specific_open_interest":   0, "sell_top10_specific_open_interest":   0,
     }
+    base.update(fields)
+    return base
+
+
+def test_parse_oi_large_traders_aggregates_call_put_via_delta_equivalent():
+    """long = call.buy + put.sell; short = call.sell + put.buy. Per spec §2.2."""
+    from services.finmind_options import parse_oi_large_traders
+    rows = [
+        _oi_row("2026-06-23", "call",
+                buy_top10_trader_open_interest=18000,
+                sell_top10_trader_open_interest=12000),
+        _oi_row("2026-06-23", "put",
+                buy_top10_trader_open_interest=9000,
+                sell_top10_trader_open_interest=13000),
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607")
+    # long  = call.buy(18000) + put.sell(13000) = 31000
+    # short = call.sell(12000) + put.buy(9000)  = 21000
+    assert out["current"]["top10_all"] == {"long": 31000, "short": 21000, "net": 10000}
+
+
+def test_parse_oi_large_traders_fills_all_four_groups():
+    from services.finmind_options import parse_oi_large_traders
+    rows = [
+        _oi_row("2026-06-23", "call",
+                buy_top5_trader_open_interest=100,    sell_top5_trader_open_interest=50,
+                buy_top10_trader_open_interest=200,   sell_top10_trader_open_interest=120,
+                buy_top5_specific_open_interest=80,   sell_top5_specific_open_interest=30,
+                buy_top10_specific_open_interest=140, sell_top10_specific_open_interest=60),
+        _oi_row("2026-06-23", "put",
+                buy_top5_trader_open_interest=40,     sell_top5_trader_open_interest=70,
+                buy_top10_trader_open_interest=90,    sell_top10_trader_open_interest=160,
+                buy_top5_specific_open_interest=20,   sell_top5_specific_open_interest=55,
+                buy_top10_specific_open_interest=45,  sell_top10_specific_open_interest=110),
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607")
+    assert out["current"]["top5_all"]   == {"long": 100 + 70, "short": 50  + 40,  "net":  80}   # 170 - 90
+    assert out["current"]["top10_all"]  == {"long": 200 + 160, "short": 120 + 90,  "net": 150}   # 360 - 210
+    assert out["current"]["top5_prop"]  == {"long": 80 + 55,   "short": 30  + 20,  "net":  85}   # 135 - 50
+    assert out["current"]["top10_prop"] == {"long": 140 + 110, "short": 60  + 45,  "net": 145}   # 250 - 105
 
 
 def test_parse_oi_large_traders_series_in_date_order():
     from services.finmind_options import parse_oi_large_traders
-    out = parse_oi_large_traders([OI_LT_ROW_TODAY, OI_LT_ROW_PREV], "202607")
+    rows = [
+        _oi_row("2026-06-23", "call", buy_top10_trader_open_interest=18000, sell_top10_trader_open_interest=12000),
+        _oi_row("2026-06-23", "put",  buy_top10_trader_open_interest=9000,  sell_top10_trader_open_interest=13000),
+        _oi_row("2026-06-20", "call", buy_top10_trader_open_interest=17500, sell_top10_trader_open_interest=11500),
+        _oi_row("2026-06-20", "put",  buy_top10_trader_open_interest=8500,  sell_top10_trader_open_interest=12800),
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607")
     assert [s["date"] for s in out["series"]] == ["2026-06-20", "2026-06-23"]
-    assert out["series"][-1] == {
-        "date": "2026-06-23",
-        "top10_all_net":  31000 - 24000,
-        "top10_prop_net": 18000 - 11000,
-    }
+    # date 2026-06-23: top10_all_net = (18000+13000) - (12000+9000) = 31000 - 21000 = 10000
+    assert out["series"][-1]["top10_all_net"] == 10000
 
 
-def test_parse_oi_large_traders_filters_by_contract_date():
+def test_parse_oi_large_traders_filters_by_contract_type():
     from services.finmind_options import parse_oi_large_traders
-    other = {**OI_LT_ROW_TODAY, "contract_date": "202608"}
-    out = parse_oi_large_traders([OI_LT_ROW_TODAY, other], "202607")
-    assert len(out["series"]) == 1
-    assert out["series"][0]["date"] == "2026-06-23"
+    rows = [
+        _oi_row("2026-06-23", "call", contract_type="202607",
+                buy_top10_trader_open_interest=999),
+        _oi_row("2026-06-23", "put",  contract_type="202607",
+                sell_top10_trader_open_interest=999),
+        # Different contract_type — must be ignored
+        _oi_row("2026-06-23", "call", contract_type="all",
+                buy_top10_trader_open_interest=10_000_000),
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607")
+    assert out["current"]["top10_all"]["long"] == 999 + 999  # call.buy(999) + put.sell(999)
+
+
+def test_parse_oi_large_traders_filters_by_option_id():
+    from services.finmind_options import parse_oi_large_traders
+    rows = [
+        _oi_row("2026-06-23", "call", option_id="TEO",  # 電子選 — must be ignored
+                buy_top10_trader_open_interest=999_999),
+        _oi_row("2026-06-23", "call", option_id="TXO",
+                buy_top10_trader_open_interest=100),
+        _oi_row("2026-06-23", "put",  option_id="TXO",
+                sell_top10_trader_open_interest=50),
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607", option_id="TXO")
+    assert out["current"]["top10_all"]["long"] == 100 + 50
+
+
+def test_parse_oi_large_traders_missing_one_side_contributes_zero():
+    """If only call (or only put) present for a date, the other side is 0."""
+    from services.finmind_options import parse_oi_large_traders
+    rows = [
+        _oi_row("2026-06-23", "call",
+                buy_top10_trader_open_interest=100, sell_top10_trader_open_interest=50),
+        # No put row for this date
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607")
+    assert out["current"]["top10_all"] == {"long": 100, "short": 50, "net": 50}
 
 
 def test_parse_oi_large_traders_empty_returns_zero_current():
     from services.finmind_options import parse_oi_large_traders
-    out = parse_oi_large_traders([], "202607")
+    out = parse_oi_large_traders([], contract_type="202607")
     assert out["current"] == {
         "top5_prop":  {"long": 0, "short": 0, "net": 0},
         "top10_prop": {"long": 0, "short": 0, "net": 0},
@@ -440,51 +539,87 @@ cd backend
 python -m pytest tests/test_finmind_options.py -v -k parse_oi_large_traders
 ```
 
-Expected: 4 failures with `ImportError: cannot import name 'parse_oi_large_traders'`.
+Expected: 7 failures with `ImportError: cannot import name 'parse_oi_large_traders'`.
 
 - [ ] **Step 3: Implement (append to `services/finmind_options.py`)**
 
-Substitute the field names below with the real ones from Phase 0:
-
 ```python
-def parse_oi_large_traders(rows: list[dict], contract_date: str) -> dict:
-    """Parse TaiwanOptionOpenInterestLargeTraders rows into the API shape.
+# Phase 0 mapping: parser group → FinMind raw field stem
+# (cat = "trader" for "all" traders; "specific" for "prop" / 特定法人)
+_GROUPS = [
+    ("top5_prop",  "top5",  "specific"),
+    ("top10_prop", "top10", "specific"),
+    ("top5_all",   "top5",  "trader"),
+    ("top10_all",  "top10", "trader"),
+]
 
-    Field names below correspond to the literals recorded in spec
-    'Phase 0 Schema Validation Result' for this dataset.
+
+def _zero_current() -> dict:
+    return {g[0]: {"long": 0, "short": 0, "net": 0} for g in _GROUPS}
+
+
+def _aggregate_call_put_pair(call: dict | None, put: dict | None) -> dict:
+    """Delta-equivalent aggregation per spec §2.2.
+
+    long  = call.buy_top{N}_{cat}_open_interest + put.sell_top{N}_{cat}_open_interest
+    short = call.sell_top{N}_{cat}_open_interest + put.buy_top{N}_{cat}_open_interest
     """
-    zero = {"long": 0, "short": 0, "net": 0}
-    empty_current = {k: dict(zero) for k in
-                     ("top5_prop", "top10_prop", "top5_all", "top10_all")}
-
-    filtered = [r for r in rows if r.get("contract_date") == contract_date]
-    filtered.sort(key=lambda r: r.get("date", ""))
-
-    if not filtered:
-        return {"current": empty_current, "series": []}
-
-    last = filtered[-1]
-
-    def grp(prefix: str) -> dict:
-        lng = int(last.get(f"{prefix}_long_oi", 0))
-        sht = int(last.get(f"{prefix}_short_oi", 0))
-        return {"long": lng, "short": sht, "net": lng - sht}
-
-    current = {
-        "top5_prop":  grp("top5_prop"),
-        "top10_prop": grp("top10_prop"),
-        "top5_all":   grp("top5_all"),
-        "top10_all":  grp("top10_all"),
-    }
-
-    series = [
-        {
-            "date": r["date"],
-            "top10_all_net":  int(r.get("top10_all_long_oi", 0))  - int(r.get("top10_all_short_oi", 0)),
-            "top10_prop_net": int(r.get("top10_prop_long_oi", 0)) - int(r.get("top10_prop_short_oi", 0)),
+    out = {}
+    for group_name, top, cat in _GROUPS:
+        c_buy  = int((call or {}).get(f"buy_{top}_{cat}_open_interest",  0))
+        c_sell = int((call or {}).get(f"sell_{top}_{cat}_open_interest", 0))
+        p_buy  = int((put  or {}).get(f"buy_{top}_{cat}_open_interest",  0))
+        p_sell = int((put  or {}).get(f"sell_{top}_{cat}_open_interest", 0))
+        long_oi  = c_buy  + p_sell
+        short_oi = c_sell + p_buy
+        out[group_name] = {
+            "long": long_oi, "short": short_oi, "net": long_oi - short_oi,
         }
-        for r in filtered
+    return out
+
+
+def parse_oi_large_traders(
+    rows: list[dict], contract_type: str, option_id: str = "TXO",
+) -> dict:
+    """Parse TaiwanOptionOpenInterestLargeTraders rows. See spec §2.2 for
+    the call/put delta-equivalent aggregation rule.
+    """
+    filtered = [
+        r for r in rows
+        if r.get("option_id") == option_id and r.get("contract_type") == contract_type
     ]
+    if not filtered:
+        return {"current": _zero_current(), "series": []}
+
+    # Group by date, then split call vs put within each date.
+    by_date: dict[str, dict[str, dict]] = {}
+    for r in filtered:
+        d = r.get("date", "")
+        if not d:
+            continue
+        leg = str(r.get("put_call", "")).lower()
+        if leg not in ("call", "put"):
+            continue
+        by_date.setdefault(d, {})[leg] = r
+
+    dates_sorted = sorted(by_date.keys())
+
+    last_date = dates_sorted[-1]
+    current = _aggregate_call_put_pair(
+        by_date[last_date].get("call"), by_date[last_date].get("put"),
+    )
+
+    series = []
+    for d in dates_sorted:
+        agg = _aggregate_call_put_pair(
+            by_date[d].get("call"), by_date[d].get("put"),
+        )
+        series.append({
+            "date": d,
+            "top10_all_net":  agg["top10_all"]["net"],
+            "top10_prop_net": agg["top10_prop"]["net"],
+        })
+
     return {"current": current, "series": series}
 ```
 
@@ -495,7 +630,7 @@ cd backend
 python -m pytest tests/test_finmind_options.py -v
 ```
 
-Expected: 7 PASSED (3 from Task 1 + 4 new).
+Expected: 12 PASSED (5 from Task 1 + 7 new).
 
 - [ ] **Step 5: Ruff + commit**
 
@@ -517,17 +652,19 @@ git commit -m "feat(options): parse OptionOpenInterestLargeTraders rows"
 **Interfaces:**
 - Consumes: nothing
 - Produces:
-  - `parse_strike_volume(rows: list[dict], contract_date: str, top_n: int) -> dict` returning `{call: [{strike, volume, oi, oi_change}], put: [...]}` (spec §2.1 strike_volume)
+  - `parse_strike_volume(rows: list[dict], contract_date: str, top_n: int, option_id: str = "TXO") -> dict` returning `{call: [{strike, volume, oi, oi_change}], put: [...]}` (spec §2.1 strike_volume).
+  - Filter rules: `row.option_id == option_id AND row.contract_date == contract_date`.
+  - **`trading_session` aggregation:** same `(date, strike, call_put)` may appear in `trading_session ∈ {position, after_market}`. Parser **sums** both sessions for volume and uses the MAX open_interest across sessions (OI is a cumulative snapshot per session, so taking the max represents the latest position).
 
 - [ ] **Step 1: Write failing test**
 
 Append to `backend/tests/test_finmind_options.py`:
 
 ```python
-# Phase-0 verified field names; adjust if validation showed different keys.
-def _od_row(date_, ct, cp, strike, vol, oi):
-    return {"date": date_, "contract_date": ct, "call_put": cp,
-            "strike_price": strike, "volume": vol, "open_interest": oi}
+def _od_row(date_, ct, cp, strike, vol, oi, *, session="position", option_id="TXO"):
+    return {"date": date_, "option_id": option_id, "contract_date": ct,
+            "call_put": cp, "strike_price": float(strike),
+            "volume": vol, "open_interest": oi, "trading_session": session}
 
 
 def test_parse_strike_volume_picks_top_n_per_side():
@@ -548,12 +685,22 @@ def test_parse_strike_volume_picks_top_n_per_side():
     assert out["call"][0]["oi"]     == 35200
 
 
+def test_parse_strike_volume_sums_trading_sessions():
+    """position + after_market both contribute to volume; OI takes max."""
+    from services.finmind_options import parse_strike_volume
+    rows = [
+        _od_row("2026-06-23", "202607", "call", 22000, 12000, 35200, session="position"),
+        _od_row("2026-06-23", "202607", "call", 22000,  6500, 35400, session="after_market"),
+    ]
+    out = parse_strike_volume(rows, "202607", top_n=1)
+    assert out["call"][0]["volume"] == 12000 + 6500
+    assert out["call"][0]["oi"] == 35400  # max of (35200, 35400)
+
+
 def test_parse_strike_volume_computes_oi_change_against_prev_day():
     from services.finmind_options import parse_strike_volume
     rows = [
-        # previous day
         _od_row("2026-06-20", "202607", "call", 22000, 14000, 33100),
-        # today
         _od_row("2026-06-23", "202607", "call", 22000, 18500, 35200),
     ]
     out = parse_strike_volume(rows, "202607", top_n=1)
@@ -577,6 +724,30 @@ def test_parse_strike_volume_filters_by_contract_date():
     assert out["call"][0]["volume"] == 99999
 
 
+def test_parse_strike_volume_filters_by_option_id():
+    from services.finmind_options import parse_strike_volume
+    rows = [
+        _od_row("2026-06-23", "202607", "call", 22000, 99_999, 30000, option_id="TEO"),
+        _od_row("2026-06-23", "202607", "call", 22000,    100, 35200, option_id="TXO"),
+    ]
+    out = parse_strike_volume(rows, "202607", top_n=1, option_id="TXO")
+    assert out["call"][0]["volume"] == 100
+
+
+def test_parse_strike_volume_drops_zero_volume_rows():
+    """Phase 0 noted ~70% of TXO rows have volume=0 (illiquid OTM strikes).
+    Those should not occupy top-N slots, even with top_n large."""
+    from services.finmind_options import parse_strike_volume
+    rows = [
+        _od_row("2026-06-23", "202607", "call", 22000,  10, 5),
+        _od_row("2026-06-23", "202607", "call", 22100,   0, 7),
+        _od_row("2026-06-23", "202607", "call", 22200,   0, 9),
+    ]
+    out = parse_strike_volume(rows, "202607", top_n=10)
+    assert len(out["call"]) == 1
+    assert out["call"][0]["strike"] == 22000
+
+
 def test_parse_strike_volume_empty_returns_empty_lists():
     from services.finmind_options import parse_strike_volume
     out = parse_strike_volume([], "202607", top_n=10)
@@ -590,56 +761,77 @@ cd backend
 python -m pytest tests/test_finmind_options.py -v -k parse_strike_volume
 ```
 
-Expected: 5 failures.
+Expected: 8 failures.
 
 - [ ] **Step 3: Implement**
 
 Append to `backend/services/finmind_options.py`:
 
 ```python
-def parse_strike_volume(rows: list[dict], contract_date: str, top_n: int) -> dict:
+def parse_strike_volume(
+    rows: list[dict], contract_date: str, top_n: int,
+    option_id: str = "TXO",
+) -> dict:
     """Parse TaiwanOptionDaily rows into top-N strike volume per side.
 
-    Picks the latest trading date present (today's date if today traded);
-    computes oi_change versus the previous trading date.
+    Phase-0 rules:
+    - Filter on option_id (default TXO) AND contract_date.
+    - Sum volume across trading_session ∈ {position, after_market}; take MAX of OI
+      across sessions (OI is a cumulative snapshot per session).
+    - Drop strikes with summed volume == 0 (typically illiquid OTM).
+    - oi_change = today aggregated OI − prev-trading-day aggregated OI for that strike;
+      0 if no prev row exists.
     """
-    matched = [r for r in rows if r.get("contract_date") == contract_date]
+    matched = [
+        r for r in rows
+        if r.get("option_id") == option_id
+        and r.get("contract_date") == contract_date
+    ]
     if not matched:
         return {"call": [], "put": []}
 
-    dates = sorted({r["date"] for r in matched})
+    # Aggregate (date, call_put, strike) across trading_session.
+    agg: dict[tuple[str, str, float], dict] = {}
+    for r in matched:
+        cp = str(r.get("call_put", "")).lower()
+        if cp not in ("call", "put"):
+            continue
+        try:
+            strike = float(r["strike_price"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        key = (r["date"], cp, strike)
+        vol = int(r.get("volume", 0) or 0)
+        oi = int(r.get("open_interest", 0) or 0)
+        bucket = agg.setdefault(key, {"volume": 0, "oi": 0})
+        bucket["volume"] += vol
+        if oi > bucket["oi"]:
+            bucket["oi"] = oi
+
+    if not agg:
+        return {"call": [], "put": []}
+
+    dates = sorted({k[0] for k in agg})
     today = dates[-1]
     prev = dates[-2] if len(dates) >= 2 else None
 
-    prev_oi: dict[tuple[str, int], int] = {}
-    if prev is not None:
-        for r in matched:
-            if r["date"] == prev:
-                key = (str(r["call_put"]).lower(), int(r["strike_price"]))
-                prev_oi[key] = int(r.get("open_interest", 0))
-
     def side(cp_value: str) -> list[dict]:
-        items = [r for r in matched
-                 if r["date"] == today
-                 and str(r["call_put"]).lower() == cp_value]
-        items.sort(key=lambda r: int(r["volume"]), reverse=True)
+        items = [(strike, v) for (d, cp, strike), v in agg.items()
+                 if d == today and cp == cp_value and v["volume"] > 0]
+        items.sort(key=lambda t: t[1]["volume"], reverse=True)
         out: list[dict] = []
-        for r in items[:top_n]:
-            strike = int(r["strike_price"])
-            oi = int(r.get("open_interest", 0))
-            prev_v = prev_oi.get((cp_value, strike), 0) if prev else 0
+        for strike, v in items[:top_n]:
+            prev_v = agg.get((prev, cp_value, strike), {"oi": 0}) if prev else {"oi": 0}
             out.append({
-                "strike": strike,
-                "volume": int(r["volume"]),
-                "oi": oi,
-                "oi_change": oi - prev_v if prev else 0,
+                "strike": int(strike) if strike == int(strike) else strike,
+                "volume": v["volume"],
+                "oi": v["oi"],
+                "oi_change": (v["oi"] - prev_v["oi"]) if prev else 0,
             })
         return out
 
     return {"call": side("call"), "put": side("put")}
 ```
-
-If Phase 0 found different `call_put` literal values (e.g. `C` / `P` or `買權` / `賣權`), change the `cp_value` arguments and the `.lower()` normalization accordingly.
 
 - [ ] **Step 4: Run to verify pass**
 
@@ -648,7 +840,7 @@ cd backend
 python -m pytest tests/test_finmind_options.py -v
 ```
 
-Expected: 12 PASSED.
+Expected: 20 PASSED (5 Task 1 + 7 Task 2 + 8 Task 3).
 
 - [ ] **Step 5: Ruff + commit**
 
@@ -670,7 +862,9 @@ git commit -m "feat(options): parse OptionDaily into top-N strike volume per sid
 **Interfaces:**
 - Consumes: `parse_oi_large_traders` (Task 2), `_CACHE_VERSION_OPTIONS` (Task 1), `chip_cache_dir()`, `atomic_write_json`, `read_json` (already in `utils/cache.py`)
 - Produces: `async def fetch_oi_large_traders(self, contract: dict, date_str: str, refresh: bool = False) -> dict`
-  - `contract` is a dict from `list_active_contracts` (`{code, contract_date, ...}`)
+  - `contract` is a dict from `list_active_contracts` (`{option_id, contract_date, contract_type, ...}`)
+  - Caches by composite ID `{option_id}{contract_date}_{date_str}_oi_lt` so that two weekly slots that share `contract_type="week"` still get separate cache files (one per slot) — they're cheap (FinMind query is the same) and isolating cache files matches the rest of the cache scheme.
+  - Calls `parse_oi_large_traders(rows, contract_type=contract["contract_type"], option_id=contract["option_id"])`
   - returns the spec §2.1 `oi_large_traders` shape
 
 - [ ] **Step 1: Write failing integration test**
@@ -708,16 +902,27 @@ def _reset_singleton(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_fetch_oi_large_traders_writes_cache_and_returns_shape():
     from services.finmind import FinMindClient
-    mc = _mock_http(_fm_resp([OI_LT_ROW_PREV, OI_LT_ROW_TODAY]))
+    rows = [
+        _oi_row("2026-06-20", "call",
+                buy_top10_trader_open_interest=17500, sell_top10_trader_open_interest=11500),
+        _oi_row("2026-06-20", "put",
+                buy_top10_trader_open_interest=8500,  sell_top10_trader_open_interest=12800),
+        _oi_row("2026-06-23", "call",
+                buy_top10_trader_open_interest=18000, sell_top10_trader_open_interest=12000),
+        _oi_row("2026-06-23", "put",
+                buy_top10_trader_open_interest=9000,  sell_top10_trader_open_interest=13000),
+    ]
+    mc = _mock_http(_fm_resp(rows))
     fm = FinMindClient()
     fm._http = mc
-    contract = {"code": "TXO", "contract_date": "202607"}
+    contract = {"option_id": "TXO", "contract_date": "202607", "contract_type": "202607"}
     out = await fm.fetch_oi_large_traders(contract, "2026-06-23")
     assert out["contract"] == "TXO202607"
     assert out["date"] == "2026-06-23"
-    assert out["current"]["top10_all"]["net"] == 31000 - 24000
+    # current top10_all.net = (call.buy + put.sell) - (call.sell + put.buy)
+    #                       = (18000 + 13000) - (12000 + 9000) = 31000 - 21000 = 10000
+    assert out["current"]["top10_all"]["net"] == 10000
     assert len(out["series"]) == 2
-    # Cache file written
     from utils.cache import chip_cache_dir
     assert (chip_cache_dir() / "TXO202607_2026-06-23_oi_lt.json").exists()
 
@@ -725,10 +930,12 @@ async def test_fetch_oi_large_traders_writes_cache_and_returns_shape():
 @pytest.mark.asyncio
 async def test_fetch_oi_large_traders_returns_cached_on_second_call():
     from services.finmind import FinMindClient
-    mc = _mock_http(_fm_resp([OI_LT_ROW_TODAY]))
+    rows = [_oi_row("2025-01-01", "call",
+                    buy_top10_trader_open_interest=100, sell_top10_trader_open_interest=50)]
+    mc = _mock_http(_fm_resp(rows))
     fm = FinMindClient()
     fm._http = mc
-    contract = {"code": "TXO", "contract_date": "202607"}
+    contract = {"option_id": "TXO", "contract_date": "202501", "contract_type": "202501"}
     first = await fm.fetch_oi_large_traders(contract, "2025-01-01")  # past date → permanent
     second = await fm.fetch_oi_large_traders(contract, "2025-01-01")
     assert first == second
@@ -763,7 +970,7 @@ Find the line `# -- major net series (top-15 broker net per day) ---------------
         """
         from services.finmind_options import _CACHE_VERSION_OPTIONS
 
-        contract_id = f"{contract['code']}{contract['contract_date']}"
+        contract_id = f"{contract['option_id']}{contract['contract_date']}"
         cache_key = f"{contract_id}_{date_str}_oi_lt"
         if not refresh:
             cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS)
@@ -790,11 +997,15 @@ Find the line `# -- major net series (top-15 broker net per day) ---------------
             {"dataset": "TaiwanOptionOpenInterestLargeTraders",
              "start_date": start.isoformat(), "end_date": end.isoformat()},
         )
-        parsed = parse_oi_large_traders(raw, contract["contract_date"])
+        parsed = parse_oi_large_traders(
+            raw,
+            contract_type=contract["contract_type"],
+            option_id=contract["option_id"],
+        )
         # Truncate series to last 20 entries to honour spec §2.1.
         parsed["series"] = parsed["series"][-20:]
         result = {
-            "contract": f"{contract['code']}{contract['contract_date']}",
+            "contract": f"{contract['option_id']}{contract['contract_date']}",
             "date": date_str,
             "fetched_at": datetime.now().isoformat(timespec="seconds"),
             **parsed,
@@ -829,7 +1040,7 @@ cd backend
 python -m pytest tests/test_finmind_options.py -v
 ```
 
-Expected: 14 PASSED.
+Expected: 22 PASSED (20 from Tasks 1–3 + 2 new).
 
 - [ ] **Step 5: Ruff + commit**
 
@@ -870,7 +1081,7 @@ async def test_fetch_strike_volume_writes_cache_and_returns_shape():
     mc = _mock_http(_fm_resp(rows))
     fm = FinMindClient()
     fm._http = mc
-    contract = {"code": "TXO", "contract_date": "202607"}
+    contract = {"option_id": "TXO", "contract_date": "202607", "contract_type": "202607"}
     out = await fm.fetch_strike_volume(contract, today, top_n=2)
     assert out["contract"] == "TXO202607"
     assert out["date"] == today
@@ -878,7 +1089,7 @@ async def test_fetch_strike_volume_writes_cache_and_returns_shape():
     assert out["call"][0]["oi_change"] == 35200 - 33100
     assert [p["strike"] for p in out["put"]] == [21500]
     from utils.cache import chip_cache_dir
-    assert (chip_cache_dir() / "TXO202607_2026-06-23_strike_vol.json").exists()
+    assert (chip_cache_dir() / "TXO202607_2026-06-23_strike_vol_top2.json").exists()
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -900,7 +1111,7 @@ Expected: 1 failure.
         top_n: int = 10, refresh: bool = False,
     ) -> dict:
         from services.finmind_options import _CACHE_VERSION_OPTIONS
-        contract_id = f"{contract['code']}{contract['contract_date']}"
+        contract_id = f"{contract['option_id']}{contract['contract_date']}"
         cache_key = f"{contract_id}_{date_str}_strike_vol_top{top_n}"
         if not refresh:
             cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS)
@@ -923,11 +1134,15 @@ Expected: 1 failure.
         raw = await self._get(
             f"{_FINMIND_BASE}/data",
             {"dataset": "TaiwanOptionDaily",
+             "data_id": contract["option_id"],
              "start_date": start.isoformat(), "end_date": end.isoformat()},
         )
-        parsed = parse_strike_volume(raw, contract["contract_date"], top_n)
+        parsed = parse_strike_volume(
+            raw, contract["contract_date"], top_n,
+            option_id=contract["option_id"],
+        )
         result = {
-            "contract": f"{contract['code']}{contract['contract_date']}",
+            "contract": f"{contract['option_id']}{contract['contract_date']}",
             "date": date_str,
             "fetched_at": datetime.now().isoformat(timespec="seconds"),
             **parsed,
@@ -936,6 +1151,8 @@ Expected: 1 failure.
         return result
 ```
 
+Note: FinMind accepts `data_id` query param as a server-side filter (Phase 0 didn't probe with `data_id`, but FinMind's `/data` endpoint accepts it for all stock/option datasets). Passing it shrinks the response to TXO only. The Python-side `option_id` filter in the parser is a defence-in-depth — if FinMind ignores `data_id` for this dataset (unlikely), the parser still drops non-TXO rows.
+
 - [ ] **Step 4: Run to verify pass**
 
 ```bash
@@ -943,7 +1160,7 @@ cd backend
 python -m pytest tests/test_finmind_options.py -v
 ```
 
-Expected: 15 PASSED.
+Expected: 23 PASSED (22 from Tasks 1–4 + 1 new).
 
 - [ ] **Step 5: Ruff + commit**
 
@@ -1017,10 +1234,9 @@ def test_oi_lt_invalid_contract_400():
 
 
 def test_oi_lt_happy_path(mock_fm):
-    # Use a contract code that list_active_contracts will produce today.
     from services.finmind_options import list_active_contracts
     contract = list_active_contracts(date.today())[0]
-    code = f"{contract['code']}{contract['contract_date']}"
+    code = f"{contract['option_id']}{contract['contract_date']}"
     resp = TestClient(app).get(f"/api/options/oi_large_traders?contract={code}")
     assert resp.status_code == 200
     assert resp.json()["contract"] == "TXO202607"
@@ -1029,7 +1245,7 @@ def test_oi_lt_happy_path(mock_fm):
 
 def test_strike_vol_top_n_out_of_range_400():
     from services.finmind_options import list_active_contracts
-    code = f"{list_active_contracts(date.today())[0]['code']}{list_active_contracts(date.today())[0]['contract_date']}"
+    code = f"{list_active_contracts(date.today())[0]['option_id']}{list_active_contracts(date.today())[0]['contract_date']}"
     resp = TestClient(app).get(
         f"/api/options/strike_volume?contract={code}&top_n=99",
     )
@@ -1039,7 +1255,7 @@ def test_strike_vol_top_n_out_of_range_400():
 
 def test_strike_vol_happy_path(mock_fm):
     from services.finmind_options import list_active_contracts
-    code = f"{list_active_contracts(date.today())[0]['code']}{list_active_contracts(date.today())[0]['contract_date']}"
+    code = f"{list_active_contracts(date.today())[0]['option_id']}{list_active_contracts(date.today())[0]['contract_date']}"
     resp = TestClient(app).get(f"/api/options/strike_volume?contract={code}")
     assert resp.status_code == 200
     assert resp.json()["call"] == []
@@ -1059,7 +1275,7 @@ def test_oi_lt_no_trading_day_returns_200_with_flag(mock_fm):
         "series": [],
     }
     from services.finmind_options import list_active_contracts
-    code = f"{list_active_contracts(date.today())[0]['code']}{list_active_contracts(date.today())[0]['contract_date']}"
+    code = f"{list_active_contracts(date.today())[0]['option_id']}{list_active_contracts(date.today())[0]['contract_date']}"
     resp = TestClient(app).get(f"/api/options/oi_large_traders?contract={code}")
     assert resp.status_code == 200
     body = resp.json()
@@ -1095,13 +1311,13 @@ router = APIRouter()
 
 
 def _resolve_contract(contract: str) -> dict | None:
-    """Match the flat ID `<code><contract_date>` (e.g. `TXO202607`) against
-    the seven slots produced by list_active_contracts."""
+    """Match the flat ID `<option_id><contract_date>` (e.g. `TXO202607` or
+    `TXO202607W2`) against the seven slots produced by list_active_contracts."""
     if not contract:
         return None
     today = date.today()
     for c in list_active_contracts(today):
-        if f"{c['code']}{c['contract_date']}" == contract:
+        if f"{c['option_id']}{c['contract_date']}" == contract:
             return c
     return None
 
@@ -1226,7 +1442,19 @@ git commit -m "feat(options): /api/options/oi_large_traders + strike_volume rout
 
 **Interfaces:**
 - Consumes: backend fixture file `backend/tests/fixtures/options/contracts_2026-06-23.json` (vitest imports it directly via relative path)
-- Produces: `export function listActiveContracts(today: Date): Contract[]` returning `Contract = {slot, kind, code, contractDate, label, settlement}` — note camelCase `contractDate` for TS idiom (backend uses snake_case `contract_date`)
+- Produces: `export function listActiveContracts(today: Date): Contract[]` returning
+  ```ts
+  Contract = {
+    slot: string;
+    kind: "weekly" | "monthly";
+    optionId: string;        // always "TXO" for now
+    contractDate: string;    // monthly YYYYMM, weekly YYYYMMW{ordinal}
+    contractType: string;    // monthly YYYYMM, weekly literal "week"
+    label: string;
+    settlement: string;
+  }
+  ```
+  camelCase here; backend uses snake_case. Parity test maps the BE fixture's snake_case keys to the FE camelCase keys.
 
 - [ ] **Step 1: Write failing test**
 
@@ -1243,8 +1471,9 @@ describe("listActiveContracts", () => {
     const projected = items.map((i) => ({
       slot: i.slot,
       kind: i.kind,
-      code: i.code,
+      option_id: i.optionId,
       contract_date: i.contractDate,
+      contract_type: i.contractType,
       settlement: i.settlement,
     }));
     expect(projected).toEqual(fix.expected);
@@ -1278,8 +1507,9 @@ export type ContractKind = "weekly" | "monthly";
 export interface Contract {
   slot: string;
   kind: ContractKind;
-  code: string;
+  optionId: string;
   contractDate: string;
+  contractType: string;
   label: string;
   settlement: string;
 }
@@ -1330,8 +1560,9 @@ export function listActiveContracts(today: Date): Contract[] {
     return {
       slot,
       kind: "monthly" as const,
-      code: "TXO",
+      optionId: "TXO",
       contractDate: yyyymm,
+      contractType: yyyymm,
       label: `${anchor.getFullYear()}/${String(anchor.getMonth() + 1).padStart(2, "0")} 月選`,
       settlement: toISODate(sett),
     };
@@ -1350,8 +1581,9 @@ export function listActiveContracts(today: Date): Contract[] {
     weeklies.push({
       slot: `W${i}`,
       kind: "weekly",
-      code: `TX${i}`,
+      optionId: "TXO",
       contractDate: `${yyyymm}W${ordinal}`,
+      contractType: "week",
       label: `${String(nxt.getMonth() + 1).padStart(2, "0")}/${String(nxt.getDate()).padStart(2, "0")} 週選 W${i}`,
       settlement: toISODate(nxt),
     });
@@ -2150,7 +2382,7 @@ git commit -m "feat(options): SVG primitives — LargeTradersBars + LargeTraders
 
 **Interfaces:**
 - Consumes: `OptionsLargeTraders` type + `LargeTradersBars` + `LargeTradersTrend` + `useContainerSize` (existing hook)
-- Produces: `<OptionsLargeTradersPanel data={…} loading={boolean} error={string|null} />`
+- Produces: `<OptionsLargeTradersPanel data={…} loading={boolean} error={string|null} weeklyAggregateBanner={boolean} />`. When `weeklyAggregateBanner` is true, render the spec §3.3 info banner explaining the OI aggregate; otherwise omit. Banner is informational (`text-ink-dim`), not an error or warning.
 
 - [ ] **Step 1: Write failing test**
 
@@ -2193,6 +2425,21 @@ describe("OptionsLargeTradersPanel", () => {
     render(<OptionsLargeTradersPanel data={null} loading={true} error={null} />);
     expect(screen.getByTestId("options-lt-loading")).toBeTruthy();
   });
+
+  it("renders weekly aggregate banner when weeklyAggregateBanner=true", () => {
+    render(
+      <OptionsLargeTradersPanel data={mk()} loading={false} error={null}
+        weeklyAggregateBanner />,
+    );
+    expect(screen.getByTestId("options-lt-weekly-banner")).toBeTruthy();
+  });
+
+  it("hides weekly aggregate banner when weeklyAggregateBanner=false", () => {
+    render(
+      <OptionsLargeTradersPanel data={mk()} loading={false} error={null} />,
+    );
+    expect(screen.queryByTestId("options-lt-weekly-banner")).toBeNull();
+  });
 });
 ```
 
@@ -2219,9 +2466,12 @@ interface Props {
   data: OptionsLargeTraders | null;
   loading: boolean;
   error: string | null;
+  weeklyAggregateBanner?: boolean;
 }
 
-export function OptionsLargeTradersPanel({ data, loading, error }: Props): ReactElement {
+export function OptionsLargeTradersPanel({
+  data, loading, error, weeklyAggregateBanner,
+}: Props): ReactElement {
   const barsRef = useRef<HTMLDivElement>(null);
   const trendRef = useRef<HTMLDivElement>(null);
   const barsSize = useContainerSize(barsRef);
@@ -2232,6 +2482,14 @@ export function OptionsLargeTradersPanel({ data, loading, error }: Props): React
       <header className="shrink-0 px-4 py-2 text-sm text-ink-muted">
         大戶部位
       </header>
+      {weeklyAggregateBanner && (
+        <div
+          data-testid="options-lt-weekly-banner"
+          className="shrink-0 mx-4 mb-2 px-3 py-1 text-xs text-ink-dim bg-ink/[0.03] rounded"
+        >
+          📌 大戶 OI 為近週週選 aggregate(FinMind `contract_type='week'`),W1..W4 顯示同一份資料。熱門履約價依各週合約獨立。
+        </div>
+      )}
       {error && (
         <div className="shrink-0 px-4 py-2 text-sm text-accent bg-accent/[0.06] border-b border-line">
           {error}
@@ -2663,7 +2921,7 @@ git commit -m "feat(options): OptionsHeader (contract dropdown + date + refresh)
 Create `frontend/src/components/OptionsPage.tsx`:
 
 ```tsx
-import { useEffect, useState, type ReactElement } from "react";
+import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { OptionsHeader } from "./OptionsHeader";
 import { OptionsLargeTradersPanel } from "./OptionsLargeTradersPanel";
 import { OptionsStrikeVolumePanel } from "./OptionsStrikeVolumePanel";
@@ -2687,23 +2945,29 @@ function defaultContractId(): string {
   const pick = list.find((c) =>
     kind === "monthly" ? c.slot === "M0" : c.slot === "W1",
   ) ?? list[0];
-  return `${pick.code}${pick.contractDate}`;
+  return `${pick.optionId}${pick.contractDate}`;
 }
 
 export function OptionsPage(): ReactElement {
   const [contractId, setContractId] = useState<string>(defaultContractId);
   const [date, setDate] = useState<string>(todayStr);
 
+  const currentContract = useMemo(
+    () => listActiveContracts(new Date())
+      .find((c) => `${c.optionId}${c.contractDate}` === contractId),
+    [contractId],
+  );
+
   useEffect(() => {
-    const found = listActiveContracts(new Date())
-      .find((c) => `${c.code}${c.contractDate}` === contractId);
-    if (found) localStorage.setItem("opt:kind", found.kind);
-  }, [contractId]);
+    if (currentContract) localStorage.setItem("opt:kind", currentContract.kind);
+  }, [currentContract]);
 
   const lt = useOptionsLargeTraders(contractId, date);
   const sv = useOptionsStrikeVolume(contractId, date);
   const loading = lt.loading || sv.loading;
   const refresh = () => { lt.refresh(); sv.refresh(); };
+
+  const isWeekly = currentContract?.kind === "weekly";
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -2725,6 +2989,7 @@ export function OptionsPage(): ReactElement {
           data={lt.data}
           loading={lt.loading}
           error={lt.error}
+          weeklyAggregateBanner={isWeekly}
         />
         <OptionsStrikeVolumePanel
           data={sv.data}
@@ -2907,12 +3172,22 @@ git commit -m "chore(options): DevTools MCP verification screenshots for options
 - §5 phasing → split is Tasks 0 / 1–13 / 14 / 17, all in one branch ✓
 - §6 risks → Task 0 mitigates the schema risk; cache isolation guards version risk ✓
 
-**Placeholder scan:** no `TBD` / `TODO` / "implement later" remain. Every code step has the actual code to write. The literal contract codes in Tasks 1 and 7 are example placeholders and the task body explicitly tells the implementer to substitute Phase-0-discovered values — this is intentional, not a placeholder, because the real values are known unknowns at plan-write time.
+**Placeholder scan:** no `TBD` / `TODO` / "implement later" remain. Every code step has the actual code to write. Post Phase 0 (commit `0a4c400`) the FinMind field literals are concrete (no longer "<observed>" placeholders); Task 1's calendar arithmetic for W1..W4 / M0..M2 is the source of truth and the implementer updates the fixture JSON once if it differs.
 
-**Type consistency check:**
-- BE returns `contract` string formed as `code + contract_date` everywhere ✓
-- FE `Contract.contractDate` is camelCase, BE `contract_date` is snake_case — parity fixture (`tests/fixtures/options/contracts_2026-06-23.json`) uses `contract_date` and Task 7's projection step deliberately re-maps it; matches Task 1 fixture ✓
+**Type consistency check (post Phase 0 deltas):**
+- BE returns `contract` string formed as `option_id + contract_date` everywhere (Tasks 4, 5, 6) ✓
+- BE Contract dict carries `{slot, kind, option_id, contract_date, contract_type, label, settlement}` — Tasks 1, 4, 5, 6 all use the same key names ✓
+- FE `Contract.optionId` / `contractDate` / `contractType` is camelCase, BE `option_id` / `contract_date` / `contract_type` is snake_case — parity fixture uses snake_case and Task 7's projection step re-maps it; matches Task 1 fixture ✓
 - `OILTGroup` shape `{long, short, net}` consistent across BE `parse_oi_large_traders` and FE types ✓
-- `StrikeRow` `{strike, volume, oi, oi_change}` consistent across BE `parse_strike_volume`, FE types, FE panel ✓
+- `StrikeRow` `{strike, volume, oi, oi_change}` consistent across BE `parse_strike_volume`, FE types, FE panel. Note `strike` is `int` for whole numbers, `float` for fractional (TXO is always whole, but parser tolerates both) ✓
 - Hook return shapes (`{ data, loading, error, refresh, noTradingDay }`) consistent between Tasks 9 and 10 ✓
 - `ModeSwitch` API (`value: Mode`, `onChange: (m: Mode) => void`) consistent between Task 11 component, Task 16 App.tsx usage ✓
+- `OptionsLargeTradersPanel` props `weeklyAggregateBanner?: boolean` added in Task 13; Task 16 OptionsPage passes derived `isWeekly` value ✓
+
+**Phase 0 delta coverage:**
+- `put_call` vs `call_put` field name divergence → Task 2 uses `put_call` in test fixtures, Task 3 uses `call_put` (matches Phase 0 §"both datasets") ✓
+- `trading_session` sum aggregation → Task 3 test + implementation ✓
+- `option_id` vs `data_id` rename → Task 3 parser, Task 5 fetch (passes `data_id=option_id` to FinMind too) ✓
+- Weekly OI aggregate (`contract_type='week'`) → Task 1 fixture + Task 2 filter + Task 13 banner + Task 16 derives isWeekly ✓
+- F-suffix contracts → Task 1 ignores (only generates standard W/M); covered in spec §2.3 ✓
+- Empty-response handling (Phase 0 hit empty for recent days) → Task 2 / Task 3 zero-current returns + Task 6 `no_trading_day` flag ✓
