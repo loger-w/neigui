@@ -384,6 +384,81 @@ class FinMindClient:
         self._write_cache(cache_key, payload)
         return payload
 
+    # -- options: large traders OI ----------------------------------------
+
+    async def fetch_oi_large_traders(
+        self, contract: dict, date_str: str, refresh: bool = False,
+    ) -> dict:
+        """Fetch TaiwanOptionOpenInterestLargeTraders for the given contract,
+        return both today's snapshot + 20 trading-day net series.
+
+        `contract` is a dict from
+        services.finmind_options.list_active_contracts (uses `option_id`,
+        `contract_date`, and `contract_type` keys); see spec §2.3.
+        """
+        from services.finmind_options import _CACHE_VERSION_OPTIONS
+
+        contract_id = f"{contract['option_id']}{contract['contract_date']}"
+        cache_key = f"{contract_id}_{date_str}_oi_lt"
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS)
+            if cached is not None:
+                if not self._is_today(date_str) or not self._is_stale(cached):
+                    return cached
+
+        return await self._run_once(
+            f"oi_lt_{cache_key}",
+            lambda: self._do_fetch_oi_large_traders(contract, date_str, cache_key),
+        )
+
+    async def _do_fetch_oi_large_traders(
+        self, contract: dict, date_str: str, cache_key: str,
+    ) -> dict:
+        from services.finmind_options import (
+            _CACHE_VERSION_OPTIONS,
+            parse_oi_large_traders,
+        )
+
+        end = date.fromisoformat(date_str)
+        start = end - timedelta(days=35)
+        raw = await self._get(
+            f"{_FINMIND_BASE}/data",
+            {"dataset": "TaiwanOptionOpenInterestLargeTraders",
+             "start_date": start.isoformat(), "end_date": end.isoformat()},
+        )
+        parsed = parse_oi_large_traders(
+            raw,
+            contract_type=contract["contract_type"],
+            option_id=contract["option_id"],
+        )
+        # Truncate series to last 20 entries to honour spec §2.1.
+        parsed["series"] = parsed["series"][-20:]
+        result = {
+            "contract": f"{contract['option_id']}{contract['contract_date']}",
+            "date": date_str,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            **parsed,
+        }
+        self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS)
+        return result
+
+    # -- options cache version helpers (separate _CACHE_VERSION_OPTIONS) ---
+
+    def _read_cache_v(self, key: str, version: int) -> dict | None:
+        p = self._cache_path(key)
+        if not p.exists():
+            return None
+        data = read_json(p, default=None)
+        if data is None or data.get("_cache_version") != version:
+            return None
+        out = dict(data)
+        out.pop("_cache_version", None)
+        return out
+
+    def _write_cache_v(self, key: str, payload: dict, version: int) -> None:
+        cached = {**payload, "_cache_version": version}
+        atomic_write_json(self._cache_path(key), cached)
+
     # -- major net series (top-15 broker net per day) ----------------------
 
     async def _fetch_major_series(
