@@ -138,21 +138,23 @@ export function ChipBrokersPanel({
       className="h-full flex flex-col overflow-hidden"
       aria-busy={loading || undefined}
     >
-      {/* Cluster B 🟢: localized loading indicator — only shown while a refetch
-          is in flight AND prior summary still on screen. A 2 px-tall scanning
-          accent bar replaces the prior "載入中…" caption: zero layout shift,
-          previous values stay readable, motion communicates activity without
-          text. Screen readers still announce busy state via aria-busy on the
-          panel root above. */}
-      {loading && (
-        <div
-          data-testid="panel-loading-indicator"
-          aria-hidden="true"
-          className="relative h-0.5 overflow-hidden bg-line/30 shrink-0"
-        >
-          <div className="absolute inset-y-0 left-0 w-1/4 bg-accent animate-[loading-shimmer_1.4s_ease-in-out_infinite] motion-reduce:animate-none motion-reduce:opacity-60" />
-        </div>
-      )}
+      {/* Cluster B 🟢: localized loading indicator — a 2 px-tall scanning
+          accent bar shown while a refetch is in flight. The outer wrapper is
+          ALWAYS rendered at h-0.5 / shrink-0 so toggling loading on/off does
+          not shift the panel layout (the prior conditional render added/
+          removed a flex child, causing 2 px of vertical jitter on candle
+          click). Screen readers still announce busy state via aria-busy on
+          the panel root above. */}
+      <div className="relative h-0.5 overflow-hidden shrink-0" aria-hidden="true">
+        {loading && (
+          <div
+            data-testid="panel-loading-indicator"
+            className="absolute inset-0 bg-line/30"
+          >
+            <div className="absolute inset-y-0 left-0 w-1/4 bg-accent animate-[loading-shimmer_1.4s_ease-in-out_infinite] motion-reduce:animate-none motion-reduce:opacity-60" />
+          </div>
+        )}
+      </div>
 
       {/* F7: 主力買賣超 above 融資融券 (was below). F4 also removed the
           right-side symbol/date header and 三大法人 block — that data lives
