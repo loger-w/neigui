@@ -155,7 +155,9 @@ def parse_oi_large_traders(
         )
         series.append({
             "date": d,
+            "top5_all_net":   agg["top5_all"]["net"],
             "top10_all_net":  agg["top10_all"]["net"],
+            "top5_prop_net":  agg["top5_prop"]["net"],
             "top10_prop_net": agg["top10_prop"]["net"],
         })
 

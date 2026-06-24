@@ -132,6 +132,32 @@ def test_parse_oi_large_traders_series_in_date_order():
     assert out["series"][-1]["top10_all_net"] == 10000
 
 
+def test_parse_oi_large_traders_series_includes_four_nets_per_day():
+    """Each series entry must carry top5 + top10 x prop + all (4 nets)."""
+    from services.finmind_options import parse_oi_large_traders
+    rows = [
+        _oi_row("2026-06-23", "call",
+                buy_top5_trader_open_interest=100,    sell_top5_trader_open_interest=40,
+                buy_top10_trader_open_interest=200,   sell_top10_trader_open_interest=120,
+                buy_top5_specific_open_interest=80,   sell_top5_specific_open_interest=30,
+                buy_top10_specific_open_interest=140, sell_top10_specific_open_interest=60),
+        _oi_row("2026-06-23", "put",
+                buy_top5_trader_open_interest=40,     sell_top5_trader_open_interest=70,
+                buy_top10_trader_open_interest=90,    sell_top10_trader_open_interest=160,
+                buy_top5_specific_open_interest=20,   sell_top5_specific_open_interest=55,
+                buy_top10_specific_open_interest=45,  sell_top10_specific_open_interest=110),
+    ]
+    out = parse_oi_large_traders(rows, contract_type="202607")
+    assert len(out["series"]) == 1
+    entry = out["series"][0]
+    # delta-equivalent net:  long(call.buy+put.sell) - short(call.sell+put.buy)
+    assert entry["top5_all_net"]   == (100 + 70) - (40  + 40)   #  80
+    assert entry["top10_all_net"]  == (200 + 160) - (120 + 90)  # 150
+    assert entry["top5_prop_net"]  == (80 + 55) - (30 + 20)     #  85
+    assert entry["top10_prop_net"] == (140 + 110) - (60 + 45)   # 145
+    assert entry["date"] == "2026-06-23"
+
+
 def test_parse_oi_large_traders_filters_by_contract_type():
     from services.finmind_options import parse_oi_large_traders
     rows = [
