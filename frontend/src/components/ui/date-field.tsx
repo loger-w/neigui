@@ -14,28 +14,28 @@ import { cn } from "@/lib/utils";
 export type DateFieldProps = Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
   "type"
->;
+> & {
+  ref?: React.Ref<HTMLInputElement>;
+};
 
-export const DateField = React.forwardRef<HTMLInputElement, DateFieldProps>(
-  function DateField({ className, ...props }, ref) {
-    return (
-      <input
-        ref={ref}
-        type="date"
-        className={cn(
-          "date-field-input",
-          "h-8 px-2.5",
-          "bg-bg-deep border border-line text-ink text-sm",
-          "tabular-nums rounded-sm",
-          "outline-none transition-colors",
-          "hover:border-line-strong focus:border-accent",
-          "focus-visible:ring-2 focus-visible:ring-accent/40",
-          "focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
-          "disabled:opacity-50 disabled:cursor-not-allowed",
-          className,
-        )}
-        {...props}
-      />
-    );
-  },
-);
+export function DateField({ className, ref, ...props }: DateFieldProps) {
+  return (
+    <input
+      ref={ref}
+      type="date"
+      className={cn(
+        "date-field-input",
+        "h-8 px-2.5",
+        "bg-bg-deep border border-line text-ink text-sm",
+        "tabular-nums rounded-sm",
+        "outline-none transition-colors",
+        "hover:border-line-strong focus:border-accent",
+        "focus-visible:ring-2 focus-visible:ring-accent/40",
+        "focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+        className,
+      )}
+      {...props}
+    />
+  );
+}

@@ -18,14 +18,19 @@ export interface CheckboxProps
   checked?: boolean;
   onCheckedChange?: (checked: boolean) => void;
   onChange?: React.ChangeEventHandler<HTMLInputElement>;
+  ref?: React.Ref<HTMLInputElement>;
 }
 
-export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
-  function Checkbox(
-    { checked, onCheckedChange, onChange, className, disabled, ...props },
-    ref,
-  ) {
-    return (
+export function Checkbox({
+  checked,
+  onCheckedChange,
+  onChange,
+  className,
+  disabled,
+  ref,
+  ...props
+}: CheckboxProps) {
+  return (
       <label
         className={cn(
           // `relative` makes the label the containing block for the sr-only
@@ -80,6 +85,5 @@ export const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
           )}
         </span>
       </label>
-    );
-  },
-);
+  );
+}
