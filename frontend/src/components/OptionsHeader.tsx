@@ -1,6 +1,7 @@
 import { useMemo, type ReactElement } from "react";
 import { DateField } from "./ui/date-field";
 import { listActiveContracts } from "../lib/options-contract";
+import type { OptionsSpot } from "../lib/options-types";
 
 interface Props {
   contractId: string;
@@ -9,10 +10,24 @@ interface Props {
   onDateChange: (d: string) => void;
   loading: boolean;
   onRefresh: () => void;
+  spot?: OptionsSpot | null;
+}
+
+function fmtSpot(spot: OptionsSpot): { val: string; chg: string; chgPct: string } {
+  const val = spot.spot != null ? spot.spot.toLocaleString() : "—";
+  const chgN = spot.change ?? 0;
+  const chg = chgN === 0 ? "0"
+    : chgN > 0 ? `+${chgN.toLocaleString()}`
+    : `−${Math.abs(chgN).toLocaleString()}`;
+  const pctN = spot.change_pct ?? 0;
+  const chgPct = pctN === 0 ? "(0.00%)"
+    : pctN > 0 ? `(+${pctN.toFixed(2)}%)`
+    : `(−${Math.abs(pctN).toFixed(2)}%)`;
+  return { val, chg, chgPct };
 }
 
 export function OptionsHeader({
-  contractId, onContractChange, date, onDateChange, loading, onRefresh,
+  contractId, onContractChange, date, onDateChange, loading, onRefresh, spot,
 }: Props): ReactElement {
   const contracts = useMemo(() => listActiveContracts(new Date()), []);
   return (
@@ -57,6 +72,26 @@ export function OptionsHeader({
         )}
         重新整理
       </button>
+      {spot && spot.spot != null && (() => {
+        const f = fmtSpot(spot);
+        const chgColor = (spot.change ?? 0) >= 0
+          ? "text-[var(--color-up,#dc2626)]"
+          : "text-[var(--color-down,#16a34a)]";
+        return (
+          <div className="ml-auto flex items-baseline gap-1.5">
+            <span className="text-[10px] text-ink-dim uppercase tracking-wide">台指期</span>
+            <span className="text-[18px] font-semibold text-ink font-variant-numeric tabular-nums">
+              {f.val}
+            </span>
+            <span className={`text-[13px] font-variant-numeric tabular-nums ${chgColor}`}>
+              {f.chg}
+            </span>
+            <span className={`text-[11px] font-variant-numeric tabular-nums ${chgColor}`}>
+              {f.chgPct}
+            </span>
+          </div>
+        );
+      })()}
     </header>
   );
 }
