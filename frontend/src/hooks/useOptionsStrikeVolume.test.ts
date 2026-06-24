@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { optionsApi } from "../lib/options-api";
 import { useOptionsStrikeVolume } from "./useOptionsStrikeVolume";
 
@@ -12,22 +12,16 @@ const mockData = {
 };
 
 beforeEach(() => vi.restoreAllMocks());
+afterEach(() => cleanup());
 
 describe("useOptionsStrikeVolume", () => {
-  it("fires the api on mount with top_n=10 by default", async () => {
+  it("fires the api on mount without topN", async () => {
     const spy = vi.spyOn(optionsApi, "strikeVolume").mockResolvedValue(mockData);
     const { result } = renderHook(() =>
       useOptionsStrikeVolume("TXO202607", "2026-06-23"),
     );
     await waitFor(() => expect(result.current.data).toEqual(mockData));
-    expect(spy).toHaveBeenCalledWith("TXO202607", "2026-06-23", 10, undefined);
-  });
-
-  it("passes a custom topN", async () => {
-    const spy = vi.spyOn(optionsApi, "strikeVolume").mockResolvedValue(mockData);
-    renderHook(() => useOptionsStrikeVolume("TXO202607", "2026-06-23", 5));
-    await waitFor(() => expect(spy).toHaveBeenCalled());
-    expect(spy.mock.calls[0][2]).toBe(5);
+    expect(spy).toHaveBeenCalledWith("TXO202607", "2026-06-23", undefined);
   });
 
   it("sets error on rejection", async () => {
@@ -36,5 +30,15 @@ describe("useOptionsStrikeVolume", () => {
       useOptionsStrikeVolume("TXO202607", "2026-06-23"),
     );
     await waitFor(() => expect(result.current.error).toBe("boom"));
+  });
+
+  it("refresh action calls api with refresh=true", async () => {
+    const spy = vi.spyOn(optionsApi, "strikeVolume").mockResolvedValue(mockData);
+    const { result } = renderHook(() =>
+      useOptionsStrikeVolume("TXO202607", "2026-06-23"),
+    );
+    await waitFor(() => expect(result.current.data).toEqual(mockData));
+    result.current.refresh();
+    await waitFor(() => expect(spy.mock.calls.at(-1)?.[2]).toBe(true));
   });
 });

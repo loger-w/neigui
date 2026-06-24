@@ -2,11 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { optionsApi } from "../lib/options-api";
 import type { OptionsStrikeVolume } from "../lib/options-types";
 
-export function useOptionsStrikeVolume(
-  contract: string,
-  date: string,
-  topN: number = 10,
-) {
+export function useOptionsStrikeVolume(contract: string, date: string) {
   const [data, setData] = useState<OptionsStrikeVolume | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +15,7 @@ export function useOptionsStrikeVolume(
       setLoading(true);
       setError(null);
       try {
-        const d = await optionsApi.strikeVolume(contract, date, topN, refresh);
+        const d = await optionsApi.strikeVolume(contract, date, refresh);
         if (seq !== seqRef.current) return;
         setData(d);
       } catch (err) {
@@ -29,7 +25,7 @@ export function useOptionsStrikeVolume(
         if (seq === seqRef.current) setLoading(false);
       }
     },
-    [contract, date, topN],
+    [contract, date],
   );
 
   useEffect(() => { load(); }, [load]);
