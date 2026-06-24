@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import {
+  useMutation,
+  useQueries,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { BrokerDaily } from "../lib/chip-data";
 
@@ -6,6 +11,21 @@ function stableKey(set: Set<string>): string {
   return Array.from(set).sort().join(",");
 }
 
+/**
+ * Per-broker history hook.
+ *
+ * Backend endpoint is a batch (one call returns many brokers), so we cannot
+ * use one useQuery per broker without losing the batch. Hybrid pattern:
+ *
+ *  - useMutation runs the batch fetch (loading + error live here)
+ *  - onSuccess writes each broker's slice into queryClient under
+ *    ["broker-history", symbol, broker_id] — TanStack Query becomes the
+ *    cache (replacing the prior cacheRef Map)
+ *  - useQueries with enabled:false reads those cache entries reactively so
+ *    `series` re-renders when setQueryData lands new data
+ *  - Stale-drop falls out of the query key including symbol: a late fetch
+ *    for the prior symbol writes to that symbol's cache, never the new one
+ */
 export function useBrokerHistory(
   symbol: string,
   brokerIds: Set<string>,
@@ -15,80 +35,91 @@ export function useBrokerHistory(
   error: string | null;
   refresh: () => void;
 } {
-  const cacheRef = useRef<Map<string, BrokerDaily[]>>(new Map());
-  const seqRef = useRef(0);
-  const [series, setSeries] = useState<Map<string, BrokerDaily[]>>(new Map());
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Bump seqRef so any in-flight fetch from the previous symbol
-    // is treated as stale when it resolves and does not write its
-    // result into the freshly-cleared cache for the new symbol.
-    seqRef.current += 1;
-    cacheRef.current.clear();
-    setSeries(new Map());
-    setError(null);
-  }, [symbol]);
-
+  const queryClient = useQueryClient();
+  const forceRefreshRef = useRef(false);
   const idsKey = stableKey(brokerIds);
-
-  const fetchMissing = useCallback(
-    async (forceAll: boolean) => {
-      if (!symbol || brokerIds.size === 0) {
-        setSeries(new Map());
-        setLoading(false);
-        return;
-      }
-      const requested = Array.from(brokerIds);
-      const missing = forceAll
-        ? requested
-        : requested.filter((id) => !cacheRef.current.has(id));
-
-      if (missing.length === 0) {
-        const next = new Map<string, BrokerDaily[]>();
-        for (const id of requested) {
-          const v = cacheRef.current.get(id);
-          if (v) next.set(id, v);
-        }
-        setSeries(next);
-        return;
-      }
-
-      const seq = ++seqRef.current;
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await api.chipBrokerHistory(symbol, missing, forceAll);
-        if (seq !== seqRef.current) return;
-        for (const id of missing) {
-          cacheRef.current.set(id, result.brokers[id] ?? []);
-        }
-        const next = new Map<string, BrokerDaily[]>();
-        for (const id of requested) {
-          const v = cacheRef.current.get(id);
-          if (v) next.set(id, v);
-        }
-        setSeries(next);
-      } catch (err) {
-        if (seq !== seqRef.current) return;
-        setError(err instanceof Error ? err.message : "broker_history_failed");
-      } finally {
-        if (seq === seqRef.current) setLoading(false);
-      }
-    },
+  const requestedIds = useMemo(
+    () => Array.from(brokerIds).sort(),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [symbol, idsKey],
+    [idsKey],
   );
 
+  const mutation = useMutation<
+    { brokers: Record<string, BrokerDaily[]> },
+    Error,
+    { ids: string[] }
+  >({
+    mutationFn: async ({ ids }) => {
+      const force = forceRefreshRef.current;
+      forceRefreshRef.current = false;
+      return api.chipBrokerHistory(symbol, ids, force);
+    },
+    onSuccess: (result, { ids }) => {
+      for (const id of ids) {
+        queryClient.setQueryData(
+          ["broker-history", symbol, id],
+          result.brokers[id] ?? [],
+        );
+      }
+    },
+  });
+
+  // Subscribe to per-broker cache slots so `series` updates when
+  // setQueryData lands new data. Queries are permanently disabled — they
+  // never fire HTTP themselves; the batch mutation feeds the cache.
+  const queries = useQueries({
+    queries: requestedIds.map((id) => ({
+      queryKey: ["broker-history", symbol, id],
+      queryFn: async () => [] as BrokerDaily[], // never invoked
+      enabled: false,
+      staleTime: Infinity,
+    })),
+  });
+
+  const series = useMemo(() => {
+    const m = new Map<string, BrokerDaily[]>();
+    requestedIds.forEach((id, i) => {
+      const data = queries[i]?.data;
+      if (data) m.set(id, data);
+    });
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsKey, queries.map((q) => q.data).join("|")]);
+
+  // Fire batch fetch for any ids we don't have cached yet. Pure
+  // "sync state to external system (queryClient cache)" use of Effect.
   useEffect(() => {
-    fetchMissing(false);
-  }, [fetchMissing]);
+    if (!symbol || requestedIds.length === 0) return;
+    const missing = requestedIds.filter(
+      (id) =>
+        queryClient.getQueryData<BrokerDaily[]>([
+          "broker-history",
+          symbol,
+          id,
+        ]) === undefined,
+    );
+    if (missing.length === 0) return;
+    mutation.mutate({ ids: missing });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [symbol, idsKey]);
 
-  const refresh = useCallback(() => {
-    cacheRef.current.clear();
-    fetchMissing(true);
-  }, [fetchMissing]);
+  const refresh = () => {
+    if (!symbol || requestedIds.length === 0) return;
+    forceRefreshRef.current = true;
+    // Clear cache slots so the fetch re-populates everything.
+    for (const id of requestedIds) {
+      queryClient.removeQueries({
+        queryKey: ["broker-history", symbol, id],
+        exact: true,
+      });
+    }
+    mutation.mutate({ ids: requestedIds });
+  };
 
-  return { series, loading, error, refresh };
+  return {
+    series,
+    loading: mutation.isPending,
+    error: mutation.error ? mutation.error.message : null,
+    refresh,
+  };
 }

@@ -4,6 +4,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useBrokerHistory } from "./useBrokerHistory";
+import { makeQueryWrapper } from "../test-utils/query-wrapper";
 import { api } from "../lib/api";
 import type { ChipBrokerHistory } from "../lib/chip-data";
 
@@ -20,7 +21,7 @@ const mkPayload = (
 describe("useBrokerHistory", () => {
   it("does not fetch when brokerIds is empty", async () => {
     const spy = vi.spyOn(api, "chipBrokerHistory");
-    const { result } = renderHook(() => useBrokerHistory("2330", new Set()));
+    const { result } = renderHook(() => useBrokerHistory("2330", new Set()), { wrapper: makeQueryWrapper() });
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(spy).not.toHaveBeenCalled();
     expect(result.current.series.size).toBe(0);
@@ -32,7 +33,7 @@ describe("useBrokerHistory", () => {
     );
     const { result, rerender } = renderHook(
       ({ ids }: { ids: Set<string> }) => useBrokerHistory("2330", ids),
-      { initialProps: { ids: new Set<string>() } },
+      { initialProps: { ids: new Set<string>() }, wrapper: makeQueryWrapper() },
     );
     rerender({ ids: new Set(["A"]) });
     await waitFor(() => expect(result.current.series.has("A")).toBe(true));
@@ -45,7 +46,7 @@ describe("useBrokerHistory", () => {
     );
     const { result, rerender } = renderHook(
       ({ ids }: { ids: Set<string> }) => useBrokerHistory("2330", ids),
-      { initialProps: { ids: new Set(["A"]) } },
+      { initialProps: { ids: new Set(["A"]) }, wrapper: makeQueryWrapper() },
     );
     await waitFor(() => expect(result.current.series.has("A")).toBe(true));
     rerender({ ids: new Set(["A"]) });
@@ -62,7 +63,7 @@ describe("useBrokerHistory", () => {
     );
     const { result, rerender } = renderHook(
       ({ ids }: { ids: Set<string> }) => useBrokerHistory("2330", ids),
-      { initialProps: { ids: new Set<string>() } },
+      { initialProps: { ids: new Set<string>() }, wrapper: makeQueryWrapper() },
     );
     rerender({ ids: new Set(["A", "B"]) });
     await waitFor(() =>
@@ -79,7 +80,7 @@ describe("useBrokerHistory", () => {
     const { result, rerender } = renderHook(
       ({ symbol, ids }: { symbol: string; ids: Set<string> }) =>
         useBrokerHistory(symbol, ids),
-      { initialProps: { symbol: "2330", ids: new Set(["A"]) } },
+      { initialProps: { symbol: "2330", ids: new Set(["A"]) }, wrapper: makeQueryWrapper() },
     );
     await waitFor(() => expect(result.current.series.get("A")?.[0].net).toBe(1));
     rerender({ symbol: "2454", ids: new Set(["A"]) });
@@ -92,7 +93,7 @@ describe("useBrokerHistory", () => {
       .mockRejectedValueOnce(new Error("network"));
     const { result, rerender } = renderHook(
       ({ ids }: { ids: Set<string> }) => useBrokerHistory("2330", ids),
-      { initialProps: { ids: new Set(["A"]) } },
+      { initialProps: { ids: new Set(["A"]) }, wrapper: makeQueryWrapper() },
     );
     await waitFor(() => expect(result.current.series.has("A")).toBe(true));
     rerender({ ids: new Set(["A", "B"]) });
@@ -104,8 +105,9 @@ describe("useBrokerHistory", () => {
     const spy = vi.spyOn(api, "chipBrokerHistory").mockResolvedValue(
       mkPayload({ A: [{ date: "d", buy: 1, sell: 0, net: 1 }] }),
     );
-    const { result } = renderHook(() =>
-      useBrokerHistory("2330", new Set(["A"])),
+    const { result } = renderHook(
+      () => useBrokerHistory("2330", new Set(["A"])),
+      { wrapper: makeQueryWrapper() },
     );
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
     act(() => result.current.refresh());
@@ -123,7 +125,7 @@ describe("useBrokerHistory", () => {
       );
     const { result, rerender } = renderHook(
       ({ ids }: { ids: Set<string> }) => useBrokerHistory("2330", ids),
-      { initialProps: { ids: new Set(["A"]) } },
+      { initialProps: { ids: new Set(["A"]) }, wrapper: makeQueryWrapper() },
     );
     rerender({ ids: new Set(["B"]) });
     await waitFor(() => expect(result.current.series.has("B")).toBe(true));
@@ -144,7 +146,7 @@ describe("useBrokerHistory", () => {
     const { result, rerender } = renderHook(
       ({ symbol, ids }: { symbol: string; ids: Set<string> }) =>
         useBrokerHistory(symbol, ids),
-      { initialProps: { symbol: "2330", ids: new Set(["A"]) } },
+      { initialProps: { symbol: "2330", ids: new Set(["A"]) }, wrapper: makeQueryWrapper() },
     );
     // Switch symbol BEFORE the 2330 fetch resolves; empty ids first (App
     // resets ids on symbol change), then re-select A under 2454.
