@@ -1,39 +1,28 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { ChipBubbleData } from "../lib/chip-data";
 
 export function useChipBubble(symbol: string, date: string) {
-  const [data, setData] = useState<ChipBubbleData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const seqRef = useRef(0);
+  const forceRefreshRef = useRef(false);
 
-  const load = useCallback(
-    async (refresh = false) => {
-      if (!symbol) return;
-      const seq = ++seqRef.current;
-      setLoading(true);
-      setError(null);
-      try {
-        const result = await api.chipBubble(symbol, date, refresh);
-        if (seq !== seqRef.current) return;
-        setData(result);
-      } catch (err) {
-        if (seq !== seqRef.current) return;
-        setError(err instanceof Error ? err.message : "載入泡泡圖資料失敗");
-      } finally {
-        if (seq === seqRef.current) setLoading(false);
-      }
+  const { data, isFetching, error, refetch } = useQuery<ChipBubbleData, Error>({
+    queryKey: ["chip-bubble", symbol, date],
+    queryFn: async () => {
+      const force = forceRefreshRef.current;
+      forceRefreshRef.current = false;
+      return api.chipBubble(symbol, date, force);
     },
-    [symbol, date],
-  );
+    enabled: symbol !== "",
+  });
 
-  useEffect(() => {
-    setData(null);
-    setError(null);
-    load();
-  }, [load]);
-
-  const refresh = useCallback(() => load(true), [load]);
-  return { data, loading, error, refresh };
+  return {
+    data: data ?? null,
+    loading: isFetching,
+    error: error ? error.message : null,
+    refresh: () => {
+      forceRefreshRef.current = true;
+      refetch();
+    },
+  };
 }
