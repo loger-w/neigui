@@ -1,39 +1,32 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { optionsApi } from "../lib/options-api";
 import type { OptionsSpot } from "../lib/options-types";
 
 export function useOptionsSpot(date: string) {
-  const [data, setData] = useState<OptionsSpot | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const seqRef = useRef(0);
+  // forceRefreshRef carries the user's "重新整理" intent through the next
+  // refetch so backend gets ?refresh=true exactly once. TanStack Query's
+  // own cache invalidation is not enough — backend ignores stale only when
+  // this flag is set.
+  const forceRefreshRef = useRef(false);
 
-  const load = useCallback(
-    async (refresh?: boolean) => {
-      const seq = ++seqRef.current;
-      setLoading(true);
-      setError(null);
-      try {
-        const d = await optionsApi.spot(date, refresh);
-        if (seq !== seqRef.current) return;
-        setData(d);
-      } catch (err) {
-        if (seq !== seqRef.current) return;
-        setError(err instanceof Error ? err.message : "載入現價失敗");
-      } finally {
-        if (seq === seqRef.current) setLoading(false);
-      }
+  const { data, isFetching, error, refetch } = useQuery<OptionsSpot, Error>({
+    queryKey: ["options-spot", date],
+    queryFn: async () => {
+      const force = forceRefreshRef.current;
+      forceRefreshRef.current = false;
+      return optionsApi.spot(date, force ? true : undefined);
     },
-    [date],
-  );
-
-  useEffect(() => { load(); }, [load]);
+  });
 
   return {
-    data,
-    loading,
-    error,
-    refresh: () => load(true),
+    data: data ?? null,
+    loading: isFetching,
+    error: error ? error.message : null,
+    refresh: () => {
+      forceRefreshRef.current = true;
+      refetch();
+    },
     noTradingDay: data?.no_trading_day === true,
   };
 }
