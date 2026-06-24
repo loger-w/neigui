@@ -9,6 +9,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { api } from "../lib/api";
 import type { ChipHistory, ChipSummary } from "../lib/chip-data";
 import { useChipData } from "./useChipData";
+import { makeQueryWrapper } from "../test-utils/query-wrapper";
 
 beforeEach(() => vi.restoreAllMocks());
 
@@ -45,7 +46,7 @@ describe("useChipData split fetches", () => {
   it("initial mount fires both api.chip and api.chipHistory", async () => {
     const chipSpy = vi.spyOn(api, "chip").mockResolvedValue(mkSummary("2026-06-22"));
     const histSpy = vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
-    renderHook(() => useChipData("2330", "2026-06-22"));
+    renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
     await waitFor(() => {
       expect(chipSpy).toHaveBeenCalledTimes(1);
       expect(histSpy).toHaveBeenCalledTimes(1);
@@ -57,7 +58,7 @@ describe("useChipData split fetches", () => {
     const histSpy = vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
     const { rerender } = renderHook(
       ({ d }: { d: string }) => useChipData("2330", d),
-      { initialProps: { d: "2026-06-22" } },
+      { initialProps: { d: "2026-06-22" }, wrapper: makeQueryWrapper() },
     );
     await waitFor(() => expect(chipSpy).toHaveBeenCalledTimes(1));
     expect(histSpy).toHaveBeenCalledTimes(1);
@@ -71,7 +72,7 @@ describe("useChipData split fetches", () => {
     const histSpy = vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
     const { rerender } = renderHook(
       ({ sym }: { sym: string }) => useChipData(sym, "2026-06-22"),
-      { initialProps: { sym: "2330" } },
+      { initialProps: { sym: "2330" }, wrapper: makeQueryWrapper() },
     );
     await waitFor(() => {
       expect(chipSpy).toHaveBeenCalledTimes(1);
@@ -89,7 +90,7 @@ describe("useChipData split fetches", () => {
     vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
     const { result, rerender } = renderHook(
       ({ d }: { d: string }) => useChipData("2330", d),
-      { initialProps: { d: "2026-06-22" } },
+      { initialProps: { d: "2026-06-22" }, wrapper: makeQueryWrapper() },
     );
     await waitFor(() => expect(result.current.history).not.toBeNull());
     const histRef = result.current.history;
@@ -111,7 +112,7 @@ describe("useChipData split fetches", () => {
     vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
     const { result, rerender } = renderHook(
       ({ d }: { d: string }) => useChipData("2330", d),
-      { initialProps: { d: "2026-06-22" } },
+      { initialProps: { d: "2026-06-22" }, wrapper: makeQueryWrapper() },
     );
     await waitFor(() => expect(result.current.summary?.date).toBe("2026-06-22"));
     rerender({ d: "2026-06-21" });
@@ -131,7 +132,7 @@ describe("useChipData split fetches", () => {
           resolveHist = r;
         }),
     );
-    const { result } = renderHook(() => useChipData("2330", "2026-06-22"));
+    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
     await waitFor(() => expect(result.current.summary).not.toBeNull());
     expect(result.current.summaryLoading).toBe(false);
     expect(result.current.historyLoading).toBe(true);
@@ -143,7 +144,7 @@ describe("useChipData split fetches", () => {
   it("refresh() forces both endpoints with refresh=true", async () => {
     const chipSpy = vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
     const histSpy = vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
-    const { result } = renderHook(() => useChipData("2330", "2026-06-22"));
+    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
     await waitFor(() => expect(chipSpy).toHaveBeenCalledTimes(1));
     act(() => result.current.refresh());
     await waitFor(() => {
@@ -167,7 +168,7 @@ describe("useChipData split fetches", () => {
     vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
     const { result, rerender } = renderHook(
       ({ d }: { d: string }) => useChipData("2330", d),
-      { initialProps: { d: "2026-06-22" } },
+      { initialProps: { d: "2026-06-22" }, wrapper: makeQueryWrapper() },
     );
     rerender({ d: "2026-06-21" });
     await waitFor(() => expect(result.current.summary?.date).toBe("FRESH"));

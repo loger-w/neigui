@@ -1,105 +1,63 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { ChipHistory, ChipSummary } from "../lib/chip-data";
 
 /**
  * Chip overview data hook.
  *
- * Split into two independent fetches (F3):
- * - summary: depends on symbol + date — refetched on either change
- * - history: depends on symbol only — refetched on symbol change only
+ * Split into two independent queries:
+ * - summary: keyed by symbol + date — refetches on either change
+ * - history: keyed by symbol only  — refetches on symbol change only
  *
- * Date-only changes therefore re-fetch only the right-panel summary; the
- * K-line stays visible and the previously-loaded summary is kept on
- * screen while the new one loads (smoother UX than the prior
- * "blank → reload" cycle).
+ * Date-only changes therefore re-fetch only the summary; the K-line stays
+ * visible. `placeholderData: keepPreviousData` on the summary query keeps
+ * the prior summary on screen while the new one loads (no null flash).
  *
- * `loading` remains the OR of both flags for back-compat with the header
- * "重新整理" button; callers can subscribe to `summaryLoading` /
- * `historyLoading` individually for scoped indicators.
+ * `loading` remains the OR of both isFetching flags for back-compat with
+ * the header "重新整理" button.
  */
 export function useChipData(symbol: string, date: string) {
-  const [summary, setSummary] = useState<ChipSummary | null>(null);
-  const [history, setHistory] = useState<ChipHistory | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const summarySeqRef = useRef(0);
-  const historySeqRef = useRef(0);
+  const summaryForceRef = useRef(false);
+  const historyForceRef = useRef(false);
 
-  // Symbol change resets BOTH so stale data for the prior symbol doesn't
-  // flash. Also bumps seqRefs so any in-flight prior-symbol fetch is
-  // treated as stale on resolve.
-  useEffect(() => {
-    summarySeqRef.current += 1;
-    historySeqRef.current += 1;
-    setSummary(null);
-    setHistory(null);
-    setError(null);
-  }, [symbol]);
-
-  const loadSummary = useCallback(
-    async (refresh = false) => {
-      if (!symbol) return;
-      const seq = ++summarySeqRef.current;
-      setSummaryLoading(true);
-      setError(null);
-      try {
-        const s = await api.chip(symbol, date, refresh);
-        if (seq !== summarySeqRef.current) return;
-        setSummary(s);
-      } catch (err) {
-        if (seq !== summarySeqRef.current) return;
-        setError(err instanceof Error ? err.message : "載入籌碼資料失敗");
-      } finally {
-        if (seq === summarySeqRef.current) setSummaryLoading(false);
-      }
+  const summaryQ = useQuery<ChipSummary, Error>({
+    queryKey: ["chip-summary", symbol, date],
+    queryFn: async () => {
+      const force = summaryForceRef.current;
+      summaryForceRef.current = false;
+      return api.chip(symbol, date, force);
     },
-    [symbol, date],
-  );
+    enabled: symbol !== "",
+    placeholderData: keepPreviousData,
+  });
 
-  const loadHistory = useCallback(
-    async (refresh = false) => {
-      if (!symbol) return;
-      const seq = ++historySeqRef.current;
-      setHistoryLoading(true);
-      setError(null);
-      try {
-        const h = await api.chipHistory(symbol, refresh);
-        if (seq !== historySeqRef.current) return;
-        setHistory(h);
-      } catch (err) {
-        if (seq !== historySeqRef.current) return;
-        setError(err instanceof Error ? err.message : "載入歷史資料失敗");
-      } finally {
-        if (seq === historySeqRef.current) setHistoryLoading(false);
-      }
+  const historyQ = useQuery<ChipHistory, Error>({
+    queryKey: ["chip-history", symbol],
+    queryFn: async () => {
+      const force = historyForceRef.current;
+      historyForceRef.current = false;
+      return api.chipHistory(symbol, force);
     },
-    [symbol],
-  );
+    enabled: symbol !== "",
+  });
 
-  // Summary auto-fires on symbol or date change (deps via loadSummary).
-  useEffect(() => {
-    loadSummary();
-  }, [loadSummary]);
-
-  // History auto-fires only on symbol change (deps via loadHistory).
-  useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
-
-  const refresh = useCallback(() => {
-    loadSummary(true);
-    loadHistory(true);
-  }, [loadSummary, loadHistory]);
+  const summaryLoading = summaryQ.isFetching;
+  const historyLoading = historyQ.isFetching;
+  const error = summaryQ.error ?? historyQ.error;
 
   return {
-    summary,
-    history,
+    summary: summaryQ.data ?? null,
+    history: historyQ.data ?? null,
     loading: summaryLoading || historyLoading,
     summaryLoading,
     historyLoading,
-    error,
-    refresh,
+    error: error ? error.message : null,
+    refresh: () => {
+      summaryForceRef.current = true;
+      historyForceRef.current = true;
+      summaryQ.refetch();
+      historyQ.refetch();
+    },
   };
 }
