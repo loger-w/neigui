@@ -1,40 +1,29 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { optionsApi } from "../lib/options-api";
 import type { OptionsLargeTraders } from "../lib/options-types";
 
 export function useOptionsLargeTraders(contract: string, date: string) {
-  const [data, setData] = useState<OptionsLargeTraders | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const seqRef = useRef(0);
+  const forceRefreshRef = useRef(false);
 
-  const load = useCallback(
-    async (refresh?: boolean) => {
-      if (!contract) return;
-      const seq = ++seqRef.current;
-      setLoading(true);
-      setError(null);
-      try {
-        const d = await optionsApi.largeTraders(contract, date, refresh);
-        if (seq !== seqRef.current) return;
-        setData(d);
-      } catch (err) {
-        if (seq !== seqRef.current) return;
-        setError(err instanceof Error ? err.message : "載入大戶資料失敗");
-      } finally {
-        if (seq === seqRef.current) setLoading(false);
-      }
+  const { data, isFetching, error, refetch } = useQuery<OptionsLargeTraders, Error>({
+    queryKey: ["options-large-traders", contract, date],
+    queryFn: async () => {
+      const force = forceRefreshRef.current;
+      forceRefreshRef.current = false;
+      return optionsApi.largeTraders(contract, date, force ? true : undefined);
     },
-    [contract, date],
-  );
-
-  useEffect(() => { load(); }, [load]);
+    enabled: contract !== "",
+  });
 
   return {
-    data,
-    loading,
-    error,
-    refresh: () => load(true),
+    data: data ?? null,
+    loading: isFetching,
+    error: error ? error.message : null,
+    refresh: () => {
+      forceRefreshRef.current = true;
+      refetch();
+    },
     noTradingDay: data?.no_trading_day === true,
   };
 }
