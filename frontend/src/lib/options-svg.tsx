@@ -121,6 +121,21 @@ function fmtSigned(n: number): string {
   return n > 0 ? `+${s}` : `−${s}`;
 }
 
+/**
+ * Strike with the largest OI on a side, or null if the side carries no
+ * positive OI at all. This is the proxy for "Call Wall / Put Wall" — the
+ * convention SpotGamma names and wantgoo/optree implement using max-OI
+ * when gamma data is unavailable (research finding #2, 3-0 confirmed).
+ */
+function maxOIStrike(rows: ReadonlyArray<{ strike: number; oi: number }>): number | null {
+  let best: { strike: number; oi: number } | null = null;
+  for (const r of rows) {
+    if (r.oi <= 0) continue;
+    if (best === null || r.oi > best.oi) best = r;
+  }
+  return best ? best.strike : null;
+}
+
 export function StrikeLadder({ data, spot }: StrikeLadderProps): ReactElement {
   // Build a union of strikes from both call and put, then sort high→low.
   const allStrikes = new Set<number>([
@@ -142,6 +157,9 @@ export function StrikeLadder({ data, spot }: StrikeLadderProps): ReactElement {
 
   const callByStrike = new Map(data.call.map((r) => [r.strike, r]));
   const putByStrike  = new Map(data.put.map((r) => [r.strike, r]));
+
+  const callWallStrike = maxOIStrike(data.call);
+  const putWallStrike  = maxOIStrike(data.put);
 
   const maxVol = Math.max(
     1,
@@ -209,10 +227,26 @@ export function StrikeLadder({ data, spot }: StrikeLadderProps): ReactElement {
             const p = putByStrike.get(row.strike);
             const cw = c ? (c.volume / maxVol) * 100 : 0;
             const pw = p ? (p.volume / maxVol) * 100 : 0;
+            const isCallWall = callWallStrike !== null && row.strike === callWallStrike;
+            const isPutWall  = putWallStrike  !== null && row.strike === putWallStrike;
+            const wallTag = isCallWall && isPutWall ? "both"
+                          : isCallWall ? "call"
+                          : isPutWall ? "put"
+                          : undefined;
+            const strikeClass = isCallWall && isPutWall
+              ? "text-center text-[13px] font-bold text-accent"
+              : isCallWall
+              ? "text-center text-[13px] font-bold text-[var(--color-up,#dc2626)]"
+              : isPutWall
+              ? "text-center text-[13px] font-bold text-[var(--color-down,#16a34a)]"
+              : "text-center text-[13px] text-ink";
             return (
               <tr
                 key={`s-${row.strike}`}
                 data-testid="ladder-row"
+                data-wall={wallTag}
+                data-wall-call={isCallWall ? "true" : undefined}
+                data-wall-put={isPutWall ? "true" : undefined}
                 className="border-b border-line/40"
                 style={{ height: "22px" }}
               >
@@ -240,7 +274,7 @@ export function StrikeLadder({ data, spot }: StrikeLadderProps): ReactElement {
                 </td>
                 <td
                   data-testid="ladder-strike"
-                  className="text-center text-[13px] text-ink"
+                  className={strikeClass}
                 >
                   {row.strike.toLocaleString()}
                 </td>
