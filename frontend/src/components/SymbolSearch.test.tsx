@@ -1,11 +1,11 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, screen, act, cleanup, waitFor } from "@testing-library/react";
 import { SymbolSearch } from "./SymbolSearch";
 import { api } from "@/lib/api";
-import { __resetAllSymbolsCacheForTesting } from "@/hooks/useAllSymbols";
+import { makeQueryWrapper } from "@/test-utils/query-wrapper";
 
 type Sym = { symbol: string; name: string };
 
@@ -18,14 +18,13 @@ const ALL: Sym[] = [
   { symbol: "00735L", name: "華頓越南正2" },
 ];
 
-beforeEach(() => {
-  __resetAllSymbolsCacheForTesting();
-});
-
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
 });
+
+const renderWithQuery = (ui: React.ReactElement) =>
+  render(ui, { wrapper: makeQueryWrapper() });
 
 async function flushLoad() {
   // Resolve the useEffect-scheduled load() promise and let setState commit.
@@ -38,7 +37,7 @@ async function flushLoad() {
 describe("SymbolSearch", () => {
   it("filters by symbol prefix after the symbol list loads", async () => {
     vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
-    render(<SymbolSearch onPick={vi.fn()} />);
+    renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
     await flushLoad();
 
     const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
@@ -53,7 +52,7 @@ describe("SymbolSearch", () => {
 
   it("filters by name substring case-insensitively", async () => {
     vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
-    render(<SymbolSearch onPick={vi.fn()} />);
+    renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
     await flushLoad();
 
     fireEvent.change(screen.getByPlaceholderText(/搜尋代號或名稱/), {
@@ -66,7 +65,7 @@ describe("SymbolSearch", () => {
 
   it("narrows results as the query gets longer (no stale flicker)", async () => {
     vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
-    render(<SymbolSearch onPick={vi.fn()} />);
+    renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
     await flushLoad();
 
     const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
@@ -81,7 +80,7 @@ describe("SymbolSearch", () => {
 
   it("hits the API at most once across many keystrokes", async () => {
     const spy = vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
-    render(<SymbolSearch onPick={vi.fn()} />);
+    renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
     await flushLoad();
 
     const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
@@ -96,7 +95,7 @@ describe("SymbolSearch", () => {
     vi.spyOn(api, "symbolsAll").mockReturnValue(
       new Promise<Sym[]>((r) => { resolveAll = r; }),
     );
-    render(<SymbolSearch onPick={vi.fn()} />);
+    renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
 
     fireEvent.change(screen.getByPlaceholderText(/搜尋代號或名稱/), {
       target: { value: "2330" },
@@ -119,7 +118,7 @@ describe("SymbolSearch", () => {
       name: `S${i}`,
     }));
     vi.spyOn(api, "symbolsAll").mockResolvedValue(many);
-    render(<SymbolSearch onPick={vi.fn()} />);
+    renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
     await flushLoad();
 
     fireEvent.change(screen.getByPlaceholderText(/搜尋代號或名稱/), {
@@ -131,7 +130,7 @@ describe("SymbolSearch", () => {
 
   it("closes dropdown and clears results when query is emptied", async () => {
     vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
-    render(<SymbolSearch onPick={vi.fn()} />);
+    renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
     await flushLoad();
 
     const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
@@ -145,7 +144,7 @@ describe("SymbolSearch", () => {
   it("invokes onPick with symbol + name when an item is selected", async () => {
     vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
     const onPick = vi.fn();
-    render(<SymbolSearch onPick={onPick} />);
+    renderWithQuery(<SymbolSearch onPick={onPick} />);
     await flushLoad();
 
     fireEvent.change(screen.getByPlaceholderText(/搜尋代號或名稱/), {
