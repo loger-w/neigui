@@ -1,15 +1,18 @@
-"""Chip data (籌碼) API routes."""
+"""Chip data (籌碼) API routes.
+
+Error handling lives in main.py via global @app.exception_handler — every
+endpoint here lets httpx errors and ValueErrors propagate, and they come
+back to the client as `{"detail": {"error": "..."}}` with the canonical
+status code (502 for upstream, 503 for service not ready).
+"""
 from __future__ import annotations
 
-import logging
 from datetime import date
 
-import httpx
 from fastapi import APIRouter, HTTPException, Query
 
 from services.finmind import get_finmind
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -20,16 +23,7 @@ async def get_chip_summary(
     refresh: bool = Query(default=False),
 ) -> dict:
     d = date or _today()
-    try:
-        return await get_finmind().fetch_chip_summary(symbol, d, refresh)
-    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
-        logger.warning("FinMind error for %s: %s", symbol, exc)
-        raise HTTPException(status_code=502, detail={"error": "finmind_error"})
-    except ValueError as exc:
-        raise HTTPException(status_code=503, detail={"error": str(exc)})
-    except Exception:
-        logger.exception("Unexpected chip error for %s", symbol)
-        raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
+    return await get_finmind().fetch_chip_summary(symbol, d, refresh)
 
 
 @router.get("/api/chip/{symbol}/bubble")
@@ -39,16 +33,7 @@ async def get_chip_bubble(
     refresh: bool = Query(default=False),
 ) -> dict:
     d = date or _today()
-    try:
-        return await get_finmind().fetch_chip_bubble(symbol, d, refresh)
-    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
-        logger.warning("FinMind bubble error for %s: %s", symbol, exc)
-        raise HTTPException(status_code=502, detail={"error": "finmind_error"})
-    except ValueError as exc:
-        raise HTTPException(status_code=503, detail={"error": str(exc)})
-    except Exception:
-        logger.exception("Unexpected chip bubble error for %s", symbol)
-        raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
+    return await get_finmind().fetch_chip_bubble(symbol, d, refresh)
 
 
 @router.get("/api/chip/{symbol}/history")
@@ -56,16 +41,7 @@ async def get_chip_history(
     symbol: str,
     refresh: bool = Query(default=False),
 ) -> dict:
-    try:
-        return await get_finmind().fetch_chip_history(symbol, refresh)
-    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
-        logger.warning("FinMind history error for %s: %s", symbol, exc)
-        raise HTTPException(status_code=502, detail={"error": "finmind_error"})
-    except ValueError as exc:
-        raise HTTPException(status_code=503, detail={"error": str(exc)})
-    except Exception:
-        logger.exception("Unexpected chip history error for %s", symbol)
-        raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
+    return await get_finmind().fetch_chip_history(symbol, refresh)
 
 
 @router.get("/api/chip/{symbol}/broker_history")
@@ -79,16 +55,7 @@ async def get_chip_broker_history(
         raise HTTPException(status_code=400, detail={"error": "ids_required"})
     if len(id_list) > 20:
         raise HTTPException(status_code=400, detail={"error": "too_many_ids"})
-    try:
-        return await get_finmind().fetch_broker_history(symbol, id_list, refresh)
-    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
-        logger.warning("FinMind broker_history error for %s: %s", symbol, exc)
-        raise HTTPException(status_code=502, detail={"error": "finmind_error"})
-    except ValueError as exc:
-        raise HTTPException(status_code=503, detail={"error": str(exc)})
-    except Exception:
-        logger.exception("Unexpected chip broker_history error for %s", symbol)
-        raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
+    return await get_finmind().fetch_broker_history(symbol, id_list, refresh)
 
 
 def _today() -> str:

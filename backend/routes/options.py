@@ -1,16 +1,18 @@
-"""Options chip API routes."""
+"""Options chip API routes.
+
+Error handling lives in main.py via global @app.exception_handler — httpx
+errors and ValueErrors propagate; the canonical 502 / 503 / detail.error
+shape comes back from those handlers.
+"""
 from __future__ import annotations
 
-import logging
 from datetime import date
 
-import httpx
 from fastapi import APIRouter, HTTPException, Query
 
 from services.finmind import get_finmind
 from services.finmind_options import list_active_contracts
 
-logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -43,28 +45,25 @@ def _is_stale_for_requested(payload: dict, requested_date: str) -> bool:
     return as_of is None or as_of != requested_date
 
 
+def _require_contract(contract: str) -> dict:
+    """Two-step contract guard shared by every endpoint that needs one."""
+    if not contract:
+        raise HTTPException(status_code=400, detail={"error": "contract_required"})
+    c = _resolve_contract(contract)
+    if c is None:
+        raise HTTPException(status_code=400, detail={"error": "invalid_contract"})
+    return c
+
+
 @router.get("/api/options/oi_large_traders")
 async def get_oi_large_traders(
     contract: str = Query(default=""),
     date: str = Query(default=""),
     refresh: bool = Query(default=False),
 ) -> dict:
-    if not contract:
-        raise HTTPException(status_code=400, detail={"error": "contract_required"})
-    c = _resolve_contract(contract)
-    if c is None:
-        raise HTTPException(status_code=400, detail={"error": "invalid_contract"})
+    c = _require_contract(contract)
     d = date or _today_str()
-    try:
-        out = await get_finmind().fetch_oi_large_traders(c, d, refresh)
-    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
-        logger.warning("FinMind options OI error: %s", exc)
-        raise HTTPException(status_code=502, detail={"error": "finmind_error"})
-    except ValueError as exc:
-        raise HTTPException(status_code=503, detail={"error": str(exc)})
-    except Exception:
-        logger.exception("Unexpected options OI error")
-        raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
+    out = await get_finmind().fetch_oi_large_traders(c, d, refresh)
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
     return out
@@ -76,16 +75,7 @@ async def get_spot(
     refresh: bool = Query(default=False),
 ) -> dict:
     d = date or _today_str()
-    try:
-        out = await get_finmind().fetch_spot(d, refresh)
-    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
-        logger.warning("FinMind spot error: %s", exc)
-        raise HTTPException(status_code=502, detail={"error": "finmind_error"})
-    except ValueError as exc:
-        raise HTTPException(status_code=503, detail={"error": str(exc)})
-    except Exception:
-        logger.exception("Unexpected spot error")
-        raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
+    out = await get_finmind().fetch_spot(d, refresh)
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
     return out
@@ -97,22 +87,9 @@ async def get_strike_volume(
     date: str = Query(default=""),
     refresh: bool = Query(default=False),
 ) -> dict:
-    if not contract:
-        raise HTTPException(status_code=400, detail={"error": "contract_required"})
-    c = _resolve_contract(contract)
-    if c is None:
-        raise HTTPException(status_code=400, detail={"error": "invalid_contract"})
+    c = _require_contract(contract)
     d = date or _today_str()
-    try:
-        out = await get_finmind().fetch_strike_volume(c, d, refresh)
-    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
-        logger.warning("FinMind options strike-vol error: %s", exc)
-        raise HTTPException(status_code=502, detail={"error": "finmind_error"})
-    except ValueError as exc:
-        raise HTTPException(status_code=503, detail={"error": str(exc)})
-    except Exception:
-        logger.exception("Unexpected options strike-vol error")
-        raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
+    out = await get_finmind().fetch_strike_volume(c, d, refresh)
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
     return out
