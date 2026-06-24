@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { OptionsHeader } from "./OptionsHeader";
-import { OptionsLargeTradersPanel } from "./OptionsLargeTradersPanel";
-import { OptionsStrikeVolumePanel } from "./OptionsStrikeVolumePanel";
+import { OptionsLargeTradersStrip } from "./OptionsLargeTradersStrip";
+import { OptionsStrikeLadder } from "./OptionsStrikeLadder";
 import { useOptionsLargeTraders } from "../hooks/useOptionsLargeTraders";
 import { useOptionsStrikeVolume } from "../hooks/useOptionsStrikeVolume";
+import { useOptionsSpot } from "../hooks/useOptionsSpot";
 import { listActiveContracts } from "../lib/options-contract";
 
 function todayStr(): string {
@@ -17,7 +18,6 @@ function todayStr(): string {
 
 function defaultContractId(): string {
   const list = listActiveContracts(new Date());
-  // persisted kind preference
   const kind = localStorage.getItem("opt:kind");
   const pick = list.find((c) =>
     kind === "monthly" ? c.slot === "M0" : c.slot === "W1",
@@ -39,12 +39,16 @@ export function OptionsPage(): ReactElement {
     if (currentContract) localStorage.setItem("opt:kind", currentContract.kind);
   }, [currentContract]);
 
-  const lt = useOptionsLargeTraders(contractId, date);
-  const sv = useOptionsStrikeVolume(contractId, date);
-  const loading = lt.loading || sv.loading;
-  const refresh = () => { lt.refresh(); sv.refresh(); };
+  const lt   = useOptionsLargeTraders(contractId, date);
+  const sv   = useOptionsStrikeVolume(contractId, date);
+  const spot = useOptionsSpot(date);
+
+  const loading = lt.loading || sv.loading || spot.loading;
+  const refresh = () => { lt.refresh(); sv.refresh(); spot.refresh(); };
 
   const isWeekly = currentContract?.kind === "weekly";
+  const anyNoTradingDay =
+    lt.noTradingDay || sv.noTradingDay || spot.noTradingDay;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -55,25 +59,25 @@ export function OptionsPage(): ReactElement {
         onDateChange={setDate}
         loading={loading}
         onRefresh={refresh}
+        spot={spot.data}
       />
-      {(lt.noTradingDay || sv.noTradingDay) && (
+      {anyNoTradingDay && (
         <div className="shrink-0 px-6 py-2 text-sm text-ink-dim bg-ink/[0.04] border-b border-line">
           {date} 無交易
         </div>
       )}
-      <div className="flex-1 grid grid-rows-2 overflow-hidden">
-        <OptionsLargeTradersPanel
-          data={lt.data}
-          loading={lt.loading}
-          error={lt.error}
-          weeklyAggregateBanner={isWeekly}
-        />
-        <OptionsStrikeVolumePanel
-          data={sv.data}
-          loading={sv.loading}
-          error={sv.error}
-        />
-      </div>
+      <OptionsLargeTradersStrip
+        data={lt.data}
+        loading={lt.loading}
+        error={lt.error}
+        weeklyAggregateBanner={isWeekly}
+      />
+      <OptionsStrikeLadder
+        data={sv.data}
+        spot={spot.data}
+        loading={sv.loading}
+        error={sv.error}
+      />
     </div>
   );
 }
