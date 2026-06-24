@@ -32,7 +32,19 @@ P0(TanStack Query swap)收尾時掃出來的可清理項。**不在這次 refact
 2. frontend `api.chipBrokerHistory` 拆 batch vs single,或讓 `useBrokerHistory` 直接 useQueries each id
 3. 把 hook 內 useMutation + setQueryData + disabled useQueries 三層拆成單純 `useQueries`
 
-## 3. 可考慮加 React Query Devtools 到 dev build
+## 3. Frontend ESLint base + `eslint-plugin-react-you-might-not-need-an-effect`
+
+P2-c 的原意是「裝 lint 自動抓 useEffect anti-pattern」,但 frontend 目前完全沒 ESLint(`grep -E "eslint|biome" package.json` 空),裝 base config + typescript-eslint + react / react-hooks plugin + you-might-not-need-an-effect 是 toolchain 大改動,不適合塞在 refactor session 收尾。
+
+**為何 P0 之後仍然該裝**:剩下的 useEffect(掃過一次)有兩條是 prop → state sync 型 anti-pattern(`BrokerSearch.tsx` L48 的 `setQuery(value ?? "")`、`App.tsx` L55 的 history-driven auto-date),其他都是合法 external sync(localStorage / ResizeObserver / queryClient cache)。lint 可以幫忙標出來,人工修則需要 derive state 改寫 ergonomics。
+
+**下次怎麼做**:
+1. `npm i -D eslint @eslint/js typescript-eslint eslint-plugin-react-hooks eslint-plugin-react-you-might-not-need-an-effect`
+2. 寫 `eslint.config.js`(flat config),啟用 `react/no-unnecessary-effect` 規則
+3. `npx eslint .` 跑一次,把 anti-pattern useEffect 改寫成 derived state / event handler
+4. `package.json` 加 `"lint": "eslint ."` script
+
+## 4. 可考慮加 React Query Devtools 到 dev build
 
 P0 已 install `@tanstack/react-query-devtools` 但**尚未在 main.tsx mount**。掛上後可在 dev 環境看 query cache、stale time、refetch 順序,debug 起來省事不少。production build 自動 tree-shake 掉。
 
