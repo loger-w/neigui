@@ -44,6 +44,27 @@ describe("Sparkline", () => {
     expect(container.querySelector("svg")).toBeTruthy();
     expect(container.querySelectorAll("polyline").length).toBe(0);
   });
+
+  it("single-point series renders empty svg without NaN attributes", () => {
+    const { container } = render(<Sparkline series={[100]} width={90} height={30} />);
+    const svg = container.querySelector("svg");
+    expect(svg).toBeTruthy();
+    // No NaN-producing geometry — a 1-point polyline used to render invisible.
+    expect(container.querySelectorAll("polyline").length).toBe(0);
+    expect(container.querySelectorAll("polygon").length).toBe(0);
+    expect(container.querySelectorAll("circle").length).toBe(0);
+  });
+
+  it("series containing nulls or NaN is filtered out", () => {
+    const { container } = render(
+      // @ts-expect-error — testing defensive runtime behaviour
+      <Sparkline series={[1, null, NaN, 3, 4, 5]} width={90} height={30} />,
+    );
+    // After filtering, 4 valid points → renders normally.
+    expect(container.querySelectorAll("polyline").length).toBe(1);
+    expect(container.querySelectorAll("polygon").length).toBe(1);
+    expect(container.querySelectorAll("circle").length).toBe(1);
+  });
 });
 
 describe("StrikeLadder", () => {

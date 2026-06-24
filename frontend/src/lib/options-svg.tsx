@@ -52,23 +52,43 @@ interface SparklineProps {
 }
 
 export function Sparkline({ series, width, height }: SparklineProps): ReactElement {
-  if (series.length === 0) {
-    return <svg width={width} height={height} role="img" aria-hidden="true" />;
+  // Defensive: filter null / undefined / NaN. Upstream parsers should never
+  // produce these, but a degenerate series silently rendered an invisible
+  // 1-point polyline during P3 verification — better to skip and render
+  // reserved space than emit NaN coordinates.
+  const clean = series.filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v),
+  );
+  if (clean.length < 2) {
+    return (
+      <svg width={width} height={height} role="img" aria-hidden="true">
+        {clean.length === 1 && (
+          <line
+            x1={0}
+            x2={width}
+            y1={height / 2}
+            y2={height / 2}
+            stroke="currentColor"
+            strokeOpacity="0.15"
+            strokeDasharray="2 2"
+          />
+        )}
+      </svg>
+    );
   }
-  const lo = Math.min(0, ...series);
-  const hi = Math.max(0, ...series);
+  const lo = Math.min(0, ...clean);
+  const hi = Math.max(0, ...clean);
   const span = hi - lo || 1;
-  const x = (i: number) =>
-    1 + (series.length === 1 ? width / 2 : (i / (series.length - 1)) * (width - 2));
+  const x = (i: number) => 1 + (i / (clean.length - 1)) * (width - 2);
   const y = (v: number) => 1 + (height - 2) - ((v - lo) / span) * (height - 2);
 
-  const points = series.map((v, i) => `${x(i)},${y(v)}`).join(" ");
-  const last = series[series.length - 1];
+  const points = clean.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+  const last = clean[clean.length - 1];
   const sign = last >= 0 ? "pos" : "neg";
   const color = last >= 0
     ? "var(--color-up, #dc2626)"
     : "var(--color-down, #16a34a)";
-  const areaPoints = `${x(0)},${y(0)} ${points} ${x(series.length - 1)},${y(0)}`;
+  const areaPoints = `${x(0)},${y(0)} ${points} ${x(clean.length - 1)},${y(0)}`;
 
   return (
     <svg width={width} height={height} role="img" aria-label="20D 趨勢"
@@ -78,7 +98,7 @@ export function Sparkline({ series, width, height }: SparklineProps): ReactEleme
             strokeDasharray="2 2" />
       <polygon points={areaPoints} fill={color} fillOpacity="0.15" />
       <polyline points={points} fill="none" stroke={color} strokeWidth={1.25} />
-      <circle cx={x(series.length - 1)} cy={y(last)} r={2} fill={color} />
+      <circle cx={x(clean.length - 1)} cy={y(last)} r={2} fill={color} />
     </svg>
   );
 }
