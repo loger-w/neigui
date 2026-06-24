@@ -445,11 +445,10 @@ class FinMindClient:
     # -- options: strike volume + OI change ------------------------------
 
     async def fetch_strike_volume(
-        self, contract: dict, date_str: str,
-        top_n: int = 10, refresh: bool = False,
+        self, contract: dict, date_str: str, refresh: bool = False,
     ) -> dict:
-        """Fetch TaiwanOptionDaily for the given contract, return top-N
-        strike volume per side + OI change vs previous trading day.
+        """Fetch TaiwanOptionDaily for the given contract, return ALL volume>0
+        strikes sorted asc per side + OI change vs previous trading day.
 
         `contract` is a dict from
         services.finmind_options.list_active_contracts (uses `option_id`
@@ -458,7 +457,7 @@ class FinMindClient:
         from services.finmind_options import _CACHE_VERSION_OPTIONS
 
         contract_id = f"{contract['option_id']}{contract['contract_date']}"
-        cache_key = f"{contract_id}_{date_str}_strike_vol_top{top_n}"
+        cache_key = f"{contract_id}_{date_str}_strike_vol"  # dropped _top{n} suffix
         if not refresh:
             cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS)
             if cached is not None:
@@ -467,11 +466,11 @@ class FinMindClient:
 
         return await self._run_once(
             f"strike_vol_{cache_key}",
-            lambda: self._do_fetch_strike_volume(contract, date_str, top_n, cache_key),
+            lambda: self._do_fetch_strike_volume(contract, date_str, cache_key),
         )
 
     async def _do_fetch_strike_volume(
-        self, contract: dict, date_str: str, top_n: int, cache_key: str,
+        self, contract: dict, date_str: str, cache_key: str,
     ) -> dict:
         from services.finmind_options import (
             _CACHE_VERSION_OPTIONS,
@@ -487,7 +486,7 @@ class FinMindClient:
              "start_date": start.isoformat(), "end_date": end.isoformat()},
         )
         parsed = parse_strike_volume(
-            raw, contract["contract_date"], top_n,
+            raw, contract["contract_date"],
             option_id=contract["option_id"],
         )
         result = {

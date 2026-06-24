@@ -74,19 +74,16 @@ async def get_oi_large_traders(
 async def get_strike_volume(
     contract: str = Query(default=""),
     date: str = Query(default=""),
-    top_n: int = Query(default=10),
     refresh: bool = Query(default=False),
 ) -> dict:
     if not contract:
         raise HTTPException(status_code=400, detail={"error": "contract_required"})
-    if top_n < 1 or top_n > 20:
-        raise HTTPException(status_code=400, detail={"error": "top_n_out_of_range"})
     c = _resolve_contract(contract)
     if c is None:
         raise HTTPException(status_code=400, detail={"error": "invalid_contract"})
     d = date or _today_str()
     try:
-        out = await get_finmind().fetch_strike_volume(c, d, top_n, refresh)
+        out = await get_finmind().fetch_strike_volume(c, d, refresh)
     except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
         logger.warning("FinMind options strike-vol error: %s", exc)
         raise HTTPException(status_code=502, detail={"error": "finmind_error"})

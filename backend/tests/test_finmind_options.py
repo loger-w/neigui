@@ -217,7 +217,26 @@ def _od_row(date_, ct, cp, strike, vol, oi, *, session="position", option_id="TX
             "volume": vol, "open_interest": oi, "trading_session": session}
 
 
-def test_parse_strike_volume_picks_top_n_per_side():
+def test_parse_strike_volume_returns_all_volume_strikes_sorted_by_strike_asc():
+    """Redesign drops top_n - return every volume>0 strike, sorted by strike asc."""
+    from services.finmind_options import parse_strike_volume
+    today = "2026-06-23"
+    rows = [
+        _od_row(today, "202607", "call", 53500, 1200, 8410),
+        _od_row(today, "202607", "call", 50000,  165, 1240),
+        _od_row(today, "202607", "call", 52000,  240, 2680),
+        _od_row(today, "202607", "call", 51000,    0, 1380),  # zero -- drop
+        _od_row(today, "202607", "put",  51500,  209, 5180),
+        _od_row(today, "202607", "put",  50000,  364, 8120),
+    ]
+    out = parse_strike_volume(rows, "202607")  # NOTE: no top_n
+    # All call strikes with volume > 0, sorted ascending
+    assert [c["strike"] for c in out["call"]] == [50000, 52000, 53500]
+    assert [p["strike"] for p in out["put"]]  == [50000, 51500]
+    assert out["as_of_date"] == today
+
+
+def test_parse_strike_volume_keeps_all_volume_rows_sorted_asc():
     from services.finmind_options import parse_strike_volume
     today = "2026-06-23"
     rows = [
@@ -228,11 +247,10 @@ def test_parse_strike_volume_picks_top_n_per_side():
         _od_row(today, "202607", "put",  21500, 14200, 28100),
         _od_row(today, "202607", "put",  21000,  9800, 18000),
     ]
-    out = parse_strike_volume(rows, "202607", top_n=2)
-    assert [c["strike"] for c in out["call"]] == [22000, 22100]
-    assert [p["strike"] for p in out["put"]]  == [21500, 21000]
-    assert out["call"][0]["volume"] == 18500
-    assert out["call"][0]["oi"]     == 35200
+    out = parse_strike_volume(rows, "202607")
+    assert [c["strike"] for c in out["call"]] == [21800, 21900, 22000, 22100]
+    assert [p["strike"] for p in out["put"]]  == [21000, 21500]
+    assert out["call"][2]["volume"] == 18500  # strike 22000 -> vol 18500
 
 
 def test_parse_strike_volume_sums_trading_sessions():
@@ -242,7 +260,7 @@ def test_parse_strike_volume_sums_trading_sessions():
         _od_row("2026-06-23", "202607", "call", 22000, 12000, 35200, session="position"),
         _od_row("2026-06-23", "202607", "call", 22000,  6500, 35400, session="after_market"),
     ]
-    out = parse_strike_volume(rows, "202607", top_n=1)
+    out = parse_strike_volume(rows, "202607")
     assert out["call"][0]["volume"] == 12000 + 6500
     assert out["call"][0]["oi"] == 35400  # max of (35200, 35400)
 
@@ -253,14 +271,14 @@ def test_parse_strike_volume_computes_oi_change_against_prev_day():
         _od_row("2026-06-20", "202607", "call", 22000, 14000, 33100),
         _od_row("2026-06-23", "202607", "call", 22000, 18500, 35200),
     ]
-    out = parse_strike_volume(rows, "202607", top_n=1)
+    out = parse_strike_volume(rows, "202607")
     assert out["call"][0]["oi_change"] == 35200 - 33100
 
 
 def test_parse_strike_volume_first_day_oi_change_zero():
     from services.finmind_options import parse_strike_volume
     rows = [_od_row("2026-06-23", "202607", "call", 22000, 18500, 35200)]
-    out = parse_strike_volume(rows, "202607", top_n=1)
+    out = parse_strike_volume(rows, "202607")
     assert out["call"][0]["oi_change"] == 0
 
 
@@ -270,7 +288,7 @@ def test_parse_strike_volume_filters_by_contract_date():
         _od_row("2026-06-23", "202607", "call", 22000, 99999, 35200),
         _od_row("2026-06-23", "202608", "call", 22000, 18500, 30000),
     ]
-    out = parse_strike_volume(rows, "202607", top_n=1)
+    out = parse_strike_volume(rows, "202607")
     assert out["call"][0]["volume"] == 99999
 
 
@@ -280,27 +298,27 @@ def test_parse_strike_volume_filters_by_option_id():
         _od_row("2026-06-23", "202607", "call", 22000, 99_999, 30000, option_id="TEO"),
         _od_row("2026-06-23", "202607", "call", 22000,    100, 35200, option_id="TXO"),
     ]
-    out = parse_strike_volume(rows, "202607", top_n=1, option_id="TXO")
+    out = parse_strike_volume(rows, "202607", option_id="TXO")
     assert out["call"][0]["volume"] == 100
 
 
 def test_parse_strike_volume_drops_zero_volume_rows():
     """Phase 0 noted ~70% of TXO rows have volume=0 (illiquid OTM strikes).
-    Those should not occupy top-N slots, even with top_n large."""
+    Those should never appear in the output."""
     from services.finmind_options import parse_strike_volume
     rows = [
         _od_row("2026-06-23", "202607", "call", 22000,  10, 5),
         _od_row("2026-06-23", "202607", "call", 22100,   0, 7),
         _od_row("2026-06-23", "202607", "call", 22200,   0, 9),
     ]
-    out = parse_strike_volume(rows, "202607", top_n=10)
+    out = parse_strike_volume(rows, "202607")
     assert len(out["call"]) == 1
     assert out["call"][0]["strike"] == 22000
 
 
 def test_parse_strike_volume_empty_returns_empty_lists():
     from services.finmind_options import parse_strike_volume
-    out = parse_strike_volume([], "202607", top_n=10)
+    out = parse_strike_volume([], "202607")
     assert out == {"call": [], "put": [], "as_of_date": None}
 
 
@@ -333,13 +351,13 @@ def test_parse_strike_volume_exposes_as_of_date():
     rows = [
         _od_row("2026-06-19", "202607", "call", 22000, 18500, 35200),
     ]
-    out = parse_strike_volume(rows, "202607", top_n=1)
+    out = parse_strike_volume(rows, "202607")
     assert out["as_of_date"] == "2026-06-19"
 
 
 def test_parse_strike_volume_empty_as_of_date_is_none():
     from services.finmind_options import parse_strike_volume
-    out = parse_strike_volume([], "202607", top_n=10)
+    out = parse_strike_volume([], "202607")
     assert out["as_of_date"] is None
 
 
@@ -428,11 +446,12 @@ async def test_fetch_strike_volume_writes_cache_and_returns_shape():
     fm = FinMindClient()
     fm._http = mc
     contract = {"option_id": "TXO", "contract_date": "202607", "contract_type": "202607"}
-    out = await fm.fetch_strike_volume(contract, today, top_n=2)
+    out = await fm.fetch_strike_volume(contract, today)
     assert out["contract"] == "TXO202607"
     assert out["date"] == today
+    # strike asc (no top_n)
     assert [c["strike"] for c in out["call"]] == [22000, 22100]
     assert out["call"][0]["oi_change"] == 35200 - 33100
     assert [p["strike"] for p in out["put"]] == [21500]
     from utils.cache import chip_cache_dir
-    assert (chip_cache_dir() / "TXO202607_2026-06-23_strike_vol_top2.json").exists()
+    assert (chip_cache_dir() / "TXO202607_2026-06-23_strike_vol.json").exists()

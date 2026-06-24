@@ -56,14 +56,14 @@ def test_oi_lt_happy_path(mock_fm):
     mock_fm.fetch_oi_large_traders.assert_awaited_once()
 
 
-def test_strike_vol_top_n_out_of_range_400():
-    from services.finmind_options import list_active_contracts
-    code = f"{list_active_contracts(date.today())[0]['option_id']}{list_active_contracts(date.today())[0]['contract_date']}"
+def test_strike_vol_silently_ignores_legacy_top_n_param(mock_fm):
+    """Stale URL with ?top_n=N from v1 callers should not 400; param is just
+    ignored (FastAPI default behavior for undeclared query params)."""
+    code = _today_code_via_helper()
     resp = TestClient(app).get(
         f"/api/options/strike_volume?contract={code}&top_n=99",
     )
-    assert resp.status_code == 400
-    assert resp.json()["detail"]["error"] == "top_n_out_of_range"
+    assert resp.status_code == 200
 
 
 def test_strike_vol_happy_path(mock_fm):

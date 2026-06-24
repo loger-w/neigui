@@ -165,18 +165,21 @@ def parse_oi_large_traders(
 
 
 def parse_strike_volume(
-    rows: list[dict], contract_date: str, top_n: int,
+    rows: list[dict], contract_date: str,
     option_id: str = "TXO",
 ) -> dict:
-    """Parse TaiwanOptionDaily rows into top-N strike volume per side.
+    """Parse TaiwanOptionDaily rows into per-strike volume + OI change.
 
-    Phase-0 rules:
+    Redesign 2026-06-24: returns ALL volume>0 strikes sorted by strike asc
+    (no longer top-N by volume). Frontend's Strike Ladder is the consumer.
+
+    Phase-0 rules unchanged:
     - Filter on option_id (default TXO) AND contract_date.
-    - Sum volume across trading_session ∈ {position, after_market}; take MAX of OI
-      across sessions (OI is a cumulative snapshot per session).
+    - Sum volume across trading_session ∈ {position, after_market}; take MAX
+      of OI across sessions.
     - Drop strikes with summed volume == 0 (typically illiquid OTM).
-    - oi_change = today aggregated OI − prev-trading-day aggregated OI for that strike;
-      0 if no prev row exists.
+    - oi_change = today aggregated OI − prev-trading-day aggregated OI for
+      that strike; 0 if no prev row exists.
     """
     matched = [
         r for r in rows
@@ -186,7 +189,6 @@ def parse_strike_volume(
     if not matched:
         return {"call": [], "put": [], "as_of_date": None}
 
-    # Aggregate (date, call_put, strike) across trading_session.
     agg: dict[tuple[str, str, float], dict] = {}
     for r in matched:
         cp = str(r.get("call_put", "")).lower()
@@ -214,9 +216,9 @@ def parse_strike_volume(
     def side(cp_value: str) -> list[dict]:
         items = [(strike, v) for (d, cp, strike), v in agg.items()
                  if d == today and cp == cp_value and v["volume"] > 0]
-        items.sort(key=lambda t: t[1]["volume"], reverse=True)
+        items.sort(key=lambda t: t[0])  # strike asc (redesign)
         out: list[dict] = []
-        for strike, v in items[:top_n]:
+        for strike, v in items:
             prev_v = agg.get((prev, cp_value, strike), {"oi": 0}) if prev else {"oi": 0}
             out.append({
                 "strike": int(strike) if strike == int(strike) else strike,
