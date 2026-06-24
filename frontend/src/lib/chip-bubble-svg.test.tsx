@@ -213,7 +213,7 @@ describe("BubbleChartSvg F11 — filter hides non-matched bubbles; axes stay inv
     );
     const circles = Array.from(container.querySelectorAll("circle"));
     expect(circles).toHaveLength(1);
-    expect(circles[0].getAttribute("data-broker-id")).toBe("9201A");
+    expect(circles[0]!.getAttribute("data-broker-id")).toBe("9201A");
   });
 
   it("filter renders the matched broker even when they fall OUTSIDE the top-100 layout slice", () => {
@@ -250,6 +250,6 @@ describe("BubbleChartSvg F11 — filter hides non-matched bubbles; axes stay inv
     );
     const circles = Array.from(container.querySelectorAll("circle"));
     expect(circles).toHaveLength(1);
-    expect(circles[0].getAttribute("data-broker-id")).toBe("TARGET");
+    expect(circles[0]!.getAttribute("data-broker-id")).toBe("TARGET");
   });
 });

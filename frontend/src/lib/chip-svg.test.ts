@@ -63,8 +63,8 @@ describe("splitBrokers", () => {
 
   it("sorts buyers desc by net, sellers asc by net", () => {
     const { buyers, sellers } = splitBrokers(brokers);
-    expect(buyers[0].net).toBeGreaterThan(buyers[1].net);
-    expect(sellers[0].net).toBeLessThan(sellers[1].net);
+    expect(buyers[0]!.net).toBeGreaterThan(buyers[1]!.net);
+    expect(sellers[0]!.net).toBeLessThan(sellers[1]!.net);
   });
 
   it("top-15 sum represents major net correctly", () => {

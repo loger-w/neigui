@@ -21,23 +21,23 @@ describe("topByVolume", () => {
   it("computes daytradeRate = min/max when above 1% threshold", () => {
     // 35000 day total → threshold = 350 lots; X total = 600 ≥ 350
     const result = topByVolume([mkBroker("X", 400, 200)], 35_000);
-    expect(result[0].daytradeRate).toBeCloseTo(0.5, 3);
+    expect(result[0]!.daytradeRate).toBeCloseTo(0.5, 3);
   });
 
   it("returns null daytradeRate when below 1% threshold", () => {
     // 35000 → threshold 350; X total 300 < 350
     const result = topByVolume([mkBroker("X", 200, 100)], 35_000);
-    expect(result[0].daytradeRate).toBeNull();
+    expect(result[0]!.daytradeRate).toBeNull();
   });
 
   it("returns null daytradeRate when dayTotalLots is 0", () => {
     const result = topByVolume([mkBroker("X", 100, 100)], 0);
-    expect(result[0].daytradeRate).toBeNull();
+    expect(result[0]!.daytradeRate).toBeNull();
   });
 
   it("returns null daytradeRate when both buy and sell are 0", () => {
     const result = topByVolume([mkBroker("X", 0, 0)], 100_000);
-    expect(result[0].daytradeRate).toBeNull();
+    expect(result[0]!.daytradeRate).toBeNull();
   });
 
   it("limits result to 15", () => {
@@ -49,7 +49,7 @@ describe("topByVolume", () => {
 
   it("includes total field equal to buy + sell", () => {
     const result = topByVolume([mkBroker("X", 300, 200)], 1_000_000);
-    expect(result[0].total).toBe(500);
+    expect(result[0]!.total).toBe(500);
   });
 });
 
@@ -69,8 +69,8 @@ describe("splitBrokers", () => {
 
   it("sorts buyers desc by net, sellers asc by net", () => {
     const { buyers, sellers } = splitBrokers(brokers);
-    expect(buyers[0].net).toBeGreaterThan(buyers[1].net);
-    expect(sellers[0].net).toBeLessThan(sellers[1].net);
+    expect(buyers[0]!.net).toBeGreaterThan(buyers[1]!.net);
+    expect(sellers[0]!.net).toBeLessThan(sellers[1]!.net);
   });
 });
 

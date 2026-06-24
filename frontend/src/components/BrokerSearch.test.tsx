@@ -61,8 +61,8 @@ describe("BrokerSearch", () => {
       const items = screen.getAllByTestId("broker-search-item");
       expect(items.length).toBeGreaterThan(0);
       // 富邦-台北 buy+sell = 500; 凱基-台北 = 300; 凱基-板橋 = 130; 元大 = 40
-      expect(items[0].textContent).toContain("富邦-台北");
-      expect(items[1].textContent).toContain("凱基-台北");
+      expect(items[0]!.textContent).toContain("富邦-台北");
+      expect(items[1]!.textContent).toContain("凱基-台北");
     });
   });
 

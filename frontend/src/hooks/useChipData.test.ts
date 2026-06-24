@@ -151,8 +151,8 @@ describe("useChipData split fetches", () => {
       expect(chipSpy).toHaveBeenCalledTimes(2);
       expect(histSpy).toHaveBeenCalledTimes(2);
     });
-    expect(chipSpy.mock.calls[1][2]).toBe(true);
-    expect(histSpy.mock.calls[1][1]).toBe(true);
+    expect(chipSpy.mock.calls[1]![2]).toBe(true);
+    expect(histSpy.mock.calls[1]![1]).toBe(true);
   });
 
   it("rapid date flip drops stale summary response (seq)", async () => {

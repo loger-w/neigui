@@ -25,7 +25,8 @@ function defaultContractId(): string {
     if (hit) return remembered;
   }
   // Picker is settlement-asc sorted; head = nearest unsettled contract.
-  const head = list[0];
+  // `list.length === 0` is already checked above, so head is safe.
+  const head = list[0]!;
   return `${head.optionId}${head.contractDate}`;
 }
 

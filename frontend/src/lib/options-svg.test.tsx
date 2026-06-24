@@ -123,7 +123,7 @@ describe("StrikeLadder", () => {
     const { container } = render(<StrikeLadder data={data} spot={null} />);
     const wallRows = container.querySelectorAll("[data-wall='call']");
     expect(wallRows.length).toBe(1);
-    const strike = wallRows[0].querySelector("[data-testid='ladder-strike']")?.textContent;
+    const strike = wallRows[0]!.querySelector("[data-testid='ladder-strike']")?.textContent;
     expect(strike).toBe("53,500");
   });
 
@@ -132,7 +132,7 @@ describe("StrikeLadder", () => {
     const { container } = render(<StrikeLadder data={data} spot={null} />);
     const wallRows = container.querySelectorAll("[data-wall='put']");
     expect(wallRows.length).toBe(1);
-    const strike = wallRows[0].querySelector("[data-testid='ladder-strike']")?.textContent;
+    const strike = wallRows[0]!.querySelector("[data-testid='ladder-strike']")?.textContent;
     expect(strike).toBe("52,500");
   });
 

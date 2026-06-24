@@ -37,7 +37,7 @@ describe("useBrokerHistory", () => {
     );
     rerender({ ids: new Set(["A"]) });
     await waitFor(() => expect(result.current.series.has("A")).toBe(true));
-    expect(result.current.series.get("A")?.[0].net).toBe(5);
+    expect(result.current.series.get("A")![0]!.net).toBe(5);
   });
 
   it("does not re-fetch already cached ids", async () => {
@@ -70,7 +70,7 @@ describe("useBrokerHistory", () => {
       expect(result.current.series.has("A") && result.current.series.has("B")).toBe(true),
     );
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0][1].slice().sort()).toEqual(["A", "B"]);
+    expect(spy.mock.calls[0]![1].slice().sort()).toEqual(["A", "B"]);
   });
 
   it("clears cache when symbol changes", async () => {
@@ -82,9 +82,9 @@ describe("useBrokerHistory", () => {
         useBrokerHistory(symbol, ids),
       { initialProps: { symbol: "2330", ids: new Set(["A"]) }, wrapper: makeQueryWrapper() },
     );
-    await waitFor(() => expect(result.current.series.get("A")?.[0].net).toBe(1));
+    await waitFor(() => expect(result.current.series.get("A")![0]!.net).toBe(1));
     rerender({ symbol: "2454", ids: new Set(["A"]) });
-    await waitFor(() => expect(result.current.series.get("A")?.[0].net).toBe(9));
+    await waitFor(() => expect(result.current.series.get("A")![0]!.net).toBe(9));
   });
 
   it("sets error state on API failure and preserves cache", async () => {
@@ -112,7 +112,7 @@ describe("useBrokerHistory", () => {
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
     act(() => result.current.refresh());
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
-    expect(spy.mock.calls[1][2]).toBe(true);
+    expect(spy.mock.calls[1]![2]).toBe(true);
   });
 
   it("ignores stale responses via seqRef", async () => {
@@ -132,7 +132,7 @@ describe("useBrokerHistory", () => {
     resolveFirst(mkPayload({ A: [{ date: "d", buy: 1, sell: 0, net: 1 }] }));
     await new Promise((r) => setTimeout(r, 30));
     expect(result.current.series.has("A")).toBe(false);
-    expect(result.current.series.get("B")?.[0].net).toBe(9);
+    expect(result.current.series.get("B")![0]!.net).toBe(9);
   });
 
   it("does not leak cache from a prior symbol when that symbol's fetch resolves late", async () => {
@@ -152,11 +152,11 @@ describe("useBrokerHistory", () => {
     // resets ids on symbol change), then re-select A under 2454.
     rerender({ symbol: "2454", ids: new Set<string>() });
     rerender({ symbol: "2454", ids: new Set(["A"]) });
-    await waitFor(() => expect(result.current.series.get("A")?.[0].net).toBe(99));
+    await waitFor(() => expect(result.current.series.get("A")![0]!.net).toBe(99));
     // Now resolve the stale 2330 fetch.
     resolveFirst(mkPayload({ A: [{ date: "d", buy: 1, sell: 0, net: 1 }] }));
     await new Promise((r) => setTimeout(r, 30));
     // The stale fetch must NOT have overwritten the 2454 cache.
-    expect(result.current.series.get("A")?.[0].net).toBe(99);
+    expect(result.current.series.get("A")![0]!.net).toBe(99);
   });
 });

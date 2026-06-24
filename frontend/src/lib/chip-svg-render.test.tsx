@@ -123,7 +123,7 @@ describe("KlineChartSvg click + selectedIndex", () => {
     // clientX in the middle of the chart to land on a valid index.
     fireEvent.click(overlay, { clientX: 250, clientY: 100 });
     expect(onClick).toHaveBeenCalled();
-    const i = onClick.mock.calls[0][0];
+    const i = onClick.mock.calls[0]![0];
     expect(i).toBeGreaterThanOrEqual(0);
     expect(i).toBeLessThan(candles.length);
   });
@@ -210,7 +210,7 @@ describe("KlineChartSvg hoverY horizontal crosshair (F6)", () => {
     fireEvent.mouseMove(overlay, { clientX: 250, clientY: 120 });
     // jsdom getBoundingClientRect returns zeros, so mouseY === clientY = 120.
     expect(onHoverY).toHaveBeenCalled();
-    const lastArg = onHoverY.mock.calls[onHoverY.mock.calls.length - 1][0];
+    const lastArg = onHoverY.mock.calls[onHoverY.mock.calls.length - 1]![0];
     expect(typeof lastArg).toBe("number");
   });
 });

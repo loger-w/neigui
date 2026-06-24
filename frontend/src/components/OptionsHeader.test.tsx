@@ -42,8 +42,8 @@ describe("OptionsHeader", () => {
       />,
     );
     const select = screen.getByLabelText("選擇合約") as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: select.options[1].value } });
-    expect(spy).toHaveBeenCalledWith(select.options[1].value);
+    fireEvent.change(select, { target: { value: select.options[1]!.value } });
+    expect(spy).toHaveBeenCalledWith(select.options[1]!.value);
   });
 
   it("disables the refresh button while loading", () => {

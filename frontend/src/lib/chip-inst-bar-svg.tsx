@@ -77,7 +77,7 @@ export const InstBarSvg = memo(function InstBarSvg({
     : selectedIndex != null && selectedIndex >= 0 && selectedIndex < data.length
       ? selectedIndex
       : data.length - 1;
-  const valRaw = data[valIdx];
+  const valRaw = data[valIdx]!;
   const valColor = valRaw >= 0 ? BULL : BEAR;
 
   return (
@@ -202,10 +202,10 @@ export const MarginLineSvg = memo(function MarginLineSvg({
     : selectedIndex != null && selectedIndex >= 0 && selectedIndex < len
       ? selectedIndex
       : len - 1;
-  const marginVal = valIdx < marginData.length ? marginData[valIdx] : 0;
-  const shortVal = valIdx < shortData.length ? shortData[valIdx] : 0;
-  const mBal = marginBalanceData && valIdx < marginBalanceData.length ? marginBalanceData[valIdx] : 0;
-  const sBal = shortBalanceData && valIdx < shortBalanceData.length ? shortBalanceData[valIdx] : 0;
+  const marginVal = marginData[valIdx] ?? 0;
+  const shortVal = shortData[valIdx] ?? 0;
+  const mBal = marginBalanceData?.[valIdx] ?? 0;
+  const sBal = shortBalanceData?.[valIdx] ?? 0;
   const ratio = mBal > 0 ? (sBal / mBal * 100).toFixed(1) : "0.0";
 
   return (

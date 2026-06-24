@@ -55,7 +55,7 @@ export default function App() {
   useEffect(() => {
     if (userPickedDate.current) return;
     if (!history?.candles?.length) return;
-    const lastCandleDate = history.candles[history.candles.length - 1].date;
+    const lastCandleDate = history.candles[history.candles.length - 1]!.date;
     if (lastCandleDate < date) {
       setDate(lastCandleDate);
     }

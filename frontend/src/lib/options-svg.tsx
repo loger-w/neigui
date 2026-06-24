@@ -83,7 +83,7 @@ export function Sparkline({ series, width, height }: SparklineProps): ReactEleme
   const y = (v: number) => 1 + (height - 2) - ((v - lo) / span) * (height - 2);
 
   const points = clean.map((v, i) => `${x(i)},${y(v)}`).join(" ");
-  const last = clean[clean.length - 1];
+  const last = clean[clean.length - 1]!;
   const sign = last >= 0 ? "pos" : "neg";
   const color = last >= 0
     ? "var(--color-up, #dc2626)"
@@ -175,7 +175,7 @@ export function StrikeLadder({ data, spot }: StrikeLadderProps): ReactElement {
     if (
       !spotInserted && spot != null && k < spot &&
       // ensure spot is actually within the strike range (above lowest strike)
-      spot < strikesDesc[0] + 1
+      spot < strikesDesc[0]! + 1
     ) {
       rows.push({ kind: "spot" });
       spotInserted = true;
@@ -183,7 +183,7 @@ export function StrikeLadder({ data, spot }: StrikeLadderProps): ReactElement {
     rows.push({ kind: "strike", strike: k });
   }
   // Edge case: spot above the highest strike → insert at very top
-  if (!spotInserted && spot != null && spot >= strikesDesc[0]) {
+  if (!spotInserted && spot != null && spot >= strikesDesc[0]!) {
     rows.unshift({ kind: "spot" });
   }
 

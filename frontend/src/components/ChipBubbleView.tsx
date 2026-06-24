@@ -235,7 +235,7 @@ const TradeList = memo(function TradeList({
       >
         <div style={{ height: totalSize, position: "relative", width: "100%" }}>
           {virtualRows.map((vi) => {
-            const r = rows[vi.index];
+            const r = rows[vi.index]!;
             return (
               <button
                 key={vi.key}

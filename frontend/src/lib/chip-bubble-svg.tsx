@@ -288,7 +288,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
     const step = Math.ceil(priceSet.length / 7);
     priceTicks = priceSet.filter((_, i) => i % step === 0);
     if (priceTicks[priceTicks.length - 1] !== priceSet[priceSet.length - 1]) {
-      priceTicks.push(priceSet[priceSet.length - 1]);
+      priceTicks.push(priceSet[priceSet.length - 1]!);
     }
   }
 
@@ -298,10 +298,10 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   for (let v = volStep; v <= maxVolume; v += volStep) {
     volTicks.push(v);
   }
-  if (volTicks.length === 0 || volTicks[volTicks.length - 1] < maxVolume) {
-    volTicks.push((volTicks.length === 0 ? 0 : volTicks[volTicks.length - 1]) + volStep);
+  if (volTicks.length === 0 || volTicks[volTicks.length - 1]! < maxVolume) {
+    volTicks.push((volTicks.length === 0 ? 0 : volTicks[volTicks.length - 1]!) + volStep);
   }
-  const volMax = volTicks[volTicks.length - 1];
+  const volMax = volTicks[volTicks.length - 1]!;
 
   // -- Build bubble data (butterfly: sell left, buy right) -----------------
   // F1: no yellow CHIP.ma5 stroke for selected broker; the header chip

@@ -36,7 +36,7 @@ function calcMA(closes: number[], period: number): (number | null)[] {
       result.push(null);
     } else {
       let sum = 0;
-      for (let j = i - period + 1; j <= i; j++) sum += closes[j];
+      for (let j = i - period + 1; j <= i; j++) sum += closes[j]!;
       result.push(sum / period);
     }
   }
@@ -144,7 +144,7 @@ function KlineChartSvgImpl({
     const segs: string[] = [];
     for (let i = 0; i < arr.length; i++) {
       const v = arr[i];
-      if (v !== null) segs.push(`${xOf(i)},${yScale(v)}`);
+      if (v != null) segs.push(`${xOf(i)},${yScale(v)}`);
     }
     return segs.join(" ");
   };
@@ -158,8 +158,8 @@ function KlineChartSvgImpl({
     : selectedIndex != null && selectedIndex >= 0 && selectedIndex < n
       ? selectedIndex
       : n - 1;
-  const infoCandle = candles[infoIdx];
-  const prevClose = infoIdx > 0 ? candles[infoIdx - 1].close : infoCandle.open;
+  const infoCandle = candles[infoIdx]!;
+  const prevClose = infoIdx > 0 ? candles[infoIdx - 1]!.close : infoCandle.open;
   const change = infoCandle.close - prevClose;
   const changePct = prevClose !== 0 ? (change / prevClose) * 100 : 0;
   const changeColor = change >= 0 ? t.bull : t.bear;
@@ -382,7 +382,7 @@ function KlineChartSvgImpl({
             x={xOf(selectedIndex) + 8} y={12}
             fontSize={11} fill={t.ma5} fontFamily={t.font}
           >
-            {candles[selectedIndex].date}
+            {candles[selectedIndex]!.date}
           </text>
         </g>
       )}

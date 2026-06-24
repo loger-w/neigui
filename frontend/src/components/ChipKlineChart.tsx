@@ -62,7 +62,7 @@ export function ChipKlineChart({
   const handleClickIndex = useCallback(
     (i: number) => {
       if (!derived) return;
-      onPickDate(derived.candles[i].date);
+      onPickDate(derived.candles[i]!.date);
     },
     [onPickDate, derived],
   );
