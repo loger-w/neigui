@@ -10,6 +10,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.101.1",
+    "@tanstack/react-query-devtools": "^5.101.1",
     "@tanstack/react-virtual": "^3.14.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
