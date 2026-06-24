@@ -380,6 +380,23 @@ def _mock_http(*responses):
     return c
 
 
+def _mock_http_by_start_date(rows_by_date):
+    """side_effect that returns rows keyed by the request's `start_date` param.
+
+    `TaiwanOptionOpenInterestLargeTraders` ignores `end_date` upstream, so the
+    client fans out one call per cal day. This helper returns the rows scoped
+    to whatever single date the client asked for; unknown dates → empty rows.
+    """
+    c = AsyncMock()
+
+    async def fake_get(url, params=None, **_kw):
+        d = (params or {}).get("start_date", "")
+        return _fm_resp(rows_by_date.get(d, []))
+
+    c.get = AsyncMock(side_effect=fake_get)
+    return c
+
+
 @pytest.fixture(autouse=True)
 def _reset_singleton(tmp_path, monkeypatch):
     monkeypatch.setenv("FINMIND_TOKEN", "test-token")
@@ -391,18 +408,29 @@ def _reset_singleton(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_fetch_oi_large_traders_writes_cache_and_returns_shape():
+    """FinMind ignores end_date for OI-large-traders, so the client fans out
+    30 single-date calls. The mock routes by start_date; only the two dates
+    we populate produce rows, the rest return empty."""
     from services.finmind import FinMindClient
-    rows = [
-        _oi_row("2026-06-20", "call",
-                buy_top10_trader_open_interest=17500, sell_top10_trader_open_interest=11500),
-        _oi_row("2026-06-20", "put",
-                buy_top10_trader_open_interest=8500,  sell_top10_trader_open_interest=12800),
-        _oi_row("2026-06-23", "call",
-                buy_top10_trader_open_interest=18000, sell_top10_trader_open_interest=12000),
-        _oi_row("2026-06-23", "put",
-                buy_top10_trader_open_interest=9000,  sell_top10_trader_open_interest=13000),
-    ]
-    mc = _mock_http(_fm_resp(rows))
+    by_date = {
+        "2026-06-20": [
+            _oi_row("2026-06-20", "call",
+                    buy_top10_trader_open_interest=17500,
+                    sell_top10_trader_open_interest=11500),
+            _oi_row("2026-06-20", "put",
+                    buy_top10_trader_open_interest=8500,
+                    sell_top10_trader_open_interest=12800),
+        ],
+        "2026-06-23": [
+            _oi_row("2026-06-23", "call",
+                    buy_top10_trader_open_interest=18000,
+                    sell_top10_trader_open_interest=12000),
+            _oi_row("2026-06-23", "put",
+                    buy_top10_trader_open_interest=9000,
+                    sell_top10_trader_open_interest=13000),
+        ],
+    }
+    mc = _mock_http_by_start_date(by_date)
     fm = FinMindClient()
     fm._http = mc
     contract = {"option_id": "TXO", "contract_date": "202607", "contract_type": "202607"}
@@ -412,7 +440,9 @@ async def test_fetch_oi_large_traders_writes_cache_and_returns_shape():
     # current top10_all.net = (call.buy + put.sell) - (call.sell + put.buy)
     #                       = (18000 + 13000) - (12000 + 9000) = 31000 - 21000 = 10000
     assert out["current"]["top10_all"]["net"] == 10000
-    assert len(out["series"]) == 2
+    assert len(out["series"]) == 2  # 2026-06-20 + 2026-06-23
+    # 30 single-date HTTP calls fan out (end day + 29 prior cal days).
+    assert mc.get.await_count == 30
     from utils.cache import chip_cache_dir
     assert (chip_cache_dir() / "TXO202607_2026-06-23_oi_lt.json").exists()
 
@@ -420,16 +450,20 @@ async def test_fetch_oi_large_traders_writes_cache_and_returns_shape():
 @pytest.mark.asyncio
 async def test_fetch_oi_large_traders_returns_cached_on_second_call():
     from services.finmind import FinMindClient
-    rows = [_oi_row("2025-01-01", "call",
-                    buy_top10_trader_open_interest=100, sell_top10_trader_open_interest=50)]
-    mc = _mock_http(_fm_resp(rows))
+    by_date = {
+        "2025-01-01": [_oi_row("2025-01-01", "call",
+                                buy_top10_trader_open_interest=100,
+                                sell_top10_trader_open_interest=50)],
+    }
+    mc = _mock_http_by_start_date(by_date)
     fm = FinMindClient()
     fm._http = mc
     contract = {"option_id": "TXO", "contract_date": "202501", "contract_type": "202501"}
     first = await fm.fetch_oi_large_traders(contract, "2025-01-01")  # past date → permanent
     second = await fm.fetch_oi_large_traders(contract, "2025-01-01")
     assert first == second
-    assert mc.get.await_count == 1  # second call hit cache
+    # First call: 30 fan-out fetches. Second call: served entirely from cache.
+    assert mc.get.await_count == 30
 
 
 @pytest.mark.asyncio

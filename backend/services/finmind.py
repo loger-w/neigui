@@ -420,12 +420,31 @@ class FinMindClient:
         )
 
         end = date.fromisoformat(date_str)
-        start = end - timedelta(days=35)
-        raw = await self._get(
-            f"{_FINMIND_BASE}/data",
-            {"dataset": "TaiwanOptionOpenInterestLargeTraders",
-             "start_date": start.isoformat(), "end_date": end.isoformat()},
-        )
+        # FinMind TaiwanOptionOpenInterestLargeTraders silently ignores
+        # `end_date` — it only returns rows for `start_date`. A single
+        # multi-day call therefore yields just one date, breaking the 20D
+        # series. Fan out 30 single-date fetches in parallel (token bucket
+        # serialises them) and aggregate; weekends/holidays naturally drop
+        # out as empty payloads, leaving ~20 real trading days.
+        dates_to_fetch = [end - timedelta(days=i) for i in range(30)]
+
+        async def fetch_one(d: date) -> list:
+            try:
+                return await self._get(
+                    f"{_FINMIND_BASE}/data",
+                    {"dataset": "TaiwanOptionOpenInterestLargeTraders",
+                     "start_date": d.isoformat(),
+                     "end_date": d.isoformat()},
+                )
+            except Exception as exc:
+                logger.warning(
+                    "OI-LT single-date fetch failed for %s: %s", d, exc,
+                )
+                return []
+
+        batches = await asyncio.gather(*[fetch_one(d) for d in dates_to_fetch])
+        raw = [r for batch in batches for r in batch]
+
         parsed = parse_oi_large_traders(
             raw,
             contract_type=contract["contract_type"],
