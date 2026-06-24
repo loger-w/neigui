@@ -18,11 +18,15 @@ function todayStr(): string {
 
 function defaultContractId(): string {
   const list = listActiveContracts(new Date());
-  const kind = localStorage.getItem("opt:kind");
-  const pick = list.find((c) =>
-    kind === "monthly" ? c.slot === "M0" : c.slot === "W1",
-  ) ?? list[0];
-  return `${pick.optionId}${pick.contractDate}`;
+  if (list.length === 0) return "";
+  const remembered = localStorage.getItem("opt:contractId");
+  if (remembered) {
+    const hit = list.find((c) => `${c.optionId}${c.contractDate}` === remembered);
+    if (hit) return remembered;
+  }
+  // Picker is settlement-asc sorted; head = nearest unsettled contract.
+  const head = list[0];
+  return `${head.optionId}${head.contractDate}`;
 }
 
 export function OptionsPage(): ReactElement {
@@ -36,8 +40,8 @@ export function OptionsPage(): ReactElement {
   );
 
   useEffect(() => {
-    if (currentContract) localStorage.setItem("opt:kind", currentContract.kind);
-  }, [currentContract]);
+    if (currentContract) localStorage.setItem("opt:contractId", contractId);
+  }, [currentContract, contractId]);
 
   const lt   = useOptionsLargeTraders(contractId, date);
   const sv   = useOptionsStrikeVolume(contractId, date);
@@ -46,7 +50,7 @@ export function OptionsPage(): ReactElement {
   const loading = lt.loading || sv.loading || spot.loading;
   const refresh = () => { lt.refresh(); sv.refresh(); spot.refresh(); };
 
-  const isWeekly = currentContract?.kind === "weekly";
+  const isWeekly = currentContract?.kind.startsWith("weekly") ?? false;
   const anyNoTradingDay =
     lt.noTradingDay || sv.noTradingDay || spot.noTradingDay;
 

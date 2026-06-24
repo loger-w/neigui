@@ -45,6 +45,20 @@ describe("OptionsLargeTradersStrip", () => {
     expect(screen.getByTestId("strip-weekly-banner")).toBeTruthy();
   });
 
+  it("weekly banner text reflects both Wed + Fri weeklies share the OI", () => {
+    render(
+      <OptionsLargeTradersStrip data={mk()} loading={false} error={null}
+        weeklyAggregateBanner />,
+    );
+    const banner = screen.getByTestId("strip-weekly-banner");
+    const text = banner.textContent ?? "";
+    // Must reference both weekday legs (post-Friday-weekly launch).
+    expect(text).toMatch(/週三/);
+    expect(text).toMatch(/週五/);
+    // Must NOT carry the stale W1..W4 phrasing.
+    expect(text).not.toMatch(/W1\.\.W4/);
+  });
+
   it("hides weekly banner when prop omitted", () => {
     render(<OptionsLargeTradersStrip data={mk()} loading={false} error={null} />);
     expect(screen.queryByTestId("strip-weekly-banner")).toBeNull();

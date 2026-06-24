@@ -25,61 +25,111 @@ def _next_wednesday(d: date) -> date:
     return d + timedelta(days=((2 - d.weekday()) % 7) or 7)
 
 
+def _next_friday(d: date) -> date:
+    """Smallest Friday strictly greater than d. Friday weekday() == 4."""
+    return d + timedelta(days=((4 - d.weekday()) % 7) or 7)
+
+
 def _add_months(d: date, n: int) -> date:
     m = d.month - 1 + n
     return date(d.year + m // 12, m % 12 + 1, 1)
 
 
-def list_active_contracts(today: date) -> list[dict]:
-    """Return the seven contracts visible in the picker on `today`:
-    weekly W1..W4 + monthly M0..M2. Weeks settled today are excluded.
+_DEFAULT_HORIZON_DAYS = 35  # ~5 weeks of weekly contracts (Wed + Fri)
 
-    Phase 0 confirmed (spec §"Phase 0 Schema Validation Result"):
-    - option_id is always "TXO" for TAIEX index options
-    - monthly contract_date == YYYYMM, weekly contract_date == YYYYMMW{ordinal_in_month}
-    - monthly contract_type == YYYYMM (same as date), weekly contract_type == "week"
-      (FinMind aggregates all weekly OI under a single contract_type, no per-week split)
+
+def list_active_contracts(
+    today: date, horizon_days: int = _DEFAULT_HORIZON_DAYS,
+) -> list[dict]:
+    """Active TXO contracts sorted by settlement date ascending.
+
+    Three kinds:
+      - "monthly":     3rd-Wednesday of month. contract_date = "YYYYMM".
+                       contract_type = "YYYYMM".
+      - "weekly_wed":  every other Wednesday. contract_date = "YYYYMMW{n}"
+                       where n = (day-1)//7+1 (1-based week-of-month).
+      - "weekly_fri":  every Friday (TXO Fri weeklies, 上市 2025/06/27).
+                       contract_date = "YYYYMMF{n}".
+
+    All three share option_id="TXO" — FinMind packs them all into the same
+    data_id. The two weekly kinds share contract_type="week"; FinMind's
+    TaiwanOptionOpenInterestLargeTraders aggregates Wed + Fri under that
+    single label (verified via 2026-06-23 probe).
+
+    Same-day collision rule: when a Wednesday is the 3rd-Wed monthly
+    settlement, do NOT emit a duplicate "weekly_wed" for that day — the
+    monthly contract represents it. Friday settlements never collide with
+    monthly (different weekday).
+
+    Both weekly enumerations exclude `today` strictly (next-weekday helpers
+    return >today). A contract whose settlement falls on `today` has already
+    settled and is dropped.
     """
+    horizon = today + timedelta(days=horizon_days)
+
+    # --- monthlies ----------------------------------------------------------
     m0_settle = _third_wednesday(today.year, today.month)
     if today > m0_settle:
         m0_anchor = _add_months(date(today.year, today.month, 1), 1)
     else:
         m0_anchor = date(today.year, today.month, 1)
-    m0 = m0_anchor
-    m1 = _add_months(m0, 1)
-    m2 = _add_months(m0, 3)
-    monthlies = []
-    for slot, anchor in [("M0", m0), ("M1", m1), ("M2", m2)]:
+    anchors = [m0_anchor, _add_months(m0_anchor, 1), _add_months(m0_anchor, 3)]
+    monthlies: list[dict] = []
+    for anchor in anchors:
         sett = _third_wednesday(anchor.year, anchor.month)
         yyyymm = f"{anchor.year:04d}{anchor.month:02d}"
         monthlies.append({
-            "slot": slot, "kind": "monthly",
+            "kind": "monthly",
             "option_id": "TXO",
             "contract_date": yyyymm,
             "contract_type": yyyymm,
             "label": f"{anchor.year}/{anchor.month:02d} 月選",
             "settlement": sett.isoformat(),
         })
-
     monthly_setts = {m["settlement"] for m in monthlies}
+
+    # --- weekly Wednesdays (excluding monthly-settlement days) --------------
+    weekly_wed: list[dict] = []
     cursor = today
-    weeklies: list[dict] = []
-    for i in range(1, 5):
+    while True:
         nxt = _next_wednesday(cursor)
-        while nxt.isoformat() in monthly_setts:
-            nxt = _next_wednesday(nxt)
+        cursor = nxt
+        if nxt > horizon:
+            break
+        if nxt.isoformat() in monthly_setts:
+            continue
         ordinal = (nxt.day - 1) // 7 + 1
-        weeklies.append({
-            "slot": f"W{i}", "kind": "weekly",
+        weekly_wed.append({
+            "kind": "weekly_wed",
             "option_id": "TXO",
             "contract_date": f"{nxt.year:04d}{nxt.month:02d}W{ordinal}",
             "contract_type": "week",
-            "label": f"{nxt.month:02d}/{nxt.day:02d} 週選 W{i}",
+            "label": f"{nxt.month:02d}/{nxt.day:02d} 週三選",
             "settlement": nxt.isoformat(),
         })
-        cursor = nxt
 
-    return weeklies + monthlies
+    # --- weekly Fridays -----------------------------------------------------
+    weekly_fri: list[dict] = []
+    cursor = today
+    while True:
+        nxt = _next_friday(cursor)
+        cursor = nxt
+        if nxt > horizon:
+            break
+        ordinal = (nxt.day - 1) // 7 + 1
+        weekly_fri.append({
+            "kind": "weekly_fri",
+            "option_id": "TXO",
+            "contract_date": f"{nxt.year:04d}{nxt.month:02d}F{ordinal}",
+            "contract_type": "week",
+            "label": f"{nxt.month:02d}/{nxt.day:02d} 週五選",
+            "settlement": nxt.isoformat(),
+        })
+
+    return sorted(
+        monthlies + weekly_wed + weekly_fri,
+        key=lambda c: c["settlement"],
+    )
 
 
 # Phase 0 mapping: parser group → FinMind raw field stem

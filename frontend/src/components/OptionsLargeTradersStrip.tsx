@@ -66,7 +66,7 @@ export function OptionsLargeTradersStrip({
           data-testid="strip-weekly-banner"
           className="shrink-0 px-6 py-1 text-xs text-ink-dim bg-ink/[0.03] border-b border-line"
         >
-          📌 大戶 OI 為近週週選 aggregate(FinMind <code>contract_type=&apos;week&apos;</code>),W1..W4 顯示同一份資料。熱門履約價依各週合約獨立。
+          📌 大戶 OI 為近週週選 aggregate(FinMind <code>contract_type=&apos;week&apos;</code>),週三選 + 週五選共用同一份資料。熱門履約價依各週合約獨立。
         </div>
       )}
       <section className="shrink-0 px-4 py-2.5 grid grid-cols-4 gap-4 border-b border-line bg-bg">

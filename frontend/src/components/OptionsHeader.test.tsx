@@ -9,7 +9,7 @@ import type { OptionsSpot } from "../lib/options-types";
 afterEach(() => cleanup());
 
 describe("OptionsHeader", () => {
-  it("renders 7 contract options in the dropdown", () => {
+  it("renders contract options sorted by settlement (weekly_wed + weekly_fri + monthly)", () => {
     render(
       <OptionsHeader
         contractId=""
@@ -21,7 +21,12 @@ describe("OptionsHeader", () => {
       />,
     );
     const select = screen.getByLabelText("選擇合約") as HTMLSelectElement;
-    expect(select.options.length).toBe(7);
+    // post-Friday-weekly: 3 monthlies + several Wed/Fri weeklies in horizon
+    expect(select.options.length).toBeGreaterThanOrEqual(7);
+    const labels = Array.from(select.options).map((o) => o.text);
+    expect(labels.some((l) => l.includes("週三選"))).toBe(true);
+    expect(labels.some((l) => l.includes("週五選"))).toBe(true);
+    expect(labels.some((l) => l.includes("月選"))).toBe(true);
   });
 
   it("fires onContractChange when a different option is picked", () => {

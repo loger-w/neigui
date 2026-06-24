@@ -10,12 +10,14 @@ import pytest
 FIX = Path(__file__).parent / "fixtures" / "options"
 
 
-def test_list_active_contracts_returns_seven_items_in_order():
+def test_list_active_contracts_has_three_monthlies_and_some_weeklies():
+    """At minimum: 3 monthlies (M0/M1/M2 anchors) + ≥1 weekly_wed + ≥1 weekly_fri.
+    Slot labels are gone — picker is sorted by settlement, no W1..W4 numbering."""
     from services.finmind_options import list_active_contracts
     items = list_active_contracts(date(2026, 6, 23))
-    assert len(items) == 7
-    assert [i["kind"] for i in items] == ["weekly"] * 4 + ["monthly"] * 3
-    assert [i["slot"] for i in items] == ["W1", "W2", "W3", "W4", "M0", "M1", "M2"]
+    assert sum(1 for i in items if i["kind"] == "monthly") == 3
+    assert sum(1 for i in items if i["kind"] == "weekly_wed") >= 1
+    assert sum(1 for i in items if i["kind"] == "weekly_fri") >= 1
 
 
 def test_list_active_contracts_all_have_option_id_TXO():
@@ -25,17 +27,17 @@ def test_list_active_contracts_all_have_option_id_TXO():
 
 
 def test_list_active_contracts_weeklies_share_contract_type_week():
-    """FinMind aggregates all weekly OI under contract_type='week';
-    monthlies use YYYYMM. The four weekly slots therefore differ in
-    contract_date but share contract_type."""
+    """FinMind aggregates ALL weekly OI (Wed + Fri) under contract_type='week';
+    monthlies use YYYYMM. The weekly contracts differ in contract_date but
+    share contract_type='week'. Verified via 2026-06-23 OI-large-traders probe."""
     from services.finmind_options import list_active_contracts
     items = list_active_contracts(date(2026, 6, 23))
-    weeklies = [i for i in items if i["kind"] == "weekly"]
+    weeklies = [i for i in items if i["kind"].startswith("weekly")]
     monthlies = [i for i in items if i["kind"] == "monthly"]
     assert all(w["contract_type"] == "week" for w in weeklies)
     assert all(m["contract_type"] == m["contract_date"] for m in monthlies)
     # contract_date must still vary per weekly for the Daily query
-    assert len({w["contract_date"] for w in weeklies}) == 4
+    assert len({w["contract_date"] for w in weeklies}) == len(weeklies)
 
 
 def test_list_active_contracts_matches_fixture():
@@ -43,7 +45,7 @@ def test_list_active_contracts_matches_fixture():
     fix = json.loads((FIX / "contracts_2026-06-23.json").read_text("utf-8"))
     items = list_active_contracts(date(2026, 6, 23))
     assert [
-        {"slot": i["slot"], "kind": i["kind"], "option_id": i["option_id"],
+        {"kind": i["kind"], "option_id": i["option_id"],
          "contract_date": i["contract_date"], "contract_type": i["contract_type"],
          "settlement": i["settlement"]}
         for i in items
@@ -64,6 +66,94 @@ def test_list_active_contracts_excludes_settled_week():
     items_day_of = list_active_contracts(settle_wed)
     assert items_day_before[0]["settlement"] == "2026-06-24"
     assert items_day_of[0]["settlement"] != "2026-06-24"
+
+
+# ---------------------------------------------------------------------------
+# Friday-expiry TXO weeklies (TAIFEX 上市 2025/06/27).
+# FinMind packs them into TaiwanOptionDaily under the same option_id 'TXO',
+# distinguished by contract_date suffix 'F{n}' (vs 'W{n}' for Wed weeklies).
+# OI Large Traders aggregates ALL weeklies — Wed + Fri — under
+# contract_type='week' (no per-leg split). list_active_contracts must
+# enumerate Fri weeklies alongside Wed weeklies and monthlies, sorted by
+# settlement date ascending so the picker is chronological.
+# ---------------------------------------------------------------------------
+
+
+def test_list_active_contracts_includes_friday_weeklies():
+    from services.finmind_options import list_active_contracts
+    items = list_active_contracts(date(2026, 6, 23))
+    fri = [i for i in items if i["kind"] == "weekly_fri"]
+    assert len(fri) > 0, "must include at least one weekly_fri contract"
+    # 2026-06-26 is a Friday within the default horizon
+    assert any(i["settlement"] == "2026-06-26" for i in fri)
+
+
+def test_list_active_contracts_friday_contract_date_format():
+    """Friday contracts use 'YYYYMMF{ordinal}' where ordinal = (day-1)//7+1.
+    e.g. 2026-06-26 → '202606F4' (4th week of June)."""
+    import re
+    from services.finmind_options import list_active_contracts
+    items = list_active_contracts(date(2026, 6, 23))
+    for i in items:
+        if i["kind"] != "weekly_fri":
+            continue
+        assert re.match(r"^\d{6}F\d$", i["contract_date"]), \
+            f"bad contract_date: {i['contract_date']}"
+
+
+def test_list_active_contracts_friday_settles_on_friday():
+    """A weekly_fri contract's settlement date must fall on a Friday (wd=4)."""
+    from datetime import date as D
+    from services.finmind_options import list_active_contracts
+    items = list_active_contracts(date(2026, 6, 23))
+    fri = [i for i in items if i["kind"] == "weekly_fri"]
+    for f in fri:
+        s = D.fromisoformat(f["settlement"])
+        assert s.weekday() == 4, \
+            f"weekly_fri settles on {s} (weekday={s.weekday()}, expected 4)"
+
+
+def test_list_active_contracts_friday_uses_contract_type_week():
+    """FinMind aggregates Wed+Fri weeklies into contract_type='week'.
+    Verified via probe of TaiwanOptionOpenInterestLargeTraders on 2026-06-23."""
+    from services.finmind_options import list_active_contracts
+    items = list_active_contracts(date(2026, 6, 23))
+    fri = [i for i in items if i["kind"] == "weekly_fri"]
+    assert all(f["contract_type"] == "week" for f in fri)
+
+
+def test_list_active_contracts_sorted_by_settlement_ascending():
+    """User-facing picker shows contracts chronologically — by settlement asc.
+    Monthly W3-coinciding settlements appear in chronological position."""
+    from services.finmind_options import list_active_contracts
+    items = list_active_contracts(date(2026, 6, 23))
+    setts = [i["settlement"] for i in items]
+    assert setts == sorted(setts), \
+        f"contracts must be sorted by settlement ascending; got {setts}"
+
+
+def test_list_active_contracts_kinds_are_three_known():
+    """Only three kinds are valid: weekly_wed, weekly_fri, monthly.
+    'weekly' (legacy) is gone — frontend's isWeekly check must use a prefix
+    test or membership check."""
+    from services.finmind_options import list_active_contracts
+    items = list_active_contracts(date(2026, 6, 23))
+    assert set(i["kind"] for i in items) <= {"weekly_wed", "weekly_fri", "monthly"}
+
+
+def test_list_active_contracts_no_same_day_collision_with_monthly():
+    """When monthly settles on a Wednesday (always 3rd Wed), do NOT also emit
+    a weekly_wed for that day — the monthly contract represents that strike
+    set in FinMind (W3 is implicit in monthly settlement)."""
+    from services.finmind_options import list_active_contracts
+    items = list_active_contracts(date(2026, 6, 23))
+    by_sett: dict[str, list[str]] = {}
+    for i in items:
+        by_sett.setdefault(i["settlement"], []).append(i["kind"])
+    for sett, kinds in by_sett.items():
+        if "monthly" in kinds:
+            assert "weekly_wed" not in kinds, \
+                f"{sett}: monthly + weekly_wed collide on the same day"
 
 
 def _oi_row(date_, put_call, contract_type="202607", option_id="TXO", **fields):
