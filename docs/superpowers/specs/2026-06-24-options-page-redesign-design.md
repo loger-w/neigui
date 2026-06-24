@@ -341,6 +341,78 @@ OI±:正紅、負綠,絕對值 abbrev(>1000 顯示 `1.2k`,否則整數)。
 
 ---
 
+## Phase 0b Schema Validation Result — 2026-06-24
+
+於 2026-06-24 對 FinMind `TaiwanFuturesDaily` 以三個 `data_id` 候選同步 probe。
+
+### `TaiwanFuturesDaily` TX-family probe
+
+| data_id | msg | row count | notes |
+|---------|-----|-----------|-------|
+| `TX`      | success | **144** | 台指期 — 含所有月份與 spread 合約 × position/after_market |
+| `TXFCONT` | success | **0**   | 無資料(可能不是 dataset 支援的 alias) |
+| `TXF`     | success | **0**   | 無資料 |
+
+### Chosen `data_id` for `parse_spot`
+
+**`TX`**(唯一返回資料)。
+
+### Field map for `parse_spot`
+
+- `date` → `date`(ISO YYYY-MM-DD)
+- `contract_date` → `contract_date`(字串,值含純 `YYYYMM` 月份合約 + `YYYYMM/YYYYMM` spread 合約)
+- `trading_session` → `trading_session` ∈ `{position, after_market}`
+- spot(今天 close) → `close`(float)
+- prev_close → 前一個 trading date 的 `close`(同樣 filter)
+- futures_id → `futures_id`(資訊用)
+- `settlement_price`、`open_interest`、`volume`、OHLC(`open`, `max`, `min`, `close`、`spread`)皆有,本 redesign 用不到但記錄
+
+### Spec deltas needed
+
+- **§2.4 `parse_spot` 必須做兩層 filter**(spec §2.4 原本只寫「取最後一筆」過度簡化):
+  1. `trading_session == "position"`(取日盤 close,不取夜盤;夜盤的 `settlement_price` 都是 0)
+  2. `contract_date` 必為純 `^\d{6}$` pattern(排除 `202606/202607` 之類的 spread 合約)
+- **Front-month 挑選規則**:同一 date 的 position-session 純-YYYYMM rows 中,取 `contract_date` 最小者(自然為前月或當月);如 2026-06-23 的 row 中 contract_date `202606` 已 settle 不出現,front = `202607`,close = 47436。
+- **prev_close 同樣規則**:取倒數第二個 distinct date 的 front-month position row 的 close。
+- 後續維度(月份切換、開盤 / 夜盤切換、結算價)留作未來功能,本 redesign 只用 spot + prev_close。
+
+### Implementation note for Task 3 `parse_spot`
+
+Plan Task 3 的 `parse_spot` pseudocode 需修正為:
+
+```python
+def parse_spot(rows: list[dict]) -> dict:
+    # 1. filter: position session + pure YYYYMM contract_date
+    import re
+    filtered = [
+        r for r in rows
+        if r.get("trading_session") == "position"
+        and re.fullmatch(r"\d{6}", str(r.get("contract_date", "")))
+    ]
+    if not filtered:
+        return {"spot": None, "prev_close": None, "change": None,
+                "change_pct": None, "as_of_date": None}
+    # 2. group by date → pick front-month (smallest contract_date)
+    by_date = {}
+    for r in filtered:
+        by_date.setdefault(r["date"], []).append(r)
+    dates_sorted = sorted(by_date.keys())
+    def front_close(date_rows):
+        front = min(date_rows, key=lambda r: r["contract_date"])
+        return float(front.get("close", 0))
+    today = dates_sorted[-1]
+    spot = front_close(by_date[today])
+    prev_close = front_close(by_date[dates_sorted[-2]]) if len(dates_sorted) >= 2 else None
+    change = (spot - prev_close) if prev_close is not None else 0.0
+    change_pct = (change / prev_close * 100) if prev_close else 0.0
+    return {"spot": spot, "prev_close": prev_close, "change": change,
+            "change_pct": change_pct, "as_of_date": today}
+```
+
+Task 3 的測試 fixtures 也需新增 `trading_session` 與多 `contract_date` 的 row(模擬真實 response 的 noise),才能驗證 filter 行為。
+
+---
+
 ## 7. 未列入此 spec、之後再議
 
 - Sparkline hover 顯示 tooltip(精確值 + 日期)
