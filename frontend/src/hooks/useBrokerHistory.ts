@@ -76,6 +76,9 @@ export function useBrokerHistory(
     })),
   });
 
+  // Memo key for the queries.data fingerprint — react-hooks/use-memo
+  // expects simple expressions in deps, so we stage the computation here.
+  const dataFingerprint = queries.map((q) => q.data).join("|");
   const series = useMemo(() => {
     const m = new Map<string, BrokerDaily[]>();
     requestedIds.forEach((id, i) => {
@@ -83,8 +86,10 @@ export function useBrokerHistory(
       if (data) m.set(id, data);
     });
     return m;
+    // requestedIds is already keyed by idsKey, dataFingerprint snapshots
+    // queries[*].data — together they cover both axes of change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idsKey, queries.map((q) => q.data).join("|")]);
+  }, [idsKey, dataFingerprint]);
 
   // Fire batch fetch for any ids we don't have cached yet. Pure
   // "sync state to external system (queryClient cache)" use of Effect.

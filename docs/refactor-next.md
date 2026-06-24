@@ -32,17 +32,21 @@ P0(TanStack Query swap)收尾時掃出來的可清理項。**不在這次 refact
 2. frontend `api.chipBrokerHistory` 拆 batch vs single,或讓 `useBrokerHistory` 直接 useQueries each id
 3. 把 hook 內 useMutation + setQueryData + disabled useQueries 三層拆成單純 `useQueries`
 
-## 3. Frontend ESLint base + `eslint-plugin-react-you-might-not-need-an-effect`
+## 3. 修 ESLint 標出的 14 個 anti-pattern warning
 
-P2-c 的原意是「裝 lint 自動抓 useEffect anti-pattern」,但 frontend 目前完全沒 ESLint(`grep -E "eslint|biome" package.json` 空),裝 base config + typescript-eslint + react / react-hooks plugin + you-might-not-need-an-effect 是 toolchain 大改動,不適合塞在 refactor session 收尾。
+P2-c 已把 ESLint base + `react-you-might-not-need-an-effect` + `react-hooks` 全裝起來(`npm run lint` 通)。React 19 新出的 `react-hooks/set-state-in-effect` + `react-hooks/refs` 對某些合理 reset pattern 過嚴,所以兩條暫時降成 warning,等下次跟其他 anti-pattern 一起處理。
 
-**為何 P0 之後仍然該裝**:剩下的 useEffect(掃過一次)有兩條是 prop → state sync 型 anti-pattern(`BrokerSearch.tsx` L48 的 `setQuery(value ?? "")`、`App.tsx` L55 的 history-driven auto-date),其他都是合法 external sync(localStorage / ResizeObserver / queryClient cache)。lint 可以幫忙標出來,人工修則需要 derive state 改寫 ergonomics。
+**下次該修的 14 條**(`cd frontend && npm run lint` 完整列表):
 
-**下次怎麼做**:
-1. `npm i -D eslint @eslint/js typescript-eslint eslint-plugin-react-hooks eslint-plugin-react-you-might-not-need-an-effect`
-2. 寫 `eslint.config.js`(flat config),啟用 `react/no-unnecessary-effect` 規則
-3. `npx eslint .` 跑一次,把 anti-pattern useEffect 改寫成 derived state / event handler
-4. `package.json` 加 `"lint": "eslint ."` script
+- **`ChipBrokersPanel.tsx`**(3 warning):`allBrokers` logical expression 在 useMemo deps 內,需要先包一層 useMemo
+- **`ChipBubbleView.tsx:26`** `react-you-might-not-need-an-effect/no-adjust-state-on-prop-change`:`setSelectedBroker(null)` on `[symbol]` change → 改用 `key={symbol}` 強制 remount,或把 selectedBroker derive from symbol
+- **`ChipBubbleView.tsx:214`** `incompatible-library`:TanStack Virtual 的 `useVirtualizer()` 是已知不可 memoize,**這條沒辦法修,可以 inline disable + 註解**
+- **`BrokerSearch.tsx:48`** prop → state sync(`setQuery(value ?? "")`):改成 derived state
+- **`BrokerSearch.tsx:92`** `setActiveIdx(0)` reset on `[filtered]` change:同上,改 derived 或 useReducer
+- **`useBrokerHistory.ts:97`** `no-event-handler`:`useEffect` 內讀 props 觸發 fetch,plugin 建議 push 到 parent。**對 useBrokerHistory 的 hybrid pattern(useMutation + setQueryData)不適用**,inline disable + 註解
+- **`chip-bubble-svg.tsx:346`** `react-hooks/refs`(ref mutation during render):`bubblesRef.current = bubbles` 該移到 `useEffect`,或改用 `useMemo` 內回傳 + 在 caller 持 ref
+
+**為何不在本 session 修**:六個檔要動,每個都要 derive 改寫 + 跑該檔測試確認行為等價;這 session 已經改過 16 個 commit,集中修 anti-pattern 應該另立 refactor session,scope 更清楚。
 
 ## 4. 可考慮加 React Query Devtools 到 dev build
 
