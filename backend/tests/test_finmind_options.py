@@ -455,3 +455,133 @@ async def test_fetch_strike_volume_writes_cache_and_returns_shape():
     assert [p["strike"] for p in out["put"]] == [21500]
     from utils.cache import chip_cache_dir
     assert (chip_cache_dir() / "TXO202607_2026-06-23_strike_vol.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# Task 3: parse_spot (台指期 spot from TaiwanFuturesDaily)
+# ---------------------------------------------------------------------------
+
+
+def _tx_row(date_, close, *, volume=10000,
+            trading_session="position", contract_date="202607"):
+    """TaiwanFuturesDaily TX row -- Phase 0b confirmed field names.
+
+    Defaults to position session + pure-YYYYMM contract_date (the front-month);
+    tests override these to exercise filter behavior.
+    """
+    return {"date": date_, "data_id": "TX",
+            "trading_session": trading_session,
+            "contract_date": contract_date,
+            "open": close - 30, "max": close + 50, "min": close - 80,
+            "close": close, "volume": volume, "settlement_price": close}
+
+
+def test_parse_spot_picks_latest_close_and_computes_change():
+    from services.finmind_options import parse_spot
+    rows = [
+        _tx_row("2026-06-19", 53300.0),
+        _tx_row("2026-06-22", 53420.0),
+    ]
+    out = parse_spot(rows)
+    assert out["spot"] == 53420.0
+    assert out["prev_close"] == 53300.0
+    assert out["change"] == pytest.approx(120.0)
+    assert out["change_pct"] == pytest.approx(120.0 / 53300.0 * 100, rel=1e-4)
+    assert out["as_of_date"] == "2026-06-22"
+
+
+def test_parse_spot_single_row_change_is_zero():
+    from services.finmind_options import parse_spot
+    out = parse_spot([_tx_row("2026-06-22", 53420.0)])
+    assert out["spot"] == 53420.0
+    assert out["prev_close"] is None
+    assert out["change"] == 0.0
+    assert out["change_pct"] == 0.0
+    assert out["as_of_date"] == "2026-06-22"
+
+
+def test_parse_spot_empty_returns_none_fields():
+    from services.finmind_options import parse_spot
+    out = parse_spot([])
+    assert out == {
+        "spot": None, "prev_close": None,
+        "change": None, "change_pct": None,
+        "as_of_date": None,
+    }
+
+
+def test_parse_spot_filters_after_market_session():
+    """Rows with trading_session=after_market are ignored: night session
+    has settlement_price=0 noise and we want only the day-session close."""
+    from services.finmind_options import parse_spot
+    rows = [
+        _tx_row("2026-06-22", 53420.0, trading_session="position"),
+        _tx_row("2026-06-22", 99999.0, trading_session="after_market"),
+    ]
+    out = parse_spot(rows)
+    assert out["spot"] == 53420.0
+    assert out["as_of_date"] == "2026-06-22"
+
+
+def test_parse_spot_filters_spread_contract_dates():
+    """Rows with spread contract_date like '202606/202607' must be dropped --
+    only pure ^\\d{6}$ pattern (single-month contracts) count."""
+    from services.finmind_options import parse_spot
+    rows = [
+        _tx_row("2026-06-22", 53420.0, contract_date="202607"),
+        _tx_row("2026-06-22", 88888.0, contract_date="202606/202607"),
+        _tx_row("2026-06-22", 77777.0, contract_date="202607/202608"),
+    ]
+    out = parse_spot(rows)
+    assert out["spot"] == 53420.0
+
+
+def test_parse_spot_picks_front_month_when_multiple_pure_yyyymm():
+    """When 202607 and 202608 both exist for the same date, take the
+    smallest contract_date (front-month) as the spot."""
+    from services.finmind_options import parse_spot
+    rows = [
+        _tx_row("2026-06-22", 53420.0, contract_date="202607"),
+        _tx_row("2026-06-22", 53480.0, contract_date="202608"),
+        _tx_row("2026-06-19", 53300.0, contract_date="202607"),
+        _tx_row("2026-06-19", 53360.0, contract_date="202608"),
+    ]
+    out = parse_spot(rows)
+    assert out["spot"] == 53420.0  # 202607 wins over 202608
+    assert out["prev_close"] == 53300.0  # same: 202607 on 2026-06-19
+    assert out["as_of_date"] == "2026-06-22"
+
+
+_SPOT_DATA_ID = "TX"  # Phase 0b confirmed -- change if probe found different
+
+
+@pytest.mark.asyncio
+async def test_fetch_spot_writes_cache_and_returns_shape():
+    from services.finmind import FinMindClient
+    rows = [
+        _tx_row("2026-06-19", 53300.0),
+        _tx_row("2026-06-22", 53420.0),
+    ]
+    mc = _mock_http(_fm_resp(rows))
+    fm = FinMindClient()
+    fm._http = mc
+    out = await fm.fetch_spot("2026-06-22")
+    assert out["date"] == "2026-06-22"
+    assert out["spot"] == 53420.0
+    assert out["prev_close"] == 53300.0
+    assert out["change"] == pytest.approx(120.0)
+    assert out["as_of_date"] == "2026-06-22"
+    from utils.cache import chip_cache_dir
+    assert (chip_cache_dir() / f"{_SPOT_DATA_ID}_2026-06-22_spot.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_fetch_spot_returns_cached_on_second_call():
+    from services.finmind import FinMindClient
+    mc = _mock_http(_fm_resp([_tx_row("2025-01-02", 50000.0)]))
+    fm = FinMindClient()
+    fm._http = mc
+    first = await fm.fetch_spot("2025-01-02")
+    second = await fm.fetch_spot("2025-01-02")
+    assert first == second
+    assert mc.get.await_count == 1  # cache hit, no second HTTP call

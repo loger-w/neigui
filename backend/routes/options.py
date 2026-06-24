@@ -70,6 +70,27 @@ async def get_oi_large_traders(
     return out
 
 
+@router.get("/api/options/spot")
+async def get_spot(
+    date: str = Query(default=""),
+    refresh: bool = Query(default=False),
+) -> dict:
+    d = date or _today_str()
+    try:
+        out = await get_finmind().fetch_spot(d, refresh)
+    except (httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException) as exc:
+        logger.warning("FinMind spot error: %s", exc)
+        raise HTTPException(status_code=502, detail={"error": "finmind_error"})
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail={"error": str(exc)})
+    except Exception:
+        logger.exception("Unexpected spot error")
+        raise HTTPException(status_code=502, detail={"error": "unexpected_error"})
+    if _is_stale_for_requested(out, d):
+        out = {**out, "no_trading_day": True}
+    return out
+
+
 @router.get("/api/options/strike_volume")
 async def get_strike_volume(
     contract: str = Query(default=""),

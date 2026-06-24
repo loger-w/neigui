@@ -6,6 +6,7 @@ this one owns the data-shape logic so it can be unit-tested without I/O.
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 
 _CACHE_VERSION_OPTIONS = 1
@@ -229,3 +230,71 @@ def parse_strike_volume(
         return out
 
     return {"call": side("call"), "put": side("put"), "as_of_date": today}
+
+
+_PURE_YYYYMM = re.compile(r"\d{6}")
+
+
+def parse_spot(rows: list[dict]) -> dict:
+    """Parse TaiwanFuturesDaily TX rows into front-month spot + day-over-day change.
+
+    Phase 0b confirmed two filters are required (see spec addendum):
+    1. trading_session == "position" (day-session close; 夜盤 settlement_price
+       is 0 and would corrupt the spot).
+    2. contract_date matches ^\\d{6}$ (single-month contract, excludes
+       "202606/202607" spread / calendar-spread rows).
+
+    Among rows passing both filters, group by date and pick the smallest
+    contract_date as the front-month for that day. `spot` = front-month
+    close on the latest date; `prev_close` = front-month close on the
+    second-latest date (None if only one date).
+    """
+    none_result = {
+        "spot": None, "prev_close": None,
+        "change": None, "change_pct": None,
+        "as_of_date": None,
+    }
+    if not rows:
+        return none_result
+
+    filtered = [
+        r for r in rows
+        if r.get("trading_session") == "position"
+        and _PURE_YYYYMM.fullmatch(str(r.get("contract_date", "")))
+    ]
+    if not filtered:
+        return none_result
+
+    by_date: dict[str, list[dict]] = {}
+    for r in filtered:
+        d = r.get("date", "")
+        if not d:
+            continue
+        by_date.setdefault(d, []).append(r)
+    if not by_date:
+        return none_result
+
+    dates_sorted = sorted(by_date.keys())
+
+    def front_close(date_rows: list[dict]) -> float:
+        front = min(date_rows, key=lambda r: str(r.get("contract_date", "")))
+        try:
+            return float(front.get("close", 0))
+        except (TypeError, ValueError):
+            return 0.0
+
+    today = dates_sorted[-1]
+    spot = front_close(by_date[today])
+    prev_close = (
+        front_close(by_date[dates_sorted[-2]])
+        if len(dates_sorted) >= 2 else None
+    )
+    change = (spot - prev_close) if prev_close is not None else 0.0
+    change_pct = (change / prev_close * 100) if prev_close else 0.0
+    return {
+        "spot": spot,
+        "prev_close": prev_close,
+        "change": change,
+        "change_pct": change_pct,
+        "as_of_date": today,
+    }

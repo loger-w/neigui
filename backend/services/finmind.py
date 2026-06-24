@@ -498,6 +498,45 @@ class FinMindClient:
         self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS)
         return result
 
+    # -- options: 台指期 spot price ----------------------------------------
+
+    async def fetch_spot(self, date_str: str, refresh: bool = False) -> dict:
+        from services.finmind_options import _CACHE_VERSION_OPTIONS
+        data_id = "TX"  # Phase 0b: only TX returned data; TXFCONT/TXF empty
+        cache_key = f"{data_id}_{date_str}_spot"
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS)
+            if cached is not None:
+                if not self._is_today(date_str) or not self._is_stale(cached):
+                    return cached
+        return await self._run_once(
+            f"spot_{cache_key}",
+            lambda: self._do_fetch_spot(date_str, data_id, cache_key),
+        )
+
+    async def _do_fetch_spot(
+        self, date_str: str, data_id: str, cache_key: str,
+    ) -> dict:
+        from services.finmind_options import (
+            _CACHE_VERSION_OPTIONS, parse_spot,
+        )
+        end = date.fromisoformat(date_str)
+        start = end - timedelta(days=7)
+        raw = await self._get(
+            f"{_FINMIND_BASE}/data",
+            {"dataset": "TaiwanFuturesDaily",
+             "data_id": data_id,
+             "start_date": start.isoformat(), "end_date": end.isoformat()},
+        )
+        parsed = parse_spot(raw)
+        result = {
+            "date": date_str,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            **parsed,
+        }
+        self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS)
+        return result
+
     # -- options cache version helpers (separate _CACHE_VERSION_OPTIONS) ---
 
     def _read_cache_v(self, key: str, version: int) -> dict | None:

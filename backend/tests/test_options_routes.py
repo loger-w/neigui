@@ -160,3 +160,49 @@ def _today_code_via_helper() -> str:
     from services.finmind_options import list_active_contracts
     c = list_active_contracts(date.today())[0]
     return f"{c['option_id']}{c['contract_date']}"
+
+
+@pytest.fixture
+def mock_fm_with_spot():
+    """Mocks default to as_of_date == today (no banner)."""
+    today = date.today().isoformat()
+    svc = AsyncMock()
+    svc.fetch_spot = AsyncMock(return_value={
+        "date": today, "fetched_at": "x", "as_of_date": today,
+        "spot": 53420.0, "prev_close": 53300.0,
+        "change": 120.0, "change_pct": 0.2251,
+    })
+    with patch("routes.options.get_finmind", return_value=svc):
+        yield svc
+
+
+def test_spot_happy_path(mock_fm_with_spot):
+    resp = TestClient(app).get("/api/options/spot")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["spot"] == 53420.0
+    assert body["change"] == 120.0
+    assert body.get("no_trading_day") is None
+    mock_fm_with_spot.fetch_spot.assert_awaited_once()
+
+
+def test_spot_no_trading_day_when_as_of_differs(mock_fm_with_spot):
+    """Saturday request; FinMind returns Friday data."""
+    saturday = "2026-06-20"
+    friday = "2026-06-19"
+    mock_fm_with_spot.fetch_spot.return_value = {
+        "date": saturday, "fetched_at": "x", "as_of_date": friday,
+        "spot": 53300.0, "prev_close": 53180.0,
+        "change": 120.0, "change_pct": 0.2257,
+    }
+    resp = TestClient(app).get(f"/api/options/spot?date={saturday}")
+    assert resp.status_code == 200
+    assert resp.json().get("no_trading_day") is True
+
+
+def test_spot_finmind_error_502(mock_fm_with_spot):
+    import httpx
+    mock_fm_with_spot.fetch_spot.side_effect = httpx.ConnectError("boom")
+    resp = TestClient(app).get("/api/options/spot")
+    assert resp.status_code == 502
+    assert resp.json()["detail"]["error"] == "finmind_error"
