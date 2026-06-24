@@ -34,8 +34,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Chip Overview", version="0.1.0", lifespan=lifespan)
 
 _origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
-if os.getenv("FRONTEND_ORIGIN"):
-    _origins.append(os.getenv("FRONTEND_ORIGIN"))
+_extra = os.getenv("FRONTEND_ORIGIN")
+if _extra:
+    _origins.append(_extra)
 
 app.add_middleware(
     CORSMiddleware,
