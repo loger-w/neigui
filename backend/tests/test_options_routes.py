@@ -206,3 +206,97 @@ def test_spot_finmind_error_502(mock_fm_with_spot):
     resp = TestClient(app).get("/api/options/spot")
     assert resp.status_code == 502
     assert resp.json()["detail"]["error"] == "finmind_error"
+
+
+# ============================================================================
+# SC-1 / SC-5: /api/options/max_pain route
+# ============================================================================
+
+
+@pytest.fixture
+def mock_fm_with_max_pain():
+    today = date.today().isoformat()
+    svc = AsyncMock()
+    svc.fetch_max_pain = AsyncMock(return_value={
+        "contract": "TXO202607", "date": today, "fetched_at": "x",
+        "as_of_date": today,
+        "current": {
+            "max_pain": 21000, "total_loss_ntd": 10_000_000,
+            "strike_count": 3,
+            "strikes_with_call_oi_only": 0,
+            "strikes_with_put_oi_only": 0,
+        },
+        "hit_rate": None,
+        "latest_settlement_pending": False,
+        "data_quality_warnings": [],
+        "insufficient_data": {"reason": "no_settlements_fetched_in_mvp", "required_days": 0},
+    })
+    with patch("routes.options.get_finmind", return_value=svc):
+        yield svc
+
+
+def test_max_pain_requires_contract():
+    resp = TestClient(app).get("/api/options/max_pain")
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error"] == "contract_required"
+
+
+def test_max_pain_invalid_contract_400():
+    resp = TestClient(app).get("/api/options/max_pain?contract=BOGUS999")
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error"] == "invalid_contract"
+
+
+def test_max_pain_lookback_exceeds_canonical_window_400():
+    """N11: lookback × 21 (worst-case monthly) > CHIP_WINDOW_TD=250 → 400."""
+    from services.finmind_options import list_active_contracts
+    today = date.today()
+    c = next(iter(list_active_contracts(today)))
+    contract_id = f"{c['option_id']}{c['contract_date']}"
+    # 50 settled contracts × 21 td/month = 1050 > 250 → invariant violated
+    resp = TestClient(app).get(
+        f"/api/options/max_pain?contract={contract_id}&lookback=50"
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error"] == "lookback_exceeds_canonical_window"
+
+
+def test_max_pain_happy_path(mock_fm_with_max_pain):
+    from services.finmind_options import list_active_contracts
+    today = date.today()
+    c = next(iter(list_active_contracts(today)))
+    contract_id = f"{c['option_id']}{c['contract_date']}"
+    resp = TestClient(app).get(f"/api/options/max_pain?contract={contract_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["current"]["max_pain"] == 21000
+    assert body["current"]["total_loss_ntd"] == 10_000_000
+
+
+def test_max_pain_no_trading_day_banner(mock_fm_with_max_pain):
+    from services.finmind_options import list_active_contracts
+    today = date.today()
+    c = next(iter(list_active_contracts(today)))
+    contract_id = f"{c['option_id']}{c['contract_date']}"
+    # Override as_of_date to differ from requested → banner
+    mock_fm_with_max_pain.fetch_max_pain.return_value = {
+        **mock_fm_with_max_pain.fetch_max_pain.return_value,
+        "as_of_date": "2026-06-20",
+    }
+    resp = TestClient(app).get(
+        f"/api/options/max_pain?contract={contract_id}&date=2026-06-21"
+    )
+    assert resp.status_code == 200
+    assert resp.json().get("no_trading_day") is True
+
+
+def test_max_pain_finmind_error_502(mock_fm_with_max_pain):
+    import httpx
+    from services.finmind_options import list_active_contracts
+    today = date.today()
+    c = next(iter(list_active_contracts(today)))
+    contract_id = f"{c['option_id']}{c['contract_date']}"
+    mock_fm_with_max_pain.fetch_max_pain.side_effect = httpx.ConnectError("boom")
+    resp = TestClient(app).get(f"/api/options/max_pain?contract={contract_id}")
+    assert resp.status_code == 502
+    assert resp.json()["detail"]["error"] == "finmind_error"

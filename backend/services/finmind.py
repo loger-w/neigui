@@ -208,12 +208,18 @@ class FinMindClient:
         self._write_cache(cache_key, result)
         return result
 
-    # -- history (60-day candles + institutional + margin) -------------------
+    # -- history (configurable-window candles + institutional + margin) ------
+
+    @staticmethod
+    def _history_cache_key(symbol: str, days: int) -> str:
+        """days==90 沿用既有路徑(W10:保護所有 seed-cache 測試);
+        其他 days 加 `_{days}d` 後綴,自成 cache 檔。"""
+        return f"{symbol}_history" if days == 90 else f"{symbol}_history_{days}d"
 
     async def fetch_chip_history(
-        self, symbol: str, refresh: bool = False,
+        self, symbol: str, refresh: bool = False, days: int = 90,
     ) -> dict:
-        cache_key = f"{symbol}_history"
+        cache_key = self._history_cache_key(symbol, days)
         cached = self._read_cache(cache_key) if not refresh else None
         if cached is not None:
             last = cached.get("last_date", "")
@@ -230,7 +236,7 @@ class FinMindClient:
         try:
             return await self._run_once(
                 f"history_{cache_key}",
-                lambda: self._do_fetch_history(symbol, cache_key),
+                lambda: self._do_fetch_history(symbol, cache_key, days),
             )
         except httpx.HTTPError as exc:
             # K-line resilience: when FinMind is unreachable (token expired,
@@ -248,9 +254,11 @@ class FinMindClient:
                 return {**cached, "stale": True}
             raise
 
-    async def _do_fetch_history(self, symbol: str, cache_key: str) -> dict:
+    async def _do_fetch_history(
+        self, symbol: str, cache_key: str, days: int = 90,
+    ) -> dict:
         end = date.today()
-        start = end - timedelta(days=90)
+        start = end - timedelta(days=days)
         s, e = start.isoformat(), end.isoformat()
 
         candles_raw, inst_raw, margin_raw = await asyncio.gather(
@@ -323,22 +331,33 @@ class FinMindClient:
 
     # -- broker history -----------------------------------------------------
 
+    @staticmethod
+    def _broker_history_cache_key(symbol: str, days: int) -> str:
+        return (
+            f"{symbol}_broker_history"
+            if days == 90
+            else f"{symbol}_broker_history_{days}d"
+        )
+
     async def fetch_broker_history(
-        self, symbol: str, ids: list[str], refresh: bool = False,
+        self, symbol: str, ids: list[str], refresh: bool = False, days: int = 90,
     ) -> dict:
         """`ids` are broker_ids (FinMind `securities_trader_id`) — same values
         the frontend already receives in `top_brokers[].broker_id`. The cache
         is partial per-symbol: brokers fetched in prior requests stay cached
-        across sessions; new ids on this request are fetched + merged."""
-        cache_key = f"{symbol}_broker_history"
+        across sessions; new ids on this request are fetched + merged.
+
+        `days` controls the historical window; W10 keeps `days==90` on the
+        original cache path so seed-cache tests keep working."""
+        cache_key = self._broker_history_cache_key(symbol, days)
         if not refresh:
             cached = self._read_cache(cache_key)
             if cached is not None and self._has_fresh_subset(cached, ids):
                 return _filter_broker_history(cached, ids)
 
         payload = await self._run_once(
-            f"broker_history_{symbol}_{','.join(sorted(set(ids)))}",
-            lambda: self._do_fetch_broker_history(symbol, cache_key, ids),
+            f"broker_history_{cache_key}_{','.join(sorted(set(ids)))}",
+            lambda: self._do_fetch_broker_history(symbol, cache_key, ids, days),
         )
         return _filter_broker_history(payload, ids)
 
@@ -354,7 +373,7 @@ class FinMindClient:
         return all(bid in brokers for bid in ids)
 
     async def _do_fetch_broker_history(
-        self, symbol: str, cache_key: str, ids: list[str],
+        self, symbol: str, cache_key: str, ids: list[str], days: int = 90,
     ) -> dict:
         existing = self._read_cache(cache_key) or {
             "symbol": symbol, "fetched_at": "", "last_date": "",
@@ -366,7 +385,7 @@ class FinMindClient:
         # overwrite to pick up newly-traded dates. Brokers absent from `ids`
         # but present in cache stay cached (sticky across sessions).
         end = date.today()
-        start = end - timedelta(days=90)
+        start = end - timedelta(days=days)
         results = await asyncio.gather(
             *[
                 self._safe_get_secid_agg(symbol, start.isoformat(), end.isoformat(), bid)
@@ -569,6 +588,167 @@ class FinMindClient:
             **parsed,
         }
         self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS)
+        return result
+
+    # ------------------------------------------------------------------
+    # txo-chip-framework MVP1: shared TaiwanOptionDaily window + chip endpoints
+    # ------------------------------------------------------------------
+
+    async def fetch_taiwan_option_daily_window(
+        self, trading_dates: list[date], end_date: date, refresh: bool = False,
+    ) -> dict[str, list[dict]]:
+        """Shared 250-trading-day window fetch (design v4 §2.2 / I1, I2, F17).
+
+        Args:
+            trading_dates: list of trading dates to fetch, sorted ascending.
+                Caller (route layer) computes via services.trading_calendar.
+            end_date: end of window (latest trading day).
+            refresh: if True, invalidate cache + downstream parse caches.
+
+        Returns: ``{date_iso: rows}`` mapping.
+        """
+        from services.finmind_options import _CACHE_VERSION_OPTIONS_CHIP
+        cache_key = f"txo_daily_window_{end_date.isoformat()}_td{len(trading_dates)}"
+
+        return await self._run_once(
+            f"window_{cache_key}",
+            lambda: self._do_fetch_window(trading_dates, end_date, cache_key, refresh),
+        )
+
+    async def _do_fetch_window(
+        self, trading_dates: list[date], end_date: date,
+        cache_key: str, refresh: bool,
+    ) -> dict[str, list[dict]]:
+        from services.finmind_options import _CACHE_VERSION_OPTIONS_CHIP
+        # Inside _run_once after dedup (I1): only invalidate when we actually refetch
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
+            if cached is not None and "by_date" in cached:
+                return cached["by_date"]
+        # refresh or cache miss → invalidate downstream parse caches then fetch
+        if refresh:
+            self._invalidate_chip_parse_caches(end_date)
+        # Fan out per-day fetches (token bucket serialises through shared limiter)
+        results = await asyncio.gather(
+            *[self._get(
+                f"{_FINMIND_BASE}/data",
+                {"dataset": "TaiwanOptionDaily", "data_id": "TXO",
+                 "start_date": d.isoformat(), "end_date": d.isoformat()},
+            ) for d in trading_dates],
+            return_exceptions=True,
+        )
+        by_date: dict[str, list[dict]] = {}
+        for d, res in zip(trading_dates, results):
+            if isinstance(res, BaseException):
+                by_date[d.isoformat()] = []
+            else:
+                by_date[d.isoformat()] = res or []
+        payload = {
+            "by_date": by_date,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        self._write_cache_v(cache_key, payload, _CACHE_VERSION_OPTIONS_CHIP)
+        return by_date
+
+    def _invalidate_chip_parse_caches(self, end_date: date) -> None:
+        """N12: pattern-based invalidation across all lookback/threshold variants."""
+        from utils.cache import delete_by_prefix
+        end_iso = end_date.isoformat()
+        # Order matters not — these are independent endpoints
+        for prefix_template in [
+            f"max_pain_*_{end_iso}_",
+            f"oi_walls_*_{end_iso}_",
+            f"pcr_series_*_{end_iso}_",
+            f"pcr_classified_*_{end_iso}_",
+        ]:
+            # We use a prefix that begins with the literal endpoint name and
+            # ends with the end_date; since delete_by_prefix accepts a literal
+            # prefix (no glob), iterate endpoint-by-endpoint:
+            for endpoint in ["max_pain", "oi_walls", "pcr_series", "pcr_classified"]:
+                if not prefix_template.startswith(endpoint):
+                    continue
+                # We can't actually match wildcards without listing the cache
+                # dir. Simplified: delete every {endpoint}_*_{end_iso}_*.json
+                # by enumerating; for MVP fall back to the endpoint+end_iso pair
+                # search using delete_by_prefix on whatever prefix we can build.
+                # Better: iterate dir manually. Implemented inline below.
+                from utils.cache import chip_cache_dir
+                for p in chip_cache_dir().iterdir():
+                    if (p.suffix == ".json"
+                        and p.stem.startswith(f"{endpoint}_")
+                        and f"_{end_iso}_" in p.stem):
+                        p.unlink()
+                break
+
+    async def fetch_max_pain(
+        self, contract: dict, date_str: str, lookback: int = 20,
+        refresh: bool = False,
+    ) -> dict:
+        """SC-1/SC-5 chip endpoint. design v4 §2.1.
+
+        Caller (route) must have already done route-layer validations:
+        - lookback × period ≤ CHIP_WINDOW_TD (N11)
+        - contract resolved via _resolve_contract
+        - trading_dates fetched via services.trading_calendar.get_trading_days
+        """
+        from services.finmind_options import (
+            _CACHE_VERSION_OPTIONS_CHIP,
+            parse_max_pain, parse_max_pain_hit_rate,
+        )
+        from services.trading_calendar import get_trading_days
+
+        contract_id = f"{contract['option_id']}{contract['contract_date']}"
+        cache_key = f"max_pain_{contract_id}_{date_str}_lb{lookback}"
+
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
+            if cached is not None:
+                return cached
+
+        # 250-td shared window for chip endpoints
+        end = date.fromisoformat(date_str)
+        trading_dates = await get_trading_days(end, n=250)
+        by_date_iso = await self.fetch_taiwan_option_daily_window(
+            sorted(trading_dates), end_date=end, refresh=refresh,
+        )
+
+        # Find today's rows for current Max Pain
+        today_rows = by_date_iso.get(date_str, [])
+        if not today_rows:
+            # Fall back to latest available
+            available = sorted(by_date_iso.keys())
+            if available:
+                today_rows = by_date_iso[available[-1]]
+        current_mp = parse_max_pain(today_rows, contract["contract_date"])
+
+        # Build oi_by_trading_day dict (date → rows) for hit rate calc
+        oi_by_trading_day: dict[date, list[dict]] = {
+            date.fromisoformat(d_iso): rows
+            for d_iso, rows in by_date_iso.items() if rows
+        }
+        # Hit rate needs settlements — fetch settlement prices for last `lookback`
+        # settled contracts. For MVP: pass empty dict (settlements parser handles)
+        # The route layer is the natural place to enrich this (separate fetch).
+        # Keeping minimal here; hit_rate populated when settlements available.
+        hit_rate = parse_max_pain_hit_rate(
+            oi_by_trading_day=oi_by_trading_day, settlements={},
+        )
+
+        result = {
+            "contract": contract_id,
+            "date": date_str,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "as_of_date": sorted(by_date_iso.keys())[-1] if by_date_iso else date_str,
+            "current": current_mp,
+            "hit_rate": None if hit_rate["samples"] == 0 else hit_rate,
+            "latest_settlement_pending": hit_rate.get("latest_settlement_pending", False),
+            "data_quality_warnings": [],
+            "insufficient_data": (
+                {"reason": "no_settlements_fetched_in_mvp", "required_days": 0}
+                if hit_rate["samples"] == 0 else None
+            ),
+        }
+        self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS_CHIP)
         return result
 
     # -- options cache version helpers (separate _CACHE_VERSION_OPTIONS) ---

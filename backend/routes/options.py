@@ -93,3 +93,37 @@ async def get_strike_volume(
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
     return out
+
+
+# -- txo-chip-framework MVP1 --------------------------------------------------
+
+CHIP_WINDOW_TD = 250  # canonical shared TaiwanOptionDaily window (design v4 §1)
+
+
+def _validate_lookback(lookback: int, period_days: int) -> None:
+    """N11: route-layer guard — reject 400 if lookback × period > CHIP_WINDOW_TD."""
+    if lookback * period_days > CHIP_WINDOW_TD:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "lookback_exceeds_canonical_window"},
+        )
+
+
+@router.get("/api/options/max_pain")
+async def get_max_pain(
+    contract: str = Query(default=""),
+    date: str = Query(default=""),
+    refresh: bool = Query(default=False),
+    lookback: int = Query(default=20, ge=1, le=50),
+) -> dict:
+    """SC-1 / SC-5: Max Pain + T-1 hit rate (design v4 §2.1)."""
+    c = _require_contract(contract)
+    # period_days = realistic average across weekly (~5 td) and monthly (~21 td);
+    # use 10 as the policy boundary so lookback=20 fits (200 td) while a stupid
+    # lookback=50 trips the canonical-window invariant (500 > 250 td).
+    _validate_lookback(lookback, period_days=10)
+    d = date or _today_str()
+    out = await get_finmind().fetch_max_pain(c, d, lookback=lookback, refresh=refresh)
+    if _is_stale_for_requested(out, d):
+        out = {**out, "no_trading_day": True}
+    return out

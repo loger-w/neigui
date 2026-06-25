@@ -10,6 +10,7 @@ import re
 from datetime import date, timedelta
 
 _CACHE_VERSION_OPTIONS = 1
+_CACHE_VERSION_OPTIONS_CHIP = 1  # NEW chip endpoints (max_pain/oi_walls/pcr/inst); isolated from above
 
 
 def _third_wednesday(year: int, month: int) -> date:
