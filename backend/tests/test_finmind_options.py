@@ -781,7 +781,11 @@ def test_parse_max_pain_strict_contract_filter():
 
 def test_parse_max_pain_total_loss_includes_multiplier_50():
     """SC-1 / design F14: TXO multiplier = NT$50 per point; total_loss_ntd
-    must be in NTD (not raw OI-point units)."""
+    must be in NTD (not raw OI-point units).
+
+    Setup: at K=21000 (the ATM-ish optimum), call_loss = 100×1000 = 100k
+    points, put_loss = 100×1000 = 100k points, total 200k points × 50 = 10M NTD.
+    """
     from services.finmind_options import parse_max_pain
     rows = [
         _option_row("202607", 20000, "call", oi=100),
@@ -790,9 +794,8 @@ def test_parse_max_pain_total_loss_includes_multiplier_50():
         _option_row("202607", 22000, "put",  oi=100),
     ]
     result = parse_max_pain(rows, contract_date="202607")
-    # All three K give equal loss (10M); argmin returns smallest K
-    assert result["max_pain"] == 20000
-    assert result["total_loss_ntd"] == 10_000_000  # 100 × 2000 × 50
+    assert result["max_pain"] == 21000  # unique minimum (200k pts vs 300k at 20000/22000)
+    assert result["total_loss_ntd"] == 10_000_000  # 200_000 points × NT$50
 
 
 def test_parse_max_pain_hit_rate_uses_t_minus_1():

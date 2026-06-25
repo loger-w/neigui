@@ -348,3 +348,162 @@ def parse_spot(rows: list[dict]) -> dict:
         "change_pct": change_pct,
         "as_of_date": today,
     }
+
+
+# ============================================================================
+# SC-1 / SC-5: Max Pain (design v4 §4.1)
+# ============================================================================
+
+TXO_POINT_MULTIPLIER = 50  # NT$ per index point; TXO contract spec
+
+
+def parse_max_pain(
+    rows: list[dict], contract_date: str, option_id: str = "TXO",
+) -> dict:
+    """Compute Max Pain (lowest-loss strike for option sellers) on one day.
+
+    Algorithm (design v4 §4.1 / F1, F2, F14):
+        1. Strict filter: row.option_id == option_id AND
+           row.contract_date == contract_date.
+        2. Aggregate OI per (strike, call_put) across trading_session.
+        3. candidate_K = UNION of strikes appearing on either side with OI > 0
+           (one-sided deep OTM strikes count — they shift Max Pain at the tails).
+        4. loss_oi(K) = Σ call_oi_i × max(K − K_i, 0)
+                     + Σ put_oi_j × max(K_j − K, 0).
+        5. K* = argmin(loss_oi). On ties → lowest K (deterministic).
+        6. total_loss_ntd = loss_oi(K*) × TXO_POINT_MULTIPLIER.
+    """
+    call_oi: dict[float, int] = {}
+    put_oi: dict[float, int] = {}
+    for row in rows:
+        if row.get("option_id") != option_id:
+            continue
+        if str(row.get("contract_date", "")) != contract_date:
+            continue
+        try:
+            strike = float(row.get("strike_price", 0))
+            oi = int(row.get("open_interest", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if oi <= 0:
+            continue
+        side = row.get("call_put")
+        bucket = call_oi if side == "call" else put_oi if side == "put" else None
+        if bucket is None:
+            continue
+        bucket[strike] = bucket.get(strike, 0) + oi
+
+    call_strikes = set(call_oi.keys())
+    put_strikes = set(put_oi.keys())
+    candidate_strikes = sorted(call_strikes | put_strikes)
+    if not candidate_strikes:
+        return {
+            "max_pain": None, "total_loss_ntd": 0, "strike_count": 0,
+            "strikes_with_call_oi_only": 0, "strikes_with_put_oi_only": 0,
+        }
+
+    def loss_at(k: float) -> int:
+        call_loss = sum(oi * max(k - s, 0) for s, oi in call_oi.items())
+        put_loss = sum(oi * max(s - k, 0) for s, oi in put_oi.items())
+        return int(call_loss + put_loss)
+
+    best_k = candidate_strikes[0]
+    best_loss = loss_at(best_k)
+    for k in candidate_strikes[1:]:
+        loss = loss_at(k)
+        if loss < best_loss:
+            best_loss = loss
+            best_k = k
+
+    return {
+        "max_pain": int(best_k) if best_k.is_integer() else best_k,
+        "total_loss_ntd": best_loss * TXO_POINT_MULTIPLIER,
+        "strike_count": len(candidate_strikes),
+        "strikes_with_call_oi_only": len(call_strikes - put_strikes),
+        "strikes_with_put_oi_only": len(put_strikes - call_strikes),
+    }
+
+
+def parse_max_pain_hit_rate(
+    oi_by_trading_day: dict[date, list[dict]],
+    settlements: dict[date, dict],
+    *,
+    option_id: str = "TXO",
+) -> dict:
+    """Settlement-day hit rate using **T-1 day's** Max Pain.
+
+    Design v4 §4 / F3: settlement-day OI has already collapsed, so Max Pain
+    computed on day T is mechanically ≈ settlement_t (look-ahead bias). The
+    honest measurement is how far settlement landed from yesterday's
+    Max Pain — i.e. the value a trader could have ACTED on.
+
+    Args:
+        oi_by_trading_day: ``{trading_day: TaiwanOptionDaily rows that day}``.
+            Must contain at least the trading day immediately before each
+            settlement_date in ``settlements``. Caller (services/trading_calendar)
+            owns the "previous trading day" lookup.
+        settlements: ``{settlement_date: {contract_date: str, price: float | None}}``.
+            ``price=None`` on the *latest* settlement → ``latest_settlement_pending=True``
+            and that sample is excluded.
+
+    Returns:
+        ``{samples, median_abs_deviation_pct, hit_within_1pct, hit_within_2pct,
+          history, latest_settlement_pending}``
+    """
+    if not oi_by_trading_day or not settlements:
+        return {
+            "samples": 0, "median_abs_deviation_pct": None,
+            "hit_within_1pct": 0.0, "hit_within_2pct": 0.0,
+            "history": [], "latest_settlement_pending": False,
+        }
+
+    sorted_trading_days = sorted(oi_by_trading_day.keys())
+    history: list[dict] = []
+    latest_settlement_pending = False
+    sorted_settlements = sorted(settlements.items())
+
+    for idx, (settlement_date, info) in enumerate(sorted_settlements):
+        contract_date = info.get("contract_date", "")
+        price = info.get("price")
+        if price is None:
+            if idx == len(sorted_settlements) - 1:
+                latest_settlement_pending = True
+            continue
+        t_minus_1 = next(
+            (d for d in reversed(sorted_trading_days) if d < settlement_date), None,
+        )
+        if t_minus_1 is None:
+            continue
+        mp = parse_max_pain(
+            oi_by_trading_day[t_minus_1], contract_date=contract_date,
+            option_id=option_id,
+        )
+        if mp["max_pain"] is None:
+            continue
+        max_pain_val = float(mp["max_pain"])
+        deviation_pct = (float(price) - max_pain_val) / float(price)
+        history.append({
+            "settlement_date": settlement_date.isoformat(),
+            "max_pain_at_t_minus_1": int(max_pain_val) if max_pain_val.is_integer() else max_pain_val,
+            "settlement_price": float(price),
+            "deviation_pct": deviation_pct,
+        })
+
+    samples = len(history)
+    if samples == 0:
+        return {
+            "samples": 0, "median_abs_deviation_pct": None,
+            "hit_within_1pct": 0.0, "hit_within_2pct": 0.0,
+            "history": [], "latest_settlement_pending": latest_settlement_pending,
+        }
+    abs_devs = sorted(abs(h["deviation_pct"]) for h in history)
+    mid = samples // 2
+    median = abs_devs[mid] if samples % 2 else (abs_devs[mid - 1] + abs_devs[mid]) / 2
+    return {
+        "samples": samples,
+        "median_abs_deviation_pct": median,
+        "hit_within_1pct": sum(1 for d in abs_devs if d <= 0.01) / samples,
+        "hit_within_2pct": sum(1 for d in abs_devs if d <= 0.02) / samples,
+        "history": history,
+        "latest_settlement_pending": latest_settlement_pending,
+    }
