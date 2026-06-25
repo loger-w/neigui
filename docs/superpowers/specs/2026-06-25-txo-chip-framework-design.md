@@ -639,6 +639,7 @@ For each rolling 60-day window ending at t:
 - **R11** (v4 新):User-supplied lookback 必須在 route 層驗證 ≤ CHIP_WINDOW_TD,否則 400(N11)
 - **R12** (v4 新):`utils/cache.py` 必須加 `delete_by_prefix`;invalidation cascade 必須是 pattern-based(N12)
 - **R13** (v4 新):`services/trading_calendar.py` 自帶 httpx,**不**透過 `FinMindClient`(I2,避免循環 import);如未來想統一,需先解耦兩者
+- **R14** (v4 Phase 3 實作中新增):`FINMIND_TOKEN` JWT 過期(2026-06-24)→ **SC-0 live probe 暫時無法執行**。`probe.py` 已寫好留待 token refresh 後 reproducible run。Phase 3-5 使用 hand-built fixtures(基於既有 `parse_oi_large_traders` / `parse_strike_volume` 已驗證 schema + design v4 文件 schema);**Phase 6 real-env verification 必須先 user refresh token**。Hand-built fixture 的最大風險:`TaiwanOptionInstitutionalInvestors[AfterHours]` + `TaiwanOptionFinalSettlementPrice` 三個 dataset 的 field name 假設,Phase 6 必須對齊。Mitigation:parser docstring 中標 `# field_name_unverified_pending_sc0_probe` 給未來 reviewer。
 
 ## 9. 跨檔契約(v3 補)
 - 既有:`detail.error` / `no_trading_day` flag / `?refresh=true` / Contract ID flat / Bull=紅 Bear=綠
