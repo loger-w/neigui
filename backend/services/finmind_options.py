@@ -914,3 +914,224 @@ def parse_pcr_next_day_stats(
     if candidate_total > 0 and (dropped_total / candidate_total) > 0.05:
         warnings.append("next_day_stats_dropped_samples_5pct")
     return result, warnings
+
+
+# ============================================================================
+# SC-4 / SC-8: Institutional + foreign correlation (design v4 §4.5 / §4.6)
+# ============================================================================
+
+NIGHT_SESSION_AVAILABLE_FROM = date(2021, 10, 13)
+
+# Map raw institution names to canonical English keys.
+# Real FinMind field names PENDING SC-0 LIVE PROBE (R14/R6) — adjust here
+# once token refresh allows verification.
+_INSTITUTION_NAME_MAP = {
+    "外資": "foreign",
+    "自營商": "dealer",   # F3-integration: NOT 'prop'
+    "投信": "trust",
+}
+
+
+def _aggregate_inst_session(rows: list[dict]) -> dict:
+    """Aggregate one session's rows into {foreign, dealer, trust} dicts."""
+    out: dict[str, dict[str, int]] = {
+        "foreign": {"call_net": 0, "put_net": 0},
+        "dealer":  {"call_net": 0, "put_net": 0},
+        "trust":   {"call_net": 0, "put_net": 0},
+    }
+    for row in rows:
+        inst_raw = row.get("institution", "")
+        key = _INSTITUTION_NAME_MAP.get(inst_raw)
+        if key is None:
+            continue
+        try:
+            buy = int(row.get("buy_open_interest", 0) or 0)
+            sell = int(row.get("sell_open_interest", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        side = row.get("put_call")
+        if side == "call":
+            out[key]["call_net"] += buy - sell
+        elif side == "put":
+            out[key]["put_net"] += buy - sell
+    return out
+
+
+def parse_institutional(
+    rows_day: list[dict],
+    rows_night: list[dict] | None,
+    target_date: date,
+) -> dict:
+    """Aggregate 三大法人 buy/sell open-interest by side + session.
+
+    Args:
+        rows_day: TaiwanOptionInstitutionalInvestors rows for target_date.
+        rows_night: TaiwanOptionInstitutionalInvestorsAfterHours rows.
+            ``None`` triggers ``session_breakdown.after_hours = None`` regardless
+            of target_date.
+        target_date: used to gate dates before NIGHT_SESSION_AVAILABLE_FROM
+            (2021-10-13 — before which AfterHours dataset did not exist).
+
+    Returns:
+        ``{current: {foreign, dealer, trust, session_breakdown}}``
+    """
+    day_agg = _aggregate_inst_session(rows_day)
+
+    # Pre-cutoff: AfterHours unavailable
+    if target_date < NIGHT_SESSION_AVAILABLE_FROM or rows_night is None:
+        after_hours_agg = None
+    else:
+        after_hours_agg = _aggregate_inst_session(rows_night)
+
+    # Top-level totals = day + night (or just day if night None)
+    totals: dict[str, dict] = {}
+    for inst in ("foreign", "dealer", "trust"):
+        cn = day_agg[inst]["call_net"]
+        pn = day_agg[inst]["put_net"]
+        if after_hours_agg is not None:
+            cn += after_hours_agg[inst]["call_net"]
+            pn += after_hours_agg[inst]["put_net"]
+        totals[inst] = {
+            "call_net": cn, "put_net": pn,
+            "total_net": cn + pn, "day_change": 0,  # day_change populated by caller
+        }
+
+    return {
+        "current": {
+            **totals,
+            "session_breakdown": {
+                "day_session": day_agg,
+                "after_hours": after_hours_agg,
+            },
+        },
+    }
+
+
+def _spearman_rho(xs: list[float], ys: list[float]) -> float:
+    """Spearman rank correlation. Pure-python, no numpy dependency."""
+    if len(xs) != len(ys) or len(xs) < 2:
+        return 0.0
+
+    def rank(values: list[float]) -> list[float]:
+        indexed = sorted(range(len(values)), key=lambda i: values[i])
+        ranks = [0.0] * len(values)
+        i = 0
+        while i < len(values):
+            j = i
+            while j + 1 < len(values) and values[indexed[j + 1]] == values[indexed[i]]:
+                j += 1
+            avg_rank = (i + j) / 2 + 1  # 1-based, midpoint of tie group
+            for k in range(i, j + 1):
+                ranks[indexed[k]] = avg_rank
+            i = j + 1
+        return ranks
+
+    rx = rank(xs)
+    ry = rank(ys)
+    n = len(xs)
+    mean_rx = sum(rx) / n
+    mean_ry = sum(ry) / n
+    num = sum((rx[i] - mean_rx) * (ry[i] - mean_ry) for i in range(n))
+    den = (
+        sum((rx[i] - mean_rx) ** 2 for i in range(n))
+        * sum((ry[i] - mean_ry) ** 2 for i in range(n))
+    ) ** 0.5
+    return num / den if den > 0 else 0.0
+
+
+def parse_institutional_correlation(
+    foreign_history: list[dict],
+    tx_returns: dict[date, float],
+    *,
+    corr_window: int = 60,
+    permutation_n: int = 200,  # cheaper default for unit tests; production uses 1000
+    feature_transformation: str = "raw_flow",
+    seed: int = 42,
+) -> tuple[dict, list[str]]:
+    """Rolling Spearman correlation of foreign call_net vs next-day TX return,
+    with permutation-test p-value (design v4 §4.6 / N2 / N3).
+
+    Args:
+        foreign_history: ascending list of ``{date, foreign_call_net, ...}``.
+            Any other institution keys (dealer/trust) in the dict are IGNORED
+            (F10-test scope guard — correlation payload is foreign-only).
+        tx_returns: ``{date: next_day_TX_return}`` keyed by entry day t.
+        corr_window: window length in days.
+        permutation_n: # permutations for p-value.
+        feature_transformation: 'raw_flow' (default, N3) uses call_net[t] directly;
+            'first_difference' uses call_net[t] - call_net[t-1].
+        seed: deterministic permutation seed for reproducibility.
+
+    Returns:
+        ``({samples, latest_corr, latest_p_value, history, is_significant,
+            feature_transformation}, warnings)``.
+        Note: ONLY foreign correlation in payload — dealer/trust never appear.
+    """
+    import random
+    rng = random.Random(seed)
+    warnings: list[str] = []
+
+    # Extract aligned (call_net, next_return) pairs in date order
+    sorted_hist = sorted(foreign_history, key=lambda r: r["date"])
+    feature_series: list[tuple[date, float]] = []
+    if feature_transformation == "first_difference":
+        for i, row in enumerate(sorted_hist):
+            if i == 0:
+                continue
+            prev = float(sorted_hist[i - 1].get("foreign_call_net", 0))
+            cur = float(row.get("foreign_call_net", 0))
+            feature_series.append((row["date"], cur - prev))
+    else:  # raw_flow
+        for row in sorted_hist:
+            feature_series.append((row["date"], float(row.get("foreign_call_net", 0))))
+
+    paired = [(d, f, tx_returns[d]) for d, f in feature_series if d in tx_returns]
+    samples = len(paired)
+    if samples < 30:
+        warnings.append("correlation_sample_small")
+    if samples < 2:
+        return (
+            {
+                "samples": samples, "latest_corr": 0.0, "latest_p_value": 1.0,
+                "history": [], "is_significant": False,
+                "feature_transformation": feature_transformation,
+            },
+            warnings,
+        )
+
+    # Rolling correlation
+    history: list[dict] = []
+    for end_idx in range(corr_window - 1, samples):
+        window = paired[end_idx - corr_window + 1: end_idx + 1] if end_idx >= corr_window - 1 else paired[: end_idx + 1]
+        if len(window) < 2:
+            continue
+        xs = [w[1] for w in window]
+        ys = [w[2] for w in window]
+        r_obs = _spearman_rho(xs, ys)
+        # Permutation test: shuffle ys, recompute r, count |r_perm| >= |r_obs|
+        ge_count = 0
+        for _ in range(permutation_n):
+            ys_shuf = ys[:]
+            rng.shuffle(ys_shuf)
+            r_perm = _spearman_rho(xs, ys_shuf)
+            if abs(r_perm) >= abs(r_obs):
+                ge_count += 1
+        p_val = (ge_count + 1) / (permutation_n + 1)
+        history.append({
+            "date": window[-1][0].isoformat(),
+            "corr": r_obs,
+            "p_value": p_val,
+        })
+
+    latest = history[-1] if history else {"corr": 0.0, "p_value": 1.0}
+    return (
+        {
+            "samples": samples,
+            "latest_corr": latest["corr"],
+            "latest_p_value": latest["p_value"],
+            "history": history,
+            "is_significant": latest["p_value"] < 0.10,
+            "feature_transformation": feature_transformation,
+        },
+        warnings,
+    )

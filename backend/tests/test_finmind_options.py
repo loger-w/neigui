@@ -1162,9 +1162,9 @@ def test_parse_institutional_correlation_excludes_dealer_trust_from_correlation_
     foreign_history = [
         {"date": date(2026, 6, d), "foreign_call_net": d * 10,
          "dealer_call_net": d * 5, "trust_call_net": d * 2}
-        for d in range(1, 32)
+        for d in range(1, 31)
     ]
-    tx_returns = {date(2026, 6, d): 0.001 * d for d in range(1, 32)}
+    tx_returns = {date(2026, 6, d): 0.001 * d for d in range(1, 31)}
     result, _ = parse_institutional_correlation(
         foreign_history=foreign_history, tx_returns=tx_returns, corr_window=20,
     )
@@ -1180,9 +1180,9 @@ def test_parse_institutional_correlation_uses_raw_flow_default():
     from services.finmind_options import parse_institutional_correlation
     foreign_history = [
         {"date": date(2026, 6, d), "foreign_call_net": d * 10}
-        for d in range(1, 32)
+        for d in range(1, 31)
     ]
-    tx_returns = {date(2026, 6, d): 0.001 * d for d in range(1, 32)}
+    tx_returns = {date(2026, 6, d): 0.001 * d for d in range(1, 31)}
     result, _ = parse_institutional_correlation(
         foreign_history=foreign_history, tx_returns=tx_returns, corr_window=20,
     )
