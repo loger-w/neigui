@@ -751,6 +751,210 @@ class FinMindClient:
         self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS_CHIP)
         return result
 
+    async def fetch_oi_walls(
+        self, contract: dict, date_str: str, lookback: int = 20,
+        delta_window: int = 5, refresh: bool = False,
+    ) -> dict:
+        """SC-2/SC-6 (design v4 §2.1)."""
+        from services.finmind_options import (
+            _CACHE_VERSION_OPTIONS_CHIP, parse_oi_walls, parse_oi_walls_hit_rate,
+        )
+        from services.trading_calendar import get_trading_days
+
+        contract_id = f"{contract['option_id']}{contract['contract_date']}"
+        cache_key = f"oi_walls_{contract_id}_{date_str}_lb{lookback}_dw{delta_window}"
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
+            if cached is not None:
+                return cached
+
+        end = date.fromisoformat(date_str)
+        trading_dates = await get_trading_days(end, n=250)
+        by_date_iso = await self.fetch_taiwan_option_daily_window(
+            sorted(trading_dates), end_date=end, refresh=refresh,
+        )
+
+        today_rows = by_date_iso.get(date_str, [])
+        if not today_rows:
+            available = sorted(by_date_iso.keys())
+            if available:
+                today_rows = by_date_iso[available[-1]]
+
+        # past delta_window trading days for the dynamic wall
+        available_dates = sorted(by_date_iso.keys())
+        delta_days = available_dates[-(delta_window + 1):-1] if len(available_dates) > delta_window else available_dates[:-1]
+        rows_history = [by_date_iso[d] for d in delta_days if by_date_iso[d]]
+
+        current_walls = parse_oi_walls(
+            rows_today=today_rows, rows_history=rows_history,
+            contract_date=contract["contract_date"],
+            delta_window=delta_window, spot=0.0,  # spot=0 → tie-break degenerate; route can enrich
+        )
+
+        oi_by_trading_day: dict[date, list[dict]] = {
+            date.fromisoformat(d_iso): rows
+            for d_iso, rows in by_date_iso.items() if rows
+        }
+        hit_rate = parse_oi_walls_hit_rate(
+            oi_by_trading_day=oi_by_trading_day, settlements={},
+        )
+
+        result = {
+            "contract": contract_id, "date": date_str,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "as_of_date": available_dates[-1] if available_dates else date_str,
+            "current": current_walls,
+            "hit_rate": None if hit_rate["samples"] == 0 else hit_rate,
+            "latest_settlement_pending": hit_rate.get("latest_settlement_pending", False),
+            "data_quality_warnings": current_walls.get("data_quality_warnings", []),
+            "insufficient_data": (
+                {"reason": "no_settlements_fetched_in_mvp", "required_days": 0}
+                if hit_rate["samples"] == 0 else None
+            ),
+        }
+        self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS_CHIP)
+        return result
+
+    async def fetch_pcr(
+        self, scope: str, contract: dict | None, date_str: str,
+        lookback: int = 250, high_pct: float = 70.0, low_pct: float = 30.0,
+        refresh: bool = False,
+    ) -> dict:
+        """SC-3/SC-7 (design v4 §2.1)."""
+        from services.finmind_options import (
+            _CACHE_VERSION_OPTIONS_CHIP,
+            parse_pcr_history, parse_pcr_walk_forward_percentile,
+            parse_pcr_next_day_stats,
+        )
+        from services.trading_calendar import get_trading_days
+
+        contract_id = (
+            f"{contract['option_id']}{contract['contract_date']}"
+            if contract else "all"
+        )
+        cache_key = (
+            f"pcr_classified_{scope}_{contract_id}_{date_str}"
+            f"_lb{lookback}_h{int(high_pct)}_l{int(low_pct)}"
+        )
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
+            if cached is not None:
+                return cached
+
+        end = date.fromisoformat(date_str)
+        trading_dates = await get_trading_days(end, n=lookback)
+        by_date_iso = await self.fetch_taiwan_option_daily_window(
+            sorted(trading_dates), end_date=end, refresh=refresh,
+        )
+
+        rows_by_day = {
+            date.fromisoformat(d_iso): rows
+            for d_iso, rows in by_date_iso.items() if rows
+        }
+        contract_date = contract["contract_date"] if contract else None
+        pcr_history = parse_pcr_history(rows_by_day, scope=scope, contract_date=contract_date)
+        classified, walk_warnings = parse_pcr_walk_forward_percentile(
+            pcr_history, high_pct=high_pct, low_pct=low_pct,
+        )
+
+        # Current = last entry
+        if classified:
+            _, current_pcr, current_pct, current_region = classified[-1]
+        else:
+            current_pcr, current_pct, current_region = 0.0, 0.0, None
+
+        # Next-day stats requires aligned tx_returns from another fetch — skip for MVP
+        stats, stats_warnings = parse_pcr_next_day_stats(classified, tx_returns={})
+
+        available_dates = sorted(by_date_iso.keys())
+        result = {
+            "date": date_str, "scope": scope,
+            "contract": contract_id if scope == "per_contract" else None,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "as_of_date": available_dates[-1] if available_dates else date_str,
+            "current": {
+                "pcr": current_pcr, "percentile": current_pct,
+                "region": current_region,
+                "thresholds": {"high_pct": high_pct, "low_pct": low_pct},
+            },
+            "next_day_stats": stats if any(stats[k]["samples"] > 0 for k in stats) else None,
+            "data_quality_warnings": walk_warnings + stats_warnings,
+            "insufficient_data": (
+                {"reason": "tx_returns_not_fetched_in_mvp", "required_days": 0}
+                if not stats or all(stats[k]["samples"] == 0 for k in stats) else None
+            ),
+        }
+        self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS_CHIP)
+        return result
+
+    async def fetch_institutional(
+        self, date_str: str, lookback: int = 60, corr_window: int = 60,
+        refresh: bool = False,
+    ) -> dict:
+        """SC-4/SC-8 (design v4 §2.1)."""
+        from services.finmind_options import (
+            _CACHE_VERSION_OPTIONS_CHIP,
+            parse_institutional, parse_institutional_correlation,
+        )
+
+        cache_key = f"institutional_{date_str}_lb{lookback}_cw{corr_window}"
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
+            if cached is not None:
+                return cached
+
+        target = date.fromisoformat(date_str)
+        # Range query (C1: pending probe verification, assumed supported for sponsor tier)
+        start = (target - timedelta(days=lookback + 30)).isoformat()
+        rows_day = await self._get(
+            f"{_FINMIND_BASE}/data",
+            {"dataset": "TaiwanOptionInstitutionalInvestors",
+             "data_id": "TXO", "start_date": start, "end_date": date_str},
+        )
+        rows_night: list[dict] | None
+        if target >= date(2021, 10, 13):
+            rows_night = await self._get(
+                f"{_FINMIND_BASE}/data",
+                {"dataset": "TaiwanOptionInstitutionalInvestorsAfterHours",
+                 "data_id": "TXO", "start_date": start, "end_date": date_str},
+            )
+        else:
+            rows_night = None
+
+        # Filter to target_date for "current" snapshot
+        today_day_rows = [r for r in rows_day if r.get("date") == date_str]
+        today_night_rows = (
+            [r for r in (rows_night or []) if r.get("date") == date_str]
+            if rows_night is not None else None
+        )
+        current = parse_institutional(today_day_rows, today_night_rows, target)
+
+        # Correlation needs foreign_call_net history; for MVP keep history scaffold
+        # (full implementation requires daily aggregation of rows_day per date)
+        correlation, corr_warnings = parse_institutional_correlation(
+            foreign_history=[], tx_returns={},  # MVP: empty until full series wiring
+            corr_window=corr_window,
+        )
+
+        # Determine as_of_date from latest available row
+        all_dates = sorted({r.get("date", "") for r in rows_day if r.get("date")})
+        as_of = all_dates[-1] if all_dates else date_str
+
+        result = {
+            "date": date_str,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "as_of_date": as_of,
+            "current": current["current"],
+            "correlation": None if correlation["samples"] == 0 else correlation,
+            "data_quality_warnings": corr_warnings,
+            "insufficient_data": (
+                {"reason": "correlation_history_not_wired_in_mvp", "required_days": 0}
+                if correlation["samples"] == 0 else None
+            ),
+        }
+        self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS_CHIP)
+        return result
+
     # -- options cache version helpers (separate _CACHE_VERSION_OPTIONS) ---
 
     def _read_cache_v(self, key: str, version: int) -> dict | None:

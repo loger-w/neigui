@@ -118,12 +118,98 @@ async def get_max_pain(
 ) -> dict:
     """SC-1 / SC-5: Max Pain + T-1 hit rate (design v4 §2.1)."""
     c = _require_contract(contract)
-    # period_days = realistic average across weekly (~5 td) and monthly (~21 td);
-    # use 10 as the policy boundary so lookback=20 fits (200 td) while a stupid
-    # lookback=50 trips the canonical-window invariant (500 > 250 td).
     _validate_lookback(lookback, period_days=10)
     d = date or _today_str()
     out = await get_finmind().fetch_max_pain(c, d, lookback=lookback, refresh=refresh)
+    if _is_stale_for_requested(out, d):
+        out = {**out, "no_trading_day": True}
+    return out
+
+
+@router.get("/api/options/oi_walls")
+async def get_oi_walls(
+    contract: str = Query(default=""),
+    date: str = Query(default=""),
+    refresh: bool = Query(default=False),
+    lookback: int = Query(default=20, ge=1, le=50),
+    delta_window: int = Query(default=5, ge=1, le=20),
+) -> dict:
+    """SC-2 / SC-6: OI Walls (static + dynamic) + T-1 hit rate."""
+    c = _require_contract(contract)
+    _validate_lookback(lookback, period_days=10)
+    d = date or _today_str()
+    out = await get_finmind().fetch_oi_walls(
+        c, d, lookback=lookback, delta_window=delta_window, refresh=refresh,
+    )
+    if _is_stale_for_requested(out, d):
+        out = {**out, "no_trading_day": True}
+    return out
+
+
+@router.get("/api/options/pcr")
+async def get_pcr(
+    date: str = Query(default=""),
+    refresh: bool = Query(default=False),
+    scope: str = Query(default="all_months"),
+    contract: str = Query(default=""),
+    lookback: int = Query(default=250, ge=30, le=250),
+    high_pct: float = Query(default=70.0, ge=0.0, le=100.0),
+    low_pct: float = Query(default=30.0, ge=0.0, le=100.0),
+) -> dict:
+    """SC-3 / SC-7: PCR walk-forward percentile + next-day stats.
+
+    Validation matrix (design v4 §2.1):
+    - scope=per_contract requires contract; reject 400 if missing
+    - scope=all_months rejects contract; reject 400 if provided
+    - scope=per_contract + weekly contract → 200 + warning (N5)
+    """
+    if scope not in ("per_contract", "all_months"):
+        raise HTTPException(status_code=400, detail={"error": "invalid_scope"})
+    c: dict | None = None
+    if scope == "per_contract":
+        if not contract:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "missing_contract_for_per_contract_scope"},
+            )
+        c = _require_contract(contract)
+    else:  # all_months
+        if contract:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "contract_not_applicable_for_scope"},
+            )
+
+    d = date or _today_str()
+    out = await get_finmind().fetch_pcr(
+        scope=scope, contract=c, date_str=d, lookback=lookback,
+        high_pct=high_pct, low_pct=low_pct, refresh=refresh,
+    )
+
+    # N5: per_contract + weekly contract → emit warning (not 400)
+    if c and "W" in c.get("contract_date", "") or c and "F" in c.get("contract_date", ""):
+        existing = out.get("data_quality_warnings", [])
+        warning = "per_contract_pcr_unsupported_for_weekly_consider_all_months"
+        if warning not in existing:
+            out = {**out, "data_quality_warnings": existing + [warning]}
+
+    if _is_stale_for_requested(out, d):
+        out = {**out, "no_trading_day": True}
+    return out
+
+
+@router.get("/api/options/institutional")
+async def get_institutional(
+    date: str = Query(default=""),
+    refresh: bool = Query(default=False),
+    lookback: int = Query(default=60, ge=10, le=250),
+    corr_window: int = Query(default=60, ge=10, le=250),
+) -> dict:
+    """SC-4 / SC-8: 三大法人 + foreign correlation."""
+    d = date or _today_str()
+    out = await get_finmind().fetch_institutional(
+        d, lookback=lookback, corr_window=corr_window, refresh=refresh,
+    )
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
     return out
