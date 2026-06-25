@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { OptionsHeader } from "./OptionsHeader";
+import { OptionsChipPanel } from "./OptionsChipPanel";
 import { OptionsLargeTradersStrip } from "./OptionsLargeTradersStrip";
 import { OptionsStrikeLadder } from "./OptionsStrikeLadder";
 import { useOptionsLargeTraders } from "../hooks/useOptionsLargeTraders";
@@ -71,6 +72,7 @@ export function OptionsPage(): ReactElement {
           {date} 無交易
         </div>
       )}
+      <OptionsChipPanel contractId={contractId} date={date} />
       <OptionsLargeTradersStrip
         data={lt.data}
         loading={lt.loading}
