@@ -40,3 +40,19 @@ def read_json(path: Path, default: Any = None) -> Any:
             return json.load(f)
     except (json.JSONDecodeError, ValueError):
         return default
+
+
+def delete_by_prefix(prefix: str) -> int:
+    """Delete every ``{prefix}*.json`` in chip_cache_dir(). Return count.
+
+    Used by the txo-chip-framework refresh cascade (design v4 N12) to
+    invalidate downstream parse caches across all lookback / threshold
+    variants when the shared TaiwanOptionDaily window is refreshed.
+    Non-json files are ignored.
+    """
+    count = 0
+    for p in chip_cache_dir().iterdir():
+        if p.suffix == ".json" and p.stem.startswith(prefix):
+            p.unlink()
+            count += 1
+    return count
