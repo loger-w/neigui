@@ -850,3 +850,120 @@ def test_parse_max_pain_hit_rate_empty_inputs():
     assert result["samples"] == 0
     assert result["history"] == []
     assert result["latest_settlement_pending"] is False
+
+
+# ============================================================================
+# SC-2 / SC-6: OI Walls (design v4 §4.2)
+# ============================================================================
+
+def test_parse_oi_walls_static_tie_break_by_spot():
+    """SC-2 / F16: when two strikes have equal max OI, pick the one
+    closest to the spot price (more informative as a 'wall')."""
+    from services.finmind_options import parse_oi_walls
+    rows_today = [
+        _option_row("202607", 21000, "call", oi=500),
+        _option_row("202607", 22000, "call", oi=500),  # tie at 500
+        _option_row("202607", 23000, "call", oi=200),
+        _option_row("202607", 20000, "put", oi=300),
+    ]
+    result = parse_oi_walls(
+        rows_today=rows_today, rows_history=[], contract_date="202607",
+        delta_window=5, spot=22000.0,
+    )
+    # Tied 21000 vs 22000 — closer to spot 22000 wins
+    assert result["static_call_wall"]["strike"] == 22000
+    assert result["static_call_wall"]["oi"] == 500
+
+
+def test_parse_oi_walls_dynamic_uses_activity_not_telescoping_delta():
+    """SC-2 / N4: dynamic wall = Σ_d |oi_d+1 - oi_d|, an activity-intensity
+    measure. NOT the telescoping 2-point delta (oi_today - oi_window_start)
+    which masks intermediate movement."""
+    from services.finmind_options import parse_oi_walls
+    # 5-day window. Strike A: OI ramps smoothly 100→200→300→400→500.
+    # Strike B: OI flips 100→500→100→500→100. Same net end-to-start (0 vs 400),
+    # but B has 4× higher activity. Dynamic wall must pick B.
+    history = [
+        # d1
+        [_option_row("202607", 21000, "call", oi=100, day="2026-06-19"),
+         _option_row("202607", 22000, "call", oi=100, day="2026-06-19")],
+        # d2
+        [_option_row("202607", 21000, "call", oi=200, day="2026-06-20"),
+         _option_row("202607", 22000, "call", oi=500, day="2026-06-20")],
+        # d3
+        [_option_row("202607", 21000, "call", oi=300, day="2026-06-23"),
+         _option_row("202607", 22000, "call", oi=100, day="2026-06-23")],
+        # d4
+        [_option_row("202607", 21000, "call", oi=400, day="2026-06-24"),
+         _option_row("202607", 22000, "call", oi=500, day="2026-06-24")],
+    ]
+    today = [
+        _option_row("202607", 21000, "call", oi=500),
+        _option_row("202607", 22000, "call", oi=100),  # B ends at 100, A ends at 500
+    ]
+    result = parse_oi_walls(
+        rows_today=today, rows_history=history, contract_date="202607",
+        delta_window=5, spot=21500.0,
+    )
+    # Telescoping (wrong): A delta = 500-100=400, B delta = 100-100=0 → A wins
+    # Activity (right): A activity = |200-100|+|300-200|+|400-300|+|500-400|=400
+    #                   B activity = |500-100|+|100-500|+|500-100|+|100-500|=1600 → B wins
+    assert result["dynamic_call_wall"]["strike"] == 22000  # B = activity king
+    assert result["dynamic_call_wall"]["window_activity_oi"] == 1600
+
+
+def test_parse_oi_walls_partial_window_for_young_weekly():
+    """SC-2 / N4: young weekly with days_since_listing < delta_window →
+    partial_window=true; warning emitted."""
+    from services.finmind_options import parse_oi_walls
+    today = [_option_row("202607W2", 22000, "call", oi=500)]
+    history = [
+        [_option_row("202607W2", 22000, "call", oi=300, day="2026-06-23")],
+    ]  # only 1 day of history (contract just listed yesterday)
+    result = parse_oi_walls(
+        rows_today=today, rows_history=history, contract_date="202607W2",
+        delta_window=5, spot=22000.0,
+    )
+    assert result["dynamic_call_wall"]["partial_window"] is True
+    warnings = result.get("data_quality_warnings", [])
+    assert "dynamic_wall_partial_window" in warnings
+
+
+def test_parse_oi_walls_emits_no_activity_warning():
+    """SC-2 / N13: when no strike moves in window, dynamic_wall_no_activity warning."""
+    from services.finmind_options import parse_oi_walls
+    today = [_option_row("202607", 22000, "call", oi=500)]
+    history = [
+        [_option_row("202607", 22000, "call", oi=500, day="2026-06-23")],
+        [_option_row("202607", 22000, "call", oi=500, day="2026-06-24")],
+    ]
+    result = parse_oi_walls(
+        rows_today=today, rows_history=history, contract_date="202607",
+        delta_window=2, spot=22000.0,
+    )
+    warnings = result.get("data_quality_warnings", [])
+    assert "dynamic_wall_no_activity" in warnings
+
+
+def test_parse_oi_walls_hit_rate_t_minus_1():
+    """SC-6 / F3: settlement inside [put_wall, call_wall] computed on T-1."""
+    from services.finmind_options import parse_oi_walls_hit_rate
+    oi_by_trading_day = {
+        # 2026-06-16: walls put=20000, call=22000 (settlement_price 21000 inside)
+        date(2026, 6, 16): [
+            _option_row("202606", 20000, "put",  oi=500, day="2026-06-16"),
+            _option_row("202606", 22000, "call", oi=500, day="2026-06-16"),
+        ],
+        date(2026, 6, 17): [  # T (settlement day) - OI collapsed (irrelevant)
+            _option_row("202606", 22000, "call", oi=10, day="2026-06-17"),
+        ],
+    }
+    settlements = {date(2026, 6, 17): {"contract_date": "202606", "price": 21000.0}}
+    result = parse_oi_walls_hit_rate(
+        oi_by_trading_day=oi_by_trading_day, settlements=settlements,
+    )
+    assert result["samples"] == 1
+    assert result["pct_settled_inside_band"] == 1.0
+    assert result["history"][0]["inside_band"] is True
+    assert result["history"][0]["put_wall_at_t_minus_1"] == 20000
+    assert result["history"][0]["call_wall_at_t_minus_1"] == 22000
