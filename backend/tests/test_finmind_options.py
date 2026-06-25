@@ -967,3 +967,131 @@ def test_parse_oi_walls_hit_rate_t_minus_1():
     assert result["history"][0]["inside_band"] is True
     assert result["history"][0]["put_wall_at_t_minus_1"] == 20000
     assert result["history"][0]["call_wall_at_t_minus_1"] == 22000
+
+
+# ============================================================================
+# SC-3 / SC-7: PCR walk-forward + next-day TX return stats (design v4 §4.3/4.4)
+# ============================================================================
+
+def _pcr_row(contract_date: str, strike: int, side: str, oi: int, day: str) -> dict:
+    return _option_row(contract_date, strike, side, oi, day=day)
+
+
+def test_parse_pcr_history_per_contract_vs_all_months():
+    """SC-3: per_contract restricts to one contract_date; all_months sums all."""
+    from services.finmind_options import parse_pcr_history
+    rows_by_day = {
+        date(2026, 6, 25): [
+            _pcr_row("202607", 21000, "call", 200, "2026-06-25"),
+            _pcr_row("202607", 21000, "put",  300, "2026-06-25"),
+            _pcr_row("202608", 21000, "call", 100, "2026-06-25"),
+            _pcr_row("202608", 21000, "put",  500, "2026-06-25"),
+        ],
+    }
+    out_per = parse_pcr_history(rows_by_day, scope="per_contract", contract_date="202607")
+    assert out_per == [(date(2026, 6, 25), 300 / 200)]
+
+    out_all = parse_pcr_history(rows_by_day, scope="all_months", contract_date=None)
+    # all puts = 300+500=800, all calls = 200+100=300
+    assert out_all == [(date(2026, 6, 25), 800 / 300)]
+
+
+def test_parse_pcr_walk_forward_no_lookahead():
+    """SC-3 / F4: percentile_t computed strictly against past window.
+    Adversarial fixture: a tiny series where today is the MAX. If naive
+    impl includes today in its own past window, percentile would be 100.
+    Walk-forward must exclude today → no rank-vs-self contamination."""
+    from services.finmind_options import parse_pcr_walk_forward_percentile
+    # Tiny series where last value is the max
+    pcr_history = [
+        (date(2026, 6, 1), 0.5),
+        (date(2026, 6, 2), 0.6),
+        (date(2026, 6, 3), 0.7),
+        (date(2026, 6, 4), 0.8),
+        (date(2026, 6, 5), 0.9),
+        (date(2026, 6, 6), 1.0),
+        (date(2026, 6, 9), 2.0),  # extreme high, but should percentile correctly
+    ]
+    classified, _ = parse_pcr_walk_forward_percentile(
+        pcr_history, high_pct=70.0, low_pct=30.0, min_samples=5,
+    )
+    # Need to find 2026-06-09 entry — first 5 dates skipped due to min_samples
+    by_date = {d: (p, pct, r) for d, p, pct, r in classified}
+    # 2026-06-09: past_window = 6 values [0.5..1.0], 2.0 is far above max
+    # percentile = 100 (above all past)
+    p, pct, region = by_date[date(2026, 6, 9)]
+    assert p == 2.0
+    assert pct == 100.0  # 2.0 > all of past_window → top of distribution
+    assert region == "high"
+
+
+def test_parse_pcr_walk_forward_emits_single_warmup_warning_not_per_day():
+    """SC-3 / F14: warmup days emit ONE consolidated warning, not N per-day strings."""
+    from services.finmind_options import parse_pcr_walk_forward_percentile
+    pcr_history = [
+        (date(2026, 6, d), 0.5 + d * 0.1) for d in range(1, 11)  # 10 days
+    ]
+    _, warnings = parse_pcr_walk_forward_percentile(
+        pcr_history, high_pct=70.0, low_pct=30.0, min_samples=5,
+    )
+    # First 5 days skip; warmup_skipped warning with count=5
+    warmup_warns = [w for w in warnings if w.startswith("pcr_walk_forward_warmup_skipped_first_")]
+    assert len(warmup_warns) == 1
+    assert "5" in warmup_warns[0]
+
+
+def test_parse_pcr_next_day_stats_no_pnl_no_sharpe():
+    """SC-7 / F2-testability: payload contains stats per region, NOT P&L curve or Sharpe."""
+    from services.finmind_options import parse_pcr_next_day_stats
+    classified = [
+        (date(2026, 6, 1), 0.5, 20.0, "low"),
+        (date(2026, 6, 2), 0.9, 80.0, "high"),
+    ]
+    tx_returns = {date(2026, 6, 1): -0.01, date(2026, 6, 2): 0.02,
+                  date(2026, 6, 3): 0.005}
+    result, _ = parse_pcr_next_day_stats(classified, tx_returns)
+    assert "pnl_curve" not in result
+    assert "cumulative_strategy_pnl" not in result
+    assert "sharpe" not in result
+
+
+def test_parse_pcr_next_day_stats_payload_schema_exact():
+    """SC-7 / F17: positive schema lock — region dicts have exactly
+    {mean_pct, std_pct, hit_positive, samples}."""
+    from services.finmind_options import parse_pcr_next_day_stats
+    classified = [(date(2026, 6, d), 0.7, 75.0, "high") for d in range(1, 12)]
+    tx_returns = {date(2026, 6, d): 0.001 * d for d in range(1, 13)}
+    result, _ = parse_pcr_next_day_stats(classified, tx_returns)
+    expected_keys = {"mean_pct", "std_pct", "hit_positive", "samples"}
+    assert set(result["high_region"].keys()) == expected_keys
+    assert set(result["neutral_region"].keys()) == expected_keys
+    assert set(result["low_region"].keys()) == expected_keys
+
+
+def test_parse_pcr_next_day_stats_emits_low_power_warning_when_samples_lt_30():
+    """SC-7 / N8: samples < 30 in any region → pcr_stats_low_power_{region}."""
+    from services.finmind_options import parse_pcr_next_day_stats
+    classified = [
+        (date(2026, 6, 1), 0.9, 80.0, "high"),
+        (date(2026, 6, 2), 0.5, 25.0, "low"),
+    ]
+    tx_returns = {date(2026, 6, 1): 0.01, date(2026, 6, 2): -0.005,
+                  date(2026, 6, 3): 0.01}
+    _, warnings = parse_pcr_next_day_stats(classified, tx_returns)
+    assert "pcr_stats_low_power_high" in warnings
+    assert "pcr_stats_low_power_low" in warnings
+
+
+def test_parse_pcr_next_day_stats_handles_missing_tx_returns_t_plus_1():
+    """SC-7 / N9: tx_returns missing for t+1 → sample dropped silently
+    (warning emitted if > 5% dropped)."""
+    from services.finmind_options import parse_pcr_next_day_stats
+    classified = [
+        (date(2026, 6, 1), 0.7, 75.0, "high"),
+        (date(2026, 6, 2), 0.8, 78.0, "high"),  # t+1 = 06-03 MISSING from tx_returns
+    ]
+    tx_returns = {date(2026, 6, 1): 0.01, date(2026, 6, 2): 0.02}  # 06-03 missing
+    result, warnings = parse_pcr_next_day_stats(classified, tx_returns)
+    # 1 of 2 samples dropped = 50% > 5% → warning
+    assert result["high_region"]["samples"] == 1
+    assert "next_day_stats_dropped_samples_5pct" in warnings
