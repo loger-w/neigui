@@ -507,3 +507,242 @@ def parse_max_pain_hit_rate(
         "history": history,
         "latest_settlement_pending": latest_settlement_pending,
     }
+
+
+# ============================================================================
+# SC-2 / SC-6: OI Walls (design v4 §4.2)
+# ============================================================================
+
+
+def _per_side_oi(
+    rows: list[dict], contract_date: str, option_id: str = "TXO",
+) -> tuple[dict[float, int], dict[float, int]]:
+    """Extract per-strike OI for call and put sides (one day).
+
+    Returns (call_oi, put_oi) dicts. Same filter rules as parse_max_pain.
+    """
+    call_oi: dict[float, int] = {}
+    put_oi: dict[float, int] = {}
+    for row in rows:
+        if row.get("option_id") != option_id:
+            continue
+        if str(row.get("contract_date", "")) != contract_date:
+            continue
+        try:
+            strike = float(row.get("strike_price", 0))
+            oi = int(row.get("open_interest", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if oi <= 0:
+            continue
+        side = row.get("call_put")
+        bucket = call_oi if side == "call" else put_oi if side == "put" else None
+        if bucket is None:
+            continue
+        bucket[strike] = bucket.get(strike, 0) + oi
+    return call_oi, put_oi
+
+
+def _pick_static_wall(oi_map: dict[float, int], spot: float) -> dict | None:
+    """Strike with max OI; ties broken by proximity to spot."""
+    if not oi_map:
+        return None
+    max_oi = max(oi_map.values())
+    candidates = [s for s, oi in oi_map.items() if oi == max_oi]
+    chosen = min(candidates, key=lambda s: abs(s - spot))
+    return {
+        "strike": int(chosen) if chosen.is_integer() else chosen,
+        "oi": max_oi,
+    }
+
+
+def _pick_dynamic_wall(
+    activity_map: dict[float, int], spot: float,
+) -> dict | None:
+    """Strike with max activity (Σ|ΔOI|); ties broken by proximity to spot."""
+    if not activity_map:
+        return None
+    max_act = max(activity_map.values())
+    if max_act == 0:
+        # All activity zero — still pick closest-to-spot for downstream
+        chosen = min(activity_map.keys(), key=lambda s: abs(s - spot))
+        return {
+            "strike": int(chosen) if chosen.is_integer() else chosen,
+            "window_activity_oi": 0,
+            "partial_window": False,
+        }
+    candidates = [s for s, a in activity_map.items() if a == max_act]
+    chosen = min(candidates, key=lambda s: abs(s - spot))
+    return {
+        "strike": int(chosen) if chosen.is_integer() else chosen,
+        "window_activity_oi": int(max_act),
+        "partial_window": False,
+    }
+
+
+def parse_oi_walls(
+    rows_today: list[dict],
+    rows_history: list[list[dict]],
+    contract_date: str,
+    delta_window: int,
+    spot: float,
+    option_id: str = "TXO",
+) -> dict:
+    """Static + dynamic OI walls per side (call / put). Design v4 §4.2.
+
+    Args:
+        rows_today: TaiwanOptionDaily rows for end_date.
+        rows_history: rows per past trading day, oldest-first, length ≤ delta_window.
+            Each inner list is one day's rows.
+        contract_date: strict equality filter.
+        delta_window: requested window in trading days. If history shorter,
+            partial_window flag is set on dynamic walls + warning emitted.
+        spot: index spot for tie-break.
+
+    Returns:
+        ``{static_call_wall, static_put_wall, dynamic_call_wall,
+          dynamic_put_wall, band_width_pct, data_quality_warnings}``.
+    """
+    warnings: list[str] = []
+
+    today_call_oi, today_put_oi = _per_side_oi(rows_today, contract_date, option_id)
+
+    static_call = _pick_static_wall(today_call_oi, spot)
+    static_put = _pick_static_wall(today_put_oi, spot)
+
+    # Build per-day OI snapshots for activity calculation
+    daily_snapshots: list[tuple[dict[float, int], dict[float, int]]] = []
+    for day_rows in rows_history:
+        daily_snapshots.append(_per_side_oi(day_rows, contract_date, option_id))
+    daily_snapshots.append((today_call_oi, today_put_oi))  # include today
+
+    partial_window = len(rows_history) < delta_window
+    if partial_window:
+        warnings.append("dynamic_wall_partial_window")
+
+    # Activity = Σ |oi_{d+1} - oi_d| over CONSECUTIVE day pairs only.
+    # The initial "0 → first day" jump is NOT counted (it conflates "strike
+    # newly listed" with "true activity"; design v4 §4.2 / N13).
+    def activity_for_side(side_key: str) -> dict[float, int]:
+        act: dict[float, int] = {}
+        end_strikes = set(
+            (today_call_oi if side_key == "call" else today_put_oi).keys()
+        )
+        for K in end_strikes:
+            total = 0
+            prev = None
+            for c_oi, p_oi in daily_snapshots:
+                cur = (c_oi if side_key == "call" else p_oi).get(K, 0)
+                if prev is not None:
+                    total += abs(cur - prev)
+                prev = cur
+            act[K] = total
+        return act
+
+    call_activity = activity_for_side("call")
+    put_activity = activity_for_side("put")
+
+    dynamic_call = _pick_dynamic_wall(call_activity, spot)
+    dynamic_put = _pick_dynamic_wall(put_activity, spot)
+
+    if dynamic_call:
+        dynamic_call["partial_window"] = partial_window
+    if dynamic_put:
+        dynamic_put["partial_window"] = partial_window
+
+    # no_activity warning (N13): max activity across both sides is 0
+    max_call_act = max(call_activity.values()) if call_activity else 0
+    max_put_act = max(put_activity.values()) if put_activity else 0
+    if max_call_act == 0 and max_put_act == 0 and (call_activity or put_activity):
+        warnings.append("dynamic_wall_no_activity")
+
+    band_width_pct = 0.0
+    if static_call and static_put and spot > 0:
+        band_width_pct = (static_call["strike"] - static_put["strike"]) / spot * 100
+
+    return {
+        "static_call_wall": static_call,
+        "static_put_wall": static_put,
+        "dynamic_call_wall": dynamic_call,
+        "dynamic_put_wall": dynamic_put,
+        "band_width_pct": band_width_pct,
+        "data_quality_warnings": warnings,
+    }
+
+
+def parse_oi_walls_hit_rate(
+    oi_by_trading_day: dict[date, list[dict]],
+    settlements: dict[date, dict],
+    *,
+    option_id: str = "TXO",
+) -> dict:
+    """Settlement-day hit rate using **T-1 day's** OI walls (design v4 §4 / F3).
+
+    Returns:
+        ``{samples, pct_settled_inside_band, avg_band_width_pct,
+          history: [{settlement_date, put_wall_at_t_minus_1,
+                     call_wall_at_t_minus_1, settlement_price, inside_band}],
+          latest_settlement_pending}``
+    """
+    if not oi_by_trading_day or not settlements:
+        return {
+            "samples": 0, "pct_settled_inside_band": 0.0,
+            "avg_band_width_pct": 0.0, "history": [],
+            "latest_settlement_pending": False,
+        }
+
+    sorted_trading_days = sorted(oi_by_trading_day.keys())
+    history: list[dict] = []
+    latest_settlement_pending = False
+    sorted_settlements = sorted(settlements.items())
+
+    for idx, (settlement_date, info) in enumerate(sorted_settlements):
+        contract_date = info.get("contract_date", "")
+        price = info.get("price")
+        if price is None:
+            if idx == len(sorted_settlements) - 1:
+                latest_settlement_pending = True
+            continue
+        t_minus_1 = next(
+            (d for d in reversed(sorted_trading_days) if d < settlement_date), None,
+        )
+        if t_minus_1 is None:
+            continue
+        call_oi, put_oi = _per_side_oi(
+            oi_by_trading_day[t_minus_1], contract_date, option_id,
+        )
+        call_wall = _pick_static_wall(call_oi, spot=float(price))
+        put_wall = _pick_static_wall(put_oi, spot=float(price))
+        if not call_wall or not put_wall:
+            continue
+        put_w = float(put_wall["strike"])
+        call_w = float(call_wall["strike"])
+        inside = put_w <= float(price) <= call_w
+        history.append({
+            "settlement_date": settlement_date.isoformat(),
+            "put_wall_at_t_minus_1": put_wall["strike"],
+            "call_wall_at_t_minus_1": call_wall["strike"],
+            "settlement_price": float(price),
+            "inside_band": bool(inside),
+        })
+
+    samples = len(history)
+    if samples == 0:
+        return {
+            "samples": 0, "pct_settled_inside_band": 0.0,
+            "avg_band_width_pct": 0.0, "history": [],
+            "latest_settlement_pending": latest_settlement_pending,
+        }
+    inside_count = sum(1 for h in history if h["inside_band"])
+    avg_band = sum(
+        (h["call_wall_at_t_minus_1"] - h["put_wall_at_t_minus_1"])
+        / h["settlement_price"] * 100
+        for h in history
+    ) / samples
+    return {
+        "samples": samples,
+        "pct_settled_inside_band": inside_count / samples,
+        "avg_band_width_pct": avg_band,
+        "history": history,
+        "latest_settlement_pending": latest_settlement_pending,
+    }
