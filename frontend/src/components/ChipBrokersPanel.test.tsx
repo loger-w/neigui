@@ -339,3 +339,73 @@ describe("ChipBrokersPanel — avg buy/sell price as independent columns", () =>
     expect(vol!.textContent).toContain("101.40");
   });
 });
+
+describe("ChipBrokersPanel — column order: 買均 賣均 買張 賣張", () => {
+  // Distinct numbers per cell so textContent ordering is unambiguous.
+  const sample = mkBroker({
+    broker_id: "ORDER1", name: "OrderRow",
+    buy: 1234, sell: 567, net: 667,
+    avg_buy_price: 99.99, avg_sell_price: 88.88,
+  });
+  const summary = mkSummary([sample]);
+
+  it("net mode header: 買均 appears before 賣均, both before 買張 / 賣張", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={summary}
+        dayTotalLots={5000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const header = container
+      .querySelector("[data-testid=buyers-scroll]")!
+      .querySelector(".sticky");
+    const text = header?.textContent ?? "";
+    expect(text.indexOf("買均")).toBeGreaterThan(-1);
+    expect(text.indexOf("賣均")).toBeGreaterThan(text.indexOf("買均"));
+    expect(text.indexOf("買張")).toBeGreaterThan(text.indexOf("賣均"));
+    expect(text.indexOf("賣張")).toBeGreaterThan(text.indexOf("買張"));
+  });
+
+  it("net mode data row: 99.99 → 88.88 → 1,234 → 567 (avg pair first, then vol pair)", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={summary}
+        dayTotalLots={5000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const row = container.querySelector("[data-testid=buyers-scroll]");
+    const txt = row?.textContent ?? "";
+    expect(txt.indexOf("99.99")).toBeGreaterThan(-1);
+    expect(txt.indexOf("88.88")).toBeGreaterThan(txt.indexOf("99.99"));
+    expect(txt.indexOf("1,234")).toBeGreaterThan(txt.indexOf("88.88"));
+    expect(txt.indexOf("567")).toBeGreaterThan(txt.indexOf("1,234"));
+  });
+
+  it("volume mode header: 買均 賣均 buy vol sell vol 當沖率 (in that order)", () => {
+    const { container, getByText } = render(
+      <ChipBrokersPanel
+        summary={summary}
+        dayTotalLots={5000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    fireEvent.click(getByText("前 15 大交易量分點"));
+    const header = container
+      .querySelector("[data-testid=volume-scroll]")!
+      .querySelector(".sticky");
+    const text = header?.textContent ?? "";
+    expect(text.indexOf("買均")).toBeGreaterThan(-1);
+    expect(text.indexOf("賣均")).toBeGreaterThan(text.indexOf("買均"));
+    expect(text.indexOf("買張")).toBeGreaterThan(text.indexOf("賣均"));
+    expect(text.indexOf("賣張")).toBeGreaterThan(text.indexOf("買張"));
+    expect(text.indexOf("當沖率")).toBeGreaterThan(text.indexOf("賣張"));
+  });
+});

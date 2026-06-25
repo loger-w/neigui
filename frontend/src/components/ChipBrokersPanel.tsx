@@ -61,9 +61,11 @@ interface RowProps {
 function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
   const badge = brokerBadge(broker.name);
   const netCls = broker.net > 0 ? "text-accent" : broker.net < 0 ? "text-bear" : "text-ink-dim";
+  // Column order: 買均 → 賣均 → 買張 → 賣張 (avg-price pair first, then
+  // volume pair). Net mode prepends 淨買賣 col; volume mode appends 當沖率.
   const cls = mode === "net"
-    ? "grid-cols-[22px_28px_1fr_64px_52px_56px_52px_56px]"
-    : "grid-cols-[22px_28px_1fr_52px_56px_52px_56px_56px]";
+    ? "grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]"
+    : "grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
 
   return (
     <div className={`grid ${cls} items-center text-sm py-2 px-2 border-b border-line/40 hover:bg-bg-deep/50 ${selected ? "bg-[#b794f4]/[0.06]" : ""}`}>
@@ -86,25 +88,25 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
           <span className={`text-right tabular-nums font-medium ${netCls}`}>
             {broker.net > 0 ? "+" : ""}{fmtVol(broker.net)}
           </span>
-          <span className="text-right tabular-nums text-accent">{fmtVol(broker.buy)}</span>
           <span className="text-right tabular-nums text-xs text-ink-dim">
             {fmtAvgPrice(broker.avg_buy_price)}
           </span>
-          <span className="text-right tabular-nums text-bear">{fmtVol(broker.sell)}</span>
           <span className="text-right tabular-nums text-xs text-ink-dim">
             {fmtAvgPrice(broker.avg_sell_price)}
           </span>
+          <span className="text-right tabular-nums text-accent">{fmtVol(broker.buy)}</span>
+          <span className="text-right tabular-nums text-bear">{fmtVol(broker.sell)}</span>
         </>
       ) : (
         <>
-          <span className="text-right tabular-nums text-accent">{fmtVol(broker.buy)}</span>
           <span className="text-right tabular-nums text-xs text-ink-dim">
             {fmtAvgPrice(broker.avg_buy_price)}
           </span>
-          <span className="text-right tabular-nums text-bear">{fmtVol(broker.sell)}</span>
           <span className="text-right tabular-nums text-xs text-ink-dim">
             {fmtAvgPrice(broker.avg_sell_price)}
           </span>
+          <span className="text-right tabular-nums text-accent">{fmtVol(broker.buy)}</span>
+          <span className="text-right tabular-nums text-bear">{fmtVol(broker.sell)}</span>
           <span className={`text-right tabular-nums font-medium ${rateClass((broker as TopVolumeBroker).daytradeRate)}`}>
             {fmtRate((broker as TopVolumeBroker).daytradeRate)}
           </span>
@@ -150,8 +152,8 @@ export function ChipBrokersPanel({
 
   const { margin } = summary;
   const N = selectedBrokerIds.size;
-  const netHeaderCols = "grid-cols-[22px_28px_1fr_64px_52px_56px_52px_56px]";
-  const volHeaderCols = "grid-cols-[22px_28px_1fr_52px_56px_52px_56px_56px]";
+  const netHeaderCols = "grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]";
+  const volHeaderCols = "grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
 
   return (
     <div
@@ -284,10 +286,10 @@ export function ChipBrokersPanel({
                 <span>#</span>
                 <span>分點</span>
                 <span className="text-right">淨買賣</span>
-                <span className="text-right">買張</span>
                 <span className="text-right">買均</span>
-                <span className="text-right">賣張</span>
                 <span className="text-right">賣均</span>
+                <span className="text-right">買張</span>
+                <span className="text-right">賣張</span>
               </div>
               <div className="px-2 py-1 text-2xs text-accent bg-accent/[0.04] uppercase tracking-wider">
                 買超
@@ -316,10 +318,10 @@ export function ChipBrokersPanel({
                 <span>#</span>
                 <span>分點</span>
                 <span className="text-right">淨買賣</span>
-                <span className="text-right">買張</span>
                 <span className="text-right">買均</span>
-                <span className="text-right">賣張</span>
                 <span className="text-right">賣均</span>
+                <span className="text-right">買張</span>
+                <span className="text-right">賣張</span>
               </div>
               <div className="px-2 py-1 text-2xs text-bear bg-bear/[0.04] uppercase tracking-wider">
                 賣超
@@ -349,10 +351,10 @@ export function ChipBrokersPanel({
               <span></span>
               <span>#</span>
               <span>分點</span>
-              <span className="text-right">買張</span>
               <span className="text-right">買均</span>
-              <span className="text-right">賣張</span>
               <span className="text-right">賣均</span>
+              <span className="text-right">買張</span>
+              <span className="text-right">賣張</span>
               <span className="text-right">當沖率</span>
             </div>
             {volumeBrokers.map((b, i) => (
