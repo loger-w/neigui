@@ -62,13 +62,7 @@ BROKER_ROWS = [
 ]
 
 
-@pytest.fixture(autouse=True)
-def _reset_singleton(tmp_path, monkeypatch):
-    monkeypatch.setenv("FINMIND_TOKEN", "test-token")
-    monkeypatch.setenv("CHIP_DATA_DIR", str(tmp_path))
-    import services.finmind as mod
-    mod._client = None
-    mod._fm_limiter = None
+# _reset_singleton fixture moved to tests/conftest.py (design v4 T1)
 
 
 @pytest.mark.asyncio

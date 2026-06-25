@@ -487,13 +487,7 @@ def _mock_http_by_start_date(rows_by_date):
     return c
 
 
-@pytest.fixture(autouse=True)
-def _reset_singleton(tmp_path, monkeypatch):
-    monkeypatch.setenv("FINMIND_TOKEN", "test-token")
-    monkeypatch.setenv("CHIP_DATA_DIR", str(tmp_path))
-    import services.finmind as mod
-    mod._client = None
-    mod._fm_limiter = None
+# _reset_singleton moved to tests/conftest.py (design v4 T1)
 
 
 @pytest.mark.asyncio
