@@ -703,3 +703,147 @@ async def test_fetch_spot_returns_cached_on_second_call():
     second = await fm.fetch_spot("2025-01-02")
     assert first == second
     assert mc.get.await_count == 1  # cache hit, no second HTTP call
+
+
+# ============================================================================
+# SC-1 / SC-5: Max Pain (design v4 §4.1, brainstorm SC-1/SC-5)
+# ============================================================================
+
+def _option_row(contract_date: str, strike: int, side: str, oi: int, *,
+                option_id: str = "TXO", session: str = "position",
+                day: str = "2026-06-25") -> dict:
+    """Synthetic TaiwanOptionDaily row matching real-schema fields."""
+    return {
+        "date": day, "option_id": option_id, "contract_date": contract_date,
+        "strike_price": float(strike), "call_put": side,
+        "open_interest": oi, "volume": 0, "trading_session": session,
+    }
+
+
+def test_parse_max_pain_basic():
+    """SC-1: symmetric OI distribution → Max Pain at ATM strike."""
+    from services.finmind_options import parse_max_pain
+    rows = [
+        _option_row("202607", 20000, "call", oi=100),
+        _option_row("202607", 21000, "call", oi=500),
+        _option_row("202607", 22000, "call", oi=300),
+        _option_row("202607", 20000, "put",  oi=300),
+        _option_row("202607", 21000, "put",  oi=500),
+        _option_row("202607", 22000, "put",  oi=100),
+    ]
+    result = parse_max_pain(rows, contract_date="202607")
+    assert result["max_pain"] == 21000
+    assert result["strike_count"] == 3
+
+
+def test_parse_max_pain_union_strikes_asymmetric_otm():
+    """SC-1 / design F1: candidate K = union(call_strikes, put_strikes).
+
+    Without union (naive intersection), deep-OTM strikes that trade on only
+    one side get dropped → Max Pain biased toward center. Real TXO data
+    routinely has one-sided deep OTM strikes.
+    """
+    from services.finmind_options import parse_max_pain
+    rows = [
+        _option_row("202607", 18000, "put",  oi=400),   # put-only deep OTM
+        _option_row("202607", 21000, "call", oi=200),
+        _option_row("202607", 21000, "put",  oi=200),
+        _option_row("202607", 24000, "call", oi=400),   # call-only deep OTM
+    ]
+    result = parse_max_pain(rows, contract_date="202607")
+    assert result["max_pain"] == 21000
+    assert result["strikes_with_call_oi_only"] == 1
+    assert result["strikes_with_put_oi_only"] == 1
+    assert result["strike_count"] == 3
+
+
+def test_parse_max_pain_strict_contract_filter():
+    """SC-1 / design F2: strict contract_date equality filter.
+
+    Without it, monthly OI bleeds into weekly Max Pain (and vice versa).
+    """
+    from services.finmind_options import parse_max_pain
+    rows = [
+        # Monthly OI — would shift Max Pain if leaked in
+        _option_row("202607",   20000, "call", oi=10000),
+        _option_row("202607",   20000, "put",  oi=10000),
+        # Weekly contract (the filter target) — symmetric at 22000
+        _option_row("202607W2", 21000, "call", oi=100),
+        _option_row("202607W2", 22000, "call", oi=200),
+        _option_row("202607W2", 23000, "call", oi=100),
+        _option_row("202607W2", 21000, "put",  oi=100),
+        _option_row("202607W2", 22000, "put",  oi=200),
+        _option_row("202607W2", 23000, "put",  oi=100),
+    ]
+    result = parse_max_pain(rows, contract_date="202607W2")
+    assert result["max_pain"] == 22000
+
+
+def test_parse_max_pain_total_loss_includes_multiplier_50():
+    """SC-1 / design F14: TXO multiplier = NT$50 per point; total_loss_ntd
+    must be in NTD (not raw OI-point units)."""
+    from services.finmind_options import parse_max_pain
+    rows = [
+        _option_row("202607", 20000, "call", oi=100),
+        _option_row("202607", 21000, "call", oi=100),
+        _option_row("202607", 21000, "put",  oi=100),
+        _option_row("202607", 22000, "put",  oi=100),
+    ]
+    result = parse_max_pain(rows, contract_date="202607")
+    # All three K give equal loss (10M); argmin returns smallest K
+    assert result["max_pain"] == 20000
+    assert result["total_loss_ntd"] == 10_000_000  # 100 × 2000 × 50
+
+
+def test_parse_max_pain_hit_rate_uses_t_minus_1():
+    """SC-5 / design F3: avoid look-ahead bias by aligning settlement_t
+    against max_pain_(t-1), NOT max_pain_t. Settlement-day OI collapses,
+    making max_pain_t mechanically ≈ settlement (false 100% hit)."""
+    from services.finmind_options import parse_max_pain_hit_rate
+    oi_by_trading_day = {
+        date(2026, 6, 16): [  # t-1: bias toward 21000
+            _option_row("202606", 21000, "call", oi=500, day="2026-06-16"),
+            _option_row("202606", 22000, "call", oi=100, day="2026-06-16"),
+            _option_row("202606", 21000, "put",  oi=100, day="2026-06-16"),
+            _option_row("202606", 22000, "put",  oi=500, day="2026-06-16"),
+        ],
+        date(2026, 6, 17): [  # t: OI collapsed, max_pain_t ≈ settlement_t
+            _option_row("202606", 22000, "call", oi=10, day="2026-06-17"),
+            _option_row("202606", 22000, "put",  oi=10, day="2026-06-17"),
+        ],
+    }
+    settlements = {date(2026, 6, 17): {"contract_date": "202606", "price": 22000.0}}
+    result = parse_max_pain_hit_rate(
+        oi_by_trading_day=oi_by_trading_day, settlements=settlements,
+    )
+    assert result["samples"] == 1
+    h = result["history"][0]
+    assert h["max_pain_at_t_minus_1"] == 21000  # NOT 22000
+    assert abs(h["deviation_pct"]) > 0.04  # ≈ 4.5%, not 0
+    assert result["hit_within_1pct"] == 0.0
+    assert result["hit_within_2pct"] == 0.0
+
+
+def test_parse_max_pain_hit_rate_excludes_pending_settlement():
+    """SC-5 / design F10: settlement_price=None → exclude, flag pending."""
+    from services.finmind_options import parse_max_pain_hit_rate
+    oi_by_trading_day = {
+        date(2026, 6, 16): [_option_row("202606", 22000, "call", oi=100, day="2026-06-16")],
+    }
+    settlements = {
+        date(2026, 6, 17): {"contract_date": "202606", "price": None},
+    }
+    result = parse_max_pain_hit_rate(
+        oi_by_trading_day=oi_by_trading_day, settlements=settlements,
+    )
+    assert result["samples"] == 0
+    assert result["latest_settlement_pending"] is True
+
+
+def test_parse_max_pain_hit_rate_empty_inputs():
+    """SC-5 insufficient_data path."""
+    from services.finmind_options import parse_max_pain_hit_rate
+    result = parse_max_pain_hit_rate(oi_by_trading_day={}, settlements={})
+    assert result["samples"] == 0
+    assert result["history"] == []
+    assert result["latest_settlement_pending"] is False
