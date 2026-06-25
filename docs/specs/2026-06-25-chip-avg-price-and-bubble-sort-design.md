@@ -27,26 +27,27 @@
 ## 2. F1 — 分點均價欄
 
 ### 2.1 Layout
-維持現有 grid 不擠新欄,而是把「均價」當 caption 放在 `買張` / `賣張` 數字 **下方**,字級縮一級、用 `text-ink-dim`:
+原先 spec 提的 caption 模式(均價疊在張數下方)使用者明確不接受 — 改回獨立欄位設計。
+
+Net mode grid 從 6 欄擴成 8 欄:`22 28 1fr 64 52 56 52 56` = 330 + 1fr。Volume mode 同:`22 28 1fr 52 56 52 56 56` = 326 + 1fr。
 
 ```
-[買張]
-@100.50   ← caption,text-2xs text-ink-dim
+#  分點          淨買賣  買張  買均     賣張  賣均
+1  元大          +1,084  5,203 2408.73  4,119 2419.39
 ```
 
-理由:
-- Net panel 寬 420px,現 grid `22+32+1fr+90+80+80`,1fr ≈ 116px 給分點名稱;再硬切 2 欄(均價)會把名稱壓到 ≤ 60px,中文截斷會很醜
-- caption 模式只增加每列高度 ~14px(現 22px → ~36px),15 列 × 2 半 panel 仍可看(總高約 1080px,scroll 區處理)
-- caption 排版跟現有「主力買賣超」總覽列的設計語言一致
+- 均價欄字級用 `text-xs text-ink-dim`(視覺上是「次要」資訊),張數仍是 `text-sm`(主要)
+- 1fr 給分點名稱在 420px 容器內 ≈ 86px,中文 4-5 字 OK,超過走 `truncate`
+- 「#」欄壓到 28px(原 32px)壓榨空間
 
 ### 2.2 顯示規則
 | 場景 | 顯示 |
 |------|------|
-| `avg_buy_price > 0`(該分點有買) | `@100.50` |
-| `avg_buy_price === 0`(沒買進) | `—`(用 `text-ink-dim/60`) |
+| `avg_buy_price > 0`(該分點有買) | `100.50`(2 位小數) |
+| `avg_buy_price === 0`(沒買進) | `—`(`text-ink-dim`) |
 | 同理 `avg_sell_price` |
 
-格式:`@{price.toFixed(2)}`(2 位小數,跟 K-line `close` 顯示一致)。
+格式:`price.toFixed(2)` — 直接數字,沒 `@` prefix(欄位 header 已說明,prefix 多餘)。
 
 ### 2.3 受影響元件
 - `frontend/src/components/ChipBrokersPanel.tsx` — `BrokerRow` 兩段(net / volume mode)各加 caption 渲染

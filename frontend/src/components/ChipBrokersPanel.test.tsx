@@ -213,8 +213,8 @@ describe("ChipBrokersPanel F5 — buyers + sellers in separate scrollable halves
   });
 });
 
-describe("ChipBrokersPanel — avg buy/sell price caption", () => {
-  const captionBrokers: TopBroker[] = [
+describe("ChipBrokersPanel — avg buy/sell price as independent columns", () => {
+  const avgBrokers: TopBroker[] = [
     mkBroker({
       broker_id: "BUY1", name: "BuyerWithAvg",
       buy: 100, sell: 0, net: 100,
@@ -232,10 +232,10 @@ describe("ChipBrokersPanel — avg buy/sell price caption", () => {
     }),
   ];
 
-  it("net mode: buyer row shows @<avg_buy_price> caption with 2 decimals", () => {
+  it("net mode header has dedicated 買均 + 賣均 columns alongside 買張 + 賣張", () => {
     const { container } = render(
       <ChipBrokersPanel
-        summary={mkSummary(captionBrokers)}
+        summary={mkSummary(avgBrokers)}
         dayTotalLots={1000}
         selectedBrokerIds={new Set()}
         onToggleBroker={noop}
@@ -244,14 +244,18 @@ describe("ChipBrokersPanel — avg buy/sell price caption", () => {
     );
     const buyers = container.querySelector("[data-testid=buyers-scroll]");
     expect(buyers).toBeTruthy();
-    expect(buyers!.textContent).toContain("@100.50");
-    expect(buyers!.textContent).toContain("@99.25");
+    // sticky header — at least one occurrence of each column name
+    const header = buyers!.querySelector(".sticky");
+    expect(header?.textContent).toContain("買張");
+    expect(header?.textContent).toContain("買均");
+    expect(header?.textContent).toContain("賣張");
+    expect(header?.textContent).toContain("賣均");
   });
 
-  it("net mode: buyer row WITH non-zero sell shows BOTH @buy + @sell captions", () => {
+  it("net mode: avg price renders as plain 2-decimal number in its own column (no @ prefix)", () => {
     const { container } = render(
       <ChipBrokersPanel
-        summary={mkSummary(captionBrokers)}
+        summary={mkSummary(avgBrokers)}
         dayTotalLots={1000}
         selectedBrokerIds={new Set()}
         onToggleBroker={noop}
@@ -259,14 +263,32 @@ describe("ChipBrokersPanel — avg buy/sell price caption", () => {
       />,
     );
     const buyers = container.querySelector("[data-testid=buyers-scroll]");
-    expect(buyers!.textContent).toContain("@99.25");
-    expect(buyers!.textContent).toContain("@101.40");
+    expect(buyers!.textContent).toContain("100.50");
+    expect(buyers!.textContent).toContain("99.25");
+    // The @ prefix from the previous caption layout must not leak into the
+    // new column-based layout.
+    expect(buyers!.textContent).not.toContain("@100.50");
   });
 
-  it("net mode: seller row shows @<avg_sell_price> caption", () => {
+  it("net mode: buyer row WITH non-zero sell renders both buy + sell avg in their columns", () => {
     const { container } = render(
       <ChipBrokersPanel
-        summary={mkSummary(captionBrokers)}
+        summary={mkSummary(avgBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const buyers = container.querySelector("[data-testid=buyers-scroll]");
+    expect(buyers!.textContent).toContain("99.25");
+    expect(buyers!.textContent).toContain("101.40");
+  });
+
+  it("net mode: seller row renders 賣均 value in its column", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(avgBrokers)}
         dayTotalLots={1000}
         selectedBrokerIds={new Set()}
         onToggleBroker={noop}
@@ -274,10 +296,10 @@ describe("ChipBrokersPanel — avg buy/sell price caption", () => {
       />,
     );
     const sellers = container.querySelector("[data-testid=sellers-scroll]");
-    expect(sellers!.textContent).toContain("@102.75");
+    expect(sellers!.textContent).toContain("102.75");
   });
 
-  it("buy-only broker: avg_sell_price=0 → caption renders as dash, not @0.00", () => {
+  it("buy-only broker: 賣均 cell renders dash, not 0.00", () => {
     const onlyBuy = mkBroker({
       broker_id: "B_ONLY", name: "OnlyBuy",
       buy: 50, sell: 0, net: 50,
@@ -293,15 +315,14 @@ describe("ChipBrokersPanel — avg buy/sell price caption", () => {
       />,
     );
     const buyers = container.querySelector("[data-testid=buyers-scroll]");
-    expect(buyers!.textContent).not.toContain("@0.00");
-    // dash for the missing side
+    expect(buyers!.textContent).not.toContain("0.00");
     expect(buyers!.textContent).toMatch(/—/);
   });
 
-  it("volume mode: both @buy + @sell captions rendered", () => {
+  it("volume mode: 買均 + 賣均 are independent columns in header and rows", () => {
     const { container, getByText } = render(
       <ChipBrokersPanel
-        summary={mkSummary(captionBrokers)}
+        summary={mkSummary(avgBrokers)}
         dayTotalLots={1000}
         selectedBrokerIds={new Set()}
         onToggleBroker={noop}
@@ -311,7 +332,10 @@ describe("ChipBrokersPanel — avg buy/sell price caption", () => {
     fireEvent.click(getByText("前 15 大交易量分點"));
     const vol = container.querySelector("[data-testid=volume-scroll]");
     expect(vol).toBeTruthy();
-    expect(vol!.textContent).toContain("@99.25");
-    expect(vol!.textContent).toContain("@101.40");
+    const header = vol!.querySelector(".sticky");
+    expect(header?.textContent).toContain("買均");
+    expect(header?.textContent).toContain("賣均");
+    expect(vol!.textContent).toContain("99.25");
+    expect(vol!.textContent).toContain("101.40");
   });
 });

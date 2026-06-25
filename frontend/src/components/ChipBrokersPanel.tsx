@@ -35,9 +35,12 @@ function fmtRate(r: number | null): string {
   return `${Math.round(r * 100)}%`;
 }
 
-function fmtPriceCaption(p: number): string {
+function fmtAvgPrice(p: number): string {
+  // avg_*_price = 0 means "no trade on this side" (backend skips the
+  // weighted-avg division when share count is zero). Render an em-dash
+  // rather than the misleading 0.00.
   if (!p || p <= 0) return "—";
-  return `@${p.toFixed(2)}`;
+  return p.toFixed(2);
 }
 
 function rateClass(r: number | null): string {
@@ -59,8 +62,8 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
   const badge = brokerBadge(broker.name);
   const netCls = broker.net > 0 ? "text-accent" : broker.net < 0 ? "text-bear" : "text-ink-dim";
   const cls = mode === "net"
-    ? "grid-cols-[22px_32px_1fr_90px_80px_80px]"
-    : "grid-cols-[22px_32px_1fr_64px_64px_76px]";
+    ? "grid-cols-[22px_28px_1fr_64px_52px_56px_52px_56px]"
+    : "grid-cols-[22px_28px_1fr_52px_56px_52px_56px_56px]";
 
   return (
     <div className={`grid ${cls} items-center text-sm py-2 px-2 border-b border-line/40 hover:bg-bg-deep/50 ${selected ? "bg-[#b794f4]/[0.06]" : ""}`}>
@@ -83,33 +86,25 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
           <span className={`text-right tabular-nums font-medium ${netCls}`}>
             {broker.net > 0 ? "+" : ""}{fmtVol(broker.net)}
           </span>
-          <div className="text-right leading-tight">
-            <div className="tabular-nums text-accent">{fmtVol(broker.buy)}</div>
-            <div className="tabular-nums text-2xs text-ink-dim">
-              {fmtPriceCaption(broker.avg_buy_price)}
-            </div>
-          </div>
-          <div className="text-right leading-tight">
-            <div className="tabular-nums text-bear">{fmtVol(broker.sell)}</div>
-            <div className="tabular-nums text-2xs text-ink-dim">
-              {fmtPriceCaption(broker.avg_sell_price)}
-            </div>
-          </div>
+          <span className="text-right tabular-nums text-accent">{fmtVol(broker.buy)}</span>
+          <span className="text-right tabular-nums text-xs text-ink-dim">
+            {fmtAvgPrice(broker.avg_buy_price)}
+          </span>
+          <span className="text-right tabular-nums text-bear">{fmtVol(broker.sell)}</span>
+          <span className="text-right tabular-nums text-xs text-ink-dim">
+            {fmtAvgPrice(broker.avg_sell_price)}
+          </span>
         </>
       ) : (
         <>
-          <div className="text-right leading-tight">
-            <div className="tabular-nums text-accent">{fmtVol(broker.buy)}</div>
-            <div className="tabular-nums text-2xs text-ink-dim">
-              {fmtPriceCaption(broker.avg_buy_price)}
-            </div>
-          </div>
-          <div className="text-right leading-tight">
-            <div className="tabular-nums text-bear">{fmtVol(broker.sell)}</div>
-            <div className="tabular-nums text-2xs text-ink-dim">
-              {fmtPriceCaption(broker.avg_sell_price)}
-            </div>
-          </div>
+          <span className="text-right tabular-nums text-accent">{fmtVol(broker.buy)}</span>
+          <span className="text-right tabular-nums text-xs text-ink-dim">
+            {fmtAvgPrice(broker.avg_buy_price)}
+          </span>
+          <span className="text-right tabular-nums text-bear">{fmtVol(broker.sell)}</span>
+          <span className="text-right tabular-nums text-xs text-ink-dim">
+            {fmtAvgPrice(broker.avg_sell_price)}
+          </span>
           <span className={`text-right tabular-nums font-medium ${rateClass((broker as TopVolumeBroker).daytradeRate)}`}>
             {fmtRate((broker as TopVolumeBroker).daytradeRate)}
           </span>
@@ -155,8 +150,8 @@ export function ChipBrokersPanel({
 
   const { margin } = summary;
   const N = selectedBrokerIds.size;
-  const netHeaderCols = "grid-cols-[22px_32px_1fr_90px_80px_80px]";
-  const volHeaderCols = "grid-cols-[22px_32px_1fr_64px_64px_76px]";
+  const netHeaderCols = "grid-cols-[22px_28px_1fr_64px_52px_56px_52px_56px]";
+  const volHeaderCols = "grid-cols-[22px_28px_1fr_52px_56px_52px_56px_56px]";
 
   return (
     <div
@@ -290,7 +285,9 @@ export function ChipBrokersPanel({
                 <span>分點</span>
                 <span className="text-right">淨買賣</span>
                 <span className="text-right">買張</span>
+                <span className="text-right">買均</span>
                 <span className="text-right">賣張</span>
+                <span className="text-right">賣均</span>
               </div>
               <div className="px-2 py-1 text-2xs text-accent bg-accent/[0.04] uppercase tracking-wider">
                 買超
@@ -320,7 +317,9 @@ export function ChipBrokersPanel({
                 <span>分點</span>
                 <span className="text-right">淨買賣</span>
                 <span className="text-right">買張</span>
+                <span className="text-right">買均</span>
                 <span className="text-right">賣張</span>
+                <span className="text-right">賣均</span>
               </div>
               <div className="px-2 py-1 text-2xs text-bear bg-bear/[0.04] uppercase tracking-wider">
                 賣超
@@ -351,7 +350,9 @@ export function ChipBrokersPanel({
               <span>#</span>
               <span>分點</span>
               <span className="text-right">買張</span>
+              <span className="text-right">買均</span>
               <span className="text-right">賣張</span>
+              <span className="text-right">賣均</span>
               <span className="text-right">當沖率</span>
             </div>
             {volumeBrokers.map((b, i) => (
