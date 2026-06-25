@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { ChipBubbleData, TradeRow } from "../lib/chip-data";
-import { aggregateByPrice, buildTradeRows, fmtVol } from "../lib/chip-data";
+import type {
+  ChipBubbleData, SortDir, SortSpec, TradeRow, TradeSortKey,
+} from "../lib/chip-data";
+import {
+  DEFAULT_TRADE_SORT, aggregateByPrice, buildTradeRows, fmtVol,
+} from "../lib/chip-data";
 import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg";
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
@@ -21,11 +25,31 @@ const MAX_TRADE_ROWS = Number.POSITIVE_INFINITY;
 
 export function ChipBubbleView({ bubbleData, closePrice, symbol }: Props) {
   const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
+  // F2: independent sort state per side. Header click toggles dir when the
+  // same key is re-clicked; switching key resets dir to "desc" (matches the
+  //台股 看盤 default of "biggest first").
+  const [buySort, setBuySort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
+  const [sellSort, setSellSort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
 
   // Reset selection ONLY on symbol change (NOT on date / bubbleData change)
   useEffect(() => {
     setSelectedBroker(null);
   }, [symbol]);
+
+  const handleBuySortChange = useCallback((key: TradeSortKey) => {
+    setBuySort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "desc" ? "asc" : "desc" }
+        : { key, dir: "desc" },
+    );
+  }, []);
+  const handleSellSortChange = useCallback((key: TradeSortKey) => {
+    setSellSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "desc" ? "asc" : "desc" }
+        : { key, dir: "desc" },
+    );
+  }, []);
 
   const uniqueBrokerCount = useMemo(
     () => new Set(bubbleData?.trades.map((t) => t.broker) ?? []).size,
@@ -91,8 +115,10 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol }: Props) {
   // was hiding most of a small-volume broker's price levels after filter.
   const { buyRows: filteredBuyRows, sellRows: filteredSellRows } = useMemo(() => {
     if (!bubbleData) return { buyRows: [] as TradeRow[], sellRows: [] as TradeRow[] };
-    return buildTradeRows(bubbleData.trades, selectedBroker, MAX_TRADE_ROWS);
-  }, [bubbleData, selectedBroker]);
+    return buildTradeRows(
+      bubbleData.trades, selectedBroker, MAX_TRADE_ROWS, buySort, sellSort,
+    );
+  }, [bubbleData, selectedBroker, buySort, sellSort]);
 
   return (
     <div className="h-full grid grid-cols-[1fr_400px] gap-0 overflow-hidden">
@@ -147,12 +173,16 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol }: Props) {
             side="buy"
             selectedBroker={selectedBroker}
             onSelect={handleBubbleClick}
+            sortSpec={buySort}
+            onSortChange={handleBuySortChange}
           />
           <TradeList
             rows={filteredSellRows}
             side="sell"
             selectedBroker={selectedBroker}
             onSelect={handleBubbleClick}
+            sortSpec={sellSort}
+            onSortChange={handleSellSortChange}
           />
         </div>
       </div>
@@ -190,16 +220,56 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol }: Props) {
 // If the row styling changes (padding/font-size/line-height), update this.
 const ROW_HEIGHT_PX = 22;
 
+function SortHeader({
+  label, sortKey, spec, side, onChange,
+}: {
+  label: string;
+  sortKey: TradeSortKey;
+  spec: SortSpec;
+  side: "buy" | "sell";
+  onChange: (key: TradeSortKey) => void;
+}) {
+  const active = spec.key === sortKey;
+  const dir: SortDir | null = active ? spec.dir : null;
+  const arrow = dir === "desc" ? "↓" : dir === "asc" ? "↑" : "";
+  const ariaSort = dir === "desc"
+    ? "descending"
+    : dir === "asc"
+      ? "ascending"
+      : "none";
+  const sideLabel = side === "buy" ? "買方" : "賣方";
+  const dirLabel = dir === "desc" ? "由大到小" : dir === "asc" ? "由小到大" : "未排序";
+  return (
+    <button
+      type="button"
+      role="columnheader"
+      aria-sort={ariaSort}
+      aria-label={`${sideLabel}依${label}排序(目前${dirLabel})`}
+      onClick={() => onChange(sortKey)}
+      className={`text-right cursor-pointer transition-colors hover:text-ink ${
+        active ? "text-ink" : "text-current/70"
+      }`}
+    >
+      {label}
+      {arrow && <span className="ml-0.5 text-2xs">{arrow}</span>}
+    </button>
+  );
+}
+
 const TradeList = memo(function TradeList({
   rows,
   side,
   selectedBroker,
   onSelect,
+  sortSpec,
+  onSortChange,
 }: {
   rows: TradeRow[];
   side: "buy" | "sell";
   selectedBroker: string | null;
   onSelect: (broker: string | null) => void;
+  sortSpec: SortSpec;
+  onSortChange: (key: TradeSortKey) => void;
 }) {
   const isBuy = side === "buy";
   const colorClass = isBuy ? "text-accent" : "text-bear";
@@ -226,8 +296,20 @@ const TradeList = memo(function TradeList({
         className={`shrink-0 px-2 py-1.5 text-sm ${colorClass} ${bgClass} border-b border-line font-medium grid grid-cols-[1fr_56px_56px]`}
       >
         <span>分點</span>
-        <span className="text-right">張數</span>
-        <span className="text-right">價位</span>
+        <SortHeader
+          label="張數"
+          sortKey="volume"
+          spec={sortSpec}
+          side={side}
+          onChange={onSortChange}
+        />
+        <SortHeader
+          label="價位"
+          sortKey="price"
+          spec={sortSpec}
+          side={side}
+          onChange={onSortChange}
+        />
       </div>
       <div
         ref={scrollRef}
