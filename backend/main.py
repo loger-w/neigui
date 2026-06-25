@@ -71,3 +71,18 @@ async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse
     return JSONResponse(
         status_code=503, content={"detail": {"error": str(exc)}}
     )
+
+
+# txo-chip-framework design v4 F6-integration: generic Exception handler so
+# unhandled errors return the canonical {detail: {error: ...}} shape rather
+# than FastAPI's default 500 with stack-trace-style detail (which would break
+# frontend __apiGet's body.detail.error access). Comes LAST so the specific
+# handlers above take precedence.
+@app.exception_handler(Exception)
+async def generic_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception(
+        "Unhandled %s on %s: %s", type(exc).__name__, request.url.path, exc
+    )
+    return JSONResponse(
+        status_code=500, content={"detail": {"error": "internal_error"}}
+    )
