@@ -1100,3 +1100,104 @@ def test_parse_pcr_next_day_stats_handles_missing_tx_returns_t_plus_1():
     # 1 of 2 samples dropped = 50% > 5% → warning
     assert result["high_region"]["samples"] == 1
     assert "next_day_stats_dropped_samples_5pct" in warnings
+
+
+# ============================================================================
+# SC-4 / SC-8: Institutional + foreign correlation (design v4 §4.5 / §4.6)
+# ============================================================================
+
+
+def _inst_row(date_s: str, institution: str, side: str, buy: int, sell: int) -> dict:
+    """Build a synthetic TaiwanOptionInstitutionalInvestors[AfterHours] row.
+
+    Schema based on FinMind option_id + put_call + buy/sell open interest
+    convention. Note: real field names TBD pending SC-0 token refresh
+    (R14 / R6 — parser docstring carries field_name_unverified marker).
+    """
+    return {
+        "date": date_s, "option_id": "TXO", "institution": institution,
+        "put_call": side, "buy_open_interest": buy, "sell_open_interest": sell,
+    }
+
+
+def test_parse_institutional_uses_dealer_not_prop():
+    """SC-4 / F3-integration: 自營商 keyed as 'dealer' (matches existing
+    chip-data.ts convention), NOT 'prop'."""
+    from services.finmind_options import parse_institutional
+    rows_day = [
+        _inst_row("2026-06-25", "外資", "call", 1000, 500),
+        _inst_row("2026-06-25", "外資", "put",  300, 800),
+        _inst_row("2026-06-25", "自營商", "call", 200, 100),
+        _inst_row("2026-06-25", "自營商", "put",  150, 50),
+        _inst_row("2026-06-25", "投信", "call", 80, 40),
+        _inst_row("2026-06-25", "投信", "put",  20, 60),
+    ]
+    result = parse_institutional(
+        rows_day=rows_day, rows_night=[], target_date=date(2026, 6, 25),
+    )
+    # Key names: foreign / dealer / trust (NOT prop, NOT trust_investment)
+    assert set(result["current"].keys()) >= {"foreign", "dealer", "trust"}
+    assert "prop" not in result["current"]
+    assert result["current"]["foreign"]["call_net"] == 1000 - 500
+    assert result["current"]["dealer"]["call_net"] == 200 - 100
+
+
+def test_parse_institutional_after_hours_none_pre_2021_10():
+    """SC-4 / F12: AfterHours unavailable before 2021-10-13.
+    Target date pre-cutoff → session_breakdown.after_hours = None."""
+    from services.finmind_options import parse_institutional
+    rows_day = [_inst_row("2020-06-25", "外資", "call", 100, 50)]
+    result = parse_institutional(
+        rows_day=rows_day, rows_night=None,
+        target_date=date(2020, 6, 25),  # before 2021-10-13 cutoff
+    )
+    assert result["current"]["session_breakdown"]["after_hours"] is None
+
+
+def test_parse_institutional_correlation_excludes_dealer_trust_from_correlation_payload():
+    """SC-8 / F10-testability scope guard: correlation dict has ONLY foreign-vs-TX,
+    NEVER dealer/trust correlations leak in. Even with dealer/trust in
+    input fixture, output stays scoped to foreign."""
+    from services.finmind_options import parse_institutional_correlation
+    foreign_history = [
+        {"date": date(2026, 6, d), "foreign_call_net": d * 10,
+         "dealer_call_net": d * 5, "trust_call_net": d * 2}
+        for d in range(1, 32)
+    ]
+    tx_returns = {date(2026, 6, d): 0.001 * d for d in range(1, 32)}
+    result, _ = parse_institutional_correlation(
+        foreign_history=foreign_history, tx_returns=tx_returns, corr_window=20,
+    )
+    assert "dealer" not in result
+    assert "trust" not in result
+    assert "dealer_correlation" not in result
+    assert "trust_correlation" not in result
+
+
+def test_parse_institutional_correlation_uses_raw_flow_default():
+    """SC-8 / N3: feature_transformation defaults to 'raw_flow' (foreign.call_net
+    directly correlated with next_day TX return)."""
+    from services.finmind_options import parse_institutional_correlation
+    foreign_history = [
+        {"date": date(2026, 6, d), "foreign_call_net": d * 10}
+        for d in range(1, 32)
+    ]
+    tx_returns = {date(2026, 6, d): 0.001 * d for d in range(1, 32)}
+    result, _ = parse_institutional_correlation(
+        foreign_history=foreign_history, tx_returns=tx_returns, corr_window=20,
+    )
+    assert result["feature_transformation"] == "raw_flow"
+
+
+def test_parse_institutional_correlation_emits_sample_small_warning():
+    """SC-8: < 30 effective samples → correlation_sample_small warning."""
+    from services.finmind_options import parse_institutional_correlation
+    foreign_history = [
+        {"date": date(2026, 6, d), "foreign_call_net": d * 10}
+        for d in range(1, 11)  # only 10 days
+    ]
+    tx_returns = {date(2026, 6, d): 0.001 * d for d in range(1, 11)}
+    _, warnings = parse_institutional_correlation(
+        foreign_history=foreign_history, tx_returns=tx_returns, corr_window=10,
+    )
+    assert "correlation_sample_small" in warnings
