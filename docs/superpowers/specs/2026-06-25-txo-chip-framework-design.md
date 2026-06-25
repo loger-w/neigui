@@ -1,14 +1,18 @@
-# txo-chip-framework — Design Spec (v3)
+# txo-chip-framework — Design Spec (v4)
 
-> /feat slug: `txo-chip-framework` | Phase 0/1 artifact | v1 2026-06-25 → v2 2026-06-26 → v3 2026-06-26
+> /feat slug: `txo-chip-framework` | Phase 0/1 artifact | v1→v2→v3→v4 全於 2026-06-25/26 內完成
 
 ## Changelog
 - **v1** (2026-06-25):初版
 - **v2** (2026-06-26):Phase 1 round 1 後修 41 findings(12 P0 + 16 P1 + 13 P2)詳見 `design-review-round-1.json`
-- **v3** (2026-06-26):Phase 1 round 2 後修 26 findings(1 P0 + 12 P1 + 13 P2)詳見 `design-review-round-2.json`。Round 2 確認 round 1 所有 P0/P1 已修正,但 v2 修改本身又引入新問題。重點 v3 變更:
-  - 修 1 條 P0:NoOpBucket monkeypatch 邏輯錯誤(FinMindClient `__init__` 綁定 limiter,patch 後 client 已 instantiated)→ 改 patch `get_finmind_rate_limiter` + reset `_client = None`,並 inline NoOpBucket class
-  - 修多條 P1:共用 fetch 真的共用(單一 canonical max window + `_run_once` inflight dedup);correlation p-value 改 **permutation test**(非 bootstrap);refresh 流會 invalidate 下游 parse cache;trading_calendar 移到 `services/`(utils 維持純函式);MSW 換 `vi.spyOn`;PCR walk-forward warmup 改單一 consolidated warning
-  - 修多條 P2:OI Wall 改用 Σ|ΔOI|(活躍度)而非 2-point delta;`OptionsHitRateChart` 拆兩個元件;PCR cache 分 series / classified 兩層
+- **v3** (2026-06-26):Phase 1 round 2 後修 26 findings(1 P0 + 12 P1 + 13 P2)詳見 `design-review-round-2.json`
+- **v4** (2026-06-26):Phase 1 round 3 後修 12 findings(**0 P0** + 5 P1 + 7 P2)詳見 `design-review-round-3.json`。Round 3 確認 round 2 全 P0/P1 修好,僅剩 implementation-tactical clarifications。重點 v4 變更:
+  - **N11**:加 §1 invariant + 路由層 lookback 驗證(reject 400 if lookback × period > CHIP_WINDOW_TD)
+  - **N12**:`utils/cache.py.delete_by_prefix` 契約(pattern-based invalidation across all lookback/threshold variants)
+  - **N13**:`parse_oi_walls` 釘 K universe + `dynamic_wall_no_activity` / `_partial_listing` warnings
+  - **I1**:invalidation 搬進 `_run_once` coroutine(after dedup, before fetch);只在 cache 真 miss/refresh 時 invalidate
+  - **I2**:route 層 orchestrate `get_trading_days` 先抓,把 `list[date]` 傳給 `fetch_taiwan_option_daily_window` → **無循環 import**
+  - 7 P2:cold-load math 校正、`conftest.py` 統一管理 singleton reset + FINMIND_TOKEN + NoOpBucket、frontend `queryClient.invalidateQueries` 跨 hook 同步、`latest_settlement_pending` 釐清為 boolean 不是 warning string、SC-6 schema 補 `avg_band_width_pct`、`partial_history_first_week` 撤出 catalog
 
 ## 0. 背景與來源(沿用 v2)
 
@@ -69,14 +73,24 @@ TaiwanFuturesDaily / TaiwanOptionFinalSettlementPrice
 - `_CACHE_VERSION_OPTIONS_CHIP = 1` 新增(本 spec 5 個新 cache key 全用此版本)
 - 兩 version 隔離
 
-**Canonical window size**(N1+F14 修):
-- 共用 `fetch_taiwan_option_daily_window` **單一 window = `CHIP_WINDOW_TD = 250` trading days(約 1 calendar year)**
-- 各 parser 自行從共用 window slice 需要的 sub-range:
-  - Max Pain hit_rate: 最近 20 個結算合約對應的 settlement_date 加 t_minus_1(週 + 月混算約 60-100 td)
-  - OI Walls hit_rate: 同上
-  - PCR walk-forward: 提升至 **250 trading days**(原 90,N8 修),提供每 region ≥ 70 樣本
-  - 三 endpoint 全部從同一 `CHIP_WINDOW_TD=250` 共用 cache 讀
-- Institutional 自己 60 td 一條獨立 fetch(資料源不同)
+**Canonical window size**(N1+F14 + v4 N11 修):
+- 共用 `fetch_taiwan_option_daily_window` **單一 window = `CHIP_WINDOW_TD = 250` trading days**
+- **INVARIANT(N11)**:`max(all_downstream_lookback_td_demands) ≤ CHIP_WINDOW_TD`
+  - 路由層驗證 user-passed lookback:
+    - `max_pain` lookback(合約數):反推 td 上限 = `lookback × 21`(月選最壞情況),若 > 250 → **400** `{error: "lookback_exceeds_canonical_window"}`
+    - `oi_walls` 同上
+    - `pcr` lookback td 直接驗 ≤ 250,否則 400
+  - 預設值都在 invariant 內:max_pain/oi_walls 20 合約 × 21 ≤ 420 → 預設 20 合約 ✓(因為週/月混算實際更小);pcr 預設 250 ✓
+- 各 parser slice 子 range:
+  - Max Pain / OI Walls hit_rate:取相關結算日 t_minus_1 切片
+  - PCR walk-forward:取整 250 td
+- Institutional 60 td 獨立 fetch(資料源不同)
+
+**Trading_calendar 編排路徑(I2 解 circular import)**:
+- **Route 層先 orchestrate**:`routes/options.py` 中 4 個 handler 入口先呼叫 `services.trading_calendar.get_trading_days(end_date, CHIP_WINDOW_TD)` → 拿 `list[date]`
+- 把 `list[date]` 傳給 `fetch_taiwan_option_daily_window(dates: list[date], ...)`
+- `fetch_taiwan_option_daily_window` 不主動算 trading days,僅 fan-out 收到的日期清單
+- `services/trading_calendar.py` 自帶 httpx call TaiwanFuturesDaily(reuse `get_finmind_rate_limiter()`)— **不**透過 `FinMindClient`,避免 `services/finmind ↔ trading_calendar` 循環
 
 **Cold-load math 校正**(F14+F17):
 - `fetch_taiwan_option_daily_window(end_date, 250)` 用 `_run_once(f"txo_daily_window_{end_date}_td250", ...)` 包起來
@@ -176,23 +190,44 @@ TaiwanFuturesDaily / TaiwanOptionFinalSettlementPrice
 
 ### 2.2 Backend Services
 
-#### `services/trading_calendar.py`(F16 新增)
+#### `services/trading_calendar.py`(F16 + v4 I2 修)
 ```python
-# I/O + cache layer
+# I/O + cache layer, **不**依賴 services/finmind.FinMindClient (避免循環 import)
+import httpx
+from services.rate_limiter import get_finmind_rate_limiter
 from utils.trading_calendar_helpers import count_back_trading_days
+from utils.cache import _read_cache_v, _write_cache_v
 
 _TRADING_CAL_TTL_SEC = 7 * 24 * 3600
 _TRADING_CAL_CACHE_KEY = "tx_trading_days_cache"
 
 async def get_trading_days(end_date: date, n: int) -> list[date]:
     """
-    回傳從 end_date 往回 n 個 AVAILABLE trading days (N6 修:資料可用而非 calendar 推算)
-    n 第 1 個元素是最近的 trading day, 第 n 個是最舊。
-    若 TaiwanFuturesDaily 對 end_date 尚未發布 → 用最近已發布日 (publication lag 容忍)
-    Cached 7 days at services layer (calendar 變動極慢).
+    回傳從 end_date 往回 n 個 AVAILABLE trading days.
+    若 TaiwanFuturesDaily 對 end_date 未發布 → 用最近已發布日 (publication lag 容忍).
+    Cached 7 days (calendar 變動極慢).
+    自帶 httpx call (不透過 FinMindClient),reuse rate limiter.
     """
     cached_dates: list[date] = await _read_or_fetch_tx_trading_dates()
     return count_back_trading_days(cached_dates, end_date, n)
+
+async def _read_or_fetch_tx_trading_dates() -> list[date]:
+    """Read cache or fetch TaiwanFuturesDaily directly via httpx + shared rate limiter."""
+    cached = _read_cache_v(_TRADING_CAL_CACHE_KEY, version=_CACHE_VERSION_OPTIONS_CHIP)
+    if cached and (now - cached["fetched_at"] < _TRADING_CAL_TTL_SEC):
+        return [date.fromisoformat(d) for d in cached["dates"]]
+    limiter = get_finmind_rate_limiter()
+    await limiter.acquire_async()
+    async with httpx.AsyncClient(timeout=30.0) as cli:
+        r = await cli.get("https://api.finmindtrade.com/api/v4/data", params={
+            "dataset": "TaiwanFuturesDaily", "data_id": "TX",
+            "start_date": (today - timedelta(days=400)).isoformat(),
+            "token": settings.FINMIND_TOKEN,
+        })
+        r.raise_for_status()
+    dates = sorted({date.fromisoformat(row["date"]) for row in r.json()["data"]})
+    _write_cache_v(_TRADING_CAL_CACHE_KEY, {"fetched_at": now, "dates": [d.isoformat() for d in dates]}, version=_CACHE_VERSION_OPTIONS_CHIP)
+    return dates
 ```
 
 #### `utils/trading_calendar_helpers.py`(F16 新增,純函式)
@@ -209,7 +244,7 @@ def count_back_trading_days(
 
 **parse_max_pain** / **parse_max_pain_hit_rate**:沿用 v2(union strikes + strict contract_date + T-1 hit rate + total_loss × 50)
 
-**parse_oi_walls**(N4 修):
+**parse_oi_walls**(N4 + v4 N13 修):
 ```python
 def parse_oi_walls(
     rows_today: list[dict],
@@ -217,14 +252,27 @@ def parse_oi_walls(
     contract_date: str,
     delta_window: int,
     spot: float,
-) -> dict:
+) -> tuple[dict, list[str]]:
     """
     Static walls: max OI strike per side, tie-break closest to spot
-    Dynamic walls (N4 修: window_activity_oi = Σ_{d} |oi_d - oi_{d-1}|, 不是 telescoping delta):
-      For each strike K:
-        activity(K) = sum over (delta_window-1) day-pairs of |oi_{d+1}(K) - oi_d(K)|
+    
+    Dynamic walls (N4 + N13 修):
+      K universe per side (N13):
+        - Call wall candidates = strikes with call_oi > 0 on end_date
+        - Put  wall candidates = strikes with put_oi > 0 on end_date
+        - (per side OI, 不混 call/put;static/dynamic 共享同一 universe)
+      For each candidate K:
+        activity(K) = Σ_{d in window} |oi_{d+1}(K) - oi_d(K)|
+        Strike newly-listed at day d_first > window_start:
+          - 把 d < d_first 的 oi 視為 0 → 第一筆會貢獻 large |ΔOI|
+          - 設定 strike-level `partial_listing=true`
+          - **預設保留**該 strike 進候選池(但每側產生 partial_listing warning)
       wall = strike with max activity per side, tie-break closest to spot
-    若 days_since_listing < delta_window: partial_window=true; warning="dynamic_wall_partial_window"
+    
+    Warnings (N13 補):
+      - "dynamic_wall_partial_window": days_since_listing < delta_window (contract-level)
+      - "dynamic_wall_partial_listing": 有任一候選 strike partial_listing=true
+      - "dynamic_wall_no_activity": max activity == 0 (totally inactive market)
     """
 ```
 
@@ -309,22 +357,38 @@ def parse_institutional_correlation(
 CHIP_WINDOW_TD = 250  # canonical window for shared fetch
 
 async def fetch_taiwan_option_daily_window(
-    self, end_date: date, refresh: bool = False
+    self, trading_dates: list[date], end_date: date, refresh: bool = False
 ) -> dict[date, list[dict]]:
     """
+    I2 修: trading_dates 由 route 層注入 (避免 circular import)
+    I1 修: invalidation 搬進 _run_once 內,after dedup before fetch
     F17 修: _run_once wrap for inflight dedup
     F14 修: 固定 N=CHIP_WINDOW_TD trading days, 各 parser 自己 slice
     """
     cache_key = f"txo_daily_window_{end_date}_td{CHIP_WINDOW_TD}"
-    if refresh:
-        # F18 修: refresh 同時 invalidate 下游 max_pain/oi_walls/pcr 該 contract+date 的 parse cache
-        invalidate_dependent_parse_caches(end_date, scope="all")
-    return await self._run_once(f"window_{cache_key}", lambda: _fetch_inner(cache_key, end_date))
+    return await self._run_once(
+        f"window_{cache_key}",
+        lambda: _do_fetch_window(cache_key, trading_dates, end_date, refresh),
+    )
 
-async def fetch_max_pain(...):  # 從 window 切 ~100 td (settlement_lookback) + parse
-async def fetch_oi_walls(...):  # 同上 + delta_window
-async def fetch_pcr(...):       # 從 window 切 250 td + parse_history + walk_forward + stats
-async def fetch_institutional(...):  # 獨立 60-td fetch + AfterHours
+async def _do_fetch_window(cache_key: str, dates: list[date], end_date: date, refresh: bool):
+    """I1 修: invalidate 在 dedup 後執行,並只在 cache miss 或 refresh 時做"""
+    cached = _read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
+    if cached and not refresh:
+        return cached["data"]
+    # 真要 refetch 才動下游 cache (避免 thrash on no-op refresh)
+    await _invalidate_dependent_parse_caches(end_date, scope="all")
+    # ... fan-out fetch dates ...
+    _write_cache_v(cache_key, ...)
+
+async def fetch_max_pain(self, contract, end_date, lookback, refresh):
+    """
+    Route 已先 get_trading_days(end_date, CHIP_WINDOW_TD) 並注入 dates.
+    Lookback 已在 route 驗證 ≤ CHIP_WINDOW_TD (N11).
+    """
+async def fetch_oi_walls(...):
+async def fetch_pcr(...):
+async def fetch_institutional(...):  # 獨立路徑,不需 shared window
 ```
 
 **Cache keys + versions**(F21 修補):
@@ -340,7 +404,24 @@ async def fetch_institutional(...):  # 獨立 60-td fetch + AfterHours
 
 **所有上述新 keys 均使用 `_CACHE_VERSION_OPTIONS_CHIP`,既有 keys 不動**(F21)。
 
+**`utils/cache.py` 契約擴充(N12 修)**:
+- 新增 `delete_by_prefix(prefix: str) -> int`(回傳刪除筆數)
+- `_invalidate_dependent_parse_caches(end_date, scope)` 用以下 prefix:
+  - `max_pain_{contract}_{end_date}_` → 涵蓋所有 lookback 變體
+  - `oi_walls_{contract}_{end_date}_` → 涵蓋所有 lookback × delta_window
+  - `pcr_series_{scope}_{contract or 'all'}_{end_date}_` → 跨 lookback
+  - `pcr_classified_{scope}_{contract or 'all'}_{end_date}_` → 跨 lookback × high × low
+- contract 為 `None`(institutional 不分 contract)時 prefix 不含 contract 段
+
 **fetch_strike_volume 不合併**(F20):既有 endpoint 抓 7-day window,本 spec 抓 250-day。MVP1 維持兩條 fetch,標記為 MVP2 評估 merge 候選。
+
+**Cold-load math 重算(v4 C1 修)**:
+- TaiwanOptionDaily: 250 calls(共用 window)
+- TaiwanOptionInstitutionalInvestors(日盤)+ AfterHours(夜盤): 60 × 2 = 120 calls
+- TaiwanFuturesDaily(TX returns, range query): 1 call
+- trading_calendar: 1 call(7-day cache,絕大多數 hit)
+- 合計 cold-start = **372 calls** / 5 req/s = **~74 秒**(不是 v3 寫的 62 秒)
+- **SC-0 probe 同時驗 institutional dataset 是否支援 range query**;若支援 → 兩條合計 2 calls → 252 + 2 + 1 = **255 calls / 5 req/s = ~51 秒**
 
 ### 2.3 Frontend(沿用 v2 + N7 修)
 
@@ -368,15 +449,24 @@ async def fetch_institutional(...):  # 獨立 60-td fetch + AfterHours
 </OptionsPage>
 ```
 
-## 3. Data flow(F18 修)
+## 3. Data flow(F18 + v4 I1 + T2 修)
 
-正常流(沿用 v2)。
+正常流:路由先 `get_trading_days(end_date, CHIP_WINDOW_TD)` → 傳 dates 給 fetch_taiwan_option_daily_window;4 卡片並行;失敗隔離。
 
-**Refresh 流**(F18 修):
-- 單卡 refresh `?refresh=true` → 該 endpoint 內部:
-  - 若是 max_pain / oi_walls / pcr 之一:**同時** invalidate 共用 `txo_daily_window_{end}_td250` cache + 該 endpoint 的 parse cache + 同 contract+date 的 max_pain/oi_walls/pcr 三 parse cache(避免 stale parse on fresh window)
-  - 若是 institutional:只 invalidate institutional cache
-- 實作:`_invalidate_dependent_parse_caches(end_date, scope=...)` 在 `services/finmind.py`,共用 fetch 開始前呼叫
+**Refresh 流(I1 修 — invalidation 在 `_run_once` 內,after dedup)**:
+- 單卡 refresh `?refresh=true`(後端):
+  - 進 `fetch_taiwan_option_daily_window` `_run_once` dedup
+  - 在 dedup 取得 lock 後 inside coroutine:read cache + 若 miss/refresh → 才 `_invalidate_dependent_parse_caches(end_date, scope="all")`(prefix-based, N12)+ 真正 fan-out
+  - 並發 refresh 共享同一個 invalidate-then-fetch task,**不** thrash
+  - cache hit 時(refresh=False)完全不動下游 parse cache
+- Frontend coordination(T2 修):`OptionsChipPanel` 提供 `handleAnyRefresh` callback:當任一卡按 refresh,呼叫:
+  ```typescript
+  queryClient.invalidateQueries({ queryKey: ["options-max-pain", contract, date] });
+  queryClient.invalidateQueries({ queryKey: ["options-oi-walls", contract, date] });
+  queryClient.invalidateQueries({ queryKey: ["options-pcr", contract, date] });
+  // institutional 不在 cascade(資料源獨立)
+  ```
+- Institutional refresh 只 invalidate 自己 cache(無 cascade)
 
 ## 4. 演算法細節(只列 v3 變更)
 
@@ -429,7 +519,8 @@ For each rolling 60-day window ending at t:
   | SC-3 | pcr (float), percentile (0-100), region ("high"|"neutral"|"low"|null), thresholds {high_pct, low_pct} |
   | SC-4 | foreign, dealer, trust 三 dict;session_breakdown |
   | SC-5 | samples, median_abs_deviation_pct, hit_within_1pct, hit_within_2pct, history (≤ 20 entries) |
-  | SC-6 | samples, pct_settled_inside_band, history |
+  | SC-6 | samples, pct_settled_inside_band, avg_band_width_pct, history (≤ 20 entries) |  <!-- v4 F23 補 -->
+
   | SC-7 | high_region, neutral_region, low_region 各 dict(mean_pct, std_pct, hit_positive, samples) |
   | SC-8 | samples, latest_corr, latest_p_value, history, is_significant, feature_transformation |
   | SC-10 | error responses 對應 status + detail.error code |
@@ -438,9 +529,11 @@ For each rolling 60-day window ending at t:
 
 - **Fixture size budget**:每 fixture file ≤ 50 KB;SC-3 PCR 序列只存 `{date, pcr}` 而非 full OI rows;SC-5/6 settlement 紀錄壓縮到必要欄位
 
-- **NoOpBucket 介面定義**(F15/F18 inline):
+- **`backend/tests/conftest.py` 統一管理**(v4 T1 + F22 + F15 修;**新增專案級 conftest**,既有 test 檔的 module-local `_reset_singleton` 必須刪除):
   ```python
-  # backend/tests/conftest.py
+  # backend/tests/conftest.py  (NEW — 整 backend test suite 共用)
+  import pytest
+  
   class NoOpBucket:
       """Test-only no-op token bucket; duck-types services.rate_limiter.TokenBucket."""
       rate: float = float("inf")
@@ -449,15 +542,26 @@ For each rolling 60-day window ending at t:
       async def acquire(self, tokens: int = 1, timeout: float | None = None) -> bool:
           return True
   
-  @pytest.fixture(autouse=False)
+  @pytest.fixture(autouse=True)
+  def _reset_finmind_singleton_and_env(monkeypatch, tmp_path):
+      """T1 修:統一管理。**取代** test_finmind.py / test_finmind_options.py 的 module-local _reset_singleton。
+      
+      F22 修:也 set FINMIND_TOKEN env (FinMindClient.__init__ raises ValueError if empty).
+      F15 修:reset _client = None forces rebuild on next get_finmind()."""
+      monkeypatch.setenv("FINMIND_TOKEN", "test-token")
+      monkeypatch.setenv("CHIP_DATA_DIR", str(tmp_path))
+      import services.finmind as fm
+      monkeypatch.setattr(fm, "_client", None)
+      monkeypatch.setattr(fm, "_fm_limiter", None)
+  
+  @pytest.fixture
   def bypass_finmind_rate_limiter(monkeypatch):
-      """F15 修: patch BEFORE first get_finmind() + reset _client. 
-         FinMindClient.__init__ binds self._limiter at construction; replacing
-         module-level _fm_limiter post-construction is no-op."""
+      """Opt-in:在 _reset_finmind_singleton_and_env 之上,把 limiter 換成 NoOp。"""
       import services.finmind as fm
       monkeypatch.setattr(fm, "get_finmind_rate_limiter", lambda: NoOpBucket())
-      monkeypatch.setattr(fm, "_client", None)  # force rebuild on next get_finmind()
+      monkeypatch.setattr(fm, "_client", None)
   ```
+  **遷移步驟**:在實作前先刪除既有 `test_finmind.py` / `test_finmind_options.py` 內的 module-local `_reset_singleton` autouse fixture(避免和 conftest 衝突)
 
 ### 6.1 Backend tests
 
@@ -483,6 +587,8 @@ For each rolling 60-day window ending at t:
     - `test_fetch_max_pain_refresh_invalidates_shared_window_cache`(F18)
     - `test_fetch_oi_walls_refresh_invalidates_shared_window_cache`(F18)
     - `test_fetch_pcr_refresh_invalidates_shared_window_cache`(F18)
+    - `test_refresh_invalidates_dependent_pcr_keys_across_threshold_variants`(v4 N12)
+    - `test_refresh_invalidation_is_inside_run_once_not_before`(v4 I1: 並發 refresh 不 thrash)
 
 - Route tests(`tests/test_options_routes.py`):
   - 4 endpoint happy + 502 propagate + no_trading_day + insufficient_data
@@ -530,6 +636,9 @@ For each rolling 60-day window ending at t:
 - **R8** (新):NoOpBucket 必須在 `get_finmind()` 之前 patch + reset `_client`,否則無效;**conftest fixture pattern** 必須**所有** integration test 採用
 - **R9** (新):TaiwanFuturesDaily publication lag → `get_trading_days` 回最近**已發布**日;若週五尾盤跑 hit rate,可能少 1 天
 - **R10** (新):Correlation `feature_transformation` 預設 `raw_flow`,**SC-0 probe 後確認**是否 daily flow 或 cumulative position;確認後 lock。若是後者改 `first_difference`
+- **R11** (v4 新):User-supplied lookback 必須在 route 層驗證 ≤ CHIP_WINDOW_TD,否則 400(N11)
+- **R12** (v4 新):`utils/cache.py` 必須加 `delete_by_prefix`;invalidation cascade 必須是 pattern-based(N12)
+- **R13** (v4 新):`services/trading_calendar.py` 自帶 httpx,**不**透過 `FinMindClient`(I2,避免循環 import);如未來想統一,需先解耦兩者
 
 ## 9. 跨檔契約(v3 補)
 - 既有:`detail.error` / `no_trading_day` flag / `?refresh=true` / Contract ID flat / Bull=紅 Bear=綠
