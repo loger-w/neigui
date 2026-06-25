@@ -1,7 +1,6 @@
 """Tests for backend.utils.cache.delete_by_prefix (SC-0 / R12 support)."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from utils.cache import atomic_write_json, chip_cache_dir, delete_by_prefix

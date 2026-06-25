@@ -607,7 +607,6 @@ class FinMindClient:
 
         Returns: ``{date_iso: rows}`` mapping.
         """
-        from services.finmind_options import _CACHE_VERSION_OPTIONS_CHIP
         cache_key = f"txo_daily_window_{end_date.isoformat()}_td{len(trading_dates)}"
 
         return await self._run_once(
@@ -652,7 +651,6 @@ class FinMindClient:
 
     def _invalidate_chip_parse_caches(self, end_date: date) -> None:
         """N12: pattern-based invalidation across all lookback/threshold variants."""
-        from utils.cache import delete_by_prefix
         end_iso = end_date.isoformat()
         # Order matters not — these are independent endpoints
         for prefix_template in [
