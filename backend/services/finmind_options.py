@@ -746,3 +746,171 @@ def parse_oi_walls_hit_rate(
         "history": history,
         "latest_settlement_pending": latest_settlement_pending,
     }
+
+
+# ============================================================================
+# SC-3 / SC-7: PCR walk-forward + next-day TX return stats (design v4 §4.3/4.4)
+# ============================================================================
+
+
+def _aggregate_pcr_for_day(
+    rows: list[dict], scope: str, contract_date: str | None,
+    option_id: str = "TXO",
+) -> float | None:
+    """Compute PCR for one day's rows under the given scope."""
+    call_oi = 0
+    put_oi = 0
+    for row in rows:
+        if row.get("option_id") != option_id:
+            continue
+        if scope == "per_contract" and str(row.get("contract_date", "")) != (contract_date or ""):
+            continue
+        try:
+            oi = int(row.get("open_interest", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if oi <= 0:
+            continue
+        side = row.get("call_put")
+        if side == "call":
+            call_oi += oi
+        elif side == "put":
+            put_oi += oi
+    if call_oi == 0:
+        return None
+    return put_oi / call_oi
+
+
+def parse_pcr_history(
+    rows_by_trading_day: dict[date, list[dict]],
+    scope: str,  # "per_contract" | "all_months"
+    contract_date: str | None,
+    option_id: str = "TXO",
+) -> list[tuple[date, float]]:
+    """Compute per-day PCR series for the lookback window.
+
+    Returns ascending-by-date list of ``(trading_day, pcr_value)`` tuples.
+    Days where total call_oi == 0 (no data) are dropped silently.
+    """
+    out: list[tuple[date, float]] = []
+    for d in sorted(rows_by_trading_day.keys()):
+        pcr = _aggregate_pcr_for_day(
+            rows_by_trading_day[d], scope=scope, contract_date=contract_date,
+            option_id=option_id,
+        )
+        if pcr is not None:
+            out.append((d, pcr))
+    return out
+
+
+def _percentile_strictly_past(past_values: list[float], target: float) -> float:
+    """percentileofscore with kind='mean' on a strictly-past sample."""
+    if not past_values:
+        return 0.0
+    n = len(past_values)
+    below = sum(1 for v in past_values if v < target)
+    equal = sum(1 for v in past_values if v == target)
+    return (below + equal / 2) / n * 100
+
+
+def parse_pcr_walk_forward_percentile(
+    pcr_history: list[tuple[date, float]],
+    high_pct: float = 70.0,
+    low_pct: float = 30.0,
+    min_samples: int = 30,
+) -> tuple[list[tuple[date, float, float, str | None]], list[str]]:
+    """Walk-forward percentile (design v4 §4.3 / F4 / F15).
+
+    For each historical day t:
+        past_window = [pcr_s for s in pcr_history if s < t]  # STRICTLY past
+        if len(past_window) < min_samples: skip (region=None)
+        else: percentile = percentileofscore(past_window, pcr_t, kind="mean")
+              region = "high" if percentile >= high_pct
+                     else "low" if percentile <= low_pct
+                     else "neutral"
+
+    Returns ``(classified_list, warnings)`` where classified_list is
+    ``[(date, pcr, percentile, region_or_None), ...]`` ascending by date.
+
+    Warmup days (skipped) emit ONE consolidated warning string:
+    ``pcr_walk_forward_warmup_skipped_first_{N}_days`` (F14).
+    """
+    classified: list[tuple[date, float, float, str | None]] = []
+    skipped = 0
+    sorted_history = sorted(pcr_history, key=lambda t: t[0])
+    for i, (d, pcr) in enumerate(sorted_history):
+        past = [v for j, (_, v) in enumerate(sorted_history) if j < i]
+        if len(past) < min_samples:
+            classified.append((d, pcr, 0.0, None))
+            skipped += 1
+            continue
+        percentile = _percentile_strictly_past(past, pcr)
+        region = (
+            "high" if percentile >= high_pct
+            else "low" if percentile <= low_pct
+            else "neutral"
+        )
+        classified.append((d, pcr, percentile, region))
+    warnings: list[str] = []
+    if skipped > 0:
+        warnings.append(f"pcr_walk_forward_warmup_skipped_first_{skipped}_days")
+    return classified, warnings
+
+
+def parse_pcr_next_day_stats(
+    classified: list[tuple[date, float, float, str | None]],
+    tx_returns: dict[date, float],
+) -> tuple[dict, list[str]]:
+    """Next-day TX return statistics by region. NO P&L, NO Sharpe (F2-testability).
+
+    Args:
+        classified: output of parse_pcr_walk_forward_percentile.
+        tx_returns: ``{trading_day: next_day_return}`` — caller maps t → return on t+1.
+
+    Returns:
+        ``({high_region, neutral_region, low_region}, warnings)``
+        Each region dict: ``{mean_pct, std_pct, hit_positive, samples}``.
+
+    Warnings:
+        - ``pcr_stats_low_power_{region}`` when region's samples < 30 (N8)
+        - ``next_day_stats_dropped_samples_5pct`` when > 5% of region samples
+          lack a tx_returns entry (N9)
+    """
+    by_region: dict[str, list[tuple[date, float]]] = {"high": [], "neutral": [], "low": []}
+    for d, _, _, region in classified:
+        if region is None:
+            continue
+        by_region[region].append((d, 0.0))  # placeholder; return looked up below
+
+    result: dict = {}
+    warnings: list[str] = []
+    dropped_total = 0
+    candidate_total = 0
+    for region_name in ("high", "neutral", "low"):
+        days = [d for d, _ in by_region[region_name]]
+        candidate_total += len(days)
+        with_return = [tx_returns[d] for d in days if d in tx_returns]
+        dropped = len(days) - len(with_return)
+        dropped_total += dropped
+        samples = len(with_return)
+        if samples == 0:
+            result[f"{region_name}_region"] = {
+                "mean_pct": 0.0, "std_pct": 0.0, "hit_positive": 0.0, "samples": 0,
+            }
+            continue
+        mean_v = sum(with_return) / samples
+        var = sum((v - mean_v) ** 2 for v in with_return) / samples
+        std_v = var ** 0.5
+        hit_pos = sum(1 for v in with_return if v > 0) / samples
+        result[f"{region_name}_region"] = {
+            "mean_pct": mean_v * 100,
+            "std_pct": std_v * 100,
+            "hit_positive": hit_pos,
+            "samples": samples,
+        }
+        if samples < 30:
+            warnings.append(f"pcr_stats_low_power_{region_name}")
+
+    if candidate_total > 0 and (dropped_total / candidate_total) > 0.05:
+        warnings.append("next_day_stats_dropped_samples_5pct")
+    return result, warnings

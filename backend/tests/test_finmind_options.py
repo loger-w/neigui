@@ -1083,14 +1083,19 @@ def test_parse_pcr_next_day_stats_emits_low_power_warning_when_samples_lt_30():
 
 
 def test_parse_pcr_next_day_stats_handles_missing_tx_returns_t_plus_1():
-    """SC-7 / N9: tx_returns missing for t+1 → sample dropped silently
-    (warning emitted if > 5% dropped)."""
+    """SC-7 / N9: tx_returns missing for t (next-day return uncomputable
+    because t+1 TaiwanFuturesDaily row absent) → caller omits the key,
+    parser drops sample silently. Warning if > 5% dropped.
+
+    Convention: caller pre-aligns tx_returns[t] = ret(t → t+1). If t+1 close
+    is missing, caller omits tx_returns[t]. Parser just does dict lookup.
+    """
     from services.finmind_options import parse_pcr_next_day_stats
     classified = [
         (date(2026, 6, 1), 0.7, 75.0, "high"),
-        (date(2026, 6, 2), 0.8, 78.0, "high"),  # t+1 = 06-03 MISSING from tx_returns
+        (date(2026, 6, 2), 0.8, 78.0, "high"),  # tx_returns[06-02] absent
     ]
-    tx_returns = {date(2026, 6, 1): 0.01, date(2026, 6, 2): 0.02}  # 06-03 missing
+    tx_returns = {date(2026, 6, 1): 0.01}  # 06-02 omitted (06-03 close missing)
     result, warnings = parse_pcr_next_day_stats(classified, tx_returns)
     # 1 of 2 samples dropped = 50% > 5% → warning
     assert result["high_region"]["samples"] == 1
