@@ -212,3 +212,106 @@ describe("ChipBrokersPanel F5 — buyers + sellers in separate scrollable halves
     expect(onToggle).toHaveBeenCalledWith("S0");
   });
 });
+
+describe("ChipBrokersPanel — avg buy/sell price caption", () => {
+  const captionBrokers: TopBroker[] = [
+    mkBroker({
+      broker_id: "BUY1", name: "BuyerWithAvg",
+      buy: 100, sell: 0, net: 100,
+      avg_buy_price: 100.5, avg_sell_price: 0,
+    }),
+    mkBroker({
+      broker_id: "BUY2", name: "BuyerBothSides",
+      buy: 80, sell: 20, net: 60,
+      avg_buy_price: 99.25, avg_sell_price: 101.4,
+    }),
+    mkBroker({
+      broker_id: "SELL1", name: "SellerWithAvg",
+      buy: 0, sell: 100, net: -100,
+      avg_buy_price: 0, avg_sell_price: 102.75,
+    }),
+  ];
+
+  it("net mode: buyer row shows @<avg_buy_price> caption with 2 decimals", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(captionBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const buyers = container.querySelector("[data-testid=buyers-scroll]");
+    expect(buyers).toBeTruthy();
+    expect(buyers!.textContent).toContain("@100.50");
+    expect(buyers!.textContent).toContain("@99.25");
+  });
+
+  it("net mode: buyer row WITH non-zero sell shows BOTH @buy + @sell captions", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(captionBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const buyers = container.querySelector("[data-testid=buyers-scroll]");
+    expect(buyers!.textContent).toContain("@99.25");
+    expect(buyers!.textContent).toContain("@101.40");
+  });
+
+  it("net mode: seller row shows @<avg_sell_price> caption", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(captionBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const sellers = container.querySelector("[data-testid=sellers-scroll]");
+    expect(sellers!.textContent).toContain("@102.75");
+  });
+
+  it("buy-only broker: avg_sell_price=0 → caption renders as dash, not @0.00", () => {
+    const onlyBuy = mkBroker({
+      broker_id: "B_ONLY", name: "OnlyBuy",
+      buy: 50, sell: 0, net: 50,
+      avg_buy_price: 100.5, avg_sell_price: 0,
+    });
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary([onlyBuy])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const buyers = container.querySelector("[data-testid=buyers-scroll]");
+    expect(buyers!.textContent).not.toContain("@0.00");
+    // dash for the missing side
+    expect(buyers!.textContent).toMatch(/—/);
+  });
+
+  it("volume mode: both @buy + @sell captions rendered", () => {
+    const { container, getByText } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(captionBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    fireEvent.click(getByText("前 15 大交易量分點"));
+    const vol = container.querySelector("[data-testid=volume-scroll]");
+    expect(vol).toBeTruthy();
+    expect(vol!.textContent).toContain("@99.25");
+    expect(vol!.textContent).toContain("@101.40");
+  });
+});

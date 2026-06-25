@@ -35,6 +35,11 @@ function fmtRate(r: number | null): string {
   return `${Math.round(r * 100)}%`;
 }
 
+function fmtPriceCaption(p: number): string {
+  if (!p || p <= 0) return "—";
+  return `@${p.toFixed(2)}`;
+}
+
 function rateClass(r: number | null): string {
   if (r === null) return "text-[#4a4234]";
   if (r >= 0.8) return "text-[#b794f4]";
@@ -78,13 +83,33 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
           <span className={`text-right tabular-nums font-medium ${netCls}`}>
             {broker.net > 0 ? "+" : ""}{fmtVol(broker.net)}
           </span>
-          <span className="text-right tabular-nums text-accent">{fmtVol(broker.buy)}</span>
-          <span className="text-right tabular-nums text-bear">{fmtVol(broker.sell)}</span>
+          <div className="text-right leading-tight">
+            <div className="tabular-nums text-accent">{fmtVol(broker.buy)}</div>
+            <div className="tabular-nums text-2xs text-ink-dim">
+              {fmtPriceCaption(broker.avg_buy_price)}
+            </div>
+          </div>
+          <div className="text-right leading-tight">
+            <div className="tabular-nums text-bear">{fmtVol(broker.sell)}</div>
+            <div className="tabular-nums text-2xs text-ink-dim">
+              {fmtPriceCaption(broker.avg_sell_price)}
+            </div>
+          </div>
         </>
       ) : (
         <>
-          <span className="text-right tabular-nums text-accent">{fmtVol(broker.buy)}</span>
-          <span className="text-right tabular-nums text-bear">{fmtVol(broker.sell)}</span>
+          <div className="text-right leading-tight">
+            <div className="tabular-nums text-accent">{fmtVol(broker.buy)}</div>
+            <div className="tabular-nums text-2xs text-ink-dim">
+              {fmtPriceCaption(broker.avg_buy_price)}
+            </div>
+          </div>
+          <div className="text-right leading-tight">
+            <div className="tabular-nums text-bear">{fmtVol(broker.sell)}</div>
+            <div className="tabular-nums text-2xs text-ink-dim">
+              {fmtPriceCaption(broker.avg_sell_price)}
+            </div>
+          </div>
           <span className={`text-right tabular-nums font-medium ${rateClass((broker as TopVolumeBroker).daytradeRate)}`}>
             {fmtRate((broker as TopVolumeBroker).daytradeRate)}
           </span>
