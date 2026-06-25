@@ -352,6 +352,80 @@ async def test_fetch_chip_history_refetches_when_stale_and_today(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_fetch_chip_history_serves_stale_cache_when_upstream_fails(tmp_path):
+    """K-line resilience: when the live FinMind fetch raises (token expired,
+    rate-limit, transient outage) AND any cached history exists, return the
+    cached payload with `stale: True` instead of bubbling a 502. Without this
+    the K-line UI goes blank on every FinMind blip even though we have a
+    perfectly good prior day's chart already on disk."""
+    from services.finmind import FinMindClient, _CACHE_VERSION
+    import httpx
+
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    cached_payload = {
+        "_cache_version": _CACHE_VERSION,
+        "symbol": "2330",
+        "fetched_at": "2026-06-25T10:00:00",
+        "last_date": yesterday,
+        "candles": [
+            {"date": yesterday, "open": 1090, "high": 1095, "low": 1085,
+             "close": 1092, "volume": 25000},
+        ],
+        "institutional": [], "margin": [], "major": [],
+    }
+    chip_dir = tmp_path / "cache" / "chip"
+    chip_dir.mkdir(parents=True)
+    (chip_dir / "2330_history.json").write_text(json.dumps(cached_payload))
+
+    # Live fetch fails (the actual production symptom: FinMind returns 400
+    # "Token is illegal" or rate-limits us). Any httpx error qualifies.
+    client = FinMindClient()
+    fail_resp = MagicMock()
+    fail_resp.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "400 Bad Request",
+            request=MagicMock(), response=MagicMock(),
+        )
+    )
+    mc = AsyncMock()
+    mc.get = AsyncMock(return_value=fail_resp)
+    client._http = mc
+
+    r = await client.fetch_chip_history("2330")
+    # Stale cache served, NOT raised — the K-line chart still renders.
+    assert r["stale"] is True
+    assert r["candles"][0]["date"] == yesterday
+    assert r["last_date"] == yesterday
+
+
+@pytest.mark.asyncio
+async def test_fetch_chip_history_raises_when_upstream_fails_and_no_cache(tmp_path):
+    """If FinMind fails AND we have nothing cached, the 502 still bubbles —
+    we genuinely cannot show anything, so the frontend should display the
+    error rather than a misleading empty chart."""
+    from services.finmind import FinMindClient
+    import httpx
+
+    chip_dir = tmp_path / "cache" / "chip"
+    chip_dir.mkdir(parents=True)
+
+    client = FinMindClient()
+    fail_resp = MagicMock()
+    fail_resp.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "400 Bad Request",
+            request=MagicMock(), response=MagicMock(),
+        )
+    )
+    mc = AsyncMock()
+    mc.get = AsyncMock(return_value=fail_resp)
+    client._http = mc
+
+    with pytest.raises(httpx.HTTPError):
+        await client.fetch_chip_history("2330")
+
+
+@pytest.mark.asyncio
 async def test_fetch_chip_history_cache_hit_when_pre_today(tmp_path):
     """Cache with last_date < today is NEVER served regardless of freshness —
     we need the new day's bar. (Same gate as before the TTL fix.)"""

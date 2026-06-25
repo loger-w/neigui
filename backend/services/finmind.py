@@ -214,24 +214,39 @@ class FinMindClient:
         self, symbol: str, refresh: bool = False,
     ) -> dict:
         cache_key = f"{symbol}_history"
-        if not refresh:
-            cached = self._read_cache(cache_key)
-            if cached is not None:
-                last = cached.get("last_date", "")
-                # Bug #2 fix: once last_date == today, the cache was previously
-                # served indefinitely until next-day rollover, so browser F5
-                # (refresh=false) returned the same JSON written hours ago.
-                # Now apply 15-min TTL when cache is from today; pre-today
-                # always falls through and re-fetches the new day's bar.
-                if last >= date.today().isoformat() and not self._is_stale(
-                    cached, max_age_minutes=15,
-                ):
-                    return cached
+        cached = self._read_cache(cache_key) if not refresh else None
+        if cached is not None:
+            last = cached.get("last_date", "")
+            # Bug #2 fix: once last_date == today, the cache was previously
+            # served indefinitely until next-day rollover, so browser F5
+            # (refresh=false) returned the same JSON written hours ago.
+            # Now apply 15-min TTL when cache is from today; pre-today
+            # always falls through and re-fetches the new day's bar.
+            if last >= date.today().isoformat() and not self._is_stale(
+                cached, max_age_minutes=15,
+            ):
+                return cached
 
-        return await self._run_once(
-            f"history_{cache_key}",
-            lambda: self._do_fetch_history(symbol, cache_key),
-        )
+        try:
+            return await self._run_once(
+                f"history_{cache_key}",
+                lambda: self._do_fetch_history(symbol, cache_key),
+            )
+        except httpx.HTTPError as exc:
+            # K-line resilience: when FinMind is unreachable (token expired,
+            # rate-limit, transient outage) and we have any cached history,
+            # serve it stale rather than 502 the whole chart. The frontend
+            # can render a "資料較舊" indicator off the `stale: True` flag.
+            # Without this fallback every FinMind blip nuked the K-line even
+            # though a perfectly serviceable prior payload was on disk.
+            if cached is not None:
+                logger.warning(
+                    "fetch_chip_history: live fetch failed (%s), serving "
+                    "stale cache (last_date=%s)",
+                    exc, cached.get("last_date", ""),
+                )
+                return {**cached, "stale": True}
+            raise
 
     async def _do_fetch_history(self, symbol: str, cache_key: str) -> dict:
         end = date.today()
