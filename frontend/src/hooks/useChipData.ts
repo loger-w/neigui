@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { ChipHistory, ChipSummary } from "../lib/chip-data";
 
@@ -11,8 +11,9 @@ import type { ChipHistory, ChipSummary } from "../lib/chip-data";
  * - history: keyed by symbol only  — refetches on symbol change only
  *
  * Date-only changes therefore re-fetch only the summary; the K-line stays
- * visible. `placeholderData: keepPreviousData` on the summary query keeps
- * the prior summary on screen while the new one loads (no null flash).
+ * visible. `placeholderData` keeps the prior summary on screen while the
+ * new one loads — BUT only when the symbol is the same; on symbol pivot
+ * we clear, so the panel never flashes the previous symbol's brokers.
  *
  * `loading` remains the OR of both isFetching flags for back-compat with
  * the header "重新整理" button.
@@ -29,7 +30,7 @@ export function useChipData(symbol: string, date: string) {
       return api.chip(symbol, date, force);
     },
     enabled: symbol !== "",
-    placeholderData: keepPreviousData,
+    placeholderData: (prev) => (prev?.symbol === symbol ? prev : undefined),
   });
 
   const historyQ = useQuery<ChipHistory, Error>({

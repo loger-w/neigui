@@ -676,9 +676,17 @@ def parse_oi_walls_hit_rate(
     oi_by_trading_day: dict[date, list[dict]],
     settlements: dict[date, dict],
     *,
+    closes_by_date: dict[date, float] | None = None,
     option_id: str = "TXO",
 ) -> dict:
     """Settlement-day hit rate using **T-1 day's** OI walls (design v4 §4 / F3).
+
+    ``closes_by_date`` maps trading_date → TX close. When provided, the wall
+    tie-break uses T-1's close as the spot anchor — strictly no look-ahead.
+    When omitted, falls back to anchor=0.0 (deterministic: picks lowest-strike
+    of tied candidates). The previous behaviour of using the settlement-day
+    price for the T-1 tie-break is removed because it leaks T-day information
+    into a T-1 selection (design v4 §4 / F3 forbids look-ahead).
 
     Returns:
         ``{samples, pct_settled_inside_band, avg_band_width_pct,
@@ -713,8 +721,11 @@ def parse_oi_walls_hit_rate(
         call_oi, put_oi = _per_side_oi(
             oi_by_trading_day[t_minus_1], contract_date, option_id,
         )
-        call_wall = _pick_static_wall(call_oi, spot=float(price))
-        put_wall = _pick_static_wall(put_oi, spot=float(price))
+        anchor = (
+            float(closes_by_date.get(t_minus_1, 0.0)) if closes_by_date else 0.0
+        )
+        call_wall = _pick_static_wall(call_oi, spot=anchor)
+        put_wall = _pick_static_wall(put_oi, spot=anchor)
         if not call_wall or not put_wall:
             continue
         put_w = float(put_wall["strike"])

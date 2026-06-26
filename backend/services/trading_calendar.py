@@ -25,7 +25,10 @@ from utils.trading_calendar_helpers import count_back_trading_days
 
 _CACHE_KEY = "tx_trading_days_cache"
 _CACHE_VERSION = 1  # bump if cache schema changes
-_CACHE_TTL_SECONDS = 7 * 24 * 3600  # calendar moves slowly
+_CACHE_TTL_SECONDS = 12 * 3600  # half-day: covers morning + afternoon openings;
+# was 7 days but the cache stores the dates-list-as-of-fetch, so a week-old
+# cache returns dates ending up to 6 days ago → all downstream window fetches
+# silently skip recent trading days (data quality bug).
 _BACKFILL_DAYS = 400  # fetch ~1 trading year + headroom
 
 

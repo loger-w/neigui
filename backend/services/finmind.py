@@ -122,7 +122,10 @@ class FinMindClient:
     # -- chip summary -------------------------------------------------------
 
     async def fetch_chip_summary(
-        self, symbol: str, date_str: str, refresh: bool = False,
+        self,
+        symbol: str,
+        date_str: str,
+        refresh: bool = False,
     ) -> dict:
         cache_key = f"{symbol}_{date_str}"
         if not refresh:
@@ -137,18 +140,29 @@ class FinMindClient:
         )
 
     async def _do_fetch_summary(
-        self, symbol: str, date_str: str, cache_key: str,
+        self,
+        symbol: str,
+        date_str: str,
+        cache_key: str,
     ) -> dict:
         inst_raw, margin_raw, broker_raw = await asyncio.gather(
             self._get(
                 f"{_FINMIND_BASE}/data",
-                {"dataset": "TaiwanStockInstitutionalInvestorsBuySellWide",
-                 "data_id": symbol, "start_date": date_str, "end_date": date_str},
+                {
+                    "dataset": "TaiwanStockInstitutionalInvestorsBuySellWide",
+                    "data_id": symbol,
+                    "start_date": date_str,
+                    "end_date": date_str,
+                },
             ),
             self._get(
                 f"{_FINMIND_BASE}/data",
-                {"dataset": "TaiwanStockMarginPurchaseShortSale",
-                 "data_id": symbol, "start_date": date_str, "end_date": date_str},
+                {
+                    "dataset": "TaiwanStockMarginPurchaseShortSale",
+                    "data_id": symbol,
+                    "start_date": date_str,
+                    "end_date": date_str,
+                },
             ),
             self._get(
                 f"{_FINMIND_BASE}/taiwan_stock_trading_daily_report",
@@ -169,7 +183,10 @@ class FinMindClient:
     # -- bubble -------------------------------------------------------------
 
     async def fetch_chip_bubble(
-        self, symbol: str, date_str: str, refresh: bool = False,
+        self,
+        symbol: str,
+        date_str: str,
+        refresh: bool = False,
     ) -> dict:
         cache_key = f"{symbol}_{date_str}_bubble"
         if not refresh:
@@ -184,7 +201,10 @@ class FinMindClient:
         )
 
     async def _do_fetch_bubble(
-        self, symbol: str, date_str: str, cache_key: str,
+        self,
+        symbol: str,
+        date_str: str,
+        cache_key: str,
     ) -> dict:
         raw = await self._get(
             f"{_FINMIND_BASE}/taiwan_stock_trading_daily_report",
@@ -217,7 +237,10 @@ class FinMindClient:
         return f"{symbol}_history" if days == 90 else f"{symbol}_history_{days}d"
 
     async def fetch_chip_history(
-        self, symbol: str, refresh: bool = False, days: int = 90,
+        self,
+        symbol: str,
+        refresh: bool = False,
+        days: int = 90,
     ) -> dict:
         cache_key = self._history_cache_key(symbol, days)
         cached = self._read_cache(cache_key) if not refresh else None
@@ -229,7 +252,8 @@ class FinMindClient:
             # Now apply 15-min TTL when cache is from today; pre-today
             # always falls through and re-fetches the new day's bar.
             if last >= date.today().isoformat() and not self._is_stale(
-                cached, max_age_minutes=15,
+                cached,
+                max_age_minutes=15,
             ):
                 return cached
 
@@ -249,13 +273,17 @@ class FinMindClient:
                 logger.warning(
                     "fetch_chip_history: live fetch failed (%s), serving "
                     "stale cache (last_date=%s)",
-                    exc, cached.get("last_date", ""),
+                    exc,
+                    cached.get("last_date", ""),
                 )
                 return {**cached, "stale": True}
             raise
 
     async def _do_fetch_history(
-        self, symbol: str, cache_key: str, days: int = 90,
+        self,
+        symbol: str,
+        cache_key: str,
+        days: int = 90,
     ) -> dict:
         end = date.today()
         start = end - timedelta(days=days)
@@ -264,18 +292,25 @@ class FinMindClient:
         candles_raw, inst_raw, margin_raw = await asyncio.gather(
             self._get(
                 f"{_FINMIND_BASE}/data",
-                {"dataset": "TaiwanStockPrice",
-                 "data_id": symbol, "start_date": s, "end_date": e},
+                {"dataset": "TaiwanStockPrice", "data_id": symbol, "start_date": s, "end_date": e},
             ),
             self._get(
                 f"{_FINMIND_BASE}/data",
-                {"dataset": "TaiwanStockInstitutionalInvestorsBuySellWide",
-                 "data_id": symbol, "start_date": s, "end_date": e},
+                {
+                    "dataset": "TaiwanStockInstitutionalInvestorsBuySellWide",
+                    "data_id": symbol,
+                    "start_date": s,
+                    "end_date": e,
+                },
             ),
             self._get(
                 f"{_FINMIND_BASE}/data",
-                {"dataset": "TaiwanStockMarginPurchaseShortSale",
-                 "data_id": symbol, "start_date": s, "end_date": e},
+                {
+                    "dataset": "TaiwanStockMarginPurchaseShortSale",
+                    "data_id": symbol,
+                    "start_date": s,
+                    "end_date": e,
+                },
             ),
         )
 
@@ -311,7 +346,11 @@ class FinMindClient:
         return result
 
     async def _safe_get_secid_agg(
-        self, symbol: str, start: str, end: str, trader_id: str,
+        self,
+        symbol: str,
+        start: str,
+        end: str,
+        trader_id: str,
     ) -> list:
         """FinMind's SecIdAgg endpoint REQUIRES `securities_trader_id`. Returns
         [] on any HTTP/network/parse failure (the caller treats missing rows
@@ -320,12 +359,19 @@ class FinMindClient:
         try:
             return await self._get(
                 f"{_FINMIND_BASE}/taiwan_stock_trading_daily_report_secid_agg",
-                {"data_id": symbol, "start_date": start, "end_date": end,
-                 "securities_trader_id": trader_id},
+                {
+                    "data_id": symbol,
+                    "start_date": start,
+                    "end_date": end,
+                    "securities_trader_id": trader_id,
+                },
             )
         except Exception as exc:
             logger.warning(
-                "SecIdAgg fetch failed for %s/%s: %s", symbol, trader_id, exc,
+                "SecIdAgg fetch failed for %s/%s: %s",
+                symbol,
+                trader_id,
+                exc,
             )
             return []
 
@@ -333,14 +379,14 @@ class FinMindClient:
 
     @staticmethod
     def _broker_history_cache_key(symbol: str, days: int) -> str:
-        return (
-            f"{symbol}_broker_history"
-            if days == 90
-            else f"{symbol}_broker_history_{days}d"
-        )
+        return f"{symbol}_broker_history" if days == 90 else f"{symbol}_broker_history_{days}d"
 
     async def fetch_broker_history(
-        self, symbol: str, ids: list[str], refresh: bool = False, days: int = 90,
+        self,
+        symbol: str,
+        ids: list[str],
+        refresh: bool = False,
+        days: int = 90,
     ) -> dict:
         """`ids` are broker_ids (FinMind `securities_trader_id`) — same values
         the frontend already receives in `top_brokers[].broker_id`. The cache
@@ -373,10 +419,16 @@ class FinMindClient:
         return all(bid in brokers for bid in ids)
 
     async def _do_fetch_broker_history(
-        self, symbol: str, cache_key: str, ids: list[str], days: int = 90,
+        self,
+        symbol: str,
+        cache_key: str,
+        ids: list[str],
+        days: int = 90,
     ) -> dict:
         existing = self._read_cache(cache_key) or {
-            "symbol": symbol, "fetched_at": "", "last_date": "",
+            "symbol": symbol,
+            "fetched_at": "",
+            "last_date": "",
             "brokers": {},
         }
         existing_brokers: dict[str, list] = dict(existing.get("brokers", {}))
@@ -421,7 +473,10 @@ class FinMindClient:
     # -- options: large traders OI ----------------------------------------
 
     async def fetch_oi_large_traders(
-        self, contract: dict, date_str: str, refresh: bool = False,
+        self,
+        contract: dict,
+        date_str: str,
+        refresh: bool = False,
     ) -> dict:
         """Fetch TaiwanOptionOpenInterestLargeTraders for the given contract,
         return both today's snapshot + 20 trading-day net series.
@@ -446,7 +501,10 @@ class FinMindClient:
         )
 
     async def _do_fetch_oi_large_traders(
-        self, contract: dict, date_str: str, cache_key: str,
+        self,
+        contract: dict,
+        date_str: str,
+        cache_key: str,
     ) -> dict:
         from services.finmind_options import (
             _CACHE_VERSION_OPTIONS,
@@ -466,13 +524,17 @@ class FinMindClient:
             try:
                 return await self._get(
                     f"{_FINMIND_BASE}/data",
-                    {"dataset": "TaiwanOptionOpenInterestLargeTraders",
-                     "start_date": d.isoformat(),
-                     "end_date": d.isoformat()},
+                    {
+                        "dataset": "TaiwanOptionOpenInterestLargeTraders",
+                        "start_date": d.isoformat(),
+                        "end_date": d.isoformat(),
+                    },
                 )
             except Exception as exc:
                 logger.warning(
-                    "OI-LT single-date fetch failed for %s: %s", d, exc,
+                    "OI-LT single-date fetch failed for %s: %s",
+                    d,
+                    exc,
                 )
                 return []
 
@@ -498,7 +560,10 @@ class FinMindClient:
     # -- options: strike volume + OI change ------------------------------
 
     async def fetch_strike_volume(
-        self, contract: dict, date_str: str, refresh: bool = False,
+        self,
+        contract: dict,
+        date_str: str,
+        refresh: bool = False,
     ) -> dict:
         """Fetch TaiwanOptionDaily for the given contract, return ALL volume>0
         strikes sorted asc per side + OI change vs previous trading day.
@@ -523,7 +588,10 @@ class FinMindClient:
         )
 
     async def _do_fetch_strike_volume(
-        self, contract: dict, date_str: str, cache_key: str,
+        self,
+        contract: dict,
+        date_str: str,
+        cache_key: str,
     ) -> dict:
         from services.finmind_options import (
             _CACHE_VERSION_OPTIONS,
@@ -534,12 +602,16 @@ class FinMindClient:
         start = end - timedelta(days=7)
         raw = await self._get(
             f"{_FINMIND_BASE}/data",
-            {"dataset": "TaiwanOptionDaily",
-             "data_id": contract["option_id"],
-             "start_date": start.isoformat(), "end_date": end.isoformat()},
+            {
+                "dataset": "TaiwanOptionDaily",
+                "data_id": contract["option_id"],
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+            },
         )
         parsed = parse_strike_volume(
-            raw, contract["contract_date"],
+            raw,
+            contract["contract_date"],
             option_id=contract["option_id"],
         )
         result = {
@@ -555,6 +627,7 @@ class FinMindClient:
 
     async def fetch_spot(self, date_str: str, refresh: bool = False) -> dict:
         from services.finmind_options import _CACHE_VERSION_OPTIONS
+
         data_id = "TX"  # Phase 0b: only TX returned data; TXFCONT/TXF empty
         cache_key = f"{data_id}_{date_str}_spot"
         if not refresh:
@@ -568,18 +641,26 @@ class FinMindClient:
         )
 
     async def _do_fetch_spot(
-        self, date_str: str, data_id: str, cache_key: str,
+        self,
+        date_str: str,
+        data_id: str,
+        cache_key: str,
     ) -> dict:
         from services.finmind_options import (
-            _CACHE_VERSION_OPTIONS, parse_spot,
+            _CACHE_VERSION_OPTIONS,
+            parse_spot,
         )
+
         end = date.fromisoformat(date_str)
         start = end - timedelta(days=7)
         raw = await self._get(
             f"{_FINMIND_BASE}/data",
-            {"dataset": "TaiwanFuturesDaily",
-             "data_id": data_id,
-             "start_date": start.isoformat(), "end_date": end.isoformat()},
+            {
+                "dataset": "TaiwanFuturesDaily",
+                "data_id": data_id,
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+            },
         )
         parsed = parse_spot(raw)
         result = {
@@ -595,7 +676,10 @@ class FinMindClient:
     # ------------------------------------------------------------------
 
     async def fetch_taiwan_option_daily_window(
-        self, trading_dates: list[date], end_date: date, refresh: bool = False,
+        self,
+        trading_dates: list[date],
+        end_date: date,
+        refresh: bool = False,
     ) -> dict[str, list[dict]]:
         """Shared 250-trading-day window fetch (design v4 §2.2 / I1, I2, F17).
 
@@ -609,31 +693,48 @@ class FinMindClient:
         """
         cache_key = f"txo_daily_window_{end_date.isoformat()}_td{len(trading_dates)}"
 
+        # Include `refresh` in the dedup key so a concurrent refresh=True call
+        # does NOT piggy-back on an in-flight refresh=False coroutine (which
+        # would silently skip cache invalidation + serve stale data).
         return await self._run_once(
-            f"window_{cache_key}",
+            f"window_{cache_key}_r{int(refresh)}",
             lambda: self._do_fetch_window(trading_dates, end_date, cache_key, refresh),
         )
 
     async def _do_fetch_window(
-        self, trading_dates: list[date], end_date: date,
-        cache_key: str, refresh: bool,
+        self,
+        trading_dates: list[date],
+        end_date: date,
+        cache_key: str,
+        refresh: bool,
     ) -> dict[str, list[dict]]:
         from services.finmind_options import _CACHE_VERSION_OPTIONS_CHIP
+
         # Inside _run_once after dedup (I1): only invalidate when we actually refetch
         if not refresh:
             cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
             if cached is not None and "by_date" in cached:
-                return cached["by_date"]
+                # Today's window must respect the 30-min stale window — otherwise
+                # one morning fetch sticks for the whole trading session.
+                if end_date != date.today() or not self._is_stale(cached):
+                    return cached["by_date"]
         # refresh or cache miss → invalidate downstream parse caches then fetch
         if refresh:
             self._invalidate_chip_parse_caches(end_date)
         # Fan out per-day fetches (token bucket serialises through shared limiter)
         results = await asyncio.gather(
-            *[self._get(
-                f"{_FINMIND_BASE}/data",
-                {"dataset": "TaiwanOptionDaily", "data_id": "TXO",
-                 "start_date": d.isoformat(), "end_date": d.isoformat()},
-            ) for d in trading_dates],
+            *[
+                self._get(
+                    f"{_FINMIND_BASE}/data",
+                    {
+                        "dataset": "TaiwanOptionDaily",
+                        "data_id": "TXO",
+                        "start_date": d.isoformat(),
+                        "end_date": d.isoformat(),
+                    },
+                )
+                for d in trading_dates
+            ],
             return_exceptions=True,
         )
         by_date: dict[str, list[dict]] = {}
@@ -650,7 +751,10 @@ class FinMindClient:
         return by_date
 
     async def fetch_settlement_history(
-        self, end_date: date, lookback_days: int = 540,
+        self,
+        end_date: date,
+        lookback_days: int = 540,
+        refresh: bool = False,
     ) -> dict[date, dict]:
         """Fetch ``TaiwanOptionFinalSettlementPrice`` for the last
         ``lookback_days`` calendar days and return
@@ -658,30 +762,36 @@ class FinMindClient:
 
         ``lookback_days`` defaults to 540 (~18 months) so 20 settled
         contracts comfortably fit (monthly settlements span ~14 months).
-        Uses a 30-min cache; settlement data is finalised once published.
+        Uses a 30-min cache when end_date is today (settlement publishes
+        intraday during the closing window); served unconditionally otherwise.
         """
         from services.finmind_options import _CACHE_VERSION_OPTIONS_CHIP
+
         cache_key = f"settlement_history_{end_date.isoformat()}_lb{lookback_days}"
-        cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
-        if cached is not None and "by_date" in cached:
-            return {
-                date.fromisoformat(d): info
-                for d, info in cached["by_date"].items()
-            }
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
+            if cached is not None and "by_date" in cached:
+                if end_date != date.today() or not self._is_stale(cached):
+                    return {date.fromisoformat(d): info for d, info in cached["by_date"].items()}
         start = end_date - timedelta(days=lookback_days)
         rows = await self._get(
             f"{_FINMIND_BASE}/data",
-            {"dataset": "TaiwanOptionFinalSettlementPrice",
-             "data_id": "TXO", "start_date": start.isoformat(),
-             "end_date": end_date.isoformat()},
+            {
+                "dataset": "TaiwanOptionFinalSettlementPrice",
+                "data_id": "TXO",
+                "start_date": start.isoformat(),
+                "end_date": end_date.isoformat(),
+            },
         )
         by_date: dict[str, dict] = {}
         for row in rows:
             d_str = row.get("date") or row.get("settlement_date")
             cd = row.get("contract_date") or row.get("contract_type")
             try:
-                price = float(row.get("final_settlement_price")
-                              or row.get("settlement_price") or 0) or None
+                price = (
+                    float(row.get("final_settlement_price") or row.get("settlement_price") or 0)
+                    or None
+                )
             except (TypeError, ValueError):
                 price = None
             if d_str and cd:
@@ -691,36 +801,43 @@ class FinMindClient:
             "fetched_at": datetime.now().isoformat(timespec="seconds"),
         }
         self._write_cache_v(cache_key, payload, _CACHE_VERSION_OPTIONS_CHIP)
-        return {
-            date.fromisoformat(d): info for d, info in by_date.items()
-        }
+        return {date.fromisoformat(d): info for d, info in by_date.items()}
 
     async def fetch_tx_close_history(
-        self, end_date: date, lookback_days: int = 400,
+        self,
+        end_date: date,
+        lookback_days: int = 400,
+        refresh: bool = False,
     ) -> dict[date, float]:
         """Fetch ``TaiwanFuturesDaily`` TX close prices for the last
         ``lookback_days`` calendar days. Returns ``{trading_date: close}``.
 
-        Cached 30 min. Used to compute next-day returns for PCR stats and
-        foreign-correlation regressions.
+        Cached 30 min when end_date is today (close publishes at end-of-day);
+        served unconditionally for past dates. Used to compute next-day returns
+        for PCR stats, foreign-correlation regressions, and the OI-wall
+        hit-rate T-1 spot anchor.
         """
         from services.finmind_options import _CACHE_VERSION_OPTIONS_CHIP
+
         cache_key = f"tx_close_history_{end_date.isoformat()}_lb{lookback_days}"
-        cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
-        if cached is not None and "by_date" in cached:
-            return {
-                date.fromisoformat(d): float(v)
-                for d, v in cached["by_date"].items()
-            }
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
+            if cached is not None and "by_date" in cached:
+                if end_date != date.today() or not self._is_stale(cached):
+                    return {date.fromisoformat(d): float(v) for d, v in cached["by_date"].items()}
         start = end_date - timedelta(days=lookback_days)
         rows = await self._get(
             f"{_FINMIND_BASE}/data",
-            {"dataset": "TaiwanFuturesDaily", "data_id": "TX",
-             "start_date": start.isoformat(),
-             "end_date": end_date.isoformat()},
+            {
+                "dataset": "TaiwanFuturesDaily",
+                "data_id": "TX",
+                "start_date": start.isoformat(),
+                "end_date": end_date.isoformat(),
+            },
         )
         # Day-session, single-month contract only (matches existing parse_spot)
         import re as _re
+
         _PURE_YYYYMM = _re.compile(r"^\d{6}$")
         by_date: dict[str, float] = {}
         front_cd: dict[str, str] = {}
@@ -768,6 +885,7 @@ class FinMindClient:
         {max_pain_, oi_walls_, pcr_classified_} (pcr_series_ never used).
         """
         from utils.cache import chip_cache_dir
+
         end_iso = end_date.isoformat()
         endpoint_prefixes = ("max_pain_", "oi_walls_", "pcr_classified_")
         for p in chip_cache_dir().iterdir():
@@ -780,7 +898,10 @@ class FinMindClient:
                 p.unlink()
 
     async def fetch_max_pain(
-        self, contract: dict, date_str: str, lookback: int = 20,
+        self,
+        contract: dict,
+        date_str: str,
+        lookback: int = 20,
         refresh: bool = False,
     ) -> dict:
         """SC-1/SC-5 chip endpoint. design v4 §2.1.
@@ -792,7 +913,8 @@ class FinMindClient:
         """
         from services.finmind_options import (
             _CACHE_VERSION_OPTIONS_CHIP,
-            parse_max_pain, parse_max_pain_hit_rate,
+            parse_max_pain,
+            parse_max_pain_hit_rate,
         )
         from services.trading_calendar import get_trading_days
 
@@ -802,40 +924,48 @@ class FinMindClient:
         if not refresh:
             cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
             if cached is not None:
-                return cached
+                # Today's payload must respect the 30-min stale window.
+                if not self._is_today(date_str) or not self._is_stale(cached):
+                    return cached
 
         # 250-td shared window for chip endpoints
         end = date.fromisoformat(date_str)
         trading_dates = await get_trading_days(end, n=250)
         by_date_iso = await self.fetch_taiwan_option_daily_window(
-            sorted(trading_dates), end_date=end, refresh=refresh,
+            sorted(trading_dates),
+            end_date=end,
+            refresh=refresh,
         )
 
         # F7 修: today_rows + as_of_date 都用 non-empty 日 (empty day = publication lag)
-        non_empty_dates = sorted(d for d, rows in by_date_iso.items() if any(r.get("open_interest", 0) > 0 for r in rows))
+        non_empty_dates = sorted(
+            d for d, rows in by_date_iso.items() if any(r.get("open_interest", 0) > 0 for r in rows)
+        )
         # Today's rows are the day's value ONLY if any of them has OI > 0;
         # otherwise (e.g. morning of trading day where only night-session
         # rows are published and all carry OI=0) fall back to the latest
         # date that actually has OI.
         candidate_today = by_date_iso.get(date_str) or []
         today_has_oi = any(r.get("open_interest", 0) > 0 for r in candidate_today)
-        today_rows = candidate_today if today_has_oi else (
-            by_date_iso[non_empty_dates[-1]] if non_empty_dates else []
+        today_rows = (
+            candidate_today
+            if today_has_oi
+            else (by_date_iso[non_empty_dates[-1]] if non_empty_dates else [])
         )
         current_mp = parse_max_pain(today_rows, contract["contract_date"])
 
         oi_by_trading_day: dict[date, list[dict]] = {
-            date.fromisoformat(d_iso): rows
-            for d_iso, rows in by_date_iso.items() if rows
+            date.fromisoformat(d_iso): rows for d_iso, rows in by_date_iso.items() if rows
         }
         # Wire settlement prices for hit_rate (CHECKPOINT follow-up done)
-        settlements_all = await self.fetch_settlement_history(end)
+        settlements_all = await self.fetch_settlement_history(end, refresh=refresh)
         # Limit to most recent `lookback` settlements
-        recent_settlements = dict(
-            sorted(settlements_all.items())[-lookback:]
-        ) if settlements_all else {}
+        recent_settlements = (
+            dict(sorted(settlements_all.items())[-lookback:]) if settlements_all else {}
+        )
         hit_rate = parse_max_pain_hit_rate(
-            oi_by_trading_day=oi_by_trading_day, settlements=recent_settlements,
+            oi_by_trading_day=oi_by_trading_day,
+            settlements=recent_settlements,
         )
 
         result = {
@@ -849,19 +979,26 @@ class FinMindClient:
             "data_quality_warnings": [],
             "insufficient_data": (
                 {"reason": "no_settlements_fetched_in_mvp", "required_days": 0}
-                if hit_rate["samples"] == 0 else None
+                if hit_rate["samples"] == 0
+                else None
             ),
         }
         self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS_CHIP)
         return result
 
     async def fetch_oi_walls(
-        self, contract: dict, date_str: str, lookback: int = 20,
-        delta_window: int = 5, refresh: bool = False,
+        self,
+        contract: dict,
+        date_str: str,
+        lookback: int = 20,
+        delta_window: int = 5,
+        refresh: bool = False,
     ) -> dict:
         """SC-2/SC-6 (design v4 §2.1)."""
         from services.finmind_options import (
-            _CACHE_VERSION_OPTIONS_CHIP, parse_oi_walls, parse_oi_walls_hit_rate,
+            _CACHE_VERSION_OPTIONS_CHIP,
+            parse_oi_walls,
+            parse_oi_walls_hit_rate,
         )
         from services.trading_calendar import get_trading_days
 
@@ -870,28 +1007,39 @@ class FinMindClient:
         if not refresh:
             cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
             if cached is not None:
-                return cached
+                if not self._is_today(date_str) or not self._is_stale(cached):
+                    return cached
 
         end = date.fromisoformat(date_str)
         trading_dates = await get_trading_days(end, n=250)
         by_date_iso = await self.fetch_taiwan_option_daily_window(
-            sorted(trading_dates), end_date=end, refresh=refresh,
+            sorted(trading_dates),
+            end_date=end,
+            refresh=refresh,
         )
 
         # F7 修: as_of_date / fallback today_rows 都用 non-empty 日 (避免空日蒙混)
-        non_empty_dates = sorted(d for d, rows in by_date_iso.items() if any(r.get("open_interest", 0) > 0 for r in rows))
+        non_empty_dates = sorted(
+            d for d, rows in by_date_iso.items() if any(r.get("open_interest", 0) > 0 for r in rows)
+        )
         # Today's rows are the day's value ONLY if any of them has OI > 0;
         # otherwise (e.g. morning of trading day where only night-session
         # rows are published and all carry OI=0) fall back to the latest
         # date that actually has OI.
         candidate_today = by_date_iso.get(date_str) or []
         today_has_oi = any(r.get("open_interest", 0) > 0 for r in candidate_today)
-        today_rows = candidate_today if today_has_oi else (
-            by_date_iso[non_empty_dates[-1]] if non_empty_dates else []
+        today_rows = (
+            candidate_today
+            if today_has_oi
+            else (by_date_iso[non_empty_dates[-1]] if non_empty_dates else [])
         )
 
         # past delta_window trading days for the dynamic wall
-        delta_days = non_empty_dates[-(delta_window + 1):-1] if len(non_empty_dates) > delta_window else non_empty_dates[:-1]
+        delta_days = (
+            non_empty_dates[-(delta_window + 1) : -1]
+            if len(non_empty_dates) > delta_window
+            else non_empty_dates[:-1]
+        )
         rows_history = [by_date_iso[d] for d in delta_days if by_date_iso[d]]
 
         # F1 修: fetch spot so static-wall tie-break + band_width_pct work.
@@ -901,26 +1049,33 @@ class FinMindClient:
         spot_val = float(spot_payload.get("spot") or 0.0)
 
         current_walls = parse_oi_walls(
-            rows_today=today_rows, rows_history=rows_history,
+            rows_today=today_rows,
+            rows_history=rows_history,
             contract_date=contract["contract_date"],
-            delta_window=delta_window, spot=spot_val,
+            delta_window=delta_window,
+            spot=spot_val,
         )
 
         oi_by_trading_day: dict[date, list[dict]] = {
-            date.fromisoformat(d_iso): rows
-            for d_iso, rows in by_date_iso.items() if rows
+            date.fromisoformat(d_iso): rows for d_iso, rows in by_date_iso.items() if rows
         }
         # Wire settlement prices for hit_rate (CHECKPOINT follow-up done)
-        settlements_all = await self.fetch_settlement_history(end)
-        recent_settlements = dict(
-            sorted(settlements_all.items())[-lookback:]
-        ) if settlements_all else {}
+        settlements_all = await self.fetch_settlement_history(end, refresh=refresh)
+        recent_settlements = (
+            dict(sorted(settlements_all.items())[-lookback:]) if settlements_all else {}
+        )
+        # T-1 spot anchor for the wall tie-break — strictly no look-ahead.
+        # fetch_tx_close_history is cheap (cached per end-date, shared with PCR).
+        tx_closes = await self.fetch_tx_close_history(end, refresh=refresh)
         hit_rate = parse_oi_walls_hit_rate(
-            oi_by_trading_day=oi_by_trading_day, settlements=recent_settlements,
+            oi_by_trading_day=oi_by_trading_day,
+            settlements=recent_settlements,
+            closes_by_date=tx_closes,
         )
 
         result = {
-            "contract": contract_id, "date": date_str,
+            "contract": contract_id,
+            "date": date_str,
             "fetched_at": datetime.now().isoformat(timespec="seconds"),
             "as_of_date": non_empty_dates[-1] if non_empty_dates else date_str,
             "current": current_walls,
@@ -929,29 +1084,33 @@ class FinMindClient:
             "data_quality_warnings": current_walls.get("data_quality_warnings", []),
             "insufficient_data": (
                 {"reason": "no_settlements_fetched_in_mvp", "required_days": 0}
-                if hit_rate["samples"] == 0 else None
+                if hit_rate["samples"] == 0
+                else None
             ),
         }
         self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS_CHIP)
         return result
 
     async def fetch_pcr(
-        self, scope: str, contract: dict | None, date_str: str,
-        lookback: int = 250, high_pct: float = 70.0, low_pct: float = 30.0,
+        self,
+        scope: str,
+        contract: dict | None,
+        date_str: str,
+        lookback: int = 250,
+        high_pct: float = 70.0,
+        low_pct: float = 30.0,
         refresh: bool = False,
     ) -> dict:
         """SC-3/SC-7 (design v4 §2.1)."""
         from services.finmind_options import (
             _CACHE_VERSION_OPTIONS_CHIP,
-            parse_pcr_history, parse_pcr_walk_forward_percentile,
+            parse_pcr_history,
+            parse_pcr_walk_forward_percentile,
             parse_pcr_next_day_stats,
         )
         from services.trading_calendar import get_trading_days
 
-        contract_id = (
-            f"{contract['option_id']}{contract['contract_date']}"
-            if contract else "all"
-        )
+        contract_id = f"{contract['option_id']}{contract['contract_date']}" if contract else "all"
         cache_key = (
             f"pcr_classified_{scope}_{contract_id}_{date_str}"
             f"_lb{lookback}_h{int(high_pct)}_l{int(low_pct)}"
@@ -959,22 +1118,26 @@ class FinMindClient:
         if not refresh:
             cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
             if cached is not None:
-                return cached
+                if not self._is_today(date_str) or not self._is_stale(cached):
+                    return cached
 
         end = date.fromisoformat(date_str)
         trading_dates = await get_trading_days(end, n=lookback)
         by_date_iso = await self.fetch_taiwan_option_daily_window(
-            sorted(trading_dates), end_date=end, refresh=refresh,
+            sorted(trading_dates),
+            end_date=end,
+            refresh=refresh,
         )
 
         rows_by_day = {
-            date.fromisoformat(d_iso): rows
-            for d_iso, rows in by_date_iso.items() if rows
+            date.fromisoformat(d_iso): rows for d_iso, rows in by_date_iso.items() if rows
         }
         contract_date = contract["contract_date"] if contract else None
         pcr_history = parse_pcr_history(rows_by_day, scope=scope, contract_date=contract_date)
         classified, walk_warnings = parse_pcr_walk_forward_percentile(
-            pcr_history, high_pct=high_pct, low_pct=low_pct,
+            pcr_history,
+            high_pct=high_pct,
+            low_pct=low_pct,
         )
 
         # Current = last entry
@@ -984,18 +1147,26 @@ class FinMindClient:
             current_pcr, current_pct, current_region = 0.0, 0.0, None
 
         # Wire tx_returns from TX_close history (CHECKPOINT follow-up done)
-        tx_closes = await self.fetch_tx_close_history(end)
+        tx_closes = await self.fetch_tx_close_history(end, refresh=refresh)
         tx_returns = self._tx_returns_from_closes(tx_closes)
         stats, stats_warnings = parse_pcr_next_day_stats(classified, tx_returns=tx_returns)
 
-        available_dates = sorted(by_date_iso.keys())
+        # Use non-empty (with-OI) dates for as_of_date: by_date_iso.keys()
+        # includes every requested trading_date even when FinMind returns []
+        # for not-yet-published days, which would otherwise paint as_of_date
+        # = today while PCR is actually yesterday's value.
+        non_empty_dates = sorted(
+            d for d, rows in by_date_iso.items() if any(r.get("open_interest", 0) > 0 for r in rows)
+        )
         result = {
-            "date": date_str, "scope": scope,
+            "date": date_str,
+            "scope": scope,
             "contract": contract_id if scope == "per_contract" else None,
             "fetched_at": datetime.now().isoformat(timespec="seconds"),
-            "as_of_date": available_dates[-1] if available_dates else date_str,
+            "as_of_date": non_empty_dates[-1] if non_empty_dates else date_str,
             "current": {
-                "pcr": current_pcr, "percentile": current_pct,
+                "pcr": current_pcr,
+                "percentile": current_pct,
                 "region": current_region,
                 "thresholds": {"high_pct": high_pct, "low_pct": low_pct},
             },
@@ -1003,42 +1174,56 @@ class FinMindClient:
             "data_quality_warnings": walk_warnings + stats_warnings,
             "insufficient_data": (
                 {"reason": "tx_returns_not_fetched_in_mvp", "required_days": 0}
-                if not stats or all(stats[k]["samples"] == 0 for k in stats) else None
+                if not stats or all(stats[k]["samples"] == 0 for k in stats)
+                else None
             ),
         }
         self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS_CHIP)
         return result
 
     async def fetch_institutional(
-        self, date_str: str, lookback: int = 60, corr_window: int = 60,
+        self,
+        date_str: str,
+        lookback: int = 60,
+        corr_window: int = 60,
         refresh: bool = False,
     ) -> dict:
         """SC-4/SC-8 (design v4 §2.1)."""
         from services.finmind_options import (
             _CACHE_VERSION_OPTIONS_CHIP,
-            parse_institutional, parse_institutional_correlation,
+            parse_institutional,
+            parse_institutional_correlation,
         )
 
         cache_key = f"institutional_{date_str}_lb{lookback}_cw{corr_window}"
         if not refresh:
             cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
             if cached is not None:
-                return cached
+                if not self._is_today(date_str) or not self._is_stale(cached):
+                    return cached
 
         target = date.fromisoformat(date_str)
         # Range query (C1: pending probe verification, assumed supported for sponsor tier)
         start = (target - timedelta(days=lookback + 30)).isoformat()
         rows_day = await self._get(
             f"{_FINMIND_BASE}/data",
-            {"dataset": "TaiwanOptionInstitutionalInvestors",
-             "data_id": "TXO", "start_date": start, "end_date": date_str},
+            {
+                "dataset": "TaiwanOptionInstitutionalInvestors",
+                "data_id": "TXO",
+                "start_date": start,
+                "end_date": date_str,
+            },
         )
         rows_night: list[dict] | None
         if target >= date(2021, 10, 13):
             rows_night = await self._get(
                 f"{_FINMIND_BASE}/data",
-                {"dataset": "TaiwanOptionInstitutionalInvestorsAfterHours",
-                 "data_id": "TXO", "start_date": start, "end_date": date_str},
+                {
+                    "dataset": "TaiwanOptionInstitutionalInvestorsAfterHours",
+                    "data_id": "TXO",
+                    "start_date": start,
+                    "end_date": date_str,
+                },
             )
         else:
             rows_night = None
@@ -1048,19 +1233,22 @@ class FinMindClient:
         # date actually present in rows_day so the card never blanks out.
         all_day_dates = sorted({r.get("date", "") for r in rows_day if r.get("date")})
         snapshot_date = (
-            date_str if date_str in all_day_dates
+            date_str
+            if date_str in all_day_dates
             else (all_day_dates[-1] if all_day_dates else date_str)
         )
         today_day_rows = [r for r in rows_day if r.get("date") == snapshot_date]
         today_night_rows = (
             [r for r in (rows_night or []) if r.get("date") == snapshot_date]
-            if rows_night is not None else None
+            if rows_night is not None
+            else None
         )
         current = parse_institutional(today_day_rows, today_night_rows, target)
 
         # Build foreign_history: aggregate rows_day to per-date foreign_call_net
         # using the same _INSTITUTION_NAME_MAP convention from parse_institutional.
         from services.finmind_options import _INSTITUTION_NAME_MAP
+
         per_date_call_net: dict[str, int] = {}
         for r in rows_day:
             d_str = r.get("date")
@@ -1072,12 +1260,10 @@ class FinMindClient:
                 continue
             try:
                 long_oi = int(
-                    r.get("long_open_interest_balance_volume")
-                    or r.get("buy_open_interest") or 0
+                    r.get("long_open_interest_balance_volume") or r.get("buy_open_interest") or 0
                 )
                 short_oi = int(
-                    r.get("short_open_interest_balance_volume")
-                    or r.get("sell_open_interest") or 0
+                    r.get("short_open_interest_balance_volume") or r.get("sell_open_interest") or 0
                 )
             except (TypeError, ValueError):
                 continue
@@ -1087,11 +1273,12 @@ class FinMindClient:
             for d, v in sorted(per_date_call_net.items())
         ]
         # Reuse the TX close history fetch (also used by PCR) for next-day returns
-        tx_closes = await self.fetch_tx_close_history(target)
+        tx_closes = await self.fetch_tx_close_history(target, refresh=refresh)
         tx_returns = self._tx_returns_from_closes(tx_closes)
 
         correlation, corr_warnings = parse_institutional_correlation(
-            foreign_history=foreign_history, tx_returns=tx_returns,
+            foreign_history=foreign_history,
+            tx_returns=tx_returns,
             corr_window=corr_window,
         )
 
@@ -1108,7 +1295,8 @@ class FinMindClient:
             "data_quality_warnings": corr_warnings,
             "insufficient_data": (
                 {"reason": "insufficient_correlation_samples", "required_days": corr_window}
-                if correlation["samples"] == 0 else None
+                if correlation["samples"] == 0
+                else None
             ),
         }
         self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS_CHIP)
@@ -1171,6 +1359,7 @@ class FinMindClient:
                     fallback_dates.append(d)
 
             if fallback_dates:
+
                 async def _fetch_one(d: str) -> tuple[str, dict, bool]:
                     try:
                         day_raw = await self._get(
@@ -1181,7 +1370,9 @@ class FinMindClient:
                     except Exception as exc:
                         logger.warning(
                             "TradingDailyReport fallback failed for %s %s: %s",
-                            symbol, d, exc,
+                            symbol,
+                            d,
+                            exc,
                         )
                         return d, {"date": d, "major_net": 0}, False
 
@@ -1193,8 +1384,7 @@ class FinMindClient:
                         self._write_cache(f"{symbol}_{d}_major", entry)
                     cached_results[d] = entry
 
-        return [cached_results.get(d, {"date": d, "major_net": 0})
-                for d in trading_dates]
+        return [cached_results.get(d, {"date": d, "major_net": 0}) for d in trading_dates]
 
 
 # ---------------------------------------------------------------------------
@@ -1276,12 +1466,14 @@ def _parse_broker_history(rows: list) -> dict[str, list[dict]]:
         sell_lots = _to_lots(v["sell_shares"])
         if bid not in result:
             result[bid] = []
-        result[bid].append({
-            "date": d,
-            "buy": buy_lots,
-            "sell": sell_lots,
-            "net": buy_lots - sell_lots,
-        })
+        result[bid].append(
+            {
+                "date": d,
+                "buy": buy_lots,
+                "sell": sell_lots,
+                "net": buy_lots - sell_lots,
+            }
+        )
 
     for bid in result:
         result[bid].sort(key=lambda x: x["date"])
@@ -1300,7 +1492,8 @@ def _filter_broker_history(payload: dict, ids: list[str]) -> dict:
     if missing:
         logger.warning(
             "broker_history: %d requested key(s) not in payload: %s",
-            len(missing), missing,
+            len(missing),
+            missing,
         )
     return {
         "symbol": payload.get("symbol", ""),
@@ -1368,8 +1561,12 @@ def _parse_top_brokers(rows: list) -> list[dict]:
             agg[tid] = {
                 "name": r.get("securities_trader", ""),
                 "broker_id": tid,
-                "buy": 0, "sell": 0,
-                "_bp_sum": 0.0, "_sp_sum": 0.0, "_b_cnt": 0, "_s_cnt": 0,
+                "buy": 0,
+                "sell": 0,
+                "_bp_sum": 0.0,
+                "_sp_sum": 0.0,
+                "_b_cnt": 0,
+                "_s_cnt": 0,
             }
         a = agg[tid]
         bv = int(r.get("buy", 0))
@@ -1389,15 +1586,17 @@ def _parse_top_brokers(rows: list) -> list[dict]:
         buy_lots = _to_lots(a["buy"])
         sell_lots = _to_lots(a["sell"])
         net = buy_lots - sell_lots
-        brokers.append({
-            "name": a["name"],
-            "broker_id": a["broker_id"],
-            "buy": buy_lots,
-            "sell": sell_lots,
-            "net": net,
-            "avg_buy_price": round(a["_bp_sum"] / a["_b_cnt"], 2) if a["_b_cnt"] > 0 else 0,
-            "avg_sell_price": round(a["_sp_sum"] / a["_s_cnt"], 2) if a["_s_cnt"] > 0 else 0,
-        })
+        brokers.append(
+            {
+                "name": a["name"],
+                "broker_id": a["broker_id"],
+                "buy": buy_lots,
+                "sell": sell_lots,
+                "net": net,
+                "avg_buy_price": round(a["_bp_sum"] / a["_b_cnt"], 2) if a["_b_cnt"] > 0 else 0,
+                "avg_sell_price": round(a["_sp_sum"] / a["_s_cnt"], 2) if a["_s_cnt"] > 0 else 0,
+            }
+        )
     brokers.sort(key=lambda b: abs(b["net"]), reverse=True)
     return brokers
 
@@ -1418,13 +1617,15 @@ def _parse_institutional_series(rows: list) -> list[dict]:
         f_net = _to_lots(fb) - _to_lots(fs)
         t_net = _to_lots(tb) - _to_lots(ts)
         d_net = _to_lots(db) - _to_lots(ds)
-        result.append({
-            "date": r["date"],
-            "foreign_net": f_net,
-            "trust_net": t_net,
-            "dealer_net": d_net,
-            "major_net": f_net + t_net + d_net,
-        })
+        result.append(
+            {
+                "date": r["date"],
+                "foreign_net": f_net,
+                "trust_net": t_net,
+                "dealer_net": d_net,
+                "major_net": f_net + t_net + d_net,
+            }
+        )
     return result
 
 
@@ -1435,11 +1636,13 @@ def _parse_margin_series(rows: list) -> list[dict]:
         mp_yest = int(r.get("MarginPurchaseYesterdayBalance", 0))
         ss = int(r.get("ShortSaleTodayBalance", 0))
         ss_yest = int(r.get("ShortSaleYesterdayBalance", 0))
-        result.append({
-            "date": r["date"],
-            "margin_balance": mp,
-            "short_balance": ss,
-            "margin_change": mp - mp_yest,
-            "short_change": ss - ss_yest,
-        })
+        result.append(
+            {
+                "date": r["date"],
+                "margin_balance": mp,
+                "short_balance": ss,
+                "margin_change": mp - mp_yest,
+                "short_change": ss - ss_yest,
+            }
+        )
     return result
