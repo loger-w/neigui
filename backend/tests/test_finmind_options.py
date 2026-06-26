@@ -606,6 +606,7 @@ def test_parse_spot_picks_latest_close_and_computes_change():
     assert out["change"] == pytest.approx(120.0)
     assert out["change_pct"] == pytest.approx(120.0 / 53300.0 * 100, rel=1e-4)
     assert out["as_of_date"] == "2026-06-22"
+    assert out["as_of_session"] == "position"
 
 
 def test_parse_spot_single_row_change_is_zero():
@@ -616,6 +617,7 @@ def test_parse_spot_single_row_change_is_zero():
     assert out["change"] == 0.0
     assert out["change_pct"] == 0.0
     assert out["as_of_date"] == "2026-06-22"
+    assert out["as_of_session"] == "position"
 
 
 def test_parse_spot_empty_returns_none_fields():
@@ -624,21 +626,44 @@ def test_parse_spot_empty_returns_none_fields():
     assert out == {
         "spot": None, "prev_close": None,
         "change": None, "change_pct": None,
-        "as_of_date": None,
+        "as_of_date": None, "as_of_session": None,
     }
 
 
-def test_parse_spot_filters_after_market_session():
-    """Rows with trading_session=after_market are ignored: night session
-    has settlement_price=0 noise and we want only the day-session close."""
+def test_parse_spot_includes_after_market_with_position_priority_within_date():
+    """Within the same date, position (13:45 close) is chronologically AFTER
+    after_market (05:00 close) under FinMind's end-date convention, so the
+    day-session close wins when both exist for the latest date."""
     from services.finmind_options import parse_spot
     rows = [
+        _tx_row("2026-06-22", 53200.0, trading_session="after_market"),
         _tx_row("2026-06-22", 53420.0, trading_session="position"),
-        _tx_row("2026-06-22", 99999.0, trading_session="after_market"),
     ]
     out = parse_spot(rows)
     assert out["spot"] == 53420.0
     assert out["as_of_date"] == "2026-06-22"
+    assert out["as_of_session"] == "position"
+    # prev_close is the night session of the same date (one step earlier)
+    assert out["prev_close"] == 53200.0
+
+
+def test_parse_spot_picks_after_market_when_position_missing_for_latest_date():
+    """If FinMind has published today's after_market (5am close) but the
+    day-session row hasn't landed yet (typical 2hr publication lag after
+    13:45), the dashboard should show the night close rather than fall
+    back to yesterday's day session — that was the visible-staleness bug."""
+    from services.finmind_options import parse_spot
+    rows = [
+        _tx_row("2026-06-25", 46544.0, trading_session="position"),
+        _tx_row("2026-06-26", 45805.0, trading_session="after_market"),
+        # Note: no 2026-06-26 position row — FinMind has not yet published it
+    ]
+    out = parse_spot(rows)
+    assert out["spot"] == 45805.0  # 6/26 night, not 6/25 day
+    assert out["as_of_date"] == "2026-06-26"
+    assert out["as_of_session"] == "after_market"
+    assert out["prev_close"] == 46544.0  # previous = 6/25 day session
+    assert out["change"] == pytest.approx(-739.0)
 
 
 def test_parse_spot_filters_spread_contract_dates():

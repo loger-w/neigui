@@ -693,7 +693,11 @@ class FinMindClient:
         if not refresh:
             cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS)
             if cached is not None:
-                if not self._is_today(date_str) or not self._is_stale(cached):
+                # Spot price changes minute-to-minute during trading hours; the
+                # default 30-min stale window kept a stale snapshot on screen
+                # while the night session ticked forward. 1-min TTL on today
+                # tracks closer to FinMind's publication cadence.
+                if not self._is_today(date_str) or not self._is_stale(cached, max_age_minutes=1):
                     return cached
         return await self._run_once(
             f"spot_{cache_key}",

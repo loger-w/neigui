@@ -42,6 +42,7 @@ export interface OptionsSpot {
   date: string;
   fetched_at: string;
   as_of_date: string | null;
+  as_of_session: "position" | "after_market" | null;
   spot: number | null;
   prev_close: number | null;
   change: number | null;

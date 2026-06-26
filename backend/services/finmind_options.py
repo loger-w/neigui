@@ -288,45 +288,59 @@ _PURE_YYYYMM = re.compile(r"\d{6}")
 
 
 def parse_spot(rows: list[dict]) -> dict:
-    """Parse TaiwanFuturesDaily TX rows into front-month spot + day-over-day change.
+    """Parse TaiwanFuturesDaily TX rows into front-month spot + change.
 
-    Phase 0b confirmed two filters are required (see spec addendum):
-    1. trading_session == "position" (day-session close; 夜盤 settlement_price
-       is 0 and would corrupt the spot).
-    2. contract_date matches ^\\d{6}$ (single-month contract, excludes
-       "202606/202607" spread / calendar-spread rows).
+    Includes BOTH session types — FinMind uses an end-date convention:
+      - position (day session):     09:00–13:45 close, dated D
+      - after_market (night sess.): 15:00 D−1 – 05:00 D close, dated D
+    Within the same date D, the night session ENDS earlier (05:00) than the
+    day session (13:45), so chronological rank is after_market < position.
 
-    Among rows passing both filters, group by date and pick the smallest
-    contract_date as the front-month for that day. `spot` = front-month
-    close on the latest date; `prev_close` = front-month close on the
-    second-latest date (None if only one date).
+    Filters:
+      1. trading_session in {position, after_market} — drops anything else
+      2. contract_date matches ^\\d{6}$ (single-month; drops calendar
+         spreads like "202606/202607")
+
+    Among rows passing both filters, group by (date, session_rank) and pick
+    the smallest contract_date as the front-month for that bucket. `spot` =
+    front-month close on the latest (date, session) pair; `prev_close` =
+    front-month close on the second-latest pair (None if only one).
+
+    Why this matters: if today's day session has not yet been published by
+    FinMind (typical lag of a couple hours after 13:45), the latest data
+    point is today's after_market (5am close). Filtering it out leaves the
+    user stuck on yesterday's day-session close — visibly stale.
     """
+    # Within the same date: position (afternoon) is later than after_market (5am)
+    SESSION_RANK = {"after_market": 0, "position": 1}
+
     none_result = {
         "spot": None, "prev_close": None,
         "change": None, "change_pct": None,
-        "as_of_date": None,
+        "as_of_date": None, "as_of_session": None,
     }
     if not rows:
         return none_result
 
     filtered = [
         r for r in rows
-        if r.get("trading_session") == "position"
+        if r.get("trading_session") in SESSION_RANK
         and _PURE_YYYYMM.fullmatch(str(r.get("contract_date", "")))
     ]
     if not filtered:
         return none_result
 
-    by_date: dict[str, list[dict]] = {}
+    by_key: dict[tuple[str, int], list[dict]] = {}
     for r in filtered:
         d = r.get("date", "")
         if not d:
             continue
-        by_date.setdefault(d, []).append(r)
-    if not by_date:
+        rank = SESSION_RANK[r["trading_session"]]
+        by_key.setdefault((d, rank), []).append(r)
+    if not by_key:
         return none_result
 
-    dates_sorted = sorted(by_date.keys())
+    sorted_keys = sorted(by_key.keys())  # (date, rank) ascending
 
     def front_close(date_rows: list[dict]) -> float:
         front = min(date_rows, key=lambda r: str(r.get("contract_date", "")))
@@ -335,20 +349,23 @@ def parse_spot(rows: list[dict]) -> dict:
         except (TypeError, ValueError):
             return 0.0
 
-    today = dates_sorted[-1]
-    spot = front_close(by_date[today])
+    latest_date, latest_rank = sorted_keys[-1]
+    latest_session = "position" if latest_rank == 1 else "after_market"
+    spot = front_close(by_key[sorted_keys[-1]])
+
     prev_close = (
-        front_close(by_date[dates_sorted[-2]])
-        if len(dates_sorted) >= 2 else None
+        front_close(by_key[sorted_keys[-2]]) if len(sorted_keys) >= 2 else None
     )
     change = (spot - prev_close) if prev_close is not None else 0.0
     change_pct = (change / prev_close * 100) if prev_close else 0.0
+
     return {
         "spot": spot,
         "prev_close": prev_close,
         "change": change,
         "change_pct": change_pct,
-        "as_of_date": today,
+        "as_of_date": latest_date,
+        "as_of_session": latest_session,
     }
 
 

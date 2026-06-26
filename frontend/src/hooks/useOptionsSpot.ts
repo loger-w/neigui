@@ -17,6 +17,11 @@ export function useOptionsSpot(date: string) {
       forceRefreshRef.current = false;
       return optionsApi.spot(date, force ? true : undefined);
     },
+    // TX spot is the freshest data point on the dashboard — pair the 1-min
+    // backend cache TTL with a 1-min frontend poll so the visible price
+    // tracks the live tape without the user clicking 重新整理.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 
   return {
