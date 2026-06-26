@@ -27,21 +27,77 @@ export function klineScaleY(
     padTop + (1 - (price - minPrice) / range) * chartHeight;
 }
 
-// ── MA 計算 ─────────────────────────────────────────────────────────────────
+// ── 滑動視窗統計(MA / BB 共用) ────────────────────────────────────────────
 
-function calcMA(closes: number[], period: number): (number | null)[] {
+/** 滾動均值(SMA)。前 (period-1) 筆為 null。 */
+export function rollingMean(values: number[], period: number): (number | null)[] {
   const result: (number | null)[] = [];
-  for (let i = 0; i < closes.length; i++) {
+  for (let i = 0; i < values.length; i++) {
     if (i < period - 1) {
       result.push(null);
     } else {
       let sum = 0;
-      for (let j = i - period + 1; j <= i; j++) sum += closes[j]!;
+      for (let j = i - period + 1; j <= i; j++) sum += values[j]!;
       result.push(sum / period);
     }
   }
   return result;
 }
+
+/** 滾動母體標準差(BB 用,業界慣例除以 N 而非 N-1)。前 (period-1) 筆為 null。 */
+export function rollingStd(values: number[], period: number): (number | null)[] {
+  const result: (number | null)[] = [];
+  for (let i = 0; i < values.length; i++) {
+    if (i < period - 1) {
+      result.push(null);
+    } else {
+      let sum = 0;
+      for (let j = i - period + 1; j <= i; j++) sum += values[j]!;
+      const mean = sum / period;
+      let sqDiff = 0;
+      for (let j = i - period + 1; j <= i; j++) {
+        const d = values[j]! - mean;
+        sqDiff += d * d;
+      }
+      result.push(Math.sqrt(sqDiff / period));
+    }
+  }
+  return result;
+}
+
+/** Bollinger Bands。中軌 = period 期 SMA;上下軌 = 中軌 ± k×σ。
+ *  前 (period-1) 筆三組值都是 null;period 內無變異時 upper === lower === middle。 */
+export function calcBollinger(
+  values: number[],
+  period: number = 20,
+  k: number = 2,
+): {
+  middle: (number | null)[];
+  upper: (number | null)[];
+  lower: (number | null)[];
+} {
+  const middle = rollingMean(values, period);
+  const std = rollingStd(values, period);
+  const upper: (number | null)[] = [];
+  const lower: (number | null)[] = [];
+  for (let i = 0; i < values.length; i++) {
+    const m = middle[i];
+    const s = std[i];
+    if (m == null || s == null) {
+      upper.push(null);
+      lower.push(null);
+    } else {
+      upper.push(m + k * s);
+      lower.push(m - k * s);
+    }
+  }
+  return { middle, upper, lower };
+}
+
+// ── BB chart-local 常數 ────────────────────────────────────────────────────
+const BB_PERIOD = 20;
+const BB_K = 2;
+const BB_COLOR = "#6db0d8";
 
 // ── format helpers ─────────────────────────────────────────────────────────
 
@@ -68,6 +124,19 @@ interface KlineChartProps {
   onHoverY?: (y: number | null) => void;
   selectedIndex?: number | null;
   onClickIndex?: (index: number) => void;
+  /** Override MA / BB calculations with values precomputed against the FULL
+   *  history (not just the sliced window). Length must equal candles.length.
+   *  Without these the indicators are calculated from the sliced closes —
+   *  which breaks the line at the start of every zoomed window (first 4 or 19
+   *  entries are null). Passing precomputed slices lets the lines extend all
+   *  the way to the left edge when there's data available outside the window. */
+  ma5Override?: (number | null)[];
+  ma20Override?: (number | null)[];
+  bbOverride?: {
+    middle: (number | null)[];
+    upper: (number | null)[];
+    lower: (number | null)[];
+  };
 }
 
 export const KlineChartSvg = memo(KlineChartSvgImpl);
@@ -77,6 +146,7 @@ function KlineChartSvgImpl({
   hoverIndex, onHoverIndex,
   hoverY, onHoverY,
   selectedIndex, onClickIndex,
+  ma5Override, ma20Override, bbOverride,
 }: KlineChartProps) {
   if (candles.length === 0) return null;
 
@@ -101,12 +171,28 @@ function KlineChartSvgImpl({
     if (c.low < pMin) pMin = c.low;
     if (c.high > pMax) pMax = c.high;
   }
-  // MA 也要納入 range — 先算出來
+  // MA / BB 也要納入 range — 先算出來。caller 可傳 override(用 full history
+  // 算好的 sliced 段)讓 BB / MA 在 zoom 視窗開頭也有值,不會被截斷。
   const closes = candles.map((c) => c.close);
-  const ma5 = calcMA(closes, 5);
-  const ma20 = calcMA(closes, 20);
+  const ma5 = ma5Override && ma5Override.length === candles.length
+    ? ma5Override
+    : rollingMean(closes, 5);
+  const ma20 = ma20Override && ma20Override.length === candles.length
+    ? ma20Override
+    : rollingMean(closes, 20);
+  const bb = bbOverride && bbOverride.middle.length === candles.length
+    ? bbOverride
+    : calcBollinger(closes, BB_PERIOD, BB_K);
+  // BB legend + 線 + 帶 整組需要 >=2 個非 null mid 才顯示(避免單點 polyline 渲染失敗)
+  let bbMidNonNull = 0;
+  for (const v of bb.middle) if (v !== null) bbMidNonNull++;
+  const showBB = bbMidNonNull >= 2;
   for (const v of ma5) if (v !== null) { if (v < pMin) pMin = v; if (v > pMax) pMax = v; }
   for (const v of ma20) if (v !== null) { if (v < pMin) pMin = v; if (v > pMax) pMax = v; }
+  if (showBB) {
+    for (const v of bb.upper) if (v !== null && v > pMax) pMax = v;
+    for (const v of bb.lower) if (v !== null && v < pMin) pMin = v;
+  }
 
   // 上下各加 2% 讓 wick 不貼邊
   const pPad = (pMax - pMin) * 0.02 || 1;
@@ -139,7 +225,7 @@ function KlineChartSvgImpl({
   const gridStart = Math.ceil(pMin / gridStep) * gridStep;
   for (let p = gridStart; p <= pMax; p += gridStep) gridLines.push(p);
 
-  // ── MA polyline points ─────────────────────────────────────────────────
+  // ── MA / BB polyline points ────────────────────────────────────────────
   const maLine = (arr: (number | null)[]) => {
     const segs: string[] = [];
     for (let i = 0; i < arr.length; i++) {
@@ -148,6 +234,23 @@ function KlineChartSvgImpl({
     }
     return segs.join(" ");
   };
+
+  // ── BB band-fill 路徑(上軌畫過去 → 下軌畫回來 → Z 封閉)──────────────
+  const bbBandPath = (() => {
+    if (!showBB) return "";
+    const pts: { x: number; yU: number; yL: number }[] = [];
+    for (let i = 0; i < bb.upper.length; i++) {
+      const u = bb.upper[i];
+      const l = bb.lower[i];
+      if (u != null && l != null) {
+        pts.push({ x: xOf(i), yU: yScale(u), yL: yScale(l) });
+      }
+    }
+    if (pts.length < 2) return "";
+    const upHalf = pts.map((p) => `${p.x},${p.yU}`).join(" L ");
+    const downHalf = [...pts].reverse().map((p) => `${p.x},${p.yL}`).join(" L ");
+    return `M ${upHalf} L ${downHalf} Z`;
+  })();
 
   // ── OHLCV info row ─────────────────────────────────────────────────────
   // 3-tier fallback: hoverIndex → selectedIndex → last candle.
@@ -277,6 +380,37 @@ function KlineChartSvgImpl({
         );
       })}
 
+      {/* Bollinger Bands — 帶狀填充先畫,線蓋在上面 */}
+      {showBB && bbBandPath !== "" && (
+        <path
+          data-testid="bb-band"
+          d={bbBandPath} fill={BB_COLOR} fillOpacity={0.06} stroke="none"
+        />
+      )}
+      {showBB && (
+        <polyline
+          data-testid="bb-upper"
+          points={maLine(bb.upper)} fill="none"
+          stroke={BB_COLOR} strokeWidth={0.8} opacity={0.6}
+          strokeDasharray="3 3"
+        />
+      )}
+      {showBB && (
+        <polyline
+          data-testid="bb-lower"
+          points={maLine(bb.lower)} fill="none"
+          stroke={BB_COLOR} strokeWidth={0.8} opacity={0.6}
+          strokeDasharray="3 3"
+        />
+      )}
+      {showBB && (
+        <polyline
+          data-testid="bb-middle"
+          points={maLine(bb.middle)} fill="none"
+          stroke={BB_COLOR} strokeWidth={1.2} opacity={0.85}
+        />
+      )}
+
       {/* MA5 */}
       {ma5.some((v) => v !== null) && (
         <polyline
@@ -357,13 +491,22 @@ function KlineChartSvgImpl({
         <tspan dx={2} fill={t.ink}>{fmtNum(infoCandle.volume)} 張</tspan>
       </text>
 
-      {/* MA legend */}
+      {/* MA / BB legend — gap 加大避免擠在一起 */}
       <text x={padL + 4} y={padT + 14} fontSize={20} fontFamily={t.font} fill={t.ma5}>
         MA5
       </text>
-      <text x={padL + 44} y={padT + 14} fontSize={20} fontFamily={t.font} fill={t.ma20}>
+      <text x={padL + 64} y={padT + 14} fontSize={20} fontFamily={t.font} fill={t.ma20}>
         MA20
       </text>
+      {showBB && (
+        <text
+          data-testid="bb-legend"
+          x={padL + 132} y={padT + 14}
+          fontSize={20} fontFamily={t.font} fill={BB_COLOR}
+        >
+          BB(20,2)
+        </text>
+      )}
 
       {/* selected-day cursor (gold, persistent) */}
       {selectedIndex != null && selectedIndex >= 0 && selectedIndex < n && (

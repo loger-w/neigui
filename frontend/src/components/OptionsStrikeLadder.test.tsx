@@ -22,6 +22,7 @@ const data: OptionsStrikeVolume = {
 
 const spot: OptionsSpot = {
   date: "2026-06-23", fetched_at: "x", as_of_date: "2026-06-23",
+  as_of_session: "position",
   spot: 53420, prev_close: 53300, change: 120, change_pct: 0.225,
 };
 

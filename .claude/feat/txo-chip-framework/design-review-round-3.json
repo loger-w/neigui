@@ -1,0 +1,38 @@
+{
+  "round": 3,
+  "phase": 1,
+  "total_findings": 12,
+  "p0": 0, "p1": 5, "p2": 7,
+  "round2_p0_p1_resolved_per_lens": {
+    "correctness": true, "integration": true, "testability": true
+  },
+  "classification": {
+    "accepted_p0": [],
+    "accepted_p1": [
+      {"id": "correctness/N11", "summary": "User-supplied lookback may exceed CHIP_WINDOW_TD", "action": "Add §1 invariant + route validation: reject 400 if lookback × period > CHIP_WINDOW_TD"},
+      {"id": "correctness/N12", "summary": "Pattern-based cache deletion needed", "action": "Document utils/cache.py.delete_by_prefix + use prefix-based invalidation"},
+      {"id": "correctness/N13", "summary": "parse_oi_walls strike universe edge cases", "action": "Pin K universe = strikes with side OI > 0 on end_date; emit no_activity / partial_listing warnings"},
+      {"id": "integration/I1", "summary": "Refresh-invalidation race ordering", "action": "Move invalidation INSIDE _run_once coroutine, only on actual window refresh"},
+      {"id": "integration/I2", "summary": "trading_calendar potential circular import with finmind", "action": "Pick (a): route layer orchestrates - fetches trading_dates first, passes list to fetch_taiwan_option_daily_window"}
+    ],
+    "accepted_p2": [
+      {"id": "correctness/C1", "summary": "Cold-load math undercounts institutional 2-dataset + tx_returns", "action": "Update math to 252-371 calls range; SC-0 probes range-query support"},
+      {"id": "testability/T1", "summary": "NoOpBucket fixture collides with existing _reset_singleton", "action": "Create backend/tests/conftest.py + supersede module-local resets + autouse"},
+      {"id": "testability/T2", "summary": "Frontend cross-hook invalidation missing on refresh", "action": "OptionsChipPanel uses queryClient.invalidateQueries on sibling hooks"},
+      {"id": "testability/F22", "summary": "bypass_finmind_rate_limiter missing FINMIND_TOKEN env", "action": "Enhance fixture to also set FINMIND_TOKEN + CHIP_DATA_DIR"},
+      {"id": "testability/F23", "summary": "SC-6 schema table missing avg_band_width_pct", "action": "Update SC-6 row to include field"},
+      {"id": "testability/F24", "summary": "latest_settlement_pending is boolean, not warning string", "action": "Remove from SC-11 catalog OR emit also as warning string when true"},
+      {"id": "testability/F25", "summary": "partial_history_first_week not pinned in parser docstrings", "action": "Add to parse_max_pain_hit_rate / parse_oi_walls_hit_rate docstrings, or drop from catalog"}
+    ],
+    "rejected_with_reason": [],
+    "needs_more_context": []
+  },
+  "exit_status": "exit_phase_1_with_v4_targeted_edits",
+  "rationale": "Round 3 found 0 P0, 5 P1 tactical clarifications + 7 P2 refinements. Per /feat Phase 1 escalation rule (3-round max specifically references P0), and given findings are all design clarifications not fundamental redesigns, apply v4 targeted edits and proceed to Phase 2. Phase 2 per-file impl spec + Phase 3 TDD will naturally catch any remaining edge cases.",
+  "next_actions": [
+    "1. Apply v4 targeted edits (16 surgical edits to design.md + brainstorm.md)",
+    "2. Commit v4 with detailed P1/P2 resolution summary",
+    "3. Reset pending_review_rounds.phase_1 = 0 in state.json (Phase 1 exit)",
+    "4. Move to Phase 2: writing-plans for per-file implementation specs"
+  ]
+}

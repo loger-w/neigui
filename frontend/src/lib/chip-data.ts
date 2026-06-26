@@ -39,6 +39,31 @@ export interface TopBroker {
   avg_sell_price: number;
 }
 
+/**
+ * N-day aggregate of broker-level chips, ending at `date` (inclusive).
+ * Backed by /api/chip/{symbol}/brokers_window. ChipBrokersPanel reads this
+ * instead of `summary` so the right-side list reflects "past N trading days
+ * cumulative" rather than just one trading day.
+ *
+ * `actual_days` = trading_dates.length and can be < window_days when the
+ * anchor date is too early in history (panel UI shows "(實際 X 日)"). All
+ * dollar / lot values are sums (lots), avg_*_price are share-weighted
+ * averages across days. `total_traded_lots` is the same fallback formula as
+ * dayTotalLots used by topByVolume's daytradeRate threshold.
+ */
+export interface ChipBrokersWindow {
+  symbol: string;
+  date: string;
+  window_days: number;
+  trading_dates: string[];
+  actual_days: number;
+  fetched_at: string;
+  top_brokers: TopBroker[];
+  margin: ChipSummary["margin"];
+  institutional: ChipSummary["institutional"];
+  total_traded_lots: number;
+}
+
 export interface BrokerTrade {
   broker: string;
   broker_id: string;
@@ -176,18 +201,46 @@ export interface TradeRow {
   price: number;
 }
 
+export type TradeSortKey = "volume" | "price";
+export type SortDir = "desc" | "asc";
+export interface SortSpec {
+  key: TradeSortKey;
+  dir: SortDir;
+}
+
+export const DEFAULT_TRADE_SORT: SortSpec = { key: "volume", dir: "desc" };
+
+function tradeComparator(spec: SortSpec): (a: TradeRow, b: TradeRow) => number {
+  const mult = spec.dir === "desc" ? -1 : 1;
+  return (a, b) => {
+    const av = spec.key === "volume" ? a.volume : a.price;
+    const bv = spec.key === "volume" ? b.volume : b.price;
+    if (av !== bv) return (av - bv) * mult;
+    // Stable tie-break: broker name ascending. Same order regardless of dir
+    // so toggling asc/desc never reshuffles tied rows.
+    if (a.broker < b.broker) return -1;
+    if (a.broker > b.broker) return 1;
+    return 0;
+  };
+}
+
 /**
  * Build {buyRows, sellRows} for the bubble-view side panel.
  *
- * When `selectedBroker` is null, returns the top `maxRows` overall by volume.
- * When `selectedBroker` is set, the filter is applied FIRST and then sliced —
- * so a small-volume broker's price levels are not lost behind a global top-N
- * cap that they couldn't make.
+ * When `selectedBroker` is null, returns the top `maxRows` overall by the
+ * given sort key. When `selectedBroker` is set, the filter is applied FIRST
+ * and then sliced — so a small-volume broker's price levels are not lost
+ * behind a global top-N cap that they couldn't make.
+ *
+ * `buySort` / `sellSort` are independent: changing one side does not
+ * reshuffle the other.
  */
 export function buildTradeRows(
   trades: BrokerTrade[],
   selectedBroker: string | null,
   maxRows: number,
+  buySort: SortSpec = DEFAULT_TRADE_SORT,
+  sellSort: SortSpec = DEFAULT_TRADE_SORT,
 ): { buyRows: TradeRow[]; sellRows: TradeRow[] } {
   const source = selectedBroker
     ? trades.filter((t) => t.broker === selectedBroker)
@@ -198,8 +251,8 @@ export function buildTradeRows(
     if (t.buy > 0) buys.push({ broker: t.broker, volume: t.buy, price: t.price });
     if (t.sell > 0) sells.push({ broker: t.broker, volume: t.sell, price: t.price });
   }
-  buys.sort((a, b) => b.volume - a.volume);
-  sells.sort((a, b) => b.volume - a.volume);
+  buys.sort(tradeComparator(buySort));
+  sells.sort(tradeComparator(sellSort));
   return { buyRows: buys.slice(0, maxRows), sellRows: sells.slice(0, maxRows) };
 }
 

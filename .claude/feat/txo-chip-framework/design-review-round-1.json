@@ -1,0 +1,69 @@
+{
+  "round": 1,
+  "phase": 1,
+  "total_findings": 41,
+  "p0": 12, "p1": 16, "p2": 13,
+  "classification": {
+    "accepted_p0": [
+      {"id": "correctness/F1", "summary": "Max Pain candidate K = union(call,put), not intersection", "action": "parse_max_pain rewrite + union test"},
+      {"id": "correctness/F2", "summary": "Max Pain strict contract_date filter", "action": "explicit filter + monthly+weekly co-existence fixture"},
+      {"id": "correctness/F3", "summary": "Hit rate look-ahead: use T-1 not T", "action": "rewrite SC-5/SC-6 algorithm + test date offset"},
+      {"id": "correctness/F4", "summary": "PCR percentile look-ahead", "action": "walk-forward percentile + regression test"},
+      {"id": "correctness/F5", "summary": "PCR thresholds + directional strategy_hint violates reflexivity", "action": "remove directional copy, replace with stat panel; thresholds configurable"},
+      {"id": "integration/F1", "summary": "Cache version bump invalidates existing options cache", "action": "add separate _CACHE_VERSION_OPTIONS_CHIP=1 constant"},
+      {"id": "integration/F2", "summary": "PCR all_months fan-out shape unclear", "action": "pin to 1 call/day data_id=TXO; shared fetch"},
+      {"id": "integration/F3", "summary": "foreign/prop/trust collision with existing foreign/trust/dealer", "action": "use 'dealer' for 自營 (match existing)"},
+      {"id": "integration/F4", "summary": "Test class naming mismatch brainstorm vs design", "action": "reconcile to TestParseInstitutionalOptions + use standalone def to match existing file style"},
+      {"id": "testability/F1", "summary": "TaiwanOptionFinalSettlementPrice schema unverified", "action": "add SC-0 schema probe before Phase 2"},
+      {"id": "testability/F2", "summary": "PCR backtest with leverage=1.0 is mathematically biased", "action": "demote SC-7 to '次日 TX 報酬統計' (no P&L claim)"},
+      {"id": "testability/F3", "summary": "Failure isolation E2E missing", "action": "add SC-10b"}
+    ],
+    "accepted_p1": [
+      {"id": "correctness/F6", "summary": "Dynamic ΔOI single-point fragile + young weeklies", "action": "cumulative ΔOI sum + partial_window flag"},
+      {"id": "correctness/F7", "summary": "Contract type matrix missing", "action": "add matrix table SC-N × monthly/Wed/Fri"},
+      {"id": "correctness/F8", "summary": "Rate limit math + shared bucket bottleneck", "action": "correct cold load math + shared TaiwanOptionDaily fetch"},
+      {"id": "correctness/F9", "summary": "Trading days vs calendar days inconsistency", "action": "standardize to trading days; add get_trading_days helper"},
+      {"id": "correctness/F10", "summary": "Settlement data lag", "action": "latest_settlement_pending flag"},
+      {"id": "correctness/F11", "summary": "Sell-straddle P&L structurally biased negative", "action": "drop low-PCR P&L; show stat only (merged with testability/F2)"},
+      {"id": "correctness/F12", "summary": "夜盤 missing data confusion", "action": "night_session_available_from='2021-10-13' constant"},
+      {"id": "correctness/F13", "summary": "Spearman 30-day noise band > threshold", "action": "60-day rolling + p-value, threshold p>0.10"},
+      {"id": "correctness/F14", "summary": "Max Pain multiplier 50 ambiguous", "action": "total_loss = ... × 50 explicit, unit NTD"},
+      {"id": "integration/F5", "summary": "TanStack vs seqRef CLAUDE §3", "action": "cite §7 P0 exemption explicitly"},
+      {"id": "integration/F6", "summary": "Missing generic Exception handler", "action": "add @app.exception_handler(Exception) in main.py"},
+      {"id": "integration/F7", "summary": "PCR conditional contract validation", "action": "explicit if scope=per_contract → require contract; else ignore"},
+      {"id": "integration/F8", "summary": "Lazy load decision undocumented", "action": "add §2.4 note: not lazy-split because same page"},
+      {"id": "integration/F9", "summary": "Bull/bear color binding missing", "action": "explicit: high PCR = bg-bull/15, low = bg-bear/15, neutral = bg-ink/5"},
+      {"id": "integration/F10", "summary": "hidden attribute for session toggle", "action": "spec: <div hidden={!expanded}>"},
+      {"id": "integration/F11", "summary": "Cold load math correction", "action": "corrected in §1"},
+      {"id": "testability/F4", "summary": "Fixture spec missing", "action": "add §6.0 fixture provenance + location + size"},
+      {"id": "testability/F5", "summary": "SC-7 scope creep", "action": "merged with F2-testability: rename SC-7"},
+      {"id": "testability/F6", "summary": "Known Risks no SC binding", "action": "add SC-11 data_quality_warnings"},
+      {"id": "testability/F7", "summary": "NoOpBucket in tests", "action": "spec test rate limiter bypass"}
+    ],
+    "accepted_p2": [
+      {"id": "correctness/F15", "summary": "percentileofscore kind ambiguous", "action": "pin kind='mean'"},
+      {"id": "correctness/F16", "summary": "OI Wall tie-break", "action": "closer-to-spot tie-break"},
+      {"id": "correctness/F17", "summary": "PCR cache key + scope validation", "action": "route validates scope+contract mutual exclusion"},
+      {"id": "integration/F12", "summary": "parse_strike_volume future merge", "action": "add comment"},
+      {"id": "integration/F13", "summary": "Cache key prefix consistency", "action": "document in §2.2"},
+      {"id": "testability/F8", "summary": "PCR scope toggle route test", "action": "add to SC-3 verification"},
+      {"id": "testability/F9", "summary": "SC-1 tolerance split", "action": "max_pain == integer; total_loss rel tol 1e-6"},
+      {"id": "testability/F10", "summary": "Correlation single-input scope guard", "action": "SC-8 explicit guard"}
+    ],
+    "rejected_with_reason": [
+      {
+        "id": "correctness/F18",
+        "summary": "Refresh stampede 360 calls",
+        "reason": "MVP1 user = single dev manually clicking; token bucket already enforces 5 req/s floor. Deferred to MVP2 as known risk R7. Phase 7 will track if real env shows trip.",
+        "captured_in": "design v2 §8 R7"
+      }
+    ],
+    "needs_more_context": []
+  },
+  "next_actions": [
+    "1. Rewrite design.md as v2 (this round's accepted P0+P1+P2 changes)",
+    "2. Update brainstorm.md (SC-0/SC-10b/SC-11 added; SC-5/6/7/8 verification refined; SC-7 renamed)",
+    "3. Update state.json: pending_review_rounds.phase_1 = 1; add SC-0/10b/11 cycle counters",
+    "4. Run Phase 1 round 2 with same 3 lenses to confirm zero P0/P1 remain"
+  ]
+}

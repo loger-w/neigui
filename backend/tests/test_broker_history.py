@@ -346,3 +346,42 @@ async def test_fetch_broker_history_concurrent_different_ids_each_get_subset(
     )
     assert "9800" in res_a["brokers"] and "8440" not in res_a["brokers"]
     assert "8440" in res_b["brokers"] and "9800" not in res_b["brokers"]
+
+
+# ---------------------------------------------------------------------------
+# v3 spec §B1 — days param separates cache key (W10 不影響舊路徑)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_broker_history_days_separates_cache(
+    client, monkeypatch, tmp_path,
+):
+    """days==90 寫舊路徑 `2330_broker_history.json`(W10);
+    其他 days 寫 `2330_broker_history_{days}d.json`,互不污染。"""
+    today = date.today().isoformat()
+
+    async def fake_secid(symbol, start, end, trader_id):
+        return [_row(trader_id, today, 1000)]
+
+    monkeypatch.setattr(client, "_safe_get_secid_agg", fake_secid)
+
+    # days=60 寫到 _60d.json
+    await client.fetch_broker_history("2330", ["9800"], days=60)
+    assert (tmp_path / "2330_broker_history_60d.json").exists()
+    # 舊路徑不該被建立
+    assert not (tmp_path / "2330_broker_history.json").exists()
+
+    # days==90(default)走舊路徑
+    await client.fetch_broker_history("2330", ["8440"])
+    assert (tmp_path / "2330_broker_history.json").exists()
+
+    # 兩個檔案的 brokers 互相獨立
+    c60 = json.loads(
+        (tmp_path / "2330_broker_history_60d.json").read_text(encoding="utf-8"),
+    )
+    c90 = json.loads(
+        (tmp_path / "2330_broker_history.json").read_text(encoding="utf-8"),
+    )
+    assert "9800" in c60["brokers"] and "8440" not in c60["brokers"]
+    assert "8440" in c90["brokers"] and "9800" not in c90["brokers"]

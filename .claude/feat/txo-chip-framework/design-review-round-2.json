@@ -1,0 +1,52 @@
+{
+  "round": 2,
+  "phase": 1,
+  "total_findings": 26,
+  "p0": 1, "p1": 12, "p2": 13,
+  "round1_p0_p1_resolved_per_lens": {
+    "correctness": true, "integration": true, "testability": true
+  },
+  "classification": {
+    "accepted_p0": [
+      {"id": "integration/F15", "summary": "NoOpBucket monkeypatch broken: FinMindClient binds limiter at __init__, replacing module-level _fm_limiter post-construction is no-op", "action": "Patch get_finmind_rate_limiter BEFORE first get_finmind(); reset _client = None; define NoOpBucket interface inline"}
+    ],
+    "accepted_p1": [
+      {"id": "correctness/N1", "summary": "Shared fetch window size undefined; different td values defeat shared cache", "action": "Single canonical window = max(pcr_lb_td, settlement_lookback_to_trading_days); doc value"},
+      {"id": "correctness/N2", "summary": "Bootstrap p-value semantics wrong; need permutation test", "action": "Switch to permutation test (shuffle next_day_return, recompute Spearman, p = (#perms |r|>=|r_obs| + 1)/(N+1))"},
+      {"id": "correctness/N3", "summary": "Correlation feature flow-vs-delta ambiguity", "action": "Defer transformation decision to SC-0 probe + parser docstring; default to using foreign.call_net[t] directly pending probe verification"},
+      {"id": "correctness/N8", "summary": "PCR next-day stats low statistical power at default lookback", "action": "Add SC-11 'pcr_stats_low_power_region_X' warning when any region < 30 samples; raise default lookback to 250 trading days (1 year)"},
+      {"id": "integration/F14", "summary": "Shared window cache key with different td values doesn't share", "action": "All 3 endpoints request canonical max window; parsers slice their needed range; single cache key"},
+      {"id": "integration/F16", "summary": "trading_calendar in utils/ violates layering (utils is I/O-free)", "action": "Move to services/trading_calendar.py; utils only has pure get_trading_days_from_dates(date_list, end_date, n) helper"},
+      {"id": "integration/F17", "summary": "fetch_taiwan_option_daily_window missing _run_once inflight dedup", "action": "Wrap fan-out in self._run_once(...) per existing fetch_* pattern"},
+      {"id": "integration/F18", "summary": "Refresh on one endpoint leaves dependent parse caches stale", "action": "Refresh flow invalidates ALL dependent parse caches for that contract+date OR embeds window_version_hash in parse cache key"},
+      {"id": "testability/F11", "summary": "design §6.1 missing _excludes_dealer_trust_from_correlation_payload test name", "action": "Add to §6.1 institutional test bullet verbatim from brainstorm SC-8"},
+      {"id": "testability/F12", "summary": "MSW not in project; existing pattern is vi.spyOn", "action": "Replace MSW with vi.spyOn(optionsApi, X).mockRejectedValue; SC-10b at OptionsChipPanel.test.tsx level not DevTools MCP"},
+      {"id": "testability/F13", "summary": "test_fetch_*_cache_hit_vs_miss × 4 wildcard not concrete", "action": "Enumerate 4 explicit test names + add 3 refresh-invalidates-shared-window tests"},
+      {"id": "testability/F14", "summary": "SC-11 warning string format unpinned; per-day warmup warnings bloat", "action": "Pin ISO date; emit ONE consolidated 'pcr_walk_forward_warmup_skipped_first_{N}_days' warning"}
+    ],
+    "accepted_p2": [
+      {"id": "correctness/N4", "summary": "cumulative_delta_oi misnomer (telescopes to 2-point)", "action": "Change to Σ|ΔOI| (activity intensity); rename to window_activity_oi"},
+      {"id": "correctness/N5", "summary": "PCR per_contract weekly always insufficient_data", "action": "Louder SC-11 warning 'per_contract_pcr_unsupported_for_weekly'; frontend rule blocks selection"},
+      {"id": "correctness/N6", "summary": "TaiwanFuturesDaily publication lag → t_minus_1 off-by-one", "action": "Doc semantics: 'last AVAILABLE trading day'; SC-0 probe latest-date latency"},
+      {"id": "correctness/N7", "summary": "OptionsHitRateChart shared SVG not really shareable", "action": "Split into OptionsDeviationHistogram + OptionsBandHitChart"},
+      {"id": "correctness/N9", "summary": "parse_pcr_next_day_stats missing tx_returns[t+1] handling", "action": "Doc skip behavior + 'next_day_stats_dropped_samples_5pct' warning"},
+      {"id": "integration/N10", "summary": "PCR cache key threshold-dependent fetches re-do fetch", "action": "Split cache: pcr_series_{...lb} (threshold-independent) + pcr_classified_{...h_l} (threshold-dependent)"},
+      {"id": "integration/F19", "summary": "SC-0 probe scope misses institutional datasets", "action": "Extend SC-0 to all 5 datasets including row-shape doc for TaiwanOptionDaily"},
+      {"id": "integration/F20", "summary": "fetch_strike_volume not merged with shared window", "action": "Doc explicit decision: keep separate for MVP1; MVP2 evaluate merge"},
+      {"id": "integration/F21", "summary": "Cache key version mapping unstated", "action": "Add explicit line: 5 new keys use _CACHE_VERSION_OPTIONS_CHIP"},
+      {"id": "testability/F15", "summary": "Fixture spec per-SC expected.json schema not pinned", "action": "Add per-SC expected.json schema table + 50KB fixture size budget"},
+      {"id": "testability/F16", "summary": "probe.py developer onboarding undocumented", "action": "Doc: unit tests don't need FINMIND_TOKEN; probe sanitization; schema-drift static check"},
+      {"id": "testability/F17", "summary": "PCR next_day_stats schema duplication (samples_high + region.samples)", "action": "Unify: drop top-level samples_*; samples inside each region dict; positive schema test"},
+      {"id": "testability/F18", "summary": "NoOpBucket interface undefined", "action": "Inline class definition in §6.0"}
+    ],
+    "rejected_with_reason": [],
+    "needs_more_context": []
+  },
+  "exit_status": "blocked_for_round_3",
+  "next_actions": [
+    "1. Write design v3 incorporating all 26 accepted findings",
+    "2. Update brainstorm.md (SC-11 warning catalog refined; SC-8 permutation test; SC-3 default lookback note)",
+    "3. Update state.json: pending_review_rounds.phase_1 = 2",
+    "4. Run Phase 1 round 3 (final allowed iteration)"
+  ]
+}

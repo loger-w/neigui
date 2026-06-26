@@ -153,4 +153,68 @@ describe("SymbolSearch", () => {
     fireEvent.mouseDown(screen.getByText("2330"));
     expect(onPick).toHaveBeenCalledWith("2330", "台積電");
   });
+
+  it("Enter selects the highlighted (default first) result", async () => {
+    vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
+    const onPick = vi.fn();
+    renderWithQuery(<SymbolSearch onPick={onPick} />);
+    await flushLoad();
+
+    const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
+    fireEvent.change(input, { target: { value: "23" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    // First result for query "23" is "2330 台積電" (insertion order).
+    expect(onPick).toHaveBeenCalledWith("2330", "台積電");
+  });
+
+  it("ArrowDown moves highlight; Enter then selects the new highlight", async () => {
+    vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
+    const onPick = vi.fn();
+    renderWithQuery(<SymbolSearch onPick={onPick} />);
+    await flushLoad();
+
+    const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
+    fireEvent.change(input, { target: { value: "23" } });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    // Second item (index 1) = "2317 鴻海"
+    expect(onPick).toHaveBeenCalledWith("2317", "鴻海");
+  });
+
+  it("ArrowUp at index 0 stays at 0", async () => {
+    vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
+    const onPick = vi.fn();
+    renderWithQuery(<SymbolSearch onPick={onPick} />);
+    await flushLoad();
+
+    const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
+    fireEvent.change(input, { target: { value: "23" } });
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onPick).toHaveBeenCalledWith("2330", "台積電");
+  });
+
+  it("Escape closes the dropdown", async () => {
+    vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
+    renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
+    await flushLoad();
+
+    const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
+    fireEvent.change(input, { target: { value: "23" } });
+    expect(screen.queryByText("台積電")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByText("台積電")).toBeNull();
+  });
+
+  it("Enter with no results is a no-op", async () => {
+    vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
+    const onPick = vi.fn();
+    renderWithQuery(<SymbolSearch onPick={onPick} />);
+    await flushLoad();
+
+    const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
+    fireEvent.change(input, { target: { value: "XYZZY" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onPick).not.toHaveBeenCalled();
+  });
 });

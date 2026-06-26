@@ -159,4 +159,5 @@ describe("useBrokerHistory", () => {
     // The stale fetch must NOT have overwritten the 2454 cache.
     expect(result.current.series.get("A")![0]!.net).toBe(99);
   });
+
 });

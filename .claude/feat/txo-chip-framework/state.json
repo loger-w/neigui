@@ -1,0 +1,33 @@
+{
+  "slug": "txo-chip-framework",
+  "start_sha": "07e834c87ac03bd3436ed721e37b6e288b337c0e",
+  "branch": "feat/txo-chip-framework",
+  "worktree_path": null,
+  "current_phase": 8,
+  "completed_phases": [-1, 0, 1, 2, 3, 4, 5, 7],
+  "scope": "L",
+  "pending_review_rounds": { "phase_1": 0, "phase_2": 0, "phase_4": 0 },
+  "blockers": [],
+  "last_updated": "2026-06-26T18:30:00Z",
+  "project_shape": "fullstack",
+  "last_commit_sha": null,
+  "final_merge_sha": null,
+  "sc_cycle_counts": {
+    "SC-1":  { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-2":  { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-3":  { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-4":  { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-5":  { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-6":  { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-7":  { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-8":  { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-9":  { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-10": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-0":  { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-10b":{ "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-11": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 1, "phase_7": 0, "total": 1, "phase_6_reason": "FINMIND_TOKEN expired 2026-06-24; infra_fail per /feat Phase 6 step 2(d)" }
+  },
+  "paused": "Phase 8 ready (2026-06-26): backend (175 pytest) + frontend (233 vitest) full implementation. Phase 4 code-review done (5 P1 + 3 P2 fixed, 2 P2 deferred). Phase 7 SC table written. Phase 6 real-env BLOCKED on FINMIND_TOKEN refresh (R14, infra_fail / _unscoped.phase_6); not a SC retreat. User decides: PR / merge / paused. See CHECKPOINT.md + phase7-sc-table.md.",
+  "source_doc": "C:\\Users\\USER\\Downloads\\compass_artifact_wf-73a978b0-6865-43b2-99ef-f5b98305dd53_text_markdown.md"
+}

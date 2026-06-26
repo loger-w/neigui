@@ -103,6 +103,42 @@ describe("api cache", () => {
     expect(url).toContain("refresh=true");
   });
 
+  it("chipHistory 帶 days 時 URL 含 ?days=60;不帶時不含 days", async () => {
+    const fetchMock = mockFetch(MOCK_HISTORY);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.chipHistory("2330", 60);
+    let url = (fetchMock.mock.calls[0]![0] as URL).toString();
+    expect(url).toContain("days=60");
+
+    clearApiCache();
+    await api.chipHistory("2454");
+    url = (fetchMock.mock.calls[1]![0] as URL).toString();
+    expect(url).not.toContain("days=");
+  });
+
+  it("chipHistory(symbol, days, true) 三參形式 URL 同時帶 days + refresh", async () => {
+    const fetchMock = mockFetch(MOCK_HISTORY);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.chipHistory("2330", 180, true);
+    const url = (fetchMock.mock.calls[0]![0] as URL).toString();
+    expect(url).toContain("days=180");
+    expect(url).toContain("refresh=true");
+  });
+
+  it("chipBrokerHistory 帶 days 時 URL 含 ?days=20", async () => {
+    const fetchMock = mockFetch({
+      symbol: "2330", fetched_at: "", last_date: "", brokers: {},
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.chipBrokerHistory("2330", ["A"], 20);
+    const url = (fetchMock.mock.calls[0]![0] as URL).toString();
+    expect(url).toContain("days=20");
+    expect(url).toContain("ids=A");
+  });
+
   it("different symbols have different cache keys", async () => {
     const fetchMock = mockFetch(MOCK_HISTORY);
     vi.stubGlobal("fetch", fetchMock);
@@ -112,6 +148,36 @@ describe("api cache", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(__testCache.size).toBe(2);
+  });
+
+  it("chipBrokersWindow URL contains date + days + refresh", async () => {
+    const fetchMock = mockFetch({
+      symbol: "2330", date: "2026-06-19", window_days: 30,
+      trading_dates: [], actual_days: 0, fetched_at: "",
+      top_brokers: [], margin: {}, institutional: {}, total_traded_lots: 0,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.chipBrokersWindow("2330", "2026-06-19", 30, true);
+    const url = (fetchMock.mock.calls[0]![0] as URL).toString();
+    expect(url).toContain("/api/chip/2330/brokers_window");
+    expect(url).toContain("date=2026-06-19");
+    expect(url).toContain("days=30");
+    expect(url).toContain("refresh=true");
+  });
+
+  it("chipBrokersWindow URL omits refresh when not given", async () => {
+    const fetchMock = mockFetch({
+      symbol: "2330", date: "2026-06-19", window_days: 10,
+      trading_dates: [], actual_days: 0, fetched_at: "",
+      top_brokers: [], margin: {}, institutional: {}, total_traded_lots: 0,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.chipBrokersWindow("2330", "2026-06-19", 10);
+    const url = (fetchMock.mock.calls[0]![0] as URL).toString();
+    expect(url).toContain("days=10");
+    expect(url).not.toContain("refresh=");
   });
 
   it("clearApiCache empties the cache", async () => {

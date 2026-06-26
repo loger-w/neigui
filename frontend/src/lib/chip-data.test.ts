@@ -204,4 +204,77 @@ describe("buildTradeRows", () => {
     expect(buyVol1Count).toBe(50);
     expect(sellVol1Count).toBe(50);
   });
+
+  // F2: independent sort spec per side (buy/sell). Default keeps current
+  // behaviour (volume desc); explicit price asc/desc + volume asc supported.
+  describe("with explicit sortSpec", () => {
+    it("buySort=(price, desc): buyRows sorted by price high → low; sellRows unaffected", () => {
+      const trades = [
+        mkTrade("A", 100, 10, 50),
+        mkTrade("B", 102, 5, 30),
+        mkTrade("C", 101, 20, 10),
+      ];
+      const { buyRows, sellRows } = buildTradeRows(
+        trades, null, 10,
+        { key: "price", dir: "desc" },
+      );
+      expect(buyRows.map((r) => r.price)).toEqual([102, 101, 100]);
+      // sellSort defaults to volume desc — no leak from buy.
+      expect(sellRows.map((r) => r.volume)).toEqual([50, 30, 10]);
+    });
+
+    it("(price, asc): low → high", () => {
+      const trades = [
+        mkTrade("A", 100, 10, 0),
+        mkTrade("B", 102, 5, 0),
+        mkTrade("C", 101, 20, 0),
+      ];
+      const { buyRows } = buildTradeRows(
+        trades, null, 10,
+        { key: "price", dir: "asc" },
+      );
+      expect(buyRows.map((r) => r.price)).toEqual([100, 101, 102]);
+    });
+
+    it("(volume, asc): small → large", () => {
+      const trades = [
+        mkTrade("A", 100, 10, 0),
+        mkTrade("B", 102, 5, 0),
+        mkTrade("C", 101, 20, 0),
+      ];
+      const { buyRows } = buildTradeRows(
+        trades, null, 10,
+        { key: "volume", dir: "asc" },
+      );
+      expect(buyRows.map((r) => r.volume)).toEqual([5, 10, 20]);
+    });
+
+    it("sellSort independent of buySort", () => {
+      const trades = [
+        mkTrade("A", 100, 10, 50),
+        mkTrade("B", 102, 5, 30),
+        mkTrade("C", 101, 20, 10),
+      ];
+      const { buyRows, sellRows } = buildTradeRows(
+        trades, null, 10,
+        { key: "volume", dir: "desc" },   // buyRows: by vol desc
+        { key: "price", dir: "asc" },     // sellRows: by price asc
+      );
+      expect(buyRows.map((r) => r.volume)).toEqual([20, 10, 5]);
+      expect(sellRows.map((r) => r.price)).toEqual([100, 101, 102]);
+    });
+
+    it("tie-break by broker asc for stability when sort key is tied", () => {
+      const trades = [
+        mkTrade("C", 100, 10, 0),
+        mkTrade("A", 100, 10, 0),
+        mkTrade("B", 100, 10, 0),
+      ];
+      const { buyRows } = buildTradeRows(
+        trades, null, 10,
+        { key: "volume", dir: "desc" },
+      );
+      expect(buyRows.map((r) => r.broker)).toEqual(["A", "B", "C"]);
+    });
+  });
 });

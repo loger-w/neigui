@@ -53,6 +53,20 @@ def test_broker_history_success(client):
     assert r.json() == payload
 
 
+def test_broker_history_with_days(client):
+    """帶 days=60 → service 收到 days=60(positional 4th)。"""
+    payload = {
+        "symbol": "2330", "fetched_at": "", "last_date": "",
+        "brokers": {"A": []},
+    }
+    mock = AsyncMock(return_value=payload)
+    with patch("routes.chip.get_finmind") as gf:
+        gf.return_value.fetch_broker_history = mock
+        r = client.get("/api/chip/2330/broker_history?ids=A&days=60")
+    assert r.status_code == 200
+    mock.assert_called_once_with("2330", ["A"], False, 60)
+
+
 def test_broker_history_strips_whitespace_ids(client):
     payload = {
         "symbol": "2330", "fetched_at": "", "last_date": "",
@@ -63,4 +77,5 @@ def test_broker_history_strips_whitespace_ids(client):
         gf.return_value.fetch_broker_history = mock
         r = client.get("/api/chip/2330/broker_history?ids= A , B ,")
     assert r.status_code == 200
-    mock.assert_called_once_with("2330", ["A", "B"], False)
+    # 4th positional arg `days` 預設 90 — v3 spec §E P0-E 1-line patch
+    mock.assert_called_once_with("2330", ["A", "B"], False, 90)

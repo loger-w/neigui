@@ -17,6 +17,12 @@ interface Props {
    *  aria-busy so screen readers announce the busy state. Previous summary
    *  stays visible — no empty placeholder flash. */
   loading?: boolean;
+  /** N-day window header. When undefined, panel renders single-day style
+   *  (legacy). When set, panel renders "過去 N 日加總" near the top. */
+  windowDays?: number;
+  /** Trading-days actually aggregated, may be < windowDays when anchor date
+   *  is too early in history. When < windowDays, panel adds "(實際 X 日)". */
+  actualDays?: number;
 }
 
 type Mode = "net" | "volume";
@@ -33,6 +39,14 @@ function brokerBadge(name: string): string | null {
 function fmtRate(r: number | null): string {
   if (r === null) return "—";
   return `${Math.round(r * 100)}%`;
+}
+
+function fmtAvgPrice(p: number): string {
+  // avg_*_price = 0 means "no trade on this side" (backend skips the
+  // weighted-avg division when share count is zero). Render an em-dash
+  // rather than the misleading 0.00.
+  if (!p || p <= 0) return "—";
+  return p.toFixed(2);
 }
 
 function rateClass(r: number | null): string {
@@ -53,9 +67,11 @@ interface RowProps {
 function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
   const badge = brokerBadge(broker.name);
   const netCls = broker.net > 0 ? "text-accent" : broker.net < 0 ? "text-bear" : "text-ink-dim";
+  // Column order: 買均 → 賣均 → 買張 → 賣張 (avg-price pair first, then
+  // volume pair). Net mode prepends 淨買賣 col; volume mode appends 當沖率.
   const cls = mode === "net"
-    ? "grid-cols-[22px_32px_1fr_90px_80px_80px]"
-    : "grid-cols-[22px_32px_1fr_64px_64px_76px]";
+    ? "grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]"
+    : "grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
 
   return (
     <div className={`grid ${cls} items-center text-sm py-2 px-2 border-b border-line/40 hover:bg-bg-deep/50 ${selected ? "bg-[#b794f4]/[0.06]" : ""}`}>
@@ -65,24 +81,46 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
         aria-label={`勾選 ${broker.name}`}
       />
       <span className="text-ink-dim tabular-nums">{rank}</span>
-      <span className="flex items-center gap-1.5 truncate text-ink-muted">
-        <span className="truncate">{broker.name}</span>
+      <span
+        className="relative flex items-center gap-1.5 text-ink-muted min-w-0 group/name"
+        title={broker.name}
+      >
+        <span className="truncate flex-1 min-w-0">{broker.name}</span>
         {badge && (
           <span className={`shrink-0 text-2xs px-1 py-px rounded ${badge === "外" ? "bg-accent/15 text-accent" : "bg-bear/15 text-bear"}`}>
             {badge}
           </span>
         )}
+        <span
+          role="tooltip"
+          data-testid="broker-name-tooltip"
+          className="pointer-events-none absolute left-0 top-full mt-1 z-50 px-2 py-1 bg-bg-deep border border-line-strong text-xs text-ink whitespace-nowrap rounded shadow-lg opacity-0 group-hover/name:opacity-100 transition-opacity duration-100"
+        >
+          {broker.name}
+        </span>
       </span>
       {mode === "net" ? (
         <>
           <span className={`text-right tabular-nums font-medium ${netCls}`}>
             {broker.net > 0 ? "+" : ""}{fmtVol(broker.net)}
           </span>
+          <span className="text-right tabular-nums text-xs text-ink-dim">
+            {fmtAvgPrice(broker.avg_buy_price)}
+          </span>
+          <span className="text-right tabular-nums text-xs text-ink-dim">
+            {fmtAvgPrice(broker.avg_sell_price)}
+          </span>
           <span className="text-right tabular-nums text-accent">{fmtVol(broker.buy)}</span>
           <span className="text-right tabular-nums text-bear">{fmtVol(broker.sell)}</span>
         </>
       ) : (
         <>
+          <span className="text-right tabular-nums text-xs text-ink-dim">
+            {fmtAvgPrice(broker.avg_buy_price)}
+          </span>
+          <span className="text-right tabular-nums text-xs text-ink-dim">
+            {fmtAvgPrice(broker.avg_sell_price)}
+          </span>
           <span className="text-right tabular-nums text-accent">{fmtVol(broker.buy)}</span>
           <span className="text-right tabular-nums text-bear">{fmtVol(broker.sell)}</span>
           <span className={`text-right tabular-nums font-medium ${rateClass((broker as TopVolumeBroker).daytradeRate)}`}>
@@ -97,6 +135,7 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
 export function ChipBrokersPanel({
   summary, dayTotalLots, selectedBrokerIds,
   onToggleBroker, onClearAllBrokers, loading,
+  windowDays, actualDays,
 }: Props) {
   const [mode, setMode] = useState<Mode>("net");
 
@@ -130,8 +169,8 @@ export function ChipBrokersPanel({
 
   const { margin } = summary;
   const N = selectedBrokerIds.size;
-  const netHeaderCols = "grid-cols-[22px_32px_1fr_90px_80px_80px]";
-  const volHeaderCols = "grid-cols-[22px_32px_1fr_64px_64px_76px]";
+  const netHeaderCols = "grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]";
+  const volHeaderCols = "grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
 
   return (
     <div
@@ -155,6 +194,20 @@ export function ChipBrokersPanel({
           </div>
         )}
       </div>
+
+      {windowDays !== undefined && (
+        <div
+          data-testid="window-header"
+          className="px-3 py-1.5 border-b border-line text-xs text-ink-dim bg-bg-deep/40 flex items-baseline gap-1.5"
+        >
+          <span>過去</span>
+          <span className="text-ink-muted tabular-nums">{windowDays}</span>
+          <span>日加總</span>
+          {actualDays !== undefined && actualDays < windowDays && (
+            <span className="text-accent">(實際 {actualDays} 日)</span>
+          )}
+        </div>
+      )}
 
       {/* F7: 主力買賣超 above 融資融券 (was below). F4 also removed the
           right-side symbol/date header and 三大法人 block — that data lives
@@ -264,6 +317,8 @@ export function ChipBrokersPanel({
                 <span>#</span>
                 <span>分點</span>
                 <span className="text-right">淨買賣</span>
+                <span className="text-right">買均</span>
+                <span className="text-right">賣均</span>
                 <span className="text-right">買張</span>
                 <span className="text-right">賣張</span>
               </div>
@@ -294,6 +349,8 @@ export function ChipBrokersPanel({
                 <span>#</span>
                 <span>分點</span>
                 <span className="text-right">淨買賣</span>
+                <span className="text-right">買均</span>
+                <span className="text-right">賣均</span>
                 <span className="text-right">買張</span>
                 <span className="text-right">賣張</span>
               </div>
@@ -325,6 +382,8 @@ export function ChipBrokersPanel({
               <span></span>
               <span>#</span>
               <span>分點</span>
+              <span className="text-right">買均</span>
+              <span className="text-right">賣均</span>
               <span className="text-right">買張</span>
               <span className="text-right">賣張</span>
               <span className="text-right">當沖率</span>

@@ -487,13 +487,7 @@ def _mock_http_by_start_date(rows_by_date):
     return c
 
 
-@pytest.fixture(autouse=True)
-def _reset_singleton(tmp_path, monkeypatch):
-    monkeypatch.setenv("FINMIND_TOKEN", "test-token")
-    monkeypatch.setenv("CHIP_DATA_DIR", str(tmp_path))
-    import services.finmind as mod
-    mod._client = None
-    mod._fm_limiter = None
+# _reset_singleton moved to tests/conftest.py (design v4 T1)
 
 
 @pytest.mark.asyncio
@@ -612,6 +606,7 @@ def test_parse_spot_picks_latest_close_and_computes_change():
     assert out["change"] == pytest.approx(120.0)
     assert out["change_pct"] == pytest.approx(120.0 / 53300.0 * 100, rel=1e-4)
     assert out["as_of_date"] == "2026-06-22"
+    assert out["as_of_session"] == "position"
 
 
 def test_parse_spot_single_row_change_is_zero():
@@ -622,6 +617,7 @@ def test_parse_spot_single_row_change_is_zero():
     assert out["change"] == 0.0
     assert out["change_pct"] == 0.0
     assert out["as_of_date"] == "2026-06-22"
+    assert out["as_of_session"] == "position"
 
 
 def test_parse_spot_empty_returns_none_fields():
@@ -630,21 +626,44 @@ def test_parse_spot_empty_returns_none_fields():
     assert out == {
         "spot": None, "prev_close": None,
         "change": None, "change_pct": None,
-        "as_of_date": None,
+        "as_of_date": None, "as_of_session": None,
     }
 
 
-def test_parse_spot_filters_after_market_session():
-    """Rows with trading_session=after_market are ignored: night session
-    has settlement_price=0 noise and we want only the day-session close."""
+def test_parse_spot_includes_after_market_with_position_priority_within_date():
+    """Within the same date, position (13:45 close) is chronologically AFTER
+    after_market (05:00 close) under FinMind's end-date convention, so the
+    day-session close wins when both exist for the latest date."""
     from services.finmind_options import parse_spot
     rows = [
+        _tx_row("2026-06-22", 53200.0, trading_session="after_market"),
         _tx_row("2026-06-22", 53420.0, trading_session="position"),
-        _tx_row("2026-06-22", 99999.0, trading_session="after_market"),
     ]
     out = parse_spot(rows)
     assert out["spot"] == 53420.0
     assert out["as_of_date"] == "2026-06-22"
+    assert out["as_of_session"] == "position"
+    # prev_close is the night session of the same date (one step earlier)
+    assert out["prev_close"] == 53200.0
+
+
+def test_parse_spot_picks_after_market_when_position_missing_for_latest_date():
+    """If FinMind has published today's after_market (5am close) but the
+    day-session row hasn't landed yet (typical 2hr publication lag after
+    13:45), the dashboard should show the night close rather than fall
+    back to yesterday's day session — that was the visible-staleness bug."""
+    from services.finmind_options import parse_spot
+    rows = [
+        _tx_row("2026-06-25", 46544.0, trading_session="position"),
+        _tx_row("2026-06-26", 45805.0, trading_session="after_market"),
+        # Note: no 2026-06-26 position row — FinMind has not yet published it
+    ]
+    out = parse_spot(rows)
+    assert out["spot"] == 45805.0  # 6/26 night, not 6/25 day
+    assert out["as_of_date"] == "2026-06-26"
+    assert out["as_of_session"] == "after_market"
+    assert out["prev_close"] == 46544.0  # previous = 6/25 day session
+    assert out["change"] == pytest.approx(-739.0)
 
 
 def test_parse_spot_filters_spread_contract_dates():
@@ -709,3 +728,599 @@ async def test_fetch_spot_returns_cached_on_second_call():
     second = await fm.fetch_spot("2025-01-02")
     assert first == second
     assert mc.get.await_count == 1  # cache hit, no second HTTP call
+
+
+# ============================================================================
+# Backfill fetches (Phase 6 prep): settlement_history + tx_close_history
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_fetch_settlement_history_parses_date_contract_price():
+    """fetch_settlement_history → {date: {contract_date, price}}.
+    Accepts either 'final_settlement_price' or 'settlement_price' field name
+    (real schema TBD pending SC-0 probe; R14)."""
+    from datetime import date as _date
+    from services.finmind import FinMindClient
+    mc = _mock_http(_fm_resp([
+        {"date": "2026-05-21", "contract_date": "202605",
+         "final_settlement_price": 22150.0},
+        {"date": "2026-04-16", "contract_date": "202604",
+         "settlement_price": 21450.0},  # alternate field name
+    ]))
+    fm = FinMindClient()
+    fm._http = mc
+    result = await fm.fetch_settlement_history(_date(2026, 6, 25))
+    assert result[_date(2026, 5, 21)] == {"contract_date": "202605", "price": 22150.0}
+    assert result[_date(2026, 4, 16)] == {"contract_date": "202604", "price": 21450.0}
+
+
+@pytest.mark.asyncio
+async def test_fetch_settlement_history_caches():
+    from datetime import date as _date
+    from services.finmind import FinMindClient
+    mc = _mock_http(_fm_resp([
+        {"date": "2026-05-21", "contract_date": "202605",
+         "final_settlement_price": 22150.0},
+    ]))
+    fm = FinMindClient()
+    fm._http = mc
+    first = await fm.fetch_settlement_history(_date(2026, 6, 25))
+    second = await fm.fetch_settlement_history(_date(2026, 6, 25))
+    assert first == second
+    assert mc.get.await_count == 1  # cache hit
+
+
+@pytest.mark.asyncio
+async def test_fetch_tx_close_history_filters_day_session_front_month():
+    """fetch_tx_close_history → {date: front-month TX close}.
+    Filters out night session + spread contracts, picks lowest contract_date
+    per date (front month)."""
+    from datetime import date as _date
+    from services.finmind import FinMindClient
+    mc = _mock_http(_fm_resp([
+        # Day-session, front-month should win
+        {"date": "2026-06-23", "data_id": "TX", "contract_date": "202606",
+         "trading_session": "position", "close": 22000.0},
+        # Day-session, back-month — same date but later contract → dropped
+        {"date": "2026-06-23", "data_id": "TX", "contract_date": "202607",
+         "trading_session": "position", "close": 22100.0},
+        # Night session — dropped
+        {"date": "2026-06-23", "data_id": "TX", "contract_date": "202606",
+         "trading_session": "after_market", "close": 22050.0},
+        # Spread (non-YYYYMM) — dropped
+        {"date": "2026-06-23", "data_id": "TX", "contract_date": "202606/202607",
+         "trading_session": "position", "close": -100.0},
+        # Day 2
+        {"date": "2026-06-24", "data_id": "TX", "contract_date": "202606",
+         "trading_session": "position", "close": 22050.0},
+    ]))
+    fm = FinMindClient()
+    fm._http = mc
+    closes = await fm.fetch_tx_close_history(_date(2026, 6, 25))
+    assert closes == {_date(2026, 6, 23): 22000.0, _date(2026, 6, 24): 22050.0}
+
+
+def test_tx_returns_from_closes_basic():
+    from datetime import date as _date
+    from services.finmind import FinMindClient
+    closes = {
+        _date(2026, 6, 23): 22000.0,
+        _date(2026, 6, 24): 22050.0,  # +0.227%
+        _date(2026, 6, 25): 22100.0,  # +0.227%
+    }
+    returns = FinMindClient._tx_returns_from_closes(closes)
+    # The LATEST date has no t+1, so it's dropped (caller skip-on-missing)
+    assert set(returns.keys()) == {_date(2026, 6, 23), _date(2026, 6, 24)}
+    assert returns[_date(2026, 6, 23)] == pytest.approx((22050 - 22000) / 22000)
+    assert returns[_date(2026, 6, 24)] == pytest.approx((22100 - 22050) / 22050)
+
+
+def test_tx_returns_from_closes_skips_zero_or_negative_base():
+    from datetime import date as _date
+    from services.finmind import FinMindClient
+    closes = {
+        _date(2026, 6, 23): 0.0,        # zero base → skip
+        _date(2026, 6, 24): 22050.0,
+        _date(2026, 6, 25): 22100.0,
+    }
+    returns = FinMindClient._tx_returns_from_closes(closes)
+    assert _date(2026, 6, 23) not in returns
+    assert _date(2026, 6, 24) in returns
+
+
+# ============================================================================
+# SC-1 / SC-5: Max Pain (design v4 §4.1, brainstorm SC-1/SC-5)
+# ============================================================================
+
+def _option_row(contract_date: str, strike: int, side: str, oi: int, *,
+                option_id: str = "TXO", session: str = "position",
+                day: str = "2026-06-25") -> dict:
+    """Synthetic TaiwanOptionDaily row matching real-schema fields."""
+    return {
+        "date": day, "option_id": option_id, "contract_date": contract_date,
+        "strike_price": float(strike), "call_put": side,
+        "open_interest": oi, "volume": 0, "trading_session": session,
+    }
+
+
+def test_parse_max_pain_basic():
+    """SC-1: symmetric OI distribution → Max Pain at ATM strike."""
+    from services.finmind_options import parse_max_pain
+    rows = [
+        _option_row("202607", 20000, "call", oi=100),
+        _option_row("202607", 21000, "call", oi=500),
+        _option_row("202607", 22000, "call", oi=300),
+        _option_row("202607", 20000, "put",  oi=300),
+        _option_row("202607", 21000, "put",  oi=500),
+        _option_row("202607", 22000, "put",  oi=100),
+    ]
+    result = parse_max_pain(rows, contract_date="202607")
+    assert result["max_pain"] == 21000
+    assert result["strike_count"] == 3
+
+
+def test_parse_max_pain_union_strikes_asymmetric_otm():
+    """SC-1 / design F1: candidate K = union(call_strikes, put_strikes).
+
+    Without union (naive intersection), deep-OTM strikes that trade on only
+    one side get dropped → Max Pain biased toward center. Real TXO data
+    routinely has one-sided deep OTM strikes.
+    """
+    from services.finmind_options import parse_max_pain
+    rows = [
+        _option_row("202607", 18000, "put",  oi=400),   # put-only deep OTM
+        _option_row("202607", 21000, "call", oi=200),
+        _option_row("202607", 21000, "put",  oi=200),
+        _option_row("202607", 24000, "call", oi=400),   # call-only deep OTM
+    ]
+    result = parse_max_pain(rows, contract_date="202607")
+    assert result["max_pain"] == 21000
+    assert result["strikes_with_call_oi_only"] == 1
+    assert result["strikes_with_put_oi_only"] == 1
+    assert result["strike_count"] == 3
+
+
+def test_parse_max_pain_strict_contract_filter():
+    """SC-1 / design F2: strict contract_date equality filter.
+
+    Without it, monthly OI bleeds into weekly Max Pain (and vice versa).
+    """
+    from services.finmind_options import parse_max_pain
+    rows = [
+        # Monthly OI — would shift Max Pain if leaked in
+        _option_row("202607",   20000, "call", oi=10000),
+        _option_row("202607",   20000, "put",  oi=10000),
+        # Weekly contract (the filter target) — symmetric at 22000
+        _option_row("202607W2", 21000, "call", oi=100),
+        _option_row("202607W2", 22000, "call", oi=200),
+        _option_row("202607W2", 23000, "call", oi=100),
+        _option_row("202607W2", 21000, "put",  oi=100),
+        _option_row("202607W2", 22000, "put",  oi=200),
+        _option_row("202607W2", 23000, "put",  oi=100),
+    ]
+    result = parse_max_pain(rows, contract_date="202607W2")
+    assert result["max_pain"] == 22000
+
+
+def test_parse_max_pain_total_loss_includes_multiplier_50():
+    """SC-1 / design F14: TXO multiplier = NT$50 per point; total_loss_ntd
+    must be in NTD (not raw OI-point units).
+
+    Setup: at K=21000 (the ATM-ish optimum), call_loss = 100×1000 = 100k
+    points, put_loss = 100×1000 = 100k points, total 200k points × 50 = 10M NTD.
+    """
+    from services.finmind_options import parse_max_pain
+    rows = [
+        _option_row("202607", 20000, "call", oi=100),
+        _option_row("202607", 21000, "call", oi=100),
+        _option_row("202607", 21000, "put",  oi=100),
+        _option_row("202607", 22000, "put",  oi=100),
+    ]
+    result = parse_max_pain(rows, contract_date="202607")
+    assert result["max_pain"] == 21000  # unique minimum (200k pts vs 300k at 20000/22000)
+    assert result["total_loss_ntd"] == 10_000_000  # 200_000 points × NT$50
+
+
+def test_parse_max_pain_hit_rate_uses_t_minus_1():
+    """SC-5 / design F3: avoid look-ahead bias by aligning settlement_t
+    against max_pain_(t-1), NOT max_pain_t. Settlement-day OI collapses,
+    making max_pain_t mechanically ≈ settlement (false 100% hit)."""
+    from services.finmind_options import parse_max_pain_hit_rate
+    oi_by_trading_day = {
+        date(2026, 6, 16): [  # t-1: bias toward 21000
+            _option_row("202606", 21000, "call", oi=500, day="2026-06-16"),
+            _option_row("202606", 22000, "call", oi=100, day="2026-06-16"),
+            _option_row("202606", 21000, "put",  oi=100, day="2026-06-16"),
+            _option_row("202606", 22000, "put",  oi=500, day="2026-06-16"),
+        ],
+        date(2026, 6, 17): [  # t: OI collapsed, max_pain_t ≈ settlement_t
+            _option_row("202606", 22000, "call", oi=10, day="2026-06-17"),
+            _option_row("202606", 22000, "put",  oi=10, day="2026-06-17"),
+        ],
+    }
+    settlements = {date(2026, 6, 17): {"contract_date": "202606", "price": 22000.0}}
+    result = parse_max_pain_hit_rate(
+        oi_by_trading_day=oi_by_trading_day, settlements=settlements,
+    )
+    assert result["samples"] == 1
+    h = result["history"][0]
+    assert h["max_pain_at_t_minus_1"] == 21000  # NOT 22000
+    assert abs(h["deviation_pct"]) > 0.04  # ≈ 4.5%, not 0
+    assert result["hit_within_1pct"] == 0.0
+    assert result["hit_within_2pct"] == 0.0
+
+
+def test_parse_max_pain_hit_rate_excludes_pending_settlement():
+    """SC-5 / design F10: settlement_price=None → exclude, flag pending."""
+    from services.finmind_options import parse_max_pain_hit_rate
+    oi_by_trading_day = {
+        date(2026, 6, 16): [_option_row("202606", 22000, "call", oi=100, day="2026-06-16")],
+    }
+    settlements = {
+        date(2026, 6, 17): {"contract_date": "202606", "price": None},
+    }
+    result = parse_max_pain_hit_rate(
+        oi_by_trading_day=oi_by_trading_day, settlements=settlements,
+    )
+    assert result["samples"] == 0
+    assert result["latest_settlement_pending"] is True
+
+
+def test_parse_max_pain_hit_rate_empty_inputs():
+    """SC-5 insufficient_data path."""
+    from services.finmind_options import parse_max_pain_hit_rate
+    result = parse_max_pain_hit_rate(oi_by_trading_day={}, settlements={})
+    assert result["samples"] == 0
+    assert result["history"] == []
+    assert result["latest_settlement_pending"] is False
+
+
+# ============================================================================
+# SC-2 / SC-6: OI Walls (design v4 §4.2)
+# ============================================================================
+
+def test_parse_oi_walls_static_tie_break_by_spot():
+    """SC-2 / F16: when two strikes have equal max OI, pick the one
+    closest to the spot price (more informative as a 'wall')."""
+    from services.finmind_options import parse_oi_walls
+    rows_today = [
+        _option_row("202607", 21000, "call", oi=500),
+        _option_row("202607", 22000, "call", oi=500),  # tie at 500
+        _option_row("202607", 23000, "call", oi=200),
+        _option_row("202607", 20000, "put", oi=300),
+    ]
+    result = parse_oi_walls(
+        rows_today=rows_today, rows_history=[], contract_date="202607",
+        delta_window=5, spot=22000.0,
+    )
+    # Tied 21000 vs 22000 — closer to spot 22000 wins
+    assert result["static_call_wall"]["strike"] == 22000
+    assert result["static_call_wall"]["oi"] == 500
+
+
+def test_parse_oi_walls_dynamic_uses_activity_not_telescoping_delta():
+    """SC-2 / N4: dynamic wall = Σ_d |oi_d+1 - oi_d|, an activity-intensity
+    measure. NOT the telescoping 2-point delta (oi_today - oi_window_start)
+    which masks intermediate movement."""
+    from services.finmind_options import parse_oi_walls
+    # 5-day window. Strike A: OI ramps smoothly 100→200→300→400→500.
+    # Strike B: OI flips 100→500→100→500→100. Same net end-to-start (0 vs 400),
+    # but B has 4× higher activity. Dynamic wall must pick B.
+    history = [
+        # d1
+        [_option_row("202607", 21000, "call", oi=100, day="2026-06-19"),
+         _option_row("202607", 22000, "call", oi=100, day="2026-06-19")],
+        # d2
+        [_option_row("202607", 21000, "call", oi=200, day="2026-06-20"),
+         _option_row("202607", 22000, "call", oi=500, day="2026-06-20")],
+        # d3
+        [_option_row("202607", 21000, "call", oi=300, day="2026-06-23"),
+         _option_row("202607", 22000, "call", oi=100, day="2026-06-23")],
+        # d4
+        [_option_row("202607", 21000, "call", oi=400, day="2026-06-24"),
+         _option_row("202607", 22000, "call", oi=500, day="2026-06-24")],
+    ]
+    today = [
+        _option_row("202607", 21000, "call", oi=500),
+        _option_row("202607", 22000, "call", oi=100),  # B ends at 100, A ends at 500
+    ]
+    result = parse_oi_walls(
+        rows_today=today, rows_history=history, contract_date="202607",
+        delta_window=5, spot=21500.0,
+    )
+    # Telescoping (wrong): A delta = 500-100=400, B delta = 100-100=0 → A wins
+    # Activity (right): A activity = |200-100|+|300-200|+|400-300|+|500-400|=400
+    #                   B activity = |500-100|+|100-500|+|500-100|+|100-500|=1600 → B wins
+    assert result["dynamic_call_wall"]["strike"] == 22000  # B = activity king
+    assert result["dynamic_call_wall"]["window_activity_oi"] == 1600
+
+
+def test_parse_oi_walls_partial_window_for_young_weekly():
+    """SC-2 / N4: young weekly with days_since_listing < delta_window →
+    partial_window=true; warning emitted."""
+    from services.finmind_options import parse_oi_walls
+    today = [_option_row("202607W2", 22000, "call", oi=500)]
+    history = [
+        [_option_row("202607W2", 22000, "call", oi=300, day="2026-06-23")],
+    ]  # only 1 day of history (contract just listed yesterday)
+    result = parse_oi_walls(
+        rows_today=today, rows_history=history, contract_date="202607W2",
+        delta_window=5, spot=22000.0,
+    )
+    assert result["dynamic_call_wall"]["partial_window"] is True
+    warnings = result.get("data_quality_warnings", [])
+    assert "dynamic_wall_partial_window" in warnings
+
+
+def test_parse_oi_walls_emits_no_activity_warning():
+    """SC-2 / N13: when no strike moves in window, dynamic_wall_no_activity warning."""
+    from services.finmind_options import parse_oi_walls
+    today = [_option_row("202607", 22000, "call", oi=500)]
+    history = [
+        [_option_row("202607", 22000, "call", oi=500, day="2026-06-23")],
+        [_option_row("202607", 22000, "call", oi=500, day="2026-06-24")],
+    ]
+    result = parse_oi_walls(
+        rows_today=today, rows_history=history, contract_date="202607",
+        delta_window=2, spot=22000.0,
+    )
+    warnings = result.get("data_quality_warnings", [])
+    assert "dynamic_wall_no_activity" in warnings
+
+
+def test_parse_oi_walls_hit_rate_t_minus_1():
+    """SC-6 / F3: settlement inside [put_wall, call_wall] computed on T-1."""
+    from services.finmind_options import parse_oi_walls_hit_rate
+    oi_by_trading_day = {
+        # 2026-06-16: walls put=20000, call=22000 (settlement_price 21000 inside)
+        date(2026, 6, 16): [
+            _option_row("202606", 20000, "put",  oi=500, day="2026-06-16"),
+            _option_row("202606", 22000, "call", oi=500, day="2026-06-16"),
+        ],
+        date(2026, 6, 17): [  # T (settlement day) - OI collapsed (irrelevant)
+            _option_row("202606", 22000, "call", oi=10, day="2026-06-17"),
+        ],
+    }
+    settlements = {date(2026, 6, 17): {"contract_date": "202606", "price": 21000.0}}
+    result = parse_oi_walls_hit_rate(
+        oi_by_trading_day=oi_by_trading_day, settlements=settlements,
+    )
+    assert result["samples"] == 1
+    assert result["pct_settled_inside_band"] == 1.0
+    assert result["history"][0]["inside_band"] is True
+    assert result["history"][0]["put_wall_at_t_minus_1"] == 20000
+    assert result["history"][0]["call_wall_at_t_minus_1"] == 22000
+
+
+# ============================================================================
+# SC-3 / SC-7: PCR walk-forward + next-day TX return stats (design v4 §4.3/4.4)
+# ============================================================================
+
+def _pcr_row(contract_date: str, strike: int, side: str, oi: int, day: str) -> dict:
+    return _option_row(contract_date, strike, side, oi, day=day)
+
+
+def test_parse_pcr_history_per_contract_vs_all_months():
+    """SC-3: per_contract restricts to one contract_date; all_months sums all."""
+    from services.finmind_options import parse_pcr_history
+    rows_by_day = {
+        date(2026, 6, 25): [
+            _pcr_row("202607", 21000, "call", 200, "2026-06-25"),
+            _pcr_row("202607", 21000, "put",  300, "2026-06-25"),
+            _pcr_row("202608", 21000, "call", 100, "2026-06-25"),
+            _pcr_row("202608", 21000, "put",  500, "2026-06-25"),
+        ],
+    }
+    out_per = parse_pcr_history(rows_by_day, scope="per_contract", contract_date="202607")
+    assert out_per == [(date(2026, 6, 25), 300 / 200)]
+
+    out_all = parse_pcr_history(rows_by_day, scope="all_months", contract_date=None)
+    # all puts = 300+500=800, all calls = 200+100=300
+    assert out_all == [(date(2026, 6, 25), 800 / 300)]
+
+
+def test_parse_pcr_walk_forward_no_lookahead():
+    """SC-3 / F4: percentile_t computed strictly against past window.
+    Adversarial fixture: a tiny series where today is the MAX. If naive
+    impl includes today in its own past window, percentile would be 100.
+    Walk-forward must exclude today → no rank-vs-self contamination."""
+    from services.finmind_options import parse_pcr_walk_forward_percentile
+    # Tiny series where last value is the max
+    pcr_history = [
+        (date(2026, 6, 1), 0.5),
+        (date(2026, 6, 2), 0.6),
+        (date(2026, 6, 3), 0.7),
+        (date(2026, 6, 4), 0.8),
+        (date(2026, 6, 5), 0.9),
+        (date(2026, 6, 6), 1.0),
+        (date(2026, 6, 9), 2.0),  # extreme high, but should percentile correctly
+    ]
+    classified, _ = parse_pcr_walk_forward_percentile(
+        pcr_history, high_pct=70.0, low_pct=30.0, min_samples=5,
+    )
+    # Need to find 2026-06-09 entry — first 5 dates skipped due to min_samples
+    by_date = {d: (p, pct, r) for d, p, pct, r in classified}
+    # 2026-06-09: past_window = 6 values [0.5..1.0], 2.0 is far above max
+    # percentile = 100 (above all past)
+    p, pct, region = by_date[date(2026, 6, 9)]
+    assert p == 2.0
+    assert pct == 100.0  # 2.0 > all of past_window → top of distribution
+    assert region == "high"
+
+
+def test_parse_pcr_walk_forward_emits_single_warmup_warning_not_per_day():
+    """SC-3 / F14: warmup days emit ONE consolidated warning, not N per-day strings."""
+    from services.finmind_options import parse_pcr_walk_forward_percentile
+    pcr_history = [
+        (date(2026, 6, d), 0.5 + d * 0.1) for d in range(1, 11)  # 10 days
+    ]
+    _, warnings = parse_pcr_walk_forward_percentile(
+        pcr_history, high_pct=70.0, low_pct=30.0, min_samples=5,
+    )
+    # First 5 days skip; warmup_skipped warning with count=5
+    warmup_warns = [w for w in warnings if w.startswith("pcr_walk_forward_warmup_skipped_first_")]
+    assert len(warmup_warns) == 1
+    assert "5" in warmup_warns[0]
+
+
+def test_parse_pcr_next_day_stats_no_pnl_no_sharpe():
+    """SC-7 / F2-testability: payload contains stats per region, NOT P&L curve or Sharpe."""
+    from services.finmind_options import parse_pcr_next_day_stats
+    classified = [
+        (date(2026, 6, 1), 0.5, 20.0, "low"),
+        (date(2026, 6, 2), 0.9, 80.0, "high"),
+    ]
+    tx_returns = {date(2026, 6, 1): -0.01, date(2026, 6, 2): 0.02,
+                  date(2026, 6, 3): 0.005}
+    result, _ = parse_pcr_next_day_stats(classified, tx_returns)
+    assert "pnl_curve" not in result
+    assert "cumulative_strategy_pnl" not in result
+    assert "sharpe" not in result
+
+
+def test_parse_pcr_next_day_stats_payload_schema_exact():
+    """SC-7 / F17: positive schema lock — region dicts have exactly
+    {mean_pct, std_pct, hit_positive, samples}."""
+    from services.finmind_options import parse_pcr_next_day_stats
+    classified = [(date(2026, 6, d), 0.7, 75.0, "high") for d in range(1, 12)]
+    tx_returns = {date(2026, 6, d): 0.001 * d for d in range(1, 13)}
+    result, _ = parse_pcr_next_day_stats(classified, tx_returns)
+    expected_keys = {"mean_pct", "std_pct", "hit_positive", "samples"}
+    assert set(result["high_region"].keys()) == expected_keys
+    assert set(result["neutral_region"].keys()) == expected_keys
+    assert set(result["low_region"].keys()) == expected_keys
+
+
+def test_parse_pcr_next_day_stats_emits_low_power_warning_when_samples_lt_30():
+    """SC-7 / N8: samples < 30 in any region → pcr_stats_low_power_{region}."""
+    from services.finmind_options import parse_pcr_next_day_stats
+    classified = [
+        (date(2026, 6, 1), 0.9, 80.0, "high"),
+        (date(2026, 6, 2), 0.5, 25.0, "low"),
+    ]
+    tx_returns = {date(2026, 6, 1): 0.01, date(2026, 6, 2): -0.005,
+                  date(2026, 6, 3): 0.01}
+    _, warnings = parse_pcr_next_day_stats(classified, tx_returns)
+    assert "pcr_stats_low_power_high" in warnings
+    assert "pcr_stats_low_power_low" in warnings
+
+
+def test_parse_pcr_next_day_stats_handles_missing_tx_returns_t_plus_1():
+    """SC-7 / N9: tx_returns missing for t (next-day return uncomputable
+    because t+1 TaiwanFuturesDaily row absent) → caller omits the key,
+    parser drops sample silently. Warning if > 5% dropped.
+
+    Convention: caller pre-aligns tx_returns[t] = ret(t → t+1). If t+1 close
+    is missing, caller omits tx_returns[t]. Parser just does dict lookup.
+    """
+    from services.finmind_options import parse_pcr_next_day_stats
+    classified = [
+        (date(2026, 6, 1), 0.7, 75.0, "high"),
+        (date(2026, 6, 2), 0.8, 78.0, "high"),  # tx_returns[06-02] absent
+    ]
+    tx_returns = {date(2026, 6, 1): 0.01}  # 06-02 omitted (06-03 close missing)
+    result, warnings = parse_pcr_next_day_stats(classified, tx_returns)
+    # 1 of 2 samples dropped = 50% > 5% → warning
+    assert result["high_region"]["samples"] == 1
+    assert "next_day_stats_dropped_samples_5pct" in warnings
+
+
+# ============================================================================
+# SC-4 / SC-8: Institutional + foreign correlation (design v4 §4.5 / §4.6)
+# ============================================================================
+
+
+def _inst_row(date_s: str, institution: str, side: str, buy: int, sell: int) -> dict:
+    """Build a synthetic TaiwanOptionInstitutionalInvestors[AfterHours] row.
+
+    Schema based on FinMind option_id + put_call + buy/sell open interest
+    convention. Note: real field names TBD pending SC-0 token refresh
+    (R14 / R6 — parser docstring carries field_name_unverified marker).
+    """
+    return {
+        "date": date_s, "option_id": "TXO", "institution": institution,
+        "put_call": side, "buy_open_interest": buy, "sell_open_interest": sell,
+    }
+
+
+def test_parse_institutional_uses_dealer_not_prop():
+    """SC-4 / F3-integration: 自營商 keyed as 'dealer' (matches existing
+    chip-data.ts convention), NOT 'prop'."""
+    from services.finmind_options import parse_institutional
+    rows_day = [
+        _inst_row("2026-06-25", "外資", "call", 1000, 500),
+        _inst_row("2026-06-25", "外資", "put",  300, 800),
+        _inst_row("2026-06-25", "自營商", "call", 200, 100),
+        _inst_row("2026-06-25", "自營商", "put",  150, 50),
+        _inst_row("2026-06-25", "投信", "call", 80, 40),
+        _inst_row("2026-06-25", "投信", "put",  20, 60),
+    ]
+    result = parse_institutional(
+        rows_day=rows_day, rows_night=[], target_date=date(2026, 6, 25),
+    )
+    # Key names: foreign / dealer / trust (NOT prop, NOT trust_investment)
+    assert set(result["current"].keys()) >= {"foreign", "dealer", "trust"}
+    assert "prop" not in result["current"]
+    assert result["current"]["foreign"]["call_net"] == 1000 - 500
+    assert result["current"]["dealer"]["call_net"] == 200 - 100
+
+
+def test_parse_institutional_after_hours_none_pre_2021_10():
+    """SC-4 / F12: AfterHours unavailable before 2021-10-13.
+    Target date pre-cutoff → session_breakdown.after_hours = None."""
+    from services.finmind_options import parse_institutional
+    rows_day = [_inst_row("2020-06-25", "外資", "call", 100, 50)]
+    result = parse_institutional(
+        rows_day=rows_day, rows_night=None,
+        target_date=date(2020, 6, 25),  # before 2021-10-13 cutoff
+    )
+    assert result["current"]["session_breakdown"]["after_hours"] is None
+
+
+def test_parse_institutional_correlation_excludes_dealer_trust_from_correlation_payload():
+    """SC-8 / F10-testability scope guard: correlation dict has ONLY foreign-vs-TX,
+    NEVER dealer/trust correlations leak in. Even with dealer/trust in
+    input fixture, output stays scoped to foreign."""
+    from services.finmind_options import parse_institutional_correlation
+    foreign_history = [
+        {"date": date(2026, 6, d), "foreign_call_net": d * 10,
+         "dealer_call_net": d * 5, "trust_call_net": d * 2}
+        for d in range(1, 31)
+    ]
+    tx_returns = {date(2026, 6, d): 0.001 * d for d in range(1, 31)}
+    result, _ = parse_institutional_correlation(
+        foreign_history=foreign_history, tx_returns=tx_returns, corr_window=20,
+    )
+    assert "dealer" not in result
+    assert "trust" not in result
+    assert "dealer_correlation" not in result
+    assert "trust_correlation" not in result
+
+
+def test_parse_institutional_correlation_uses_raw_flow_default():
+    """SC-8 / N3: feature_transformation defaults to 'raw_flow' (foreign.call_net
+    directly correlated with next_day TX return)."""
+    from services.finmind_options import parse_institutional_correlation
+    foreign_history = [
+        {"date": date(2026, 6, d), "foreign_call_net": d * 10}
+        for d in range(1, 31)
+    ]
+    tx_returns = {date(2026, 6, d): 0.001 * d for d in range(1, 31)}
+    result, _ = parse_institutional_correlation(
+        foreign_history=foreign_history, tx_returns=tx_returns, corr_window=20,
+    )
+    assert result["feature_transformation"] == "raw_flow"
+
+
+def test_parse_institutional_correlation_emits_sample_small_warning():
+    """SC-8: < 30 effective samples → correlation_sample_small warning."""
+    from services.finmind_options import parse_institutional_correlation
+    foreign_history = [
+        {"date": date(2026, 6, d), "foreign_call_net": d * 10}
+        for d in range(1, 11)  # only 10 days
+    ]
+    tx_returns = {date(2026, 6, d): 0.001 * d for d in range(1, 11)}
+    _, warnings = parse_institutional_correlation(
+        foreign_history=foreign_history, tx_returns=tx_returns, corr_window=10,
+    )
+    assert "correlation_sample_small" in warnings
