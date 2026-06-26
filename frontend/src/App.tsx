@@ -3,10 +3,44 @@ import { SymbolSearch } from "./components/SymbolSearch";
 import { ChipBrokersPanel } from "./components/ChipBrokersPanel";
 import { ChipKlineChart } from "./components/ChipKlineChart";
 import { DateField } from "./components/ui/date-field";
+import {
+  RangeSelector,
+  WINDOW_DAYS_MIN,
+  WINDOW_DAYS_MAX,
+  type WindowDays,
+} from "./components/ui/RangeSelector";
 import { useChipData } from "./hooks/useChipData";
 import { useChipBubble } from "./hooks/useChipBubble";
 import { useBrokerHistory } from "./hooks/useBrokerHistory";
+import { useChipBrokersWindow } from "./hooks/useChipBrokersWindow";
 import { ModeSwitch, type Mode } from "./components/ModeSwitch";
+import type { ChipSummary } from "./lib/chip-data";
+
+const DEFAULT_WINDOW_DAYS: WindowDays = 30;
+
+function readStoredWindowDays(): WindowDays {
+  const raw = localStorage.getItem("chip_window_days");
+  if (raw === null) return DEFAULT_WINDOW_DAYS;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < WINDOW_DAYS_MIN || n > WINDOW_DAYS_MAX) {
+    return DEFAULT_WINDOW_DAYS;
+  }
+  return n as WindowDays;
+}
+
+const PANEL_WIDTH_MIN = 300;
+const PANEL_WIDTH_MAX = 800;
+const PANEL_WIDTH_DEFAULT = 420;
+
+function readStoredPanelWidth(): number {
+  const raw = localStorage.getItem("chip_panel_width");
+  if (raw === null) return PANEL_WIDTH_DEFAULT;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < PANEL_WIDTH_MIN || n > PANEL_WIDTH_MAX) {
+    return PANEL_WIDTH_DEFAULT;
+  }
+  return Math.round(n);
+}
 
 const ChipBubbleView = lazy(() =>
   import("./components/ChipBubbleView").then((m) => ({ default: m.ChipBubbleView })),
@@ -36,21 +70,61 @@ export default function App() {
   const [symbolName, setSymbolName] = useState<string | null>(null);
   const [date, setDate] = useState(todayStr);
   const [tab, setTab] = useState<Tab>("overview");
+  const [windowDays, setWindowDays] = useState<WindowDays>(readStoredWindowDays);
+  useEffect(() => {
+    localStorage.setItem("chip_window_days", String(windowDays));
+  }, [windowDays]);
+  const [panelWidth, setPanelWidth] = useState<number>(readStoredPanelWidth);
+  useEffect(() => {
+    localStorage.setItem("chip_panel_width", String(panelWidth));
+  }, [panelWidth]);
+
+  // Resize handle: dragging left widens the right panel (panel is right-anchored),
+  // dragging right narrows it. document-level move/up listeners stay active for
+  // the duration of the drag so the cursor can leave the 4-px handle without
+  // dropping the grab.
+  const handlePanelResizeMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startW = panelWidth;
+      const onMove = (ev: MouseEvent) => {
+        const dx = ev.clientX - startX;
+        const next = Math.max(PANEL_WIDTH_MIN, Math.min(PANEL_WIDTH_MAX, startW - dx));
+        setPanelWidth(Math.round(next));
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [panelWidth],
+  );
   // Broker selection is keyed by broker_id (FinMind `securities_trader_id`):
   // the SecIdAgg endpoint requires that exact id as a query filter, so this
   // is the value that round-trips through the broker_history fetch. Display
-  // names come from `summary.top_brokers` for the same id.
+  // names come from the right-panel's top_brokers list for the same id.
   const [selectedBrokerIds, setSelectedBrokerIds] = useState<Set<string>>(
     () => new Set(),
   );
   const userPickedDate = useRef(false);
 
+  // Note: useChipData still fetches summary + history; we only consume
+  // history here. summary is left untouched (its endpoint underwrites
+  // per-day caching that brokers_window reuses).
   const {
-    summary, history, loading, summaryLoading, error,
+    history, loading, error,
     refresh: refreshChip,
   } = useChipData(symbol, date);
   const bubbleHook = useChipBubble(symbol, date);
   const brokerHistoryHook = useBrokerHistory(symbol, selectedBrokerIds);
+  const brokersWindow = useChipBrokersWindow(symbol, date, windowDays);
 
   useEffect(() => {
     if (userPickedDate.current) return;
@@ -61,17 +135,25 @@ export default function App() {
     }
   }, [history, date]);
 
-  const dayTotalLots = useMemo(() => {
-    if (!summary?.date) return 0;
-    const c = history?.candles.find((c) => c.date === summary.date);
-    if (c) return c.volume;
-    // Fallback when the date is outside the K-line's 90-day window.
-    // Every traded lot is counted both as a buy (by one broker) AND a sell
-    // (by another), so `sum(buy + sell)` ≈ 2 × volume. `sum(buy + sell) / 2`
-    // recovers the actual lot count.
-    const doubled = summary.top_brokers.reduce((s, b) => s + b.buy + b.sell, 0);
-    return Math.floor(doubled / 2);
-  }, [history, summary]);
+  // 右側 panel 改吃 brokersWindow N 日加總,total_traded_lots 由 server 算好;
+  // 用作 topByVolume 的 daytradeRate 分母(broker total ≥ 1% of dayTotal 門檻)。
+  const windowTotalLots = brokersWindow.data?.total_traded_lots ?? 0;
+
+  // Adapter:把 brokersWindow.data(ChipBrokersWindow 形狀)交給 ChipBrokersPanel
+  // 當 `summary` 用。ChipBrokersWindow 結構是 ChipSummary 的 superset(共有
+  // top_brokers / margin / institutional / symbol / date / fetched_at),所以
+  // 結構上可賦值;前端面板讀不到 window_days / actual_days 等 N 日專屬欄位,
+  // 那些另外透過 windowDays / actualDays props 顯式傳入。
+  const panelSummary: ChipSummary | null = brokersWindow.data
+    ? {
+        symbol: brokersWindow.data.symbol,
+        date: brokersWindow.data.date,
+        fetched_at: brokersWindow.data.fetched_at,
+        institutional: brokersWindow.data.institutional,
+        margin: brokersWindow.data.margin,
+        top_brokers: brokersWindow.data.top_brokers,
+      }
+    : null;
 
   const handlePickDate = useCallback(
     (d: string) => {
@@ -98,10 +180,11 @@ export default function App() {
 
   const refresh = () => {
     refreshChip();
+    brokersWindow.refresh();
     if (selectedBrokerIds.size > 0) brokerHistoryHook.refresh();
     if (tab === "bubble") bubbleHook.refresh();
   };
-  const isLoading = loading || bubbleHook.loading;
+  const isLoading = loading || bubbleHook.loading || brokersWindow.loading;
 
   const handlePick = (sym: string, name: string | null) => {
     setSymbol(sym);
@@ -138,6 +221,11 @@ export default function App() {
             value={date}
             aria-label="選擇日期"
             onChange={(e) => { userPickedDate.current = true; setDate(e.target.value); }}
+          />
+          <RangeSelector
+            value={windowDays}
+            onChange={setWindowDays}
+            disabled={isLoading}
           />
           <button
             type="button"
@@ -196,8 +284,11 @@ export default function App() {
 
       <div className="flex-1 min-h-0 overflow-hidden">
         <div hidden={tab !== "overview"} className="h-full">
-          <div className="h-full grid grid-cols-[1fr_420px] overflow-hidden">
-            <div className="h-full overflow-hidden border-r border-line">
+          <div
+            className="h-full grid overflow-hidden"
+            style={{ gridTemplateColumns: `1fr 4px ${panelWidth}px` }}
+          >
+            <div className="h-full overflow-hidden">
               <ChipKlineChart
                 history={history}
                 selectedDate={date}
@@ -207,14 +298,25 @@ export default function App() {
                 onClearAllBrokers={handleClearAllBrokers}
               />
             </div>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="調整籌碼欄寬度"
+              data-testid="panel-resize-handle"
+              onMouseDown={handlePanelResizeMouseDown}
+              className="h-full cursor-col-resize bg-line hover:bg-accent transition-colors"
+              title="拖曳調整籌碼欄寬度"
+            />
             <div className="h-full overflow-hidden">
               <ChipBrokersPanel
-                summary={summary}
-                dayTotalLots={dayTotalLots}
+                summary={panelSummary}
+                dayTotalLots={windowTotalLots}
                 selectedBrokerIds={selectedBrokerIds}
                 onToggleBroker={handleToggleBroker}
                 onClearAllBrokers={handleClearAllBrokers}
-                loading={summaryLoading}
+                loading={brokersWindow.loading}
+                windowDays={windowDays}
+                actualDays={brokersWindow.data?.actual_days}
               />
             </div>
           </div>

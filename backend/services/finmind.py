@@ -381,6 +381,51 @@ class FinMindClient:
     def _broker_history_cache_key(symbol: str, days: int) -> str:
         return f"{symbol}_broker_history" if days == 90 else f"{symbol}_broker_history_{days}d"
 
+    # -- brokers window (N-day aggregate of summary.top_brokers) -----------
+
+    async def fetch_brokers_window(
+        self,
+        symbol: str,
+        date_str: str,
+        days: int,
+        refresh: bool = False,
+    ) -> dict:
+        """Aggregate the last `days` trading days of broker-level chips ending
+        at `date_str` (inclusive). Reuses fetch_chip_history (90-day window) to
+        derive trading_dates — no calendar→trading conversion needed locally —
+        then fans out fetch_chip_summary per day (each independently cached).
+
+        Does NOT cache its own result: every underlying summary is cached
+        per-day, so a second call lands an O(N) cache-hit sweep with no
+        FinMind round-trips.
+        """
+        history = await self.fetch_chip_history(symbol, refresh=refresh, days=540)
+        all_dates = [c["date"] for c in history.get("candles", []) if c.get("date")]
+        eligible = [d for d in all_dates if d <= date_str]
+        if not eligible:
+            raise ValueError("brokers_window_unavailable")
+        trading_dates = eligible[-days:]
+
+        summary_results = await asyncio.gather(
+            *[self.fetch_chip_summary(symbol, d, refresh) for d in trading_dates],
+            return_exceptions=True,
+        )
+        summaries = [
+            s for s in summary_results if not isinstance(s, BaseException) and isinstance(s, dict)
+        ]
+        # All per-day fetches failed → upstream is unreachable, not "zero
+        # activity". A silent zero-shaped payload would look like a normal
+        # quiet day to the user — surface as 503 brokers_window_unavailable.
+        if not summaries:
+            raise ValueError("brokers_window_unavailable")
+        return _aggregate_brokers_window(
+            symbol=symbol,
+            date_str=date_str,
+            days=days,
+            trading_dates=trading_dates,
+            summaries=summaries,
+        )
+
     async def fetch_broker_history(
         self,
         symbol: str,
@@ -1478,6 +1523,135 @@ def _parse_broker_history(rows: list) -> dict[str, list[dict]]:
     for bid in result:
         result[bid].sort(key=lambda x: x["date"])
     return result
+
+
+def _aggregate_brokers_window(
+    symbol: str,
+    date_str: str,
+    days: int,
+    trading_dates: list[str],
+    summaries: list[dict],
+) -> dict:
+    """Aggregate per-day chip summaries into a single N-day window payload.
+
+    - top_brokers: sum buy/sell per broker_id; avg_*_price is daily-share-
+      weighted average (Σ avg_x × qty_x / Σ qty_x — approximate but vastly
+      better than naive day-mean and avoids re-fetching raw broker rows)
+    - margin: change sums across days; balance/limit/ratio takes the last
+      summary's values (these are point-in-time, not flow)
+    - institutional: each side sums across days
+    - top_brokers sorted by abs(net) desc (same convention as single-day
+      _parse_top_brokers)
+    - actual_days reflects len(trading_dates), NOT successful summary count —
+      callers can compare to summaries length if they need data-quality info
+    """
+    agg: dict[str, dict] = {}
+    for s in summaries:
+        for b in s.get("top_brokers", []):
+            bid = b.get("broker_id", "")
+            if not bid:
+                continue
+            buy = int(b.get("buy", 0))
+            sell = int(b.get("sell", 0))
+            entry = agg.setdefault(
+                bid,
+                {
+                    "name": b.get("name", ""),
+                    "broker_id": bid,
+                    "buy": 0,
+                    "sell": 0,
+                    "_bp_weighted": 0.0,
+                    "_buy_qty_for_avg": 0,
+                    "_sp_weighted": 0.0,
+                    "_sell_qty_for_avg": 0,
+                },
+            )
+            entry["name"] = b.get("name") or entry["name"]
+            entry["buy"] += buy
+            entry["sell"] += sell
+            if buy > 0 and b.get("avg_buy_price"):
+                entry["_bp_weighted"] += float(b["avg_buy_price"]) * buy
+                entry["_buy_qty_for_avg"] += buy
+            if sell > 0 and b.get("avg_sell_price"):
+                entry["_sp_weighted"] += float(b["avg_sell_price"]) * sell
+                entry["_sell_qty_for_avg"] += sell
+
+    top_brokers: list[dict] = []
+    for e in agg.values():
+        buy_q = e["_buy_qty_for_avg"]
+        sell_q = e["_sell_qty_for_avg"]
+        top_brokers.append(
+            {
+                "name": e["name"],
+                "broker_id": e["broker_id"],
+                "buy": e["buy"],
+                "sell": e["sell"],
+                "net": e["buy"] - e["sell"],
+                "avg_buy_price": round(e["_bp_weighted"] / buy_q, 2) if buy_q > 0 else 0,
+                "avg_sell_price": round(e["_sp_weighted"] / sell_q, 2) if sell_q > 0 else 0,
+            }
+        )
+    top_brokers.sort(key=lambda b: abs(b["net"]), reverse=True)
+
+    # institutional sum
+    z = {"buy": 0, "sell": 0, "net": 0}
+    inst_acc = {"foreign": z.copy(), "trust": z.copy(), "dealer": z.copy()}
+    for s in summaries:
+        inst = s.get("institutional", {}) or {}
+        for side in ("foreign", "trust", "dealer"):
+            row = inst.get(side, {}) or {}
+            inst_acc[side]["buy"] += int(row.get("buy", 0))
+            inst_acc[side]["sell"] += int(row.get("sell", 0))
+    for side in ("foreign", "trust", "dealer"):
+        inst_acc[side]["net"] = inst_acc[side]["buy"] - inst_acc[side]["sell"]
+
+    # margin: change累加 + balance/limit/ratio 取 end_date (= last summary)
+    mp_change = ss_change = 0
+    for s in summaries:
+        m = s.get("margin", {}) or {}
+        mp_change += int((m.get("margin_purchase") or {}).get("change", 0))
+        ss_change += int((m.get("short_sale") or {}).get("change", 0))
+    if summaries:
+        last_m = summaries[-1].get("margin", {}) or {}
+        last_mp = last_m.get("margin_purchase") or {}
+        last_ss = last_m.get("short_sale") or {}
+        margin = {
+            "margin_purchase": {
+                "balance": int(last_mp.get("balance", 0)),
+                "change": mp_change,
+                "limit": int(last_mp.get("limit", 0)),
+            },
+            "short_sale": {
+                "balance": int(last_ss.get("balance", 0)),
+                "change": ss_change,
+                "limit": int(last_ss.get("limit", 0)),
+            },
+            "short_balance_ratio": float(last_m.get("short_balance_ratio", 0)),
+        }
+    else:
+        margin = {
+            "margin_purchase": {"balance": 0, "change": 0, "limit": 0},
+            "short_sale": {"balance": 0, "change": 0, "limit": 0},
+            "short_balance_ratio": 0,
+        }
+
+    # total_traded_lots = floor(Σ(broker.buy + broker.sell) / 2)
+    # Every traded lot counts once as a buy and once as a sell.
+    total_doubled = sum(b["buy"] + b["sell"] for b in top_brokers)
+    total_traded_lots = total_doubled // 2
+
+    return {
+        "symbol": symbol,
+        "date": date_str,
+        "window_days": days,
+        "trading_dates": trading_dates,
+        "actual_days": len(trading_dates),
+        "fetched_at": datetime.now().isoformat(timespec="seconds"),
+        "top_brokers": top_brokers,
+        "margin": margin,
+        "institutional": inst_acc,
+        "total_traded_lots": total_traded_lots,
+    }
 
 
 def _filter_broker_history(payload: dict, ids: list[str]) -> dict:

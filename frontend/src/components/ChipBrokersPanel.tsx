@@ -17,6 +17,12 @@ interface Props {
    *  aria-busy so screen readers announce the busy state. Previous summary
    *  stays visible — no empty placeholder flash. */
   loading?: boolean;
+  /** N-day window header. When undefined, panel renders single-day style
+   *  (legacy). When set, panel renders "過去 N 日加總" near the top. */
+  windowDays?: number;
+  /** Trading-days actually aggregated, may be < windowDays when anchor date
+   *  is too early in history. When < windowDays, panel adds "(實際 X 日)". */
+  actualDays?: number;
 }
 
 type Mode = "net" | "volume";
@@ -75,13 +81,23 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
         aria-label={`勾選 ${broker.name}`}
       />
       <span className="text-ink-dim tabular-nums">{rank}</span>
-      <span className="flex items-center gap-1.5 truncate text-ink-muted">
-        <span className="truncate">{broker.name}</span>
+      <span
+        className="relative flex items-center gap-1.5 text-ink-muted min-w-0 group/name"
+        title={broker.name}
+      >
+        <span className="truncate flex-1 min-w-0">{broker.name}</span>
         {badge && (
           <span className={`shrink-0 text-2xs px-1 py-px rounded ${badge === "外" ? "bg-accent/15 text-accent" : "bg-bear/15 text-bear"}`}>
             {badge}
           </span>
         )}
+        <span
+          role="tooltip"
+          data-testid="broker-name-tooltip"
+          className="pointer-events-none absolute left-0 top-full mt-1 z-50 px-2 py-1 bg-bg-deep border border-line-strong text-xs text-ink whitespace-nowrap rounded shadow-lg opacity-0 group-hover/name:opacity-100 transition-opacity duration-100"
+        >
+          {broker.name}
+        </span>
       </span>
       {mode === "net" ? (
         <>
@@ -119,6 +135,7 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
 export function ChipBrokersPanel({
   summary, dayTotalLots, selectedBrokerIds,
   onToggleBroker, onClearAllBrokers, loading,
+  windowDays, actualDays,
 }: Props) {
   const [mode, setMode] = useState<Mode>("net");
 
@@ -177,6 +194,20 @@ export function ChipBrokersPanel({
           </div>
         )}
       </div>
+
+      {windowDays !== undefined && (
+        <div
+          data-testid="window-header"
+          className="px-3 py-1.5 border-b border-line text-xs text-ink-dim bg-bg-deep/40 flex items-baseline gap-1.5"
+        >
+          <span>過去</span>
+          <span className="text-ink-muted tabular-nums">{windowDays}</span>
+          <span>日加總</span>
+          {actualDays !== undefined && actualDays < windowDays && (
+            <span className="text-accent">(實際 {actualDays} 日)</span>
+          )}
+        </div>
+      )}
 
       {/* F7: 主力買賣超 above 融資融券 (was below). F4 also removed the
           right-side symbol/date header and 三大法人 block — that data lives

@@ -454,3 +454,65 @@ async def test_fetch_chip_history_cache_hit_when_pre_today(tmp_path):
     await client.fetch_chip_history("2330")
     # All 4 endpoints called; agg_rows cover all dates so no fallback fires.
     assert mc.get.await_count == 4
+
+
+# ---------------------------------------------------------------------------
+# v3 spec §B1 — days param separates cache key (W10 不影響舊路徑)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fetch_chip_history_days_separates_cache(tmp_path):
+    """days==90 寫 `{symbol}_history.json`(舊路徑、W10 保護);
+    其他 days 寫 `{symbol}_history_{days}d.json` — 互不污染。"""
+    from services.finmind import FinMindClient, _CACHE_VERSION
+    today = date.today().isoformat()
+    fresh = datetime.now().isoformat(timespec="seconds")
+
+    # 預先放一個 days==90 的 cache(舊路徑)
+    cached_90 = {
+        "_cache_version": _CACHE_VERSION,
+        "symbol": "2330", "fetched_at": fresh, "last_date": today,
+        "candles": [{"date": today, "marker": 90}],
+        "institutional": [], "margin": [], "major": [],
+    }
+    chip_dir = tmp_path / "cache" / "chip"
+    chip_dir.mkdir(parents=True)
+    (chip_dir / "2330_history.json").write_text(json.dumps(cached_90))
+
+    # days=60 call:不能命中 90 cache → 走 FinMind
+    candle_rows = [
+        {"date": today, "stock_id": "2330",
+         "open": 100, "max": 105, "min": 99, "close": 103,
+         "Trading_Volume": 60000},
+    ]
+    agg_rows = [{"date": today, "buy": 5000000, "sell": 1000000}]
+    mc = _mock_http(
+        _fm_response(candle_rows),
+        _fm_response([INST_ROW]),
+        _fm_response([MARGIN_ROW]),
+        _fm_response(agg_rows),
+    )
+    client = FinMindClient()
+    client._http = mc
+
+    r = await client.fetch_chip_history("2330", days=60)
+    # 不是 marker=90 那個,代表走了真的 fetch
+    assert r["candles"][0].get("marker") != 90
+    # 寫到新 cache key 路徑
+    assert (chip_dir / "2330_history_60d.json").exists()
+    # 舊路徑 cache 沒被污染
+    on_disk_90 = json.loads(
+        (chip_dir / "2330_history.json").read_text(encoding="utf-8"),
+    )
+    assert on_disk_90["candles"][0].get("marker") == 90
+
+    # 反過來:days==90(default)時直接命中舊路徑
+    client2 = FinMindClient()
+    mc2 = AsyncMock()
+    mc2.get = AsyncMock(
+        side_effect=AssertionError("days=90 應命中舊 cache 不打 FinMind"),
+    )
+    client2._http = mc2
+    r2 = await client2.fetch_chip_history("2330")  # days=90 default
+    assert r2["candles"][0].get("marker") == 90

@@ -39,6 +39,31 @@ export interface TopBroker {
   avg_sell_price: number;
 }
 
+/**
+ * N-day aggregate of broker-level chips, ending at `date` (inclusive).
+ * Backed by /api/chip/{symbol}/brokers_window. ChipBrokersPanel reads this
+ * instead of `summary` so the right-side list reflects "past N trading days
+ * cumulative" rather than just one trading day.
+ *
+ * `actual_days` = trading_dates.length and can be < window_days when the
+ * anchor date is too early in history (panel UI shows "(實際 X 日)"). All
+ * dollar / lot values are sums (lots), avg_*_price are share-weighted
+ * averages across days. `total_traded_lots` is the same fallback formula as
+ * dayTotalLots used by topByVolume's daytradeRate threshold.
+ */
+export interface ChipBrokersWindow {
+  symbol: string;
+  date: string;
+  window_days: number;
+  trading_dates: string[];
+  actual_days: number;
+  fetched_at: string;
+  top_brokers: TopBroker[];
+  margin: ChipSummary["margin"];
+  institutional: ChipSummary["institutional"];
+  total_traded_lots: number;
+}
+
 export interface BrokerTrade {
   broker: string;
   broker_id: string;

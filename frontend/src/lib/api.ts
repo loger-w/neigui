@@ -1,4 +1,6 @@
-import type { ChipSummary, ChipBubbleData, ChipHistory, ChipBrokerHistory } from "./chip-data";
+import type {
+  ChipSummary, ChipBubbleData, ChipHistory, ChipBrokerHistory, ChipBrokersWindow,
+} from "./chip-data";
 
 const BASE = "/api";
 
@@ -66,6 +68,49 @@ export function clearApiCache(): void {
 
 export { _cache as __testCache, CACHE_TTL, CACHE_MAX_ENTRIES };
 
+// chipHistory / chipBrokerHistory 用 overload 維持「(symbol)」/「(symbol, refresh)」
+// 既有呼叫,同時支援新「(symbol, days, refresh?)」形式(v3 spec §C3)。
+// Object-literal method shorthand 不能寫 TS overload,所以用 explicit type
+// interface 套到 property 上。
+type ChipHistoryFn = {
+  (symbol: string): Promise<ChipHistory>;
+  (symbol: string, refresh: boolean): Promise<ChipHistory>;
+  (symbol: string, days: number, refresh?: boolean): Promise<ChipHistory>;
+};
+
+function chipHistoryImpl(
+  symbol: string,
+  daysOrRefresh?: number | boolean,
+  refresh?: boolean,
+): Promise<ChipHistory> {
+  const days = typeof daysOrRefresh === "number" ? daysOrRefresh : undefined;
+  const r = typeof daysOrRefresh === "boolean" ? daysOrRefresh : refresh;
+  const params: Record<string, string> = {};
+  if (days !== undefined) params.days = String(days);
+  if (r) params.refresh = "true";
+  return get(`${BASE}/chip/${symbol}/history`, params);
+}
+
+type ChipBrokerHistoryFn = {
+  (symbol: string, ids: string[]): Promise<ChipBrokerHistory>;
+  (symbol: string, ids: string[], refresh: boolean): Promise<ChipBrokerHistory>;
+  (symbol: string, ids: string[], days: number, refresh?: boolean): Promise<ChipBrokerHistory>;
+};
+
+function chipBrokerHistoryImpl(
+  symbol: string,
+  ids: string[],
+  daysOrRefresh?: number | boolean,
+  refresh?: boolean,
+): Promise<ChipBrokerHistory> {
+  const days = typeof daysOrRefresh === "number" ? daysOrRefresh : undefined;
+  const r = typeof daysOrRefresh === "boolean" ? daysOrRefresh : refresh;
+  const params: Record<string, string> = { ids: ids.join(",") };
+  if (days !== undefined) params.days = String(days);
+  if (r) params.refresh = "true";
+  return get(`${BASE}/chip/${symbol}/broker_history`, params);
+}
+
 export const api = {
   chip(symbol: string, date?: string, refresh?: boolean): Promise<ChipSummary> {
     const params: Record<string, string> = {};
@@ -79,19 +124,14 @@ export const api = {
     if (refresh) params.refresh = "true";
     return get(`${BASE}/chip/${symbol}/bubble`, params);
   },
-  chipHistory(symbol: string, refresh?: boolean): Promise<ChipHistory> {
-    const params: Record<string, string> = {};
+  chipHistory: chipHistoryImpl as ChipHistoryFn,
+  chipBrokerHistory: chipBrokerHistoryImpl as ChipBrokerHistoryFn,
+  chipBrokersWindow(
+    symbol: string, date: string, days: number, refresh?: boolean,
+  ): Promise<ChipBrokersWindow> {
+    const params: Record<string, string> = { date, days: String(days) };
     if (refresh) params.refresh = "true";
-    return get(`${BASE}/chip/${symbol}/history`, params);
-  },
-  chipBrokerHistory(
-    symbol: string,
-    ids: string[],
-    refresh?: boolean,
-  ): Promise<ChipBrokerHistory> {
-    const params: Record<string, string> = { ids: ids.join(",") };
-    if (refresh) params.refresh = "true";
-    return get(`${BASE}/chip/${symbol}/broker_history`, params);
+    return get(`${BASE}/chip/${symbol}/brokers_window`, params);
   },
   symbols(search: string): Promise<Array<{ symbol: string; name: string }>> {
     return get(`${BASE}/symbols`, { search });

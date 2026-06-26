@@ -1,4 +1,5 @@
 """Tests for routes/chip.py — chip data API endpoints."""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -8,7 +9,8 @@ from fastapi.testclient import TestClient
 from main import app
 
 MOCK_SUMMARY = {
-    "symbol": "2330", "date": "2026-06-19",
+    "symbol": "2330",
+    "date": "2026-06-19",
     "fetched_at": "2026-06-19T20:15:00",
     "institutional": {
         "foreign": {"buy": 100, "sell": 50, "net": 50},
@@ -21,24 +23,50 @@ MOCK_SUMMARY = {
         "short_balance_ratio": 5.0,
     },
     "top_brokers": [
-        {"name": "美林", "broker_id": "9A00",
-         "buy": 100, "sell": 5, "net": 95,
-         "avg_buy_price": 100.0, "avg_sell_price": 101.0},
+        {
+            "name": "美林",
+            "broker_id": "9A00",
+            "buy": 100,
+            "sell": 5,
+            "net": 95,
+            "avg_buy_price": 100.0,
+            "avg_sell_price": 101.0,
+        },
     ],
 }
 
 MOCK_BUBBLE = {
-    "symbol": "2330", "date": "2026-06-19",
+    "symbol": "2330",
+    "date": "2026-06-19",
     "fetched_at": "2026-06-19T20:15:00",
     "trades": [{"broker": "美林", "broker_id": "9A00", "price": 100.0, "buy": 50, "sell": 3}],
 }
 
 MOCK_HISTORY = {
-    "symbol": "2330", "fetched_at": "2026-06-19T20:15:00",
+    "symbol": "2330",
+    "fetched_at": "2026-06-19T20:15:00",
     "last_date": "2026-06-19",
-    "candles": [{"date": "2026-06-19", "open": 100, "high": 105, "low": 99, "close": 103, "volume": 30000}],
-    "institutional": [{"date": "2026-06-19", "foreign_net": 50, "trust_net": 5, "dealer_net": -10, "major_net": 45}],
-    "margin": [{"date": "2026-06-19", "margin_balance": 1000, "short_balance": 50, "margin_change": 10, "short_change": -3}],
+    "candles": [
+        {"date": "2026-06-19", "open": 100, "high": 105, "low": 99, "close": 103, "volume": 30000}
+    ],
+    "institutional": [
+        {
+            "date": "2026-06-19",
+            "foreign_net": 50,
+            "trust_net": 5,
+            "dealer_net": -10,
+            "major_net": 45,
+        }
+    ],
+    "margin": [
+        {
+            "date": "2026-06-19",
+            "margin_balance": 1000,
+            "short_balance": 50,
+            "margin_change": 10,
+            "short_change": -3,
+        }
+    ],
     "major": [{"date": "2026-06-19", "major_net": 45}],
 }
 
@@ -81,6 +109,40 @@ def test_chip_history(mock_fm):
     resp = TestClient(app).get("/api/chip/2330/history")
     assert resp.status_code == 200
     assert len(resp.json()["candles"]) == 1
+
+
+def test_chip_history_default_days(mock_fm):
+    """W1: 不帶 days,service 收到 default 90。"""
+    resp = TestClient(app).get("/api/chip/2330/history")
+    assert resp.status_code == 200
+    mock_fm.fetch_chip_history.assert_awaited_once_with("2330", False, 90)
+
+
+def test_chip_history_with_days(mock_fm):
+    """帶 days=60,service 收到 60。"""
+    resp = TestClient(app).get("/api/chip/2330/history?days=60")
+    assert resp.status_code == 200
+    mock_fm.fetch_chip_history.assert_awaited_once_with("2330", False, 60)
+
+
+def test_chip_history_days_too_small(mock_fm):
+    """days=1 < ge=5 → 422 由 Pydantic Query 攔截。"""
+    resp = TestClient(app).get("/api/chip/2330/history?days=1")
+    assert resp.status_code == 422
+
+
+def test_chip_history_days_out_of_range(mock_fm):
+    """days=1000 > le=540 → 422。"""
+    resp = TestClient(app).get("/api/chip/2330/history?days=1000")
+    assert resp.status_code == 422
+
+
+def test_chip_history_days_max_boundary(mock_fm):
+    """days=540(K 線縮放上限)接受;541 拒。"""
+    ok = TestClient(app).get("/api/chip/2330/history?days=540")
+    assert ok.status_code == 200
+    bad = TestClient(app).get("/api/chip/2330/history?days=541")
+    assert bad.status_code == 422
 
 
 def test_chip_summary_finmind_error(mock_fm):

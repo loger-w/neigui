@@ -1,4 +1,5 @@
 """FastAPI application entry point."""
+
 from __future__ import annotations
 
 import logging
@@ -25,6 +26,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     from routes.symbols import load_symbols
     import services.finmind as fm_mod
+
     await load_symbols()
     yield
     if fm_mod._client is not None:
@@ -56,21 +58,18 @@ app.include_router(options_router)
 # `{"detail": {"error": "<code>"}}` is the shape the frontend's __apiGet
 # reads via `body.detail.error`.
 
+
 @app.exception_handler(httpx.HTTPError)
 async def httpx_error_handler(request: Request, exc: httpx.HTTPError) -> JSONResponse:
     logger.warning("Upstream HTTP error on %s: %s", request.url.path, exc)
-    return JSONResponse(
-        status_code=502, content={"detail": {"error": "finmind_error"}}
-    )
+    return JSONResponse(status_code=502, content={"detail": {"error": "finmind_error"}})
 
 
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
     # ValueError surfaced from service layer = "service not ready" (missing
     # token, bad config). Message is forwarded so the frontend can render it.
-    return JSONResponse(
-        status_code=503, content={"detail": {"error": str(exc)}}
-    )
+    return JSONResponse(status_code=503, content={"detail": {"error": str(exc)}})
 
 
 # txo-chip-framework design v4 F6-integration: generic Exception handler so
@@ -80,9 +79,5 @@ async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse
 # handlers above take precedence.
 @app.exception_handler(Exception)
 async def generic_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.exception(
-        "Unhandled %s on %s: %s", type(exc).__name__, request.url.path, exc
-    )
-    return JSONResponse(
-        status_code=500, content={"detail": {"error": "internal_error"}}
-    )
+    logger.exception("Unhandled %s on %s: %s", type(exc).__name__, request.url.path, exc)
+    return JSONResponse(status_code=500, content={"detail": {"error": "internal_error"}})

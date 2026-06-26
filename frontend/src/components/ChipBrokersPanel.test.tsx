@@ -52,6 +52,100 @@ const topBrokers: TopBroker[] = [
 
 const noop = () => {};
 
+describe("ChipBrokersPanel — broker name tooltip (full name on hover)", () => {
+  it("each broker row has a tooltip element carrying the full name", () => {
+    const long = mkBroker({
+      broker_id: "LONG1", name: "瑞士信貸-香港分行台北辦事處",
+      buy: 100, sell: 0, net: 100,
+    });
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary([long])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const tooltips = container.querySelectorAll(
+      "[data-testid=broker-name-tooltip]",
+    );
+    expect(tooltips.length).toBeGreaterThan(0);
+    expect(tooltips[0]!.textContent).toBe("瑞士信貸-香港分行台北辦事處");
+  });
+
+  it("broker name span carries title attribute for native tooltip fallback", () => {
+    const long = mkBroker({
+      broker_id: "LONG2", name: "凱基證券台北",
+      buy: 100, sell: 0, net: 100,
+    });
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary([long])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const titled = container.querySelector("[title='凱基證券台北']");
+    expect(titled).toBeTruthy();
+  });
+});
+
+describe("ChipBrokersPanel — N-day window header", () => {
+  it("does NOT render window header when windowDays is undefined (single-day style)", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    expect(container.querySelector("[data-testid=window-header]")).toBeFalsy();
+    expect(container.textContent).not.toContain("過去");
+  });
+
+  it("renders '過去 N 日加總' when windowDays is set and actualDays equals", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        windowDays={30}
+        actualDays={30}
+      />,
+    );
+    const header = container.querySelector("[data-testid=window-header]");
+    expect(header).toBeTruthy();
+    expect(header!.textContent).toContain("過去");
+    expect(header!.textContent).toContain("30");
+    expect(header!.textContent).toContain("日加總");
+    // 實際 == 目標時不顯示括號提示
+    expect(header!.textContent).not.toContain("實際");
+  });
+
+  it("adds '(實際 X 日)' when actualDays < windowDays", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        windowDays={30}
+        actualDays={7}
+      />,
+    );
+    const header = container.querySelector("[data-testid=window-header]");
+    expect(header!.textContent).toContain("實際 7 日");
+  });
+});
+
 describe("ChipBrokersPanel F4 — symbol/date + 三大法人 removed", () => {
   it("does NOT render 三大法人 block", () => {
     const { container } = render(
