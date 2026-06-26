@@ -286,12 +286,19 @@ class FinMindClient:
                 return {**cached, "stale": True}
             raise
 
-    async def _do_fetch_history(
+    async def _fetch_history_base_parts(
         self,
         symbol: str,
-        cache_key: str,
-        days: int = 90,
-    ) -> dict:
+        days: int,
+    ) -> tuple[list[dict], list[dict], list[dict], str]:
+        """Fetch the 3 range queries (candles + institutional + margin) that
+        every history endpoint needs. Returns (candles, institutional, margin,
+        end_iso). Pure I/O: callers wrap with `_run_once` + cache writes.
+
+        Split out from `_do_fetch_history` so the new `/history/base` route
+        can serve K-line + institutional in ~1s without paying the major-net
+        per-day fan-out (~24s under 15 req/s).
+        """
         end = date.today()
         start = end - timedelta(days=days)
         s, e = start.isoformat(), end.isoformat()
@@ -333,6 +340,16 @@ class FinMindClient:
             for r in candles_raw
         ]
 
+        return candles, inst_raw, margin_raw, e
+
+    async def _do_fetch_history(
+        self,
+        symbol: str,
+        cache_key: str,
+        days: int = 90,
+    ) -> dict:
+        candles, inst_raw, margin_raw, e = await self._fetch_history_base_parts(symbol, days)
+
         trading_dates = [c["date"] for c in candles]
         # No SecIdAgg pre-fetch: that endpoint now REQUIRES a per-broker
         # `securities_trader_id` filter, so a corpus-wide fetch would 400.
@@ -347,6 +364,167 @@ class FinMindClient:
             "candles": candles,
             "institutional": _parse_institutional_series(inst_raw),
             "margin": _parse_margin_series(margin_raw),
+            "major": major_series,
+        }
+        self._write_cache(cache_key, result)
+        return result
+
+    # -- history split: base + major (perf: K-line TTI 24s → ~1s) -----------
+
+    async def fetch_chip_history_base(
+        self,
+        symbol: str,
+        refresh: bool = False,
+        days: int = 90,
+    ) -> dict:
+        """Same payload as fetch_chip_history but with `major: []` — drops the
+        per-day TradingDailyReport fan-out (~24s under 15 req/s). Paired with
+        fetch_chip_history_major for parallel fetch on the frontend; K-line
+        first-paint goes from 24s to ~1s.
+
+        Reuses the full-history cache when present so a prior /history call
+        still serves /history/base instantly.
+        """
+        full_key = self._history_cache_key(symbol, days)
+        base_key = f"{full_key}_base"
+
+        # Prefer the full cache when it's fresh — same data, no extra I/O.
+        if not refresh:
+            full_cached = self._read_cache(full_key)
+            if full_cached is not None:
+                last = full_cached.get("last_date", "")
+                if last >= date.today().isoformat() and not self._is_stale(
+                    full_cached,
+                    max_age_minutes=15,
+                ):
+                    return {**full_cached, "major": []}
+            cached = self._read_cache(base_key)
+            if cached is not None:
+                last = cached.get("last_date", "")
+                if last >= date.today().isoformat() and not self._is_stale(
+                    cached,
+                    max_age_minutes=15,
+                ):
+                    return cached
+
+        try:
+            return await self._run_once(
+                f"history_base_{base_key}",
+                lambda: self._do_fetch_history_base(symbol, base_key, days),
+            )
+        except httpx.HTTPError as exc:
+            cached = self._read_cache(base_key)
+            if cached is not None:
+                logger.warning(
+                    "fetch_chip_history_base: live fetch failed (%s), serving "
+                    "stale cache (last_date=%s)",
+                    exc,
+                    cached.get("last_date", ""),
+                )
+                return {**cached, "stale": True}
+            raise
+
+    async def _do_fetch_history_base(
+        self,
+        symbol: str,
+        cache_key: str,
+        days: int,
+    ) -> dict:
+        candles, inst_raw, margin_raw, e = await self._fetch_history_base_parts(symbol, days)
+        result = {
+            "symbol": symbol,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "last_date": e,
+            "candles": candles,
+            "institutional": _parse_institutional_series(inst_raw),
+            "margin": _parse_margin_series(margin_raw),
+            "major": [],
+        }
+        self._write_cache(cache_key, result)
+        return result
+
+    async def fetch_chip_history_major(
+        self,
+        symbol: str,
+        refresh: bool = False,
+        days: int = 90,
+    ) -> dict:
+        """Slim payload {symbol, fetched_at, last_date, major: MajorDaily[]}.
+
+        Runs the expensive per-day TradingDailyReport fan-out independently
+        from the base K-line/institutional/margin fetch. Frontend pairs this
+        with fetch_chip_history_base via two parallel useQuery calls so the
+        K-line first-paint is unblocked.
+        """
+        full_key = self._history_cache_key(symbol, days)
+        major_key = f"{full_key}_major"
+
+        if not refresh:
+            full_cached = self._read_cache(full_key)
+            if full_cached is not None:
+                last = full_cached.get("last_date", "")
+                if last >= date.today().isoformat() and not self._is_stale(
+                    full_cached,
+                    max_age_minutes=15,
+                ):
+                    return {
+                        "symbol": symbol,
+                        "fetched_at": full_cached.get("fetched_at", ""),
+                        "last_date": last,
+                        "major": full_cached.get("major", []),
+                    }
+            cached = self._read_cache(major_key)
+            if cached is not None:
+                last = cached.get("last_date", "")
+                if last >= date.today().isoformat() and not self._is_stale(
+                    cached,
+                    max_age_minutes=15,
+                ):
+                    return cached
+
+        try:
+            return await self._run_once(
+                f"history_major_{major_key}",
+                lambda: self._do_fetch_history_major(symbol, major_key, days),
+            )
+        except httpx.HTTPError as exc:
+            cached = self._read_cache(major_key)
+            if cached is not None:
+                logger.warning(
+                    "fetch_chip_history_major: live fetch failed (%s), "
+                    "serving stale cache (last_date=%s)",
+                    exc,
+                    cached.get("last_date", ""),
+                )
+                return {**cached, "stale": True}
+            raise
+
+    async def _do_fetch_history_major(
+        self,
+        symbol: str,
+        cache_key: str,
+        days: int,
+    ) -> dict:
+        end = date.today()
+        start = end - timedelta(days=days)
+        s, e = start.isoformat(), end.isoformat()
+
+        # Re-fetch TaiwanStockPrice to derive THIS stock's actual trading
+        # dates — trading_calendar's TaiwanFuturesDaily backfill caps at
+        # _BACKFILL_DAYS=400 calendar days, which silently truncates older
+        # bars for stocks with longer history than that. One extra range
+        # call is ~70ms and the rest of the fan-out dominates wall-clock.
+        candles_raw = await self._get(
+            f"{_FINMIND_BASE}/data",
+            {"dataset": "TaiwanStockPrice", "data_id": symbol, "start_date": s, "end_date": e},
+        )
+        trading_dates = [r["date"] for r in candles_raw if r.get("date")]
+        major_series = await self._fetch_major_series(symbol, trading_dates)
+
+        result = {
+            "symbol": symbol,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "last_date": e,
             "major": major_series,
         }
         self._write_cache(cache_key, result)

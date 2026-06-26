@@ -71,12 +71,32 @@ MOCK_HISTORY = {
 }
 
 
+MOCK_HISTORY_BASE = {
+    "symbol": "2330",
+    "fetched_at": "2026-06-19T20:15:00",
+    "last_date": "2026-06-19",
+    "candles": MOCK_HISTORY["candles"],
+    "institutional": MOCK_HISTORY["institutional"],
+    "margin": MOCK_HISTORY["margin"],
+    "major": [],
+}
+
+MOCK_HISTORY_MAJOR = {
+    "symbol": "2330",
+    "fetched_at": "2026-06-19T20:15:00",
+    "last_date": "2026-06-19",
+    "major": [{"date": "2026-06-19", "major_net": 45}],
+}
+
+
 @pytest.fixture
 def mock_fm():
     svc = AsyncMock()
     svc.fetch_chip_summary = AsyncMock(return_value=MOCK_SUMMARY)
     svc.fetch_chip_bubble = AsyncMock(return_value=MOCK_BUBBLE)
     svc.fetch_chip_history = AsyncMock(return_value=MOCK_HISTORY)
+    svc.fetch_chip_history_base = AsyncMock(return_value=MOCK_HISTORY_BASE)
+    svc.fetch_chip_history_major = AsyncMock(return_value=MOCK_HISTORY_MAJOR)
     with patch("routes.chip.get_finmind", return_value=svc):
         yield svc
 
@@ -143,6 +163,67 @@ def test_chip_history_days_max_boundary(mock_fm):
     assert ok.status_code == 200
     bad = TestClient(app).get("/api/chip/2330/history?days=541")
     assert bad.status_code == 422
+
+
+# -- history split: /base + /major --------------------------------------
+
+
+def test_chip_history_base_route(mock_fm):
+    resp = TestClient(app).get("/api/chip/2330/history/base?days=540")
+    assert resp.status_code == 200
+    mock_fm.fetch_chip_history_base.assert_awaited_once_with("2330", False, 540)
+    body = resp.json()
+    # Schema parity with /history but `major: []`.
+    assert body["candles"] == MOCK_HISTORY_BASE["candles"]
+    assert body["institutional"] == MOCK_HISTORY_BASE["institutional"]
+    assert body["margin"] == MOCK_HISTORY_BASE["margin"]
+    assert body["major"] == []
+
+
+def test_chip_history_base_refresh_passthrough(mock_fm):
+    resp = TestClient(app).get("/api/chip/2330/history/base?days=540&refresh=true")
+    assert resp.status_code == 200
+    mock_fm.fetch_chip_history_base.assert_awaited_once_with("2330", True, 540)
+
+
+def test_chip_history_base_default_days(mock_fm):
+    resp = TestClient(app).get("/api/chip/2330/history/base")
+    assert resp.status_code == 200
+    mock_fm.fetch_chip_history_base.assert_awaited_once_with("2330", False, 90)
+
+
+def test_chip_history_major_route(mock_fm):
+    resp = TestClient(app).get("/api/chip/2330/history/major?days=540")
+    assert resp.status_code == 200
+    mock_fm.fetch_chip_history_major.assert_awaited_once_with("2330", False, 540)
+    body = resp.json()
+    # Slim payload: only major series.
+    assert body["major"] == MOCK_HISTORY_MAJOR["major"]
+    assert "candles" not in body
+    assert "institutional" not in body
+    assert "margin" not in body
+
+
+def test_chip_history_major_refresh_passthrough(mock_fm):
+    resp = TestClient(app).get("/api/chip/2330/history/major?days=540&refresh=true")
+    assert resp.status_code == 200
+    mock_fm.fetch_chip_history_major.assert_awaited_once_with("2330", True, 540)
+
+
+def test_legacy_history_route_unchanged(mock_fm):
+    """Regression: /history still returns the full super-set; split endpoints
+    do not affect existing callers."""
+    resp = TestClient(app).get("/api/chip/2330/history?days=540")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "candles" in body
+    assert "institutional" in body
+    assert "margin" in body
+    assert "major" in body
+    assert body["major"] == MOCK_HISTORY["major"]
+    mock_fm.fetch_chip_history.assert_awaited_once_with("2330", False, 540)
+    mock_fm.fetch_chip_history_base.assert_not_called()
+    mock_fm.fetch_chip_history_major.assert_not_called()
 
 
 def test_chip_summary_finmind_error(mock_fm):

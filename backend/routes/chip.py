@@ -46,6 +46,30 @@ async def get_chip_history(
     return await get_finmind().fetch_chip_history(symbol, refresh, days)
 
 
+@router.get("/api/chip/{symbol}/history/base")
+async def get_chip_history_base(
+    symbol: str,
+    refresh: bool = Query(default=False),
+    days: int = Query(default=90, ge=5, le=540),
+) -> dict:
+    """Same payload as /history but with `major: []`. Pairs with
+    /history/major for parallel-fetch frontends; K-line TTI ~1s instead of
+    blocking on the major-net per-day fan-out."""
+    return await get_finmind().fetch_chip_history_base(symbol, refresh, days)
+
+
+@router.get("/api/chip/{symbol}/history/major")
+async def get_chip_history_major(
+    symbol: str,
+    refresh: bool = Query(default=False),
+    days: int = Query(default=90, ge=5, le=540),
+) -> dict:
+    """Slim payload {symbol, fetched_at, last_date, major: MajorDaily[]}.
+    Runs the expensive per-day TradingDailyReport fan-out independently
+    from /history/base."""
+    return await get_finmind().fetch_chip_history_major(symbol, refresh, days)
+
+
 @router.get("/api/chip/{symbol}/brokers_window")
 async def get_chip_brokers_window(
     symbol: str,
