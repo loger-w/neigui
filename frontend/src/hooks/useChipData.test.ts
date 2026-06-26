@@ -152,7 +152,17 @@ describe("useChipData split fetches", () => {
       expect(histSpy).toHaveBeenCalledTimes(2);
     });
     expect(chipSpy.mock.calls[1]![2]).toBe(true);
-    expect(histSpy.mock.calls[1]![1]).toBe(true);
+    // chipHistory now uses 3-arg form: (symbol, 540, force) — force at [2].
+    expect(histSpy.mock.calls[1]![1]).toBe(540);
+    expect(histSpy.mock.calls[1]![2]).toBe(true);
+  });
+
+  it("history fetch always carries days=540 (large window for K-line zoom)", async () => {
+    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
+    const histSpy = vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
+    renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
+    await waitFor(() => expect(histSpy).toHaveBeenCalledTimes(1));
+    expect(histSpy.mock.calls[0]![1]).toBe(540);
   });
 
   it("rapid date flip drops stale summary response (seq)", async () => {

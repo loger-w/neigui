@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BrokerDaily, ChipHistory } from "../lib/chip-data";
 import { KlineChartSvg } from "../lib/chip-kline-svg";
 import { InstBarSvg, MarginLineSvg } from "../lib/chip-inst-bar-svg";
@@ -17,6 +17,12 @@ interface Props {
   onClearAllBrokers: () => void;
 }
 
+const KLINE_ZOOM_MIN = 30;     // 太小無法看 BB(period 20) + MA20
+const KLINE_ZOOM_DEFAULT = 90;
+const KLINE_ZOOM_STEP = 10;    // 每次滾輪 ±10 個 trading days
+const BRUSH_THRESHOLD = 5;     // 拖曳超過 5px 才算 brush(避免吃掉點擊)
+const BRUSH_CLICK_SUPPRESS_MS = 250;
+
 export function ChipKlineChart({
   history, selectedDate, selectedBrokerIds, brokerSeries,
   onPickDate, onClearAllBrokers,
@@ -29,7 +35,24 @@ export function ChipKlineChart({
   // for a per-row crosshair).
   const [hoverY, setHoverY] = useState<number | null>(null);
 
-  const derived = useMemo(() => {
+  // K-line visible-days zoom controlled by mouse wheel on the chart area.
+  // Initial 90 keeps existing visual density; user scrolls down → zoom OUT
+  // (more days visible, smaller candles); up → zoom IN.
+  const [visibleDays, setVisibleDays] = useState<number>(KLINE_ZOOM_DEFAULT);
+  const maxLenRef = useRef(0);
+
+  // 拖曳 brush-zoom:框選一段 → 視窗 anchor 到該段。viewEndIdx=null 表示「
+  // 自動跟最新一根」(預設行為),number 表示視窗右邊界鎖在該 raw index。
+  const [viewEndIdx, setViewEndIdx] = useState<number | null>(null);
+  // brushRect 是 visual overlay(framed selection),null 時不顯示。
+  const [brushRect, setBrushRect] = useState<{ left: number; width: number } | null>(null);
+  // brushDragRef 紀錄拖曳起點 + container rect(避免 drag 中 rect 重算)
+  const brushDragRef = useRef<{ startX: number; rect: DOMRect } | null>(null);
+  // suppressNextClickRef 在 brush commit 後阻止 KlineChartSvg 的 onClickIndex
+  // 觸發(pointerup 還會 fire 一個 click event,我們不想 select date)
+  const suppressNextClickRef = useRef(false);
+
+  const fullDerived = useMemo(() => {
     if (!history) return null;
     const { candles, institutional, margin, major } = history;
     const instByDate = new Map(institutional.map((d) => [d.date, d]));
@@ -48,6 +71,130 @@ export function ChipKlineChart({
     };
   }, [history]);
 
+  // Keep maxLenRef in sync without recreating the wheel listener.
+  useEffect(() => {
+    maxLenRef.current = fullDerived?.candles.length ?? 0;
+    // 當 history payload 變短(不太可能)或第一次 mount 時 clamp 一下
+    if (maxLenRef.current > 0) {
+      setVisibleDays((v) => Math.min(v, maxLenRef.current));
+      // viewEndIdx 若指向已不存在的 index → 退回 auto
+      setViewEndIdx((v) => (v === null || v >= maxLenRef.current ? null : v));
+    }
+  }, [fullDerived]);
+
+  // Wheel attached imperatively so we can preventDefault (React's onWheel
+  // is passive by default in many browsers; passive listeners ignore
+  // preventDefault and the page scrolls instead of the chart zooming).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const max = maxLenRef.current;
+      if (max === 0 || e.deltaY === 0) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? KLINE_ZOOM_STEP : -KLINE_ZOOM_STEP;
+      setVisibleDays((v) => {
+        const next = v + delta;
+        if (next < KLINE_ZOOM_MIN) return KLINE_ZOOM_MIN;
+        if (next > max) return max;
+        return next;
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // Document-level pointermove / pointerup 監聽,只在拖曳 active 才做事。
+  // brushDragRef.current 是「拖曳中」的旗標。pointerdown 設旗標,pointerup
+  // 清旗標;effect 沒 deps 避免 re-attach。
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      const drag = brushDragRef.current;
+      if (!drag) return;
+      const dx = e.clientX - drag.startX;
+      if (Math.abs(dx) < BRUSH_THRESHOLD) return;
+      const x0 = Math.min(drag.startX, e.clientX) - drag.rect.left;
+      const x1 = Math.max(drag.startX, e.clientX) - drag.rect.left;
+      setBrushRect({
+        left: Math.max(0, x0),
+        width: Math.max(0, x1 - Math.max(0, x0)),
+      });
+    };
+    const onUp = (e: PointerEvent) => {
+      const drag = brushDragRef.current;
+      brushDragRef.current = null;
+      if (!drag) {
+        setBrushRect(null);
+        return;
+      }
+      const dx = e.clientX - drag.startX;
+      if (Math.abs(dx) < BRUSH_THRESHOLD) {
+        // 沒拖到閾值 → 視為點擊,不消耗,讓 SVG 內 click handler 正常 fire
+        setBrushRect(null);
+        return;
+      }
+      const n = maxLenRef.current;
+      if (n > 0 && drag.rect.width > 0) {
+        const candleW = drag.rect.width / n;
+        const x0 = Math.max(0, Math.min(drag.startX, e.clientX) - drag.rect.left);
+        const x1 = Math.max(0, Math.max(drag.startX, e.clientX) - drag.rect.left);
+        const startIdx = Math.max(0, Math.floor(x0 / candleW));
+        const endIdx = Math.min(n - 1, Math.floor(x1 / candleW));
+        if (endIdx > startIdx) {
+          const span = endIdx - startIdx + 1;
+          setViewEndIdx(endIdx);
+          setVisibleDays(Math.max(KLINE_ZOOM_MIN, span));
+          // pointerup 後仍會 fire 一個 click event;suppress it
+          suppressNextClickRef.current = true;
+          setTimeout(() => {
+            suppressNextClickRef.current = false;
+          }, BRUSH_CLICK_SUPPRESS_MS);
+        }
+      }
+      setBrushRect(null);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+  }, []);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    brushDragRef.current = { startX: e.clientX, rect };
+  };
+
+  const handleDoubleClick = () => {
+    setViewEndIdx(null);
+    setVisibleDays(KLINE_ZOOM_DEFAULT);
+  };
+
+  const derived = useMemo(() => {
+    if (!fullDerived) return null;
+    const total = fullDerived.candles.length;
+    const end = viewEndIdx !== null
+      ? Math.min(viewEndIdx, total - 1)
+      : total - 1;
+    const n = Math.min(visibleDays, end + 1);
+    const start = Math.max(0, end - n + 1);
+    if (start === 0 && end === total - 1) return fullDerived;
+    return {
+      candles: fullDerived.candles.slice(start, end + 1),
+      majorNet: fullDerived.majorNet.slice(start, end + 1),
+      foreignNet: fullDerived.foreignNet.slice(start, end + 1),
+      trustNet: fullDerived.trustNet.slice(start, end + 1),
+      dealerNet: fullDerived.dealerNet.slice(start, end + 1),
+      marginChange: fullDerived.marginChange.slice(start, end + 1),
+      shortChange: fullDerived.shortChange.slice(start, end + 1),
+      marginBalance: fullDerived.marginBalance.slice(start, end + 1),
+      shortBalance: fullDerived.shortBalance.slice(start, end + 1),
+    };
+  }, [fullDerived, visibleDays, viewEndIdx]);
+
   const brokerAggSeries = useMemo(() => {
     if (!derived) return [] as number[];
     const dateNet = new Map<string, number>();
@@ -61,6 +208,10 @@ export function ChipKlineChart({
 
   const handleClickIndex = useCallback(
     (i: number) => {
+      if (suppressNextClickRef.current) {
+        suppressNextClickRef.current = false;
+        return;
+      }
       if (!derived) return;
       onPickDate(derived.candles[i]!.date);
     },
@@ -110,8 +261,24 @@ export function ChipKlineChart({
   return (
     <div
       ref={containerRef}
-      className="h-full flex flex-col overflow-hidden relative"
+      className="h-full flex flex-col overflow-hidden relative cursor-crosshair"
+      onPointerDown={handlePointerDown}
+      onDoubleClick={handleDoubleClick}
     >
+      <div
+        data-testid="kline-zoom-hud"
+        className="absolute top-1.5 right-2 z-30 text-xs text-ink-dim bg-bg-deep/80 px-2 py-0.5 border border-line tabular-nums select-none pointer-events-none"
+        title="滾輪縮放 / 拖曳框選 / 雙擊重置"
+      >
+        {candles.length} 日{viewEndIdx !== null ? " · 已框選" : ""}
+      </div>
+      {brushRect && (
+        <div
+          data-testid="kline-brush-rect"
+          className="absolute top-0 bottom-0 bg-accent/10 border-l border-r border-accent pointer-events-none z-20"
+          style={{ left: brushRect.left, width: brushRect.width }}
+        />
+      )}
       <div style={{ height: klineH, minHeight: 0 }}>
         {klineH > 0 && (
           <KlineChartSvg

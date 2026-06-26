@@ -33,12 +33,14 @@ export function useChipData(symbol: string, date: string) {
     placeholderData: (prev) => (prev?.symbol === symbol ? prev : undefined),
   });
 
+  // K 線一次抓 540 天歷史(約 360 個 trading days = 1.5 年)讓滾輪縮放純前端
+  // slice 沒有 round-trip;gzipped payload ≈ 25-35KB,initial load 仍合理。
   const historyQ = useQuery<ChipHistory, Error>({
     queryKey: ["chip-history", symbol],
     queryFn: async () => {
       const force = historyForceRef.current;
       historyForceRef.current = false;
-      return api.chipHistory(symbol, force);
+      return api.chipHistory(symbol, 540, force);
     },
     enabled: symbol !== "",
   });
