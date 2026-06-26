@@ -391,20 +391,28 @@ class FinMindClient:
         refresh: bool = False,
     ) -> dict:
         """Aggregate the last `days` trading days of broker-level chips ending
-        at `date_str` (inclusive). Reuses fetch_chip_history (90-day window) to
-        derive trading_dates — no calendar→trading conversion needed locally —
-        then fans out fetch_chip_summary per day (each independently cached).
+        at `date_str` (inclusive). Uses ``services.trading_calendar`` to derive
+        trading_dates (cheap shared 12h cache); fans out fetch_chip_summary per
+        day (each independently cached).
+
+        Previously routed via fetch_chip_history(540) just to read candles[].date,
+        which cold-fetched 360 per-day TaiwanStockTradingDailyReport calls for
+        the major-net series (~24s through the 5/s rate limiter) on first-ever
+        symbol load — pure waste since brokers_window never reads `major`.
 
         Does NOT cache its own result: every underlying summary is cached
         per-day, so a second call lands an O(N) cache-hit sweep with no
         FinMind round-trips.
         """
-        history = await self.fetch_chip_history(symbol, refresh=refresh, days=540)
-        all_dates = [c["date"] for c in history.get("candles", []) if c.get("date")]
-        eligible = [d for d in all_dates if d <= date_str]
-        if not eligible:
+        from services.trading_calendar import get_trading_days
+
+        end = date.fromisoformat(date_str)
+        recent = await get_trading_days(end, n=days)
+        if not recent:
             raise ValueError("brokers_window_unavailable")
-        trading_dates = eligible[-days:]
+        # get_trading_days returns newest-first; ascending fan-out keeps the
+        # _aggregate_brokers_window contract (margin balance taken from last)
+        trading_dates = [d.isoformat() for d in reversed(recent)]
 
         summary_results = await asyncio.gather(
             *[self.fetch_chip_summary(symbol, d, refresh) for d in trading_dates],

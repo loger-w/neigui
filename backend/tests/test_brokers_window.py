@@ -5,11 +5,13 @@ Service:   FinMindClient.fetch_brokers_window + _aggregate_brokers_window
 
 Strategy:
 - _aggregate_brokers_window 是純函式 → 直接餵 fixture summaries,assert 輸出 shape
-- fetch_brokers_window 是 orchestration → mock fetch_chip_history (拿 trading_dates)
-  + mock fetch_chip_summary,verify 取最後 N 個 trading days、fan-out 與 aggregate 正確
+- fetch_brokers_window 是 orchestration → mock services.trading_calendar.get_trading_days
+  (cheap calendar, replaces former 540-day history pull) + mock fetch_chip_summary,
+  verify 取最後 N 個 trading days、fan-out 與 aggregate 正確
 """
 from __future__ import annotations
 
+from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -67,21 +69,6 @@ def _summary(
                 }] if b_buy or b_sell else []
             ),
         ],
-    }
-
-
-def _history_with_dates(dates: list[str]) -> dict:
-    return {
-        "symbol": "2330",
-        "fetched_at": "2026-06-19T20:00:00",
-        "last_date": dates[-1],
-        "candles": [
-            {"date": d, "open": 100, "high": 105, "low": 99, "close": 102, "volume": 10000}
-            for d in dates
-        ],
-        "institutional": [],
-        "margin": [],
-        "major": [],
     }
 
 
@@ -248,16 +235,34 @@ def test_aggregate_actual_days_reflects_input():
 # ---------------------------------------------------------------------------
 
 
+def _mock_trading_calendar(dates_iso: list[str]):
+    """Return an AsyncMock that mimics get_trading_days behavior.
+
+    `dates_iso` is the full available calendar (ascending). The mock filters
+    to dates ≤ end_date, takes the last n, returns newest-first — same
+    contract as services.trading_calendar.get_trading_days.
+    """
+    available = [date.fromisoformat(d) for d in dates_iso]
+
+    async def fake(end_date: date, n: int) -> list[date]:
+        eligible = [d for d in available if d <= end_date]
+        return list(reversed(eligible[-n:]))
+
+    return AsyncMock(side_effect=fake)
+
+
 @pytest.mark.asyncio
-async def test_fetch_brokers_window_picks_last_n_trading_days():
-    """history 有 10 個 trading days,days=3 → 取最後 3 個。"""
+async def test_fetch_brokers_window_picks_last_n_trading_days(monkeypatch):
+    """Calendar 有 10 個 trading days,days=3 → 取最後 3 個。"""
     from services.finmind import FinMindClient
+    import services.trading_calendar as tc
+
     dates = [f"2026-06-{i:02d}" for i in range(10, 20)]  # 10 個 days
-    history = _history_with_dates(dates)
+    monkeypatch.setattr(tc, "get_trading_days", _mock_trading_calendar(dates))
 
     client = FinMindClient()
-    client.fetch_chip_history = AsyncMock(return_value=history)
     summaries_returned: list[dict] = []
+
     async def fake_summary(symbol: str, d: str, refresh: bool) -> dict:
         s = _summary(d, a_buy=10, a_sell=2, a_buy_price=100, a_sell_price=101)
         summaries_returned.append(s)
@@ -273,16 +278,16 @@ async def test_fetch_brokers_window_picks_last_n_trading_days():
 
 
 @pytest.mark.asyncio
-async def test_fetch_brokers_window_filters_dates_after_anchor():
-    """選 2026-06-15 為 end_date,history 有到 2026-06-19 → 應該只取 ≤15 的部分。"""
+async def test_fetch_brokers_window_filters_dates_after_anchor(monkeypatch):
+    """選 2026-06-15 為 end_date,calendar 有到 2026-06-19 → 應該只取 ≤15 的部分。"""
     from services.finmind import FinMindClient
+    import services.trading_calendar as tc
 
     dates = ["2026-06-10", "2026-06-11", "2026-06-12", "2026-06-15",
              "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19"]
-    history = _history_with_dates(dates)
+    monkeypatch.setattr(tc, "get_trading_days", _mock_trading_calendar(dates))
 
     client = FinMindClient()
-    client.fetch_chip_history = AsyncMock(return_value=history)
     client.fetch_chip_summary = AsyncMock(
         side_effect=lambda symbol, d, refresh: _summary(
             d, a_buy=1, a_sell=0, a_buy_price=100, a_sell_price=0,
@@ -296,13 +301,17 @@ async def test_fetch_brokers_window_filters_dates_after_anchor():
 
 
 @pytest.mark.asyncio
-async def test_fetch_brokers_window_raises_when_no_summaries():
-    """history 沒有任何 trading day ≤ anchor → raise ValueError。"""
+async def test_fetch_brokers_window_raises_when_no_summaries(monkeypatch):
+    """Calendar 沒有任何 trading day ≤ anchor → raise ValueError。"""
     from services.finmind import FinMindClient
+    import services.trading_calendar as tc
 
-    history = _history_with_dates(["2026-06-20", "2026-06-21"])  # 全 > 2026-06-15
+    # All calendar dates > anchor 2026-06-15
+    monkeypatch.setattr(
+        tc, "get_trading_days", _mock_trading_calendar(["2026-06-20", "2026-06-21"]),
+    )
+
     client = FinMindClient()
-    client.fetch_chip_history = AsyncMock(return_value=history)
     client.fetch_chip_summary = AsyncMock()
 
     with pytest.raises(ValueError, match="brokers_window"):
@@ -311,14 +320,15 @@ async def test_fetch_brokers_window_raises_when_no_summaries():
 
 
 @pytest.mark.asyncio
-async def test_fetch_brokers_window_skips_failed_summaries():
+async def test_fetch_brokers_window_skips_failed_summaries(monkeypatch):
     """單日 fetch_chip_summary 失敗(回 Exception)→ 其他天還能 aggregate。"""
     from services.finmind import FinMindClient
+    import services.trading_calendar as tc
 
     dates = ["2026-06-17", "2026-06-18", "2026-06-19"]
-    history = _history_with_dates(dates)
+    monkeypatch.setattr(tc, "get_trading_days", _mock_trading_calendar(dates))
+
     client = FinMindClient()
-    client.fetch_chip_history = AsyncMock(return_value=history)
 
     async def fake_summary(symbol: str, d: str, refresh: bool) -> dict:
         if d == "2026-06-18":
@@ -334,20 +344,47 @@ async def test_fetch_brokers_window_skips_failed_summaries():
 
 
 @pytest.mark.asyncio
-async def test_fetch_brokers_window_passes_refresh_through():
+async def test_fetch_brokers_window_passes_refresh_through(monkeypatch):
     from services.finmind import FinMindClient
+    import services.trading_calendar as tc
 
-    history = _history_with_dates(["2026-06-19"])
+    calendar_mock = _mock_trading_calendar(["2026-06-19"])
+    monkeypatch.setattr(tc, "get_trading_days", calendar_mock)
+
     client = FinMindClient()
-    client.fetch_chip_history = AsyncMock(return_value=history)
     client.fetch_chip_summary = AsyncMock(
         return_value=_summary("2026-06-19", a_buy=1, a_sell=0,
                               a_buy_price=100, a_sell_price=0),
     )
 
     await client.fetch_brokers_window("2330", "2026-06-19", days=10, refresh=True)
-    client.fetch_chip_history.assert_awaited_once_with("2330", refresh=True, days=540)
+    # Trading calendar is independent of per-day data freshness; no refresh param
+    calendar_mock.assert_awaited_once_with(date(2026, 6, 19), n=10)
     client.fetch_chip_summary.assert_awaited_once_with("2330", "2026-06-19", True)
+
+
+@pytest.mark.asyncio
+async def test_fetch_brokers_window_does_not_pull_chip_history(monkeypatch):
+    """Regression guard for the perf fix: brokers_window must NOT call
+    fetch_chip_history (which cold-fetches 540-day major series ~24s)."""
+    from services.finmind import FinMindClient
+    import services.trading_calendar as tc
+
+    monkeypatch.setattr(
+        tc, "get_trading_days", _mock_trading_calendar(["2026-06-19"]),
+    )
+
+    client = FinMindClient()
+    client.fetch_chip_history = AsyncMock(
+        side_effect=AssertionError("fetch_chip_history MUST NOT be called"),
+    )
+    client.fetch_chip_summary = AsyncMock(
+        return_value=_summary("2026-06-19", a_buy=1, a_sell=0,
+                              a_buy_price=100, a_sell_price=0),
+    )
+
+    await client.fetch_brokers_window("2330", "2026-06-19", days=10)
+    client.fetch_chip_history.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
