@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 
 import { OptionsChipPanel } from "./OptionsChipPanel";
 import { optionsApi } from "../lib/options-api";
+import { useOptionsChip } from "../hooks/useOptionsChip";
 import { makeQueryWrapper } from "../test-utils/query-wrapper";
 import type {
   OptionsMaxPain, OptionsOIWalls, OptionsPCR, OptionsInstitutional,
@@ -14,11 +15,18 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function PanelHarness({ contractId, date }: { contractId: string; date: string }) {
+  // useOptionsChip lives in the parent (OptionsPage) per F9 fix; the test
+  // mirrors that ownership.
+  const chip = useOptionsChip(contractId, date);
+  return <OptionsChipPanel chip={chip} />;
+}
+
 function renderPanel(contractId = "TXO202607", date = "2026-06-25") {
   const Wrapper = makeQueryWrapper();
   return render(
     <Wrapper>
-      <OptionsChipPanel contractId={contractId} date={date} />
+      <PanelHarness contractId={contractId} date={date} />
     </Wrapper>,
   );
 }

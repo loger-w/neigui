@@ -6,6 +6,7 @@ import { OptionsStrikeLadder } from "./OptionsStrikeLadder";
 import { useOptionsLargeTraders } from "../hooks/useOptionsLargeTraders";
 import { useOptionsStrikeVolume } from "../hooks/useOptionsStrikeVolume";
 import { useOptionsSpot } from "../hooks/useOptionsSpot";
+import { useOptionsChip } from "../hooks/useOptionsChip";
 import { listActiveContracts } from "../lib/options-contract";
 
 function todayStr(): string {
@@ -48,13 +49,19 @@ export function OptionsPage(): ReactElement {
   const lt   = useOptionsLargeTraders(contractId, date);
   const sv   = useOptionsStrikeVolume(contractId, date);
   const spot = useOptionsSpot(date);
+  const chip = useOptionsChip(contractId, date);
 
-  const loading = lt.loading || sv.loading || spot.loading;
-  const refresh = () => { lt.refresh(); sv.refresh(); spot.refresh(); };
+  // F9 修 (post-impl review): top-bar refresh + no-trading-day banner now
+  // include chip state too, so the user gets a consistent panel-wide UX.
+  const loading = lt.loading || sv.loading || spot.loading || chip.loading;
+  const refresh = () => {
+    lt.refresh(); sv.refresh(); spot.refresh();
+    chip.refreshAll();
+  };
 
   const isWeekly = currentContract?.kind.startsWith("weekly") ?? false;
   const anyNoTradingDay =
-    lt.noTradingDay || sv.noTradingDay || spot.noTradingDay;
+    lt.noTradingDay || sv.noTradingDay || spot.noTradingDay || chip.anyNoTradingDay;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -72,7 +79,7 @@ export function OptionsPage(): ReactElement {
           {date} 無交易
         </div>
       )}
-      <OptionsChipPanel contractId={contractId} date={date} />
+      <OptionsChipPanel chip={chip} />
       <OptionsLargeTradersStrip
         data={lt.data}
         loading={lt.loading}

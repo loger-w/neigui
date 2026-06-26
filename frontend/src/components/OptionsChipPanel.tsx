@@ -1,41 +1,19 @@
 import type { ReactElement } from "react";
-import { useMaxPain } from "../hooks/useMaxPain";
-import { useOptionsOIWalls } from "../hooks/useOptionsOIWalls";
-import { useOptionsPCR } from "../hooks/useOptionsPCR";
-import { useInstitutionalOptions } from "../hooks/useInstitutionalOptions";
 import { OptionsMaxPainCard } from "./OptionsMaxPainCard";
 import { OptionsOIWallsCard } from "./OptionsOIWallsCard";
 import { OptionsPCRCard } from "./OptionsPCRCard";
 import { OptionsInstitutionalCard } from "./OptionsInstitutionalCard";
+import type { useOptionsChip } from "../hooks/useOptionsChip";
 
 interface Props {
-  contractId: string;
-  date: string;
+  /** Aggregated state from {@link useOptionsChip}. OptionsPage owns the hook
+   * so the top-bar refresh + no-trading-day banner can see chip state too
+   * (F9 fix). */
+  chip: ReturnType<typeof useOptionsChip>;
 }
 
-export function OptionsChipPanel({ contractId, date }: Props): ReactElement {
-  const mp   = useMaxPain(contractId, date);
-  const ow   = useOptionsOIWalls(contractId, date);
-  const pcr  = useOptionsPCR(date, "all_months");  // MVP1: default all_months
-  const inst = useInstitutionalOptions(date);
-
-  // F4 修 (post-impl review): the earlier cascadeInvalidate-via-queryClient
-  // pattern raced against the backend cache check — sibling refetches arrived
-  // with refresh=false, hit their parse cache before _invalidate_chip_parse_caches
-  // ran, and returned stale data. Fix: when ANY card's refresh is clicked,
-  // call all FOUR hooks' refresh() so each one sets its own forceRefreshRef
-  // and the backend receives refresh=true on every endpoint. This ensures
-  // parse-cache invalidation on the shared window correctly propagates to
-  // each card's response.
-  //
-  // Institutional is included even though it doesn't share the window, so
-  // the user gets a consistent "refresh = update everything" expectation.
-  const refreshAll = () => {
-    mp.refresh();
-    ow.refresh();
-    pcr.refresh();
-    inst.refresh();
-  };
+export function OptionsChipPanel({ chip }: Props): ReactElement {
+  const { mp, ow, pcr, inst, refreshAll } = chip;
 
   return (
     <div
