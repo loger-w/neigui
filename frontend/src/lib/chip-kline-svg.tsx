@@ -124,6 +124,19 @@ interface KlineChartProps {
   onHoverY?: (y: number | null) => void;
   selectedIndex?: number | null;
   onClickIndex?: (index: number) => void;
+  /** Override MA / BB calculations with values precomputed against the FULL
+   *  history (not just the sliced window). Length must equal candles.length.
+   *  Without these the indicators are calculated from the sliced closes —
+   *  which breaks the line at the start of every zoomed window (first 4 or 19
+   *  entries are null). Passing precomputed slices lets the lines extend all
+   *  the way to the left edge when there's data available outside the window. */
+  ma5Override?: (number | null)[];
+  ma20Override?: (number | null)[];
+  bbOverride?: {
+    middle: (number | null)[];
+    upper: (number | null)[];
+    lower: (number | null)[];
+  };
 }
 
 export const KlineChartSvg = memo(KlineChartSvgImpl);
@@ -133,6 +146,7 @@ function KlineChartSvgImpl({
   hoverIndex, onHoverIndex,
   hoverY, onHoverY,
   selectedIndex, onClickIndex,
+  ma5Override, ma20Override, bbOverride,
 }: KlineChartProps) {
   if (candles.length === 0) return null;
 
@@ -157,11 +171,18 @@ function KlineChartSvgImpl({
     if (c.low < pMin) pMin = c.low;
     if (c.high > pMax) pMax = c.high;
   }
-  // MA / BB 也要納入 range — 先算出來
+  // MA / BB 也要納入 range — 先算出來。caller 可傳 override(用 full history
+  // 算好的 sliced 段)讓 BB / MA 在 zoom 視窗開頭也有值,不會被截斷。
   const closes = candles.map((c) => c.close);
-  const ma5 = rollingMean(closes, 5);
-  const ma20 = rollingMean(closes, 20);
-  const bb = calcBollinger(closes, BB_PERIOD, BB_K);
+  const ma5 = ma5Override && ma5Override.length === candles.length
+    ? ma5Override
+    : rollingMean(closes, 5);
+  const ma20 = ma20Override && ma20Override.length === candles.length
+    ? ma20Override
+    : rollingMean(closes, 20);
+  const bb = bbOverride && bbOverride.middle.length === candles.length
+    ? bbOverride
+    : calcBollinger(closes, BB_PERIOD, BB_K);
   // BB legend + 線 + 帶 整組需要 >=2 個非 null mid 才顯示(避免單點 polyline 渲染失敗)
   let bbMidNonNull = 0;
   for (const v of bb.middle) if (v !== null) bbMidNonNull++;
@@ -470,17 +491,17 @@ function KlineChartSvgImpl({
         <tspan dx={2} fill={t.ink}>{fmtNum(infoCandle.volume)} 張</tspan>
       </text>
 
-      {/* MA / BB legend */}
+      {/* MA / BB legend — gap 加大避免擠在一起 */}
       <text x={padL + 4} y={padT + 14} fontSize={20} fontFamily={t.font} fill={t.ma5}>
         MA5
       </text>
-      <text x={padL + 44} y={padT + 14} fontSize={20} fontFamily={t.font} fill={t.ma20}>
+      <text x={padL + 64} y={padT + 14} fontSize={20} fontFamily={t.font} fill={t.ma20}>
         MA20
       </text>
       {showBB && (
         <text
           data-testid="bb-legend"
-          x={padL + 90} y={padT + 14}
+          x={padL + 132} y={padT + 14}
           fontSize={20} fontFamily={t.font} fill={BB_COLOR}
         >
           BB(20,2)

@@ -118,8 +118,10 @@ export default function App() {
   // Note: useChipData still fetches summary + history; we only consume
   // history here. summary is left untouched (its endpoint underwrites
   // per-day caching that brokers_window reuses).
+  // `majorLoading` is the slow major-net per-day fan-out; not bundled into
+  // global `loading` so the "重新整理" spinner doesn't sit for ~24s.
   const {
-    history, loading, error,
+    history, loading, majorLoading, error,
     refresh: refreshChip,
   } = useChipData(symbol, date);
   const bubbleHook = useChipBubble(symbol, date);
@@ -296,6 +298,9 @@ export default function App() {
                 brokerSeries={brokerHistoryHook.series}
                 onPickDate={handlePickDate}
                 onClearAllBrokers={handleClearAllBrokers}
+                loading={!!symbol && isLoading}
+                loadingSymbol={symbol || undefined}
+                majorLoading={!!symbol && majorLoading}
               />
             </div>
             <div

@@ -235,9 +235,10 @@ describe("ChipKlineChart — zoom HUD + wheel handler", () => {
     expect(getByTestId("kline-zoom-hud").textContent).toBe("90 日");
   });
 
-  it("zoom HUD label notes brush anchor state when viewEndIdx is locked", () => {
-    // We can't easily synthesise a brush in jsdom (PointerEvent + bounding
-    // rects), but we can at least confirm the default HUD has no anchor tag.
+  it("zoom HUD has no '平移中' tag in default auto-tail mode", () => {
+    // We can't easily synthesise a pointer drag in jsdom (PointerEvent +
+    // bounding rects), but the default HUD must not show the pan marker
+    // until viewEndIdx is anchored.
     const history = mkHistory(540);
     const { getByTestId } = render(
       <ChipKlineChart
@@ -249,6 +250,60 @@ describe("ChipKlineChart — zoom HUD + wheel handler", () => {
         onClearAllBrokers={noop}
       />,
     );
+    expect(getByTestId("kline-zoom-hud").textContent).not.toContain("平移中");
     expect(getByTestId("kline-zoom-hud").textContent).not.toContain("已框選");
+  });
+
+  it("loading=true + loadingSymbol renders the scanning bar + badge", () => {
+    const history = mkHistory(540);
+    const { getByTestId, getByText } = render(
+      <ChipKlineChart
+        history={history}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+        loading={true}
+        loadingSymbol="2330"
+      />,
+    );
+    expect(getByTestId("kline-loading-indicator")).toBeTruthy();
+    expect(getByTestId("kline-loading-badge")).toBeTruthy();
+    expect(getByText(/載入 2330 中/)).toBeTruthy();
+  });
+
+  it("loading=false hides the scanning bar + badge", () => {
+    const history = mkHistory(540);
+    const { queryByTestId } = render(
+      <ChipKlineChart
+        history={history}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+        loading={false}
+      />,
+    );
+    expect(queryByTestId("kline-loading-indicator")).toBeNull();
+    expect(queryByTestId("kline-loading-badge")).toBeNull();
+  });
+
+  it("history=null + loading shows centred '載入 X 中…' message instead of search prompt", () => {
+    const { getByText, queryByText } = render(
+      <ChipKlineChart
+        history={null}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+        loading={true}
+        loadingSymbol="2454"
+      />,
+    );
+    expect(getByText(/載入 2454 中/)).toBeTruthy();
+    expect(queryByText(/請搜尋股票代號/)).toBeNull();
   });
 });

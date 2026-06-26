@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BrokerDaily, ChipHistory } from "../lib/chip-data";
-import { KlineChartSvg } from "../lib/chip-kline-svg";
+import {
+  KlineChartSvg,
+  rollingMean,
+  calcBollinger,
+} from "../lib/chip-kline-svg";
 import { InstBarSvg, MarginLineSvg } from "../lib/chip-inst-bar-svg";
 import { BrokerAggBarSvg } from "../lib/chip-broker-agg-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
@@ -15,17 +19,30 @@ interface Props {
   brokerSeries: Map<string, BrokerDaily[]>;
   onPickDate: (date: string) => void;
   onClearAllBrokers: () => void;
+  /** Whether a symbol-driven fetch is in flight (history or aggregate).
+   *  Drives a top-edge scanning bar + optional centre badge so the user has
+   *  visible feedback that picking a symbol triggered work. We do NOT branch
+   *  on this for the actual K-line render (which keeps the previous symbol's
+   *  data visible via TanStack Query placeholderData). */
+  loading?: boolean;
+  /** Symbol the loading badge announces (e.g. "2330"). Optional. */
+  loadingSymbol?: string;
+  /** Major-net per-day fan-out still pending: K-line + other subcharts render
+   *  normally; the 主力買賣超 subchart overlays "資料載入中" until major lands.
+   *  Decoupled from `loading` so the global header spinner doesn't sit ~24s. */
+  majorLoading?: boolean;
 }
 
 const KLINE_ZOOM_MIN = 30;     // 太小無法看 BB(period 20) + MA20
 const KLINE_ZOOM_DEFAULT = 90;
 const KLINE_ZOOM_STEP = 10;    // 每次滾輪 ±10 個 trading days
-const BRUSH_THRESHOLD = 5;     // 拖曳超過 5px 才算 brush(避免吃掉點擊)
-const BRUSH_CLICK_SUPPRESS_MS = 250;
+const PAN_THRESHOLD = 5;       // 拖曳超過 5px 才算 pan(避免吃掉點擊選日)
+const PAN_CLICK_SUPPRESS_MS = 200;
 
 export function ChipKlineChart({
   history, selectedDate, selectedBrokerIds, brokerSeries,
   onPickDate, onClearAllBrokers,
+  loading, loadingSymbol, majorLoading,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { width, height } = useContainerSize(containerRef);
@@ -40,16 +57,21 @@ export function ChipKlineChart({
   // (more days visible, smaller candles); up → zoom IN.
   const [visibleDays, setVisibleDays] = useState<number>(KLINE_ZOOM_DEFAULT);
   const maxLenRef = useRef(0);
+  const visibleDaysRef = useRef(visibleDays);
+  useEffect(() => { visibleDaysRef.current = visibleDays; }, [visibleDays]);
 
-  // 拖曳 brush-zoom:框選一段 → 視窗 anchor 到該段。viewEndIdx=null 表示「
-  // 自動跟最新一根」(預設行為),number 表示視窗右邊界鎖在該 raw index。
+  // 點擊拖曳 pan:viewEndIdx=null 表示「自動跟最新一根」(預設),number
+  // 表示視窗右邊界鎖在該 raw index;拖曳時更新此值來平移視窗。
   const [viewEndIdx, setViewEndIdx] = useState<number | null>(null);
-  // brushRect 是 visual overlay(framed selection),null 時不顯示。
-  const [brushRect, setBrushRect] = useState<{ left: number; width: number } | null>(null);
-  // brushDragRef 紀錄拖曳起點 + container rect(避免 drag 中 rect 重算)
-  const brushDragRef = useRef<{ startX: number; rect: DOMRect } | null>(null);
-  // suppressNextClickRef 在 brush commit 後阻止 KlineChartSvg 的 onClickIndex
-  // 觸發(pointerup 還會 fire 一個 click event,我們不想 select date)
+  // panDragRef 紀錄拖曳起點 + initial viewEndIdx + container rect
+  const panDragRef = useRef<{
+    startX: number;
+    initialEndIdx: number;
+    rect: DOMRect;
+    triggered: boolean;
+  } | null>(null);
+  // suppressNextClickRef 在 pan 結束後阻止 KlineChartSvg 的 onClickIndex
+  // 觸發(pointerup 還會 fire 一個 click event;沒有此 ref 會誤選日期)
   const suppressNextClickRef = useRef(false);
 
   const fullDerived = useMemo(() => {
@@ -104,54 +126,39 @@ export function ChipKlineChart({
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  // Document-level pointermove / pointerup 監聽,只在拖曳 active 才做事。
-  // brushDragRef.current 是「拖曳中」的旗標。pointerdown 設旗標,pointerup
-  // 清旗標;effect 沒 deps 避免 re-attach。
+  // Document-level pointermove / pointerup 監聽。effect deps=[],拿不到
+  // visibleDays state — 用 visibleDaysRef + maxLenRef 解決。
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
-      const drag = brushDragRef.current;
+      const drag = panDragRef.current;
       if (!drag) return;
       const dx = e.clientX - drag.startX;
-      if (Math.abs(dx) < BRUSH_THRESHOLD) return;
-      const x0 = Math.min(drag.startX, e.clientX) - drag.rect.left;
-      const x1 = Math.max(drag.startX, e.clientX) - drag.rect.left;
-      setBrushRect({
-        left: Math.max(0, x0),
-        width: Math.max(0, x1 - Math.max(0, x0)),
-      });
+      if (!drag.triggered && Math.abs(dx) < PAN_THRESHOLD) return;
+      drag.triggered = true;
+      const total = maxLenRef.current;
+      const visible = visibleDaysRef.current;
+      if (total === 0 || drag.rect.width <= 0 || visible <= 0) return;
+      // candle 視覺寬度 = container width / visibleDays
+      const candleW = drag.rect.width / visible;
+      // 向右拖(dx>0)= 看更早 = endIdx 變小
+      const dxCandles = Math.round(dx / candleW);
+      const newEnd = drag.initialEndIdx - dxCandles;
+      const minEnd = Math.min(total - 1, visible - 1);  // 還要有夠 candles 填滿視窗
+      const maxEnd = total - 1;
+      const clamped = Math.max(minEnd, Math.min(maxEnd, newEnd));
+      // 若 clamped 已回到最右,設成 null = auto;否則 anchored
+      setViewEndIdx(clamped === maxEnd ? null : clamped);
     };
-    const onUp = (e: PointerEvent) => {
-      const drag = brushDragRef.current;
-      brushDragRef.current = null;
-      if (!drag) {
-        setBrushRect(null);
-        return;
+    const onUp = () => {
+      const drag = panDragRef.current;
+      panDragRef.current = null;
+      if (drag?.triggered) {
+        // 拖過閾值才 suppress click — 純點擊不會落這
+        suppressNextClickRef.current = true;
+        setTimeout(() => {
+          suppressNextClickRef.current = false;
+        }, PAN_CLICK_SUPPRESS_MS);
       }
-      const dx = e.clientX - drag.startX;
-      if (Math.abs(dx) < BRUSH_THRESHOLD) {
-        // 沒拖到閾值 → 視為點擊,不消耗,讓 SVG 內 click handler 正常 fire
-        setBrushRect(null);
-        return;
-      }
-      const n = maxLenRef.current;
-      if (n > 0 && drag.rect.width > 0) {
-        const candleW = drag.rect.width / n;
-        const x0 = Math.max(0, Math.min(drag.startX, e.clientX) - drag.rect.left);
-        const x1 = Math.max(0, Math.max(drag.startX, e.clientX) - drag.rect.left);
-        const startIdx = Math.max(0, Math.floor(x0 / candleW));
-        const endIdx = Math.min(n - 1, Math.floor(x1 / candleW));
-        if (endIdx > startIdx) {
-          const span = endIdx - startIdx + 1;
-          setViewEndIdx(endIdx);
-          setVisibleDays(Math.max(KLINE_ZOOM_MIN, span));
-          // pointerup 後仍會 fire 一個 click event;suppress it
-          suppressNextClickRef.current = true;
-          setTimeout(() => {
-            suppressNextClickRef.current = false;
-          }, BRUSH_CLICK_SUPPRESS_MS);
-        }
-      }
-      setBrushRect(null);
     };
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
@@ -164,8 +171,17 @@ export function ChipKlineChart({
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    brushDragRef.current = { startX: e.clientX, rect };
+    const total = maxLenRef.current;
+    if (!rect || total === 0) return;
+    const currentEnd = viewEndIdx !== null
+      ? Math.min(viewEndIdx, total - 1)
+      : total - 1;
+    panDragRef.current = {
+      startX: e.clientX,
+      initialEndIdx: currentEnd,
+      rect,
+      triggered: false,
+    };
   };
 
   const handleDoubleClick = () => {
@@ -173,7 +189,7 @@ export function ChipKlineChart({
     setVisibleDays(KLINE_ZOOM_DEFAULT);
   };
 
-  const derived = useMemo(() => {
+  const windowRange = useMemo(() => {
     if (!fullDerived) return null;
     const total = fullDerived.candles.length;
     const end = viewEndIdx !== null
@@ -181,6 +197,12 @@ export function ChipKlineChart({
       : total - 1;
     const n = Math.min(visibleDays, end + 1);
     const start = Math.max(0, end - n + 1);
+    return { start, end, total };
+  }, [fullDerived, viewEndIdx, visibleDays]);
+
+  const derived = useMemo(() => {
+    if (!fullDerived || !windowRange) return null;
+    const { start, end, total } = windowRange;
     if (start === 0 && end === total - 1) return fullDerived;
     return {
       candles: fullDerived.candles.slice(start, end + 1),
@@ -193,7 +215,28 @@ export function ChipKlineChart({
       marginBalance: fullDerived.marginBalance.slice(start, end + 1),
       shortBalance: fullDerived.shortBalance.slice(start, end + 1),
     };
-  }, [fullDerived, visibleDays, viewEndIdx]);
+  }, [fullDerived, windowRange]);
+
+  // BB / MA 用 FULL history 算,再切到視窗範圍 — 這樣 zoom 視窗左邊界已是有
+  // 足夠 history 的 candle 時,MA20 / BB(20,2) 就能延伸到第一根 candle,
+  // 不會像 "前 19 個 null" 那樣斷開。
+  const slicedIndicators = useMemo(() => {
+    if (!fullDerived || !windowRange) return null;
+    const closes = fullDerived.candles.map((c) => c.close);
+    const allMa5 = rollingMean(closes, 5);
+    const allMa20 = rollingMean(closes, 20);
+    const allBb = calcBollinger(closes, 20, 2);
+    const { start, end } = windowRange;
+    return {
+      ma5: allMa5.slice(start, end + 1),
+      ma20: allMa20.slice(start, end + 1),
+      bb: {
+        middle: allBb.middle.slice(start, end + 1),
+        upper: allBb.upper.slice(start, end + 1),
+        lower: allBb.lower.slice(start, end + 1),
+      },
+    };
+  }, [fullDerived, windowRange]);
 
   const brokerAggSeries = useMemo(() => {
     if (!derived) return [] as number[];
@@ -218,18 +261,31 @@ export function ChipKlineChart({
     [onPickDate, derived],
   );
 
-  // Loading-gate intent: this component must NEVER receive or branch on a
-  // loading prop. F3 requires that picking a candle re-renders only the right
-  // panel — the K-line stays visible throughout. Re-renders here are driven
-  // strictly by changes to history / selectedDate / selectedBrokerNames /
-  // brokerSeries; never by a "summary loading" flag.
+  // F3 loading-gate intent: this component does NOT branch on `loading` for
+  // the K-line render itself — TanStack Query `placeholderData` keeps the
+  // previous symbol's candles visible across pivots. `loading` only drives
+  // the top-edge scanning bar + centre "載入 {symbol} 中…" badge so the user
+  // has visible feedback that picking a symbol kicked off work.
   if (!derived) {
     return (
       <div
         ref={containerRef}
-        className="h-full flex items-center justify-center text-ink-dim font-serif italic text-sm"
+        className="h-full flex flex-col items-center justify-center text-ink-dim font-serif italic text-sm gap-3"
       >
-        請搜尋股票代號以載入K線圖
+        {loading && loadingSymbol ? (
+          <>
+            <svg
+              viewBox="0 0 24 24" fill="none" aria-hidden="true"
+              className="size-6 animate-spin text-accent motion-reduce:animate-none"
+            >
+              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+              <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+            </svg>
+            <span>載入 {loadingSymbol} 中…</span>
+          </>
+        ) : (
+          <span>請搜尋股票代號以載入K線圖</span>
+        )}
       </div>
     );
   }
@@ -261,23 +317,45 @@ export function ChipKlineChart({
   return (
     <div
       ref={containerRef}
-      className="h-full flex flex-col overflow-hidden relative cursor-crosshair"
+      className="h-full flex flex-col overflow-hidden relative cursor-grab active:cursor-grabbing"
       onPointerDown={handlePointerDown}
       onDoubleClick={handleDoubleClick}
     >
+      {/* Top-edge scanning bar: 2 px accent shimmer when symbol-driven fetch
+          is in flight. Always rendered (h-0.5) so toggling doesn't shift the
+          K-line area by 2 px. Mirrors ChipBrokersPanel's panel-loading bar. */}
+      <div className="relative h-0.5 overflow-hidden shrink-0" aria-hidden="true">
+        {loading && (
+          <div
+            data-testid="kline-loading-indicator"
+            className="absolute inset-0 bg-line/30"
+          >
+            <div className="absolute inset-y-0 left-0 w-1/4 bg-accent animate-[loading-shimmer_1.4s_ease-in-out_infinite] motion-reduce:animate-none motion-reduce:opacity-60" />
+          </div>
+        )}
+      </div>
       <div
         data-testid="kline-zoom-hud"
-        className="absolute top-1.5 right-2 z-30 text-xs text-ink-dim bg-bg-deep/80 px-2 py-0.5 border border-line tabular-nums select-none pointer-events-none"
-        title="滾輪縮放 / 拖曳框選 / 雙擊重置"
+        className="absolute top-2 right-2 z-30 text-xs text-ink-dim bg-bg-deep/80 px-2 py-0.5 border border-line tabular-nums select-none pointer-events-none"
+        title="滾輪縮放 / 拖曳平移 / 雙擊重置"
       >
-        {candles.length} 日{viewEndIdx !== null ? " · 已框選" : ""}
+        {candles.length} 日{viewEndIdx !== null ? " · 平移中" : ""}
       </div>
-      {brushRect && (
+      {loading && loadingSymbol && (
         <div
-          data-testid="kline-brush-rect"
-          className="absolute top-0 bottom-0 bg-accent/10 border-l border-r border-accent pointer-events-none z-20"
-          style={{ left: brushRect.left, width: brushRect.width }}
-        />
+          data-testid="kline-loading-badge"
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-30 text-xs text-ink bg-bg-deep/90 px-3 py-1 border border-accent rounded shadow pointer-events-none flex items-center gap-2"
+          aria-live="polite"
+        >
+          <svg
+            viewBox="0 0 24 24" fill="none" aria-hidden="true"
+            className="size-3.5 animate-spin text-accent motion-reduce:animate-none"
+          >
+            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+            <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+          載入 {loadingSymbol} 中…
+        </div>
       )}
       <div style={{ height: klineH, minHeight: 0 }}>
         {klineH > 0 && (
@@ -291,6 +369,9 @@ export function ChipKlineChart({
             onHoverY={setHoverY}
             selectedIndex={selectedIndex}
             onClickIndex={handleClickIndex}
+            ma5Override={slicedIndicators?.ma5}
+            ma20Override={slicedIndicators?.ma20}
+            bbOverride={slicedIndicators?.bb}
           />
         )}
       </div>
@@ -300,13 +381,34 @@ export function ChipKlineChart({
           borderTop: "1px solid #2e2a22", borderBottom: "1px solid #2e2a22",
         }}
       />
-      <div className="border-t border-line/50" style={{ height: subH, minHeight: 0 }}>
+      <div
+        className="relative border-t border-line/50"
+        style={{ height: subH, minHeight: 0 }}
+      >
         {subH > 0 && (
           <InstBarSvg
             data={majorNet} width={w} height={subH}
             label="主力買賣超" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
           />
+        )}
+        {majorLoading && subH > 0 && (
+          <div
+            data-testid="major-loading-overlay"
+            className="absolute inset-0 flex items-center justify-center bg-bg-deep/40 pointer-events-none"
+            aria-live="polite"
+          >
+            <span className="text-xs text-ink-dim bg-bg-deep/85 px-2 py-0.5 border border-line flex items-center gap-1.5">
+              <svg
+                viewBox="0 0 24 24" fill="none" aria-hidden="true"
+                className="size-3 animate-spin text-accent motion-reduce:animate-none"
+              >
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              主力資料載入中…
+            </span>
+          </div>
         )}
       </div>
       <div className="border-t border-line/50" style={{ height: subH, minHeight: 0 }}>
