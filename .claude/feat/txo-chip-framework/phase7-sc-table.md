@@ -2,7 +2,19 @@
 
 > /feat Phase 7 gate. Per spec: NO cell may contain "N/A" / "verified ✓" / "應該可以" — explicit evidence or `infra_fail` (token blocked) only.
 
-**Phase 6 live verification update (2026-06-26 11:00 CST)**: tried `curl` against the running dev server + DevTools MCP screenshot of `/options` page. Several endpoints came back with **real data**:
+**Phase 6 FULL live verification (2026-06-26 11:15 CST update)**: token was actually working — earlier "expired" symptoms were field-name + fallback bugs that real-env probing surfaced and fixed inline. All 4 chip cards now render real FinMind data end-to-end. See `evidence/phase6_chip_panel_full_live.png`.
+
+**Final live readings (TXO202607W1, 2026-06-26)**:
+- Max Pain: 46100 (spot 46544; deviation 0.95%); total_loss_ntd NT$60,312,500; 161 strikes; 50 call-only + 47 put-only (union edge working)
+- OI Walls: static + dynamic Call Wall 50000 oi=992; Put Wall 41200 oi=1385; band width 18.9% (spot 46544 inside)
+- PCR all_months: 1.15 / P34 / neutral region; next_day_stats N=105/77/36 across regions; warmup warning surfaced
+- Institutional: 外資 net +2942 (call -974, put +3916); 自營 +12566; 投信 -1501; Spearman r=0.00 p=1.000 visually dimmed (correct UX)
+
+**Two bugs found + fixed during real-env probing** (committed under `🔴 fix`):
+- F11 (P1): `_aggregate_inst_session` was using assumed field names `institution` / `buy_open_interest` / `sell_open_interest`. Real schema (live probe): `institutional_investors` / `long_open_interest_balance_volume` / `short_open_interest_balance_volume`. Side values are `買權`/`賣權`, not `call`/`put`. Parser now accepts both schemas.
+- F12 (P1): "non-empty" fallback in `fetch_max_pain` / `fetch_oi_walls` filtered dates by `if rows` truthiness. Today's cache had 3292 rows but all OI=0 (pre-day-session night data). `non_empty_dates` now filters by `any(r["open_interest"] > 0 for r in rows)`. Also added `today_has_oi` guard so the day's value is only used when it actually has OI.
+
+**Earlier (DevTools MCP partial-live capture)**: tried `curl` against the running dev server + DevTools MCP screenshot of `/options` page. Several endpoints came back with **real data**:
 
 - ✅ **PCR endpoint live confirmed**: `/api/options/pcr?refresh=true` returned `pcr=1.146`, `region=neutral`, full `next_day_stats` (high: mean +0.32% / std 1.55% / hit 59% / N=105; neutral: mean +0.27% / std 1.73% / hit 54.5% / N=77; low: mean +0.49% / std 1.69% / hit 66.7% / N=36). `pcr_walk_forward_warmup_skipped_first_30_days` warning surfaced. Walk-forward + Lo & Liu next-day stats end-to-end working.
 - ✅ **DevTools MCP screenshot**: `evidence/phase6_chip_panel_live.png` shows the chip panel rendered on `/options` page with all four cards visible, header / no_trading_day banner / existing Strip + Ladder all intact, layered per design v4 §2.4.

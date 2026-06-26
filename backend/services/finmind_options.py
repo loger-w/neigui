@@ -935,27 +935,43 @@ _INSTITUTION_NAME_MAP = {
 
 
 def _aggregate_inst_session(rows: list[dict]) -> dict:
-    """Aggregate one session's rows into {foreign, dealer, trust} dicts."""
+    """Aggregate one session's rows into {foreign, dealer, trust} dicts.
+
+    Real FinMind schema (probed live 2026-06-26, R14 / SC-0 done):
+      - institution name:  ``institutional_investors`` (e.g. "外資" / "自營商" / "投信")
+      - side:              ``call_put``  (values: "買權" / "賣權")
+      - long OI balance:   ``long_open_interest_balance_volume``
+      - short OI balance:  ``short_open_interest_balance_volume``
+    """
     out: dict[str, dict[str, int]] = {
         "foreign": {"call_net": 0, "put_net": 0},
         "dealer":  {"call_net": 0, "put_net": 0},
         "trust":   {"call_net": 0, "put_net": 0},
     }
     for row in rows:
-        inst_raw = row.get("institution", "")
+        # Accept either schema for back-compat with hand-built fixtures
+        inst_raw = row.get("institutional_investors") or row.get("institution", "")
         key = _INSTITUTION_NAME_MAP.get(inst_raw)
         if key is None:
             continue
         try:
-            buy = int(row.get("buy_open_interest", 0) or 0)
-            sell = int(row.get("sell_open_interest", 0) or 0)
+            # Real-schema field names; falls back to the hand-built fixture names
+            long_oi = int(
+                row.get("long_open_interest_balance_volume")
+                or row.get("buy_open_interest") or 0
+            )
+            short_oi = int(
+                row.get("short_open_interest_balance_volume")
+                or row.get("sell_open_interest") or 0
+            )
         except (TypeError, ValueError):
             continue
-        side = row.get("put_call")
-        if side == "call":
-            out[key]["call_net"] += buy - sell
-        elif side == "put":
-            out[key]["put_net"] += buy - sell
+        side = row.get("call_put") or row.get("put_call")
+        # Real-schema values are 買權 / 賣權; hand-built fixtures use call / put
+        if side in ("call", "買權"):
+            out[key]["call_net"] += long_oi - short_oi
+        elif side in ("put", "賣權"):
+            out[key]["put_net"] += long_oi - short_oi
     return out
 
 

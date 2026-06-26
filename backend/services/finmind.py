@@ -812,8 +812,14 @@ class FinMindClient:
         )
 
         # F7 修: today_rows + as_of_date 都用 non-empty 日 (empty day = publication lag)
-        non_empty_dates = sorted(d for d, rows in by_date_iso.items() if rows)
-        today_rows = by_date_iso.get(date_str) or (
+        non_empty_dates = sorted(d for d, rows in by_date_iso.items() if any(r.get("open_interest", 0) > 0 for r in rows))
+        # Today's rows are the day's value ONLY if any of them has OI > 0;
+        # otherwise (e.g. morning of trading day where only night-session
+        # rows are published and all carry OI=0) fall back to the latest
+        # date that actually has OI.
+        candidate_today = by_date_iso.get(date_str) or []
+        today_has_oi = any(r.get("open_interest", 0) > 0 for r in candidate_today)
+        today_rows = candidate_today if today_has_oi else (
             by_date_iso[non_empty_dates[-1]] if non_empty_dates else []
         )
         current_mp = parse_max_pain(today_rows, contract["contract_date"])
@@ -873,8 +879,14 @@ class FinMindClient:
         )
 
         # F7 修: as_of_date / fallback today_rows 都用 non-empty 日 (避免空日蒙混)
-        non_empty_dates = sorted(d for d, rows in by_date_iso.items() if rows)
-        today_rows = by_date_iso.get(date_str) or (
+        non_empty_dates = sorted(d for d, rows in by_date_iso.items() if any(r.get("open_interest", 0) > 0 for r in rows))
+        # Today's rows are the day's value ONLY if any of them has OI > 0;
+        # otherwise (e.g. morning of trading day where only night-session
+        # rows are published and all carry OI=0) fall back to the latest
+        # date that actually has OI.
+        candidate_today = by_date_iso.get(date_str) or []
+        today_has_oi = any(r.get("open_interest", 0) > 0 for r in candidate_today)
+        today_rows = candidate_today if today_has_oi else (
             by_date_iso[non_empty_dates[-1]] if non_empty_dates else []
         )
 
@@ -1031,10 +1043,17 @@ class FinMindClient:
         else:
             rows_night = None
 
-        # Filter to target_date for "current" snapshot
-        today_day_rows = [r for r in rows_day if r.get("date") == date_str]
+        # Filter to target_date for "current" snapshot. If target_date isn't
+        # published yet (e.g. morning of trading day), fall back to the latest
+        # date actually present in rows_day so the card never blanks out.
+        all_day_dates = sorted({r.get("date", "") for r in rows_day if r.get("date")})
+        snapshot_date = (
+            date_str if date_str in all_day_dates
+            else (all_day_dates[-1] if all_day_dates else date_str)
+        )
+        today_day_rows = [r for r in rows_day if r.get("date") == snapshot_date]
         today_night_rows = (
-            [r for r in (rows_night or []) if r.get("date") == date_str]
+            [r for r in (rows_night or []) if r.get("date") == snapshot_date]
             if rows_night is not None else None
         )
         current = parse_institutional(today_day_rows, today_night_rows, target)
@@ -1045,17 +1064,24 @@ class FinMindClient:
         per_date_call_net: dict[str, int] = {}
         for r in rows_day:
             d_str = r.get("date")
-            inst_raw = r.get("institution", "")
+            inst_raw = r.get("institutional_investors") or r.get("institution", "")
             if not d_str or _INSTITUTION_NAME_MAP.get(inst_raw) != "foreign":
                 continue
-            if r.get("put_call") != "call":
+            side = r.get("call_put") or r.get("put_call")
+            if side not in ("call", "買權"):
                 continue
             try:
-                buy = int(r.get("buy_open_interest", 0) or 0)
-                sell = int(r.get("sell_open_interest", 0) or 0)
+                long_oi = int(
+                    r.get("long_open_interest_balance_volume")
+                    or r.get("buy_open_interest") or 0
+                )
+                short_oi = int(
+                    r.get("short_open_interest_balance_volume")
+                    or r.get("sell_open_interest") or 0
+                )
             except (TypeError, ValueError):
                 continue
-            per_date_call_net[d_str] = per_date_call_net.get(d_str, 0) + buy - sell
+            per_date_call_net[d_str] = per_date_call_net.get(d_str, 0) + long_oi - short_oi
         foreign_history = [
             {"date": date.fromisoformat(d), "foreign_call_net": v}
             for d, v in sorted(per_date_call_net.items())
