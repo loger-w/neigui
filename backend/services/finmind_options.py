@@ -7,6 +7,7 @@ this one owns the data-shape logic so it can be unit-tested without I/O.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from datetime import date, timedelta
 
 _CACHE_VERSION_OPTIONS = 1
@@ -859,7 +860,7 @@ def parse_pcr_walk_forward_percentile(
 
 
 def parse_pcr_next_day_stats(
-    classified: list[tuple[date, float, float, str | None]],
+    classified: Sequence[tuple[date, float, float, str | None]],
     tx_returns: dict[date, float],
 ) -> tuple[dict, list[str]]:
     """Next-day TX return statistics by region. NO P&L, NO Sharpe (F2-testability).

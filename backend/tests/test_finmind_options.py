@@ -706,6 +706,104 @@ async def test_fetch_spot_returns_cached_on_second_call():
 
 
 # ============================================================================
+# Backfill fetches (Phase 6 prep): settlement_history + tx_close_history
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_fetch_settlement_history_parses_date_contract_price():
+    """fetch_settlement_history → {date: {contract_date, price}}.
+    Accepts either 'final_settlement_price' or 'settlement_price' field name
+    (real schema TBD pending SC-0 probe; R14)."""
+    from datetime import date as _date
+    from services.finmind import FinMindClient
+    mc = _mock_http(_fm_resp([
+        {"date": "2026-05-21", "contract_date": "202605",
+         "final_settlement_price": 22150.0},
+        {"date": "2026-04-16", "contract_date": "202604",
+         "settlement_price": 21450.0},  # alternate field name
+    ]))
+    fm = FinMindClient()
+    fm._http = mc
+    result = await fm.fetch_settlement_history(_date(2026, 6, 25))
+    assert result[_date(2026, 5, 21)] == {"contract_date": "202605", "price": 22150.0}
+    assert result[_date(2026, 4, 16)] == {"contract_date": "202604", "price": 21450.0}
+
+
+@pytest.mark.asyncio
+async def test_fetch_settlement_history_caches():
+    from datetime import date as _date
+    from services.finmind import FinMindClient
+    mc = _mock_http(_fm_resp([
+        {"date": "2026-05-21", "contract_date": "202605",
+         "final_settlement_price": 22150.0},
+    ]))
+    fm = FinMindClient()
+    fm._http = mc
+    first = await fm.fetch_settlement_history(_date(2026, 6, 25))
+    second = await fm.fetch_settlement_history(_date(2026, 6, 25))
+    assert first == second
+    assert mc.get.await_count == 1  # cache hit
+
+
+@pytest.mark.asyncio
+async def test_fetch_tx_close_history_filters_day_session_front_month():
+    """fetch_tx_close_history → {date: front-month TX close}.
+    Filters out night session + spread contracts, picks lowest contract_date
+    per date (front month)."""
+    from datetime import date as _date
+    from services.finmind import FinMindClient
+    mc = _mock_http(_fm_resp([
+        # Day-session, front-month should win
+        {"date": "2026-06-23", "data_id": "TX", "contract_date": "202606",
+         "trading_session": "position", "close": 22000.0},
+        # Day-session, back-month — same date but later contract → dropped
+        {"date": "2026-06-23", "data_id": "TX", "contract_date": "202607",
+         "trading_session": "position", "close": 22100.0},
+        # Night session — dropped
+        {"date": "2026-06-23", "data_id": "TX", "contract_date": "202606",
+         "trading_session": "after_market", "close": 22050.0},
+        # Spread (non-YYYYMM) — dropped
+        {"date": "2026-06-23", "data_id": "TX", "contract_date": "202606/202607",
+         "trading_session": "position", "close": -100.0},
+        # Day 2
+        {"date": "2026-06-24", "data_id": "TX", "contract_date": "202606",
+         "trading_session": "position", "close": 22050.0},
+    ]))
+    fm = FinMindClient()
+    fm._http = mc
+    closes = await fm.fetch_tx_close_history(_date(2026, 6, 25))
+    assert closes == {_date(2026, 6, 23): 22000.0, _date(2026, 6, 24): 22050.0}
+
+
+def test_tx_returns_from_closes_basic():
+    from datetime import date as _date
+    from services.finmind import FinMindClient
+    closes = {
+        _date(2026, 6, 23): 22000.0,
+        _date(2026, 6, 24): 22050.0,  # +0.227%
+        _date(2026, 6, 25): 22100.0,  # +0.227%
+    }
+    returns = FinMindClient._tx_returns_from_closes(closes)
+    # The LATEST date has no t+1, so it's dropped (caller skip-on-missing)
+    assert set(returns.keys()) == {_date(2026, 6, 23), _date(2026, 6, 24)}
+    assert returns[_date(2026, 6, 23)] == pytest.approx((22050 - 22000) / 22000)
+    assert returns[_date(2026, 6, 24)] == pytest.approx((22100 - 22050) / 22050)
+
+
+def test_tx_returns_from_closes_skips_zero_or_negative_base():
+    from datetime import date as _date
+    from services.finmind import FinMindClient
+    closes = {
+        _date(2026, 6, 23): 0.0,        # zero base → skip
+        _date(2026, 6, 24): 22050.0,
+        _date(2026, 6, 25): 22100.0,
+    }
+    returns = FinMindClient._tx_returns_from_closes(closes)
+    assert _date(2026, 6, 23) not in returns
+    assert _date(2026, 6, 24) in returns
+
+
+# ============================================================================
 # SC-1 / SC-5: Max Pain (design v4 §4.1, brainstorm SC-1/SC-5)
 # ============================================================================
 
