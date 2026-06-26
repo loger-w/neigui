@@ -649,6 +649,118 @@ class FinMindClient:
         self._write_cache_v(cache_key, payload, _CACHE_VERSION_OPTIONS_CHIP)
         return by_date
 
+    async def fetch_settlement_history(
+        self, end_date: date, lookback_days: int = 540,
+    ) -> dict[date, dict]:
+        """Fetch ``TaiwanOptionFinalSettlementPrice`` for the last
+        ``lookback_days`` calendar days and return
+        ``{settlement_date: {contract_date, price}}``.
+
+        ``lookback_days`` defaults to 540 (~18 months) so 20 settled
+        contracts comfortably fit (monthly settlements span ~14 months).
+        Uses a 30-min cache; settlement data is finalised once published.
+        """
+        from services.finmind_options import _CACHE_VERSION_OPTIONS_CHIP
+        cache_key = f"settlement_history_{end_date.isoformat()}_lb{lookback_days}"
+        cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
+        if cached is not None and "by_date" in cached:
+            return {
+                date.fromisoformat(d): info
+                for d, info in cached["by_date"].items()
+            }
+        start = end_date - timedelta(days=lookback_days)
+        rows = await self._get(
+            f"{_FINMIND_BASE}/data",
+            {"dataset": "TaiwanOptionFinalSettlementPrice",
+             "data_id": "TXO", "start_date": start.isoformat(),
+             "end_date": end_date.isoformat()},
+        )
+        by_date: dict[str, dict] = {}
+        for row in rows:
+            d_str = row.get("date") or row.get("settlement_date")
+            cd = row.get("contract_date") or row.get("contract_type")
+            try:
+                price = float(row.get("final_settlement_price")
+                              or row.get("settlement_price") or 0) or None
+            except (TypeError, ValueError):
+                price = None
+            if d_str and cd:
+                by_date[d_str] = {"contract_date": str(cd), "price": price}
+        payload = {
+            "by_date": by_date,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        self._write_cache_v(cache_key, payload, _CACHE_VERSION_OPTIONS_CHIP)
+        return {
+            date.fromisoformat(d): info for d, info in by_date.items()
+        }
+
+    async def fetch_tx_close_history(
+        self, end_date: date, lookback_days: int = 400,
+    ) -> dict[date, float]:
+        """Fetch ``TaiwanFuturesDaily`` TX close prices for the last
+        ``lookback_days`` calendar days. Returns ``{trading_date: close}``.
+
+        Cached 30 min. Used to compute next-day returns for PCR stats and
+        foreign-correlation regressions.
+        """
+        from services.finmind_options import _CACHE_VERSION_OPTIONS_CHIP
+        cache_key = f"tx_close_history_{end_date.isoformat()}_lb{lookback_days}"
+        cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
+        if cached is not None and "by_date" in cached:
+            return {
+                date.fromisoformat(d): float(v)
+                for d, v in cached["by_date"].items()
+            }
+        start = end_date - timedelta(days=lookback_days)
+        rows = await self._get(
+            f"{_FINMIND_BASE}/data",
+            {"dataset": "TaiwanFuturesDaily", "data_id": "TX",
+             "start_date": start.isoformat(),
+             "end_date": end_date.isoformat()},
+        )
+        # Day-session, single-month contract only (matches existing parse_spot)
+        import re as _re
+        _PURE_YYYYMM = _re.compile(r"^\d{6}$")
+        by_date: dict[str, float] = {}
+        front_cd: dict[str, str] = {}
+        for row in rows:
+            if row.get("trading_session") != "position":
+                continue
+            cd = str(row.get("contract_date", ""))
+            if not _PURE_YYYYMM.fullmatch(cd):
+                continue
+            d_str = row.get("date")
+            try:
+                close = float(row.get("close", 0))
+            except (TypeError, ValueError):
+                continue
+            if not d_str:
+                continue
+            existing_cd = front_cd.get(d_str)
+            if existing_cd is None or cd < existing_cd:
+                by_date[d_str] = close
+                front_cd[d_str] = cd
+        payload = {
+            "by_date": by_date,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        self._write_cache_v(cache_key, payload, _CACHE_VERSION_OPTIONS_CHIP)
+        return {date.fromisoformat(d): v for d, v in by_date.items()}
+
+    @staticmethod
+    def _tx_returns_from_closes(closes: dict[date, float]) -> dict[date, float]:
+        """Build ``{t: (close[t+1]-close[t])/close[t]}`` from sorted closes."""
+        sorted_dates = sorted(closes.keys())
+        out: dict[date, float] = {}
+        for i, d in enumerate(sorted_dates[:-1]):
+            d_next = sorted_dates[i + 1]
+            c_t = closes[d]
+            c_next = closes[d_next]
+            if c_t > 0:
+                out[d] = (c_next - c_t) / c_t
+        return out
+
     def _invalidate_chip_parse_caches(self, end_date: date) -> None:
         """N12 + F6 修: single sweep pattern-based invalidation across all
         lookback/threshold variants. Drops files matching
@@ -710,10 +822,14 @@ class FinMindClient:
             date.fromisoformat(d_iso): rows
             for d_iso, rows in by_date_iso.items() if rows
         }
-        # Hit rate needs settlements — fetch settlement prices for last `lookback`
-        # settled contracts. For MVP: pass empty dict (settlements parser handles).
+        # Wire settlement prices for hit_rate (CHECKPOINT follow-up done)
+        settlements_all = await self.fetch_settlement_history(end)
+        # Limit to most recent `lookback` settlements
+        recent_settlements = dict(
+            sorted(settlements_all.items())[-lookback:]
+        ) if settlements_all else {}
         hit_rate = parse_max_pain_hit_rate(
-            oi_by_trading_day=oi_by_trading_day, settlements={},
+            oi_by_trading_day=oi_by_trading_day, settlements=recent_settlements,
         )
 
         result = {
@@ -782,8 +898,13 @@ class FinMindClient:
             date.fromisoformat(d_iso): rows
             for d_iso, rows in by_date_iso.items() if rows
         }
+        # Wire settlement prices for hit_rate (CHECKPOINT follow-up done)
+        settlements_all = await self.fetch_settlement_history(end)
+        recent_settlements = dict(
+            sorted(settlements_all.items())[-lookback:]
+        ) if settlements_all else {}
         hit_rate = parse_oi_walls_hit_rate(
-            oi_by_trading_day=oi_by_trading_day, settlements={},
+            oi_by_trading_day=oi_by_trading_day, settlements=recent_settlements,
         )
 
         result = {
@@ -850,8 +971,10 @@ class FinMindClient:
         else:
             current_pcr, current_pct, current_region = 0.0, 0.0, None
 
-        # Next-day stats requires aligned tx_returns from another fetch — skip for MVP
-        stats, stats_warnings = parse_pcr_next_day_stats(classified, tx_returns={})
+        # Wire tx_returns from TX_close history (CHECKPOINT follow-up done)
+        tx_closes = await self.fetch_tx_close_history(end)
+        tx_returns = self._tx_returns_from_closes(tx_closes)
+        stats, stats_warnings = parse_pcr_next_day_stats(classified, tx_returns=tx_returns)
 
         available_dates = sorted(by_date_iso.keys())
         result = {
@@ -916,10 +1039,33 @@ class FinMindClient:
         )
         current = parse_institutional(today_day_rows, today_night_rows, target)
 
-        # Correlation needs foreign_call_net history; for MVP keep history scaffold
-        # (full implementation requires daily aggregation of rows_day per date)
+        # Build foreign_history: aggregate rows_day to per-date foreign_call_net
+        # using the same _INSTITUTION_NAME_MAP convention from parse_institutional.
+        from services.finmind_options import _INSTITUTION_NAME_MAP
+        per_date_call_net: dict[str, int] = {}
+        for r in rows_day:
+            d_str = r.get("date")
+            inst_raw = r.get("institution", "")
+            if not d_str or _INSTITUTION_NAME_MAP.get(inst_raw) != "foreign":
+                continue
+            if r.get("put_call") != "call":
+                continue
+            try:
+                buy = int(r.get("buy_open_interest", 0) or 0)
+                sell = int(r.get("sell_open_interest", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            per_date_call_net[d_str] = per_date_call_net.get(d_str, 0) + buy - sell
+        foreign_history = [
+            {"date": date.fromisoformat(d), "foreign_call_net": v}
+            for d, v in sorted(per_date_call_net.items())
+        ]
+        # Reuse the TX close history fetch (also used by PCR) for next-day returns
+        tx_closes = await self.fetch_tx_close_history(target)
+        tx_returns = self._tx_returns_from_closes(tx_closes)
+
         correlation, corr_warnings = parse_institutional_correlation(
-            foreign_history=[], tx_returns={},  # MVP: empty until full series wiring
+            foreign_history=foreign_history, tx_returns=tx_returns,
             corr_window=corr_window,
         )
 
@@ -935,7 +1081,7 @@ class FinMindClient:
             "correlation": None if correlation["samples"] == 0 else correlation,
             "data_quality_warnings": corr_warnings,
             "insufficient_data": (
-                {"reason": "correlation_history_not_wired_in_mvp", "required_days": 0}
+                {"reason": "insufficient_correlation_samples", "required_days": corr_window}
                 if correlation["samples"] == 0 else None
             ),
         }
