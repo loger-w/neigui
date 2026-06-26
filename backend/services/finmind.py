@@ -923,74 +923,104 @@ class FinMindClient:
         end_date: date,
         refresh: bool = False,
     ) -> dict[str, list[dict]]:
-        """Shared 250-trading-day window fetch (design v4 §2.2 / I1, I2, F17).
+        """Shared TaiwanOptionDaily window fetch with per-day persistent cache.
+
+        2026-06-26 perf rework: cache is now keyed per trading day
+        (``txo_daily_{date_iso}``) instead of per end_date. Frozen historical
+        days survive across sessions / end_date moves, so a fresh morning
+        request only re-fetches today (≤ 1 FinMind call) instead of the full
+        ~250-day fan-out (~18.9s cold → ~0.5s subsequent-day cold).
 
         Args:
-            trading_dates: list of trading dates to fetch, sorted ascending.
-                Caller (route layer) computes via services.trading_calendar.
-            end_date: end of window (latest trading day).
-            refresh: if True, invalidate cache + downstream parse caches.
+            trading_dates: list of trading dates to fetch (sorted asc by caller).
+            end_date: end of window — passed through for parse-cache
+                invalidation on ``refresh=True``.
+            refresh: if True, invalidate downstream parse caches +
+                re-fetch trailing 1-2 days (today + yesterday) to pick up
+                FinMind publication-lag updates. Frozen historical days are
+                NOT re-fetched.
 
-        Returns: ``{date_iso: rows}`` mapping.
+        Returns: ``{date_iso: rows}`` mapping (unchanged contract).
         """
-        cache_key = f"txo_daily_window_{end_date.isoformat()}_td{len(trading_dates)}"
-
-        # Include `refresh` in the dedup key so a concurrent refresh=True call
-        # does NOT piggy-back on an in-flight refresh=False coroutine (which
-        # would silently skip cache invalidation + serve stale data).
+        sorted_dates = sorted(trading_dates)
+        dedup_key = f"window_{end_date.isoformat()}_n{len(sorted_dates)}_r{int(refresh)}"
         return await self._run_once(
-            f"window_{cache_key}_r{int(refresh)}",
-            lambda: self._do_fetch_window(trading_dates, end_date, cache_key, refresh),
+            dedup_key,
+            lambda: self._do_fetch_window(sorted_dates, end_date, refresh),
         )
+
+    @staticmethod
+    def _day_cache_key(d: date) -> str:
+        return f"txo_daily_{d.isoformat()}"
 
     async def _do_fetch_window(
         self,
-        trading_dates: list[date],
+        sorted_dates: list[date],
         end_date: date,
-        cache_key: str,
         refresh: bool,
     ) -> dict[str, list[dict]]:
         from services.finmind_options import _CACHE_VERSION_OPTIONS_CHIP
 
-        # Inside _run_once after dedup (I1): only invalidate when we actually refetch
-        if not refresh:
-            cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
-            if cached is not None and "by_date" in cached:
-                # Today's window must respect the 30-min stale window — otherwise
-                # one morning fetch sticks for the whole trading session.
-                if end_date != date.today() or not self._is_stale(cached):
-                    return cached["by_date"]
-        # refresh or cache miss → invalidate downstream parse caches then fetch
+        today = date.today()
+
+        # Decide which days to re-fetch.
+        # - refresh=True → invalidate parse caches + force re-fetch of trailing
+        #   1-2 days (the ones that could still be publication-lagged).
+        # - Today's per-day cache respects the 30-min stale window.
+        # - Historical days (< today) are served from cache once written.
+        refresh_days: set[date] = set()
         if refresh:
             self._invalidate_chip_parse_caches(end_date)
-        # Fan out per-day fetches (token bucket serialises through shared limiter)
-        results = await asyncio.gather(
-            *[
-                self._get(
-                    f"{_FINMIND_BASE}/data",
-                    {
-                        "dataset": "TaiwanOptionDaily",
-                        "data_id": "TXO",
-                        "start_date": d.isoformat(),
-                        "end_date": d.isoformat(),
-                    },
+            if sorted_dates:
+                recent_cutoff = today - timedelta(days=1)
+                tail = [d for d in sorted_dates[-2:] if d >= recent_cutoff]
+                refresh_days = set(tail) if tail else {sorted_dates[-1]}
+
+        by_date_iso: dict[str, list[dict]] = {}
+        to_fetch: list[date] = []
+        for d in sorted_dates:
+            if d in refresh_days:
+                to_fetch.append(d)
+                continue
+            cached = self._read_cache_v(
+                self._day_cache_key(d),
+                _CACHE_VERSION_OPTIONS_CHIP,
+            )
+            if cached is None:
+                to_fetch.append(d)
+                continue
+            if d == today and self._is_stale(cached):
+                to_fetch.append(d)
+                continue
+            by_date_iso[d.isoformat()] = cached.get("rows", [])
+
+        if to_fetch:
+            results = await asyncio.gather(
+                *[
+                    self._get(
+                        f"{_FINMIND_BASE}/data",
+                        {
+                            "dataset": "TaiwanOptionDaily",
+                            "data_id": "TXO",
+                            "start_date": d.isoformat(),
+                            "end_date": d.isoformat(),
+                        },
+                    )
+                    for d in to_fetch
+                ],
+                return_exceptions=True,
+            )
+            fetched_at = datetime.now().isoformat(timespec="seconds")
+            for d, res in zip(to_fetch, results):
+                rows = [] if isinstance(res, BaseException) else (res or [])
+                by_date_iso[d.isoformat()] = rows
+                self._write_cache_v(
+                    self._day_cache_key(d),
+                    {"rows": rows, "fetched_at": fetched_at},
+                    _CACHE_VERSION_OPTIONS_CHIP,
                 )
-                for d in trading_dates
-            ],
-            return_exceptions=True,
-        )
-        by_date: dict[str, list[dict]] = {}
-        for d, res in zip(trading_dates, results):
-            if isinstance(res, BaseException):
-                by_date[d.isoformat()] = []
-            else:
-                by_date[d.isoformat()] = res or []
-        payload = {
-            "by_date": by_date,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
-        }
-        self._write_cache_v(cache_key, payload, _CACHE_VERSION_OPTIONS_CHIP)
-        return by_date
+
+        return by_date_iso
 
     async def fetch_settlement_history(
         self,
