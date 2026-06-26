@@ -25,10 +25,13 @@ function renderPanel(contractId = "TXO202607", date = "2026-06-25") {
 
 const TODAY = "2026-06-25";
 
+// F10 修: distinct strike values across cards so cross-card text matches
+// cannot satisfy the wrong assertion. Each fixture carries an "ID" value
+// that only that card renders (e.g. Max Pain → 21111, OI Walls call → 23232).
 const mockMaxPain: OptionsMaxPain = {
   contract: "TXO202607", date: TODAY, fetched_at: "x", as_of_date: TODAY,
   current: {
-    max_pain: 21000, total_loss_ntd: 10_000_000, strike_count: 5,
+    max_pain: 21111, total_loss_ntd: 10_000_000, strike_count: 5,
     strikes_with_call_oi_only: 1, strikes_with_put_oi_only: 1,
   },
   hit_rate: null,
@@ -40,10 +43,10 @@ const mockMaxPain: OptionsMaxPain = {
 const mockOIWalls: OptionsOIWalls = {
   contract: "TXO202607", date: TODAY, fetched_at: "x", as_of_date: TODAY,
   current: {
-    static_call_wall: { strike: 22000, oi: 800 },
-    static_put_wall: { strike: 20000, oi: 700 },
-    dynamic_call_wall: { strike: 22500, window_activity_oi: 600, partial_window: false },
-    dynamic_put_wall: { strike: 19500, window_activity_oi: 500, partial_window: false },
+    static_call_wall: { strike: 23232, oi: 800 },  // unique-to-OI Walls call
+    static_put_wall: { strike: 19191, oi: 700 },   // unique-to-OI Walls put
+    dynamic_call_wall: { strike: 23500, window_activity_oi: 600, partial_window: false },
+    dynamic_put_wall: { strike: 18900, window_activity_oi: 500, partial_window: false },
     band_width_pct: 9.5,
     data_quality_warnings: [],
   },
@@ -88,12 +91,12 @@ describe("OptionsChipPanel — SC-10b failure isolation (design v4 F12)", () => 
 
     renderPanel();
 
-    // Max Pain renders its value
+    // Max Pain renders its unique value (only appears in Max Pain card)
     await waitFor(() => {
-      expect(screen.getByText("21000")).toBeTruthy();
+      expect(screen.getByText("21111")).toBeTruthy();
     });
-    // OI Walls static call wall strike
-    expect(screen.getByText("22000")).toBeTruthy();
+    // OI Walls renders its unique call-wall value
+    expect(screen.getByText("23232")).toBeTruthy();
     // Institutional 外資 label
     expect(screen.getByText("外資")).toBeTruthy();
     // PCR card shows error
@@ -109,11 +112,34 @@ describe("OptionsChipPanel — SC-10b failure isolation (design v4 F12)", () => 
     renderPanel();
 
     await waitFor(() => {
-      // OI Walls static call wall
-      expect(screen.getByText("22000")).toBeTruthy();
+      // OI Walls unique call wall (NOT shared with Max Pain mock)
+      expect(screen.getByText("23232")).toBeTruthy();
     });
     expect(screen.getByText("0.92")).toBeTruthy();
     expect(screen.getByText(/指標載入失敗/)).toBeTruthy();
+  });
+});
+
+describe("OptionsOIWallsCard — design v4 F2 color direction (post-impl review)", () => {
+  it("renders 支撐 (put wall) in bull color, 壓力 (call wall) in bear color", async () => {
+    vi.spyOn(optionsApi, "maxPain").mockResolvedValue(mockMaxPain);
+    vi.spyOn(optionsApi, "oiWalls").mockResolvedValue(mockOIWalls);
+    vi.spyOn(optionsApi, "pcr").mockResolvedValue(mockPcr);
+    vi.spyOn(optionsApi, "institutional").mockResolvedValue(mockInst);
+
+    renderPanel();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("call-wall")).toBeTruthy();
+    });
+    const callWall = screen.getByTestId("call-wall");
+    const putWall = screen.getByTestId("put-wall");
+    // 壓力 (call wall) — bear (green)
+    expect(callWall.className).toContain("text-bear");
+    expect(callWall.className).not.toContain("text-bull");
+    // 支撐 (put wall) — bull (red)
+    expect(putWall.className).toContain("text-bull");
+    expect(putWall.className).not.toContain("text-bear");
   });
 });
 
