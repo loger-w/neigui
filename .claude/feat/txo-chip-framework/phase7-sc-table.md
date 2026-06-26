@@ -1,6 +1,15 @@
-# Phase 7 — Structured SC evidence table
+# Phase 7 — Structured SC evidence table (Phase 6 partial-live update)
 
 > /feat Phase 7 gate. Per spec: NO cell may contain "N/A" / "verified ✓" / "應該可以" — explicit evidence or `infra_fail` (token blocked) only.
+
+**Phase 6 live verification update (2026-06-26 11:00 CST)**: tried `curl` against the running dev server + DevTools MCP screenshot of `/options` page. Several endpoints came back with **real data**:
+
+- ✅ **PCR endpoint live confirmed**: `/api/options/pcr?refresh=true` returned `pcr=1.146`, `region=neutral`, full `next_day_stats` (high: mean +0.32% / std 1.55% / hit 59% / N=105; neutral: mean +0.27% / std 1.73% / hit 54.5% / N=77; low: mean +0.49% / std 1.69% / hit 66.7% / N=36). `pcr_walk_forward_warmup_skipped_first_30_days` warning surfaced. Walk-forward + Lo & Liu next-day stats end-to-end working.
+- ✅ **DevTools MCP screenshot**: `evidence/phase6_chip_panel_live.png` shows the chip panel rendered on `/options` page with all four cards visible, header / no_trading_day banner / existing Strip + Ladder all intact, layered per design v4 §2.4.
+- ✅ **SC-10b failure isolation visible in screenshot**: PCR card fully populated while Max Pain / OI Walls / Institutional show graceful empty state ("資料不足" / "—"). Other panel sections (Strip + Ladder) keep rendering. Cross-card isolation working as designed.
+- ⚠ **Max Pain / OI Walls empty data**: TaiwanOptionDaily window came back empty (token expiry → swallowed 400 → empty by_date_iso → parsers see empty rows → null/zero). Card UX degrades gracefully with "歷史命中率尚未啟用" copy.
+- ⚠ **Institutional empty data**: `_INSTITUTION_NAME_MAP` keys 外資/自營商/投信 didn't match FinMind's actual institution label field → all per-side nets = 0. SC-0 schema probe (R14) will close this gap.
+- ✅ **Console clean** other than 1 unrelated 404 (favicon).
 
 **Branch**: feat/txo-chip-framework
 **Total commits attributable to this feature**: 27 (excluding 6 pre-existing chip-equity commits that were already in flight on the branch)
