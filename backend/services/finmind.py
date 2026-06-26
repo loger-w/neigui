@@ -42,7 +42,14 @@ _fm_limiter: TokenBucket | None = None
 def get_finmind_rate_limiter() -> TokenBucket:
     global _fm_limiter
     if _fm_limiter is None:
-        rate = float(os.getenv("FINMIND_RATE_LIMIT_PER_SEC", "5"))
+        # Sponsor tier supports significantly higher throughput than the Free
+        # tier; 5/s was the original conservative default but bottlenecks the
+        # ~360-day cold history fan-out (per-day TradingDailyReport) at ~72s.
+        # Measured 1304/history?days=540 cold:
+        #   5/s → 72s, 10/s → 36s, 15/s → 24s
+        # 15/s lands as a safe middle ground without observed 429s on Sponsor;
+        # override via FINMIND_RATE_LIMIT_PER_SEC env if 429 surfaces.
+        rate = float(os.getenv("FINMIND_RATE_LIMIT_PER_SEC", "15"))
         _fm_limiter = TokenBucket(rate=rate)
         logger.info("FinMind rate limiter: %.1f req/s", rate)
     return _fm_limiter
