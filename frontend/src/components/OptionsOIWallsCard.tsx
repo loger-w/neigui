@@ -39,8 +39,9 @@ export function OptionsOIWallsCard({
         <>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
+              {/* F2 修: 壓力 (resistance, bearish for further upside) → bear/green */}
               <div className="text-xs text-ink-dim mb-1">Call Wall (壓力)</div>
-              <div className="tabular-nums text-bull font-medium">
+              <div data-testid="call-wall" className="tabular-nums text-bear font-medium">
                 {data.current.static_call_wall?.strike ?? "—"}
               </div>
               {data.current.dynamic_call_wall && (
@@ -51,8 +52,9 @@ export function OptionsOIWallsCard({
               )}
             </div>
             <div>
+              {/* F2 修: 支撐 (support, bullish floor) → bull/red */}
               <div className="text-xs text-ink-dim mb-1">Put Wall (支撐)</div>
-              <div className="tabular-nums text-bear font-medium">
+              <div data-testid="put-wall" className="tabular-nums text-bull font-medium">
                 {data.current.static_put_wall?.strike ?? "—"}
               </div>
               {data.current.dynamic_put_wall && (

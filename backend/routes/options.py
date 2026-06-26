@@ -101,7 +101,13 @@ CHIP_WINDOW_TD = 250  # canonical shared TaiwanOptionDaily window (design v4 §1
 
 
 def _validate_lookback(lookback: int, period_days: int) -> None:
-    """N11: route-layer guard — reject 400 if lookback × period > CHIP_WINDOW_TD."""
+    """N11: route-layer guard — reject 400 if lookback × period > CHIP_WINDOW_TD.
+
+    F8 修 (post-impl review): FastAPI's Query le=50 is the outer hard bound;
+    this finer guard maps to a friendlier ``detail.error`` code so the
+    frontend can show a meaningful banner. Effective cap = 25 settlements
+    when period_days=10 (weekly+monthly mix).
+    """
     if lookback * period_days > CHIP_WINDOW_TD:
         raise HTTPException(
             status_code=400,
@@ -186,8 +192,10 @@ async def get_pcr(
         high_pct=high_pct, low_pct=low_pct, refresh=refresh,
     )
 
-    # N5: per_contract + weekly contract → emit warning (not 400)
-    if c and "W" in c.get("contract_date", "") or c and "F" in c.get("contract_date", ""):
+    # N5: per_contract + weekly contract → emit warning (not 400).
+    # F5 修: use the `kind` field already populated by list_active_contracts
+    # ("weekly_wed" / "weekly_fri") instead of substring-sniffing contract_date.
+    if c and str(c.get("kind", "")).startswith("weekly"):
         existing = out.get("data_quality_warnings", [])
         warning = "per_contract_pcr_unsupported_for_weekly_consider_all_months"
         if warning not in existing:

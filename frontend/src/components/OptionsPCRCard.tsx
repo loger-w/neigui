@@ -71,8 +71,10 @@ export function OptionsPCRCard({
                 {r.label}
               </span>
             </div>
+            {/* F3 修: drop hardcoded "90 日" — backend default lookback = 250.
+                Show generic "歷史分位 P{n}" instead. */}
             <div className="text-xs text-ink-dim mt-1">
-              90 日分位 P
+              歷史分位 P
               <span className="tabular-nums text-ink mx-1">
                 {data.current.percentile.toFixed(0)}
               </span>

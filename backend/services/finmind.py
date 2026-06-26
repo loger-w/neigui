@@ -650,33 +650,22 @@ class FinMindClient:
         return by_date
 
     def _invalidate_chip_parse_caches(self, end_date: date) -> None:
-        """N12: pattern-based invalidation across all lookback/threshold variants."""
+        """N12 + F6 修: single sweep pattern-based invalidation across all
+        lookback/threshold variants. Drops files matching
+        ``{endpoint_prefix}_*_{end_iso}_*.json`` where endpoint_prefix ∈
+        {max_pain_, oi_walls_, pcr_classified_} (pcr_series_ never used).
+        """
+        from utils.cache import chip_cache_dir
         end_iso = end_date.isoformat()
-        # Order matters not — these are independent endpoints
-        for prefix_template in [
-            f"max_pain_*_{end_iso}_",
-            f"oi_walls_*_{end_iso}_",
-            f"pcr_series_*_{end_iso}_",
-            f"pcr_classified_*_{end_iso}_",
-        ]:
-            # We use a prefix that begins with the literal endpoint name and
-            # ends with the end_date; since delete_by_prefix accepts a literal
-            # prefix (no glob), iterate endpoint-by-endpoint:
-            for endpoint in ["max_pain", "oi_walls", "pcr_series", "pcr_classified"]:
-                if not prefix_template.startswith(endpoint):
-                    continue
-                # We can't actually match wildcards without listing the cache
-                # dir. Simplified: delete every {endpoint}_*_{end_iso}_*.json
-                # by enumerating; for MVP fall back to the endpoint+end_iso pair
-                # search using delete_by_prefix on whatever prefix we can build.
-                # Better: iterate dir manually. Implemented inline below.
-                from utils.cache import chip_cache_dir
-                for p in chip_cache_dir().iterdir():
-                    if (p.suffix == ".json"
-                        and p.stem.startswith(f"{endpoint}_")
-                        and f"_{end_iso}_" in p.stem):
-                        p.unlink()
-                break
+        endpoint_prefixes = ("max_pain_", "oi_walls_", "pcr_classified_")
+        for p in chip_cache_dir().iterdir():
+            if p.suffix != ".json":
+                continue
+            if (
+                any(p.stem.startswith(prefix) for prefix in endpoint_prefixes)
+                and f"_{end_iso}_" in p.stem
+            ):
+                p.unlink()
 
     async def fetch_max_pain(
         self, contract: dict, date_str: str, lookback: int = 20,
@@ -710,24 +699,19 @@ class FinMindClient:
             sorted(trading_dates), end_date=end, refresh=refresh,
         )
 
-        # Find today's rows for current Max Pain
-        today_rows = by_date_iso.get(date_str, [])
-        if not today_rows:
-            # Fall back to latest available
-            available = sorted(by_date_iso.keys())
-            if available:
-                today_rows = by_date_iso[available[-1]]
+        # F7 修: today_rows + as_of_date 都用 non-empty 日 (empty day = publication lag)
+        non_empty_dates = sorted(d for d, rows in by_date_iso.items() if rows)
+        today_rows = by_date_iso.get(date_str) or (
+            by_date_iso[non_empty_dates[-1]] if non_empty_dates else []
+        )
         current_mp = parse_max_pain(today_rows, contract["contract_date"])
 
-        # Build oi_by_trading_day dict (date → rows) for hit rate calc
         oi_by_trading_day: dict[date, list[dict]] = {
             date.fromisoformat(d_iso): rows
             for d_iso, rows in by_date_iso.items() if rows
         }
         # Hit rate needs settlements — fetch settlement prices for last `lookback`
-        # settled contracts. For MVP: pass empty dict (settlements parser handles)
-        # The route layer is the natural place to enrich this (separate fetch).
-        # Keeping minimal here; hit_rate populated when settlements available.
+        # settled contracts. For MVP: pass empty dict (settlements parser handles).
         hit_rate = parse_max_pain_hit_rate(
             oi_by_trading_day=oi_by_trading_day, settlements={},
         )
@@ -736,7 +720,7 @@ class FinMindClient:
             "contract": contract_id,
             "date": date_str,
             "fetched_at": datetime.now().isoformat(timespec="seconds"),
-            "as_of_date": sorted(by_date_iso.keys())[-1] if by_date_iso else date_str,
+            "as_of_date": non_empty_dates[-1] if non_empty_dates else date_str,
             "current": current_mp,
             "hit_rate": None if hit_rate["samples"] == 0 else hit_rate,
             "latest_settlement_pending": hit_rate.get("latest_settlement_pending", False),
@@ -772,21 +756,26 @@ class FinMindClient:
             sorted(trading_dates), end_date=end, refresh=refresh,
         )
 
-        today_rows = by_date_iso.get(date_str, [])
-        if not today_rows:
-            available = sorted(by_date_iso.keys())
-            if available:
-                today_rows = by_date_iso[available[-1]]
+        # F7 修: as_of_date / fallback today_rows 都用 non-empty 日 (避免空日蒙混)
+        non_empty_dates = sorted(d for d, rows in by_date_iso.items() if rows)
+        today_rows = by_date_iso.get(date_str) or (
+            by_date_iso[non_empty_dates[-1]] if non_empty_dates else []
+        )
 
         # past delta_window trading days for the dynamic wall
-        available_dates = sorted(by_date_iso.keys())
-        delta_days = available_dates[-(delta_window + 1):-1] if len(available_dates) > delta_window else available_dates[:-1]
+        delta_days = non_empty_dates[-(delta_window + 1):-1] if len(non_empty_dates) > delta_window else non_empty_dates[:-1]
         rows_history = [by_date_iso[d] for d in delta_days if by_date_iso[d]]
+
+        # F1 修: fetch spot so static-wall tie-break + band_width_pct work.
+        # We can't await fetch_spot here without an inner runtime; just call it.
+        # fetch_spot has its own _run_once + cache, so the cost is low.
+        spot_payload = await self.fetch_spot(date_str, refresh=refresh)
+        spot_val = float(spot_payload.get("spot") or 0.0)
 
         current_walls = parse_oi_walls(
             rows_today=today_rows, rows_history=rows_history,
             contract_date=contract["contract_date"],
-            delta_window=delta_window, spot=0.0,  # spot=0 → tie-break degenerate; route can enrich
+            delta_window=delta_window, spot=spot_val,
         )
 
         oi_by_trading_day: dict[date, list[dict]] = {
@@ -800,7 +789,7 @@ class FinMindClient:
         result = {
             "contract": contract_id, "date": date_str,
             "fetched_at": datetime.now().isoformat(timespec="seconds"),
-            "as_of_date": available_dates[-1] if available_dates else date_str,
+            "as_of_date": non_empty_dates[-1] if non_empty_dates else date_str,
             "current": current_walls,
             "hit_rate": None if hit_rate["samples"] == 0 else hit_rate,
             "latest_settlement_pending": hit_rate.get("latest_settlement_pending", False),

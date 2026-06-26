@@ -1,5 +1,4 @@
-import { useCallback, type ReactElement } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { useMaxPain } from "../hooks/useMaxPain";
 import { useOptionsOIWalls } from "../hooks/useOptionsOIWalls";
 import { useOptionsPCR } from "../hooks/useOptionsPCR";
@@ -15,26 +14,27 @@ interface Props {
 }
 
 export function OptionsChipPanel({ contractId, date }: Props): ReactElement {
-  const queryClient = useQueryClient();
-
   const mp   = useMaxPain(contractId, date);
   const ow   = useOptionsOIWalls(contractId, date);
   const pcr  = useOptionsPCR(date, "all_months");  // MVP1: default all_months
   const inst = useInstitutionalOptions(date);
 
-  // design v4 T2: cross-hook refresh — when user refreshes ONE card, also
-  // invalidate the sibling shared-window-dependent queries so a fresh window
-  // fetch on the backend doesn't end up consumed only by the refreshed card.
-  const cascadeInvalidate = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["options-max-pain", contractId, date] });
-    queryClient.invalidateQueries({ queryKey: ["options-oi-walls", contractId, date] });
-    queryClient.invalidateQueries({ queryKey: ["options-pcr"] });
-    // institutional NOT in cascade (independent data source).
-  }, [queryClient, contractId, date]);
-
-  const wrapRefresh = (own: () => void) => () => {
-    own();
-    cascadeInvalidate();
+  // F4 修 (post-impl review): the earlier cascadeInvalidate-via-queryClient
+  // pattern raced against the backend cache check — sibling refetches arrived
+  // with refresh=false, hit their parse cache before _invalidate_chip_parse_caches
+  // ran, and returned stale data. Fix: when ANY card's refresh is clicked,
+  // call all FOUR hooks' refresh() so each one sets its own forceRefreshRef
+  // and the backend receives refresh=true on every endpoint. This ensures
+  // parse-cache invalidation on the shared window correctly propagates to
+  // each card's response.
+  //
+  // Institutional is included even though it doesn't share the window, so
+  // the user gets a consistent "refresh = update everything" expectation.
+  const refreshAll = () => {
+    mp.refresh();
+    ow.refresh();
+    pcr.refresh();
+    inst.refresh();
   };
 
   return (
@@ -44,19 +44,19 @@ export function OptionsChipPanel({ contractId, date }: Props): ReactElement {
     >
       <OptionsMaxPainCard
         data={mp.data} loading={mp.loading} error={mp.error}
-        onRefresh={wrapRefresh(mp.refresh)}
+        onRefresh={refreshAll}
       />
       <OptionsOIWallsCard
         data={ow.data} loading={ow.loading} error={ow.error}
-        onRefresh={wrapRefresh(ow.refresh)}
+        onRefresh={refreshAll}
       />
       <OptionsPCRCard
         data={pcr.data} loading={pcr.loading} error={pcr.error}
-        onRefresh={wrapRefresh(pcr.refresh)}
+        onRefresh={refreshAll}
       />
       <OptionsInstitutionalCard
         data={inst.data} loading={inst.loading} error={inst.error}
-        onRefresh={inst.refresh}
+        onRefresh={refreshAll}
       />
     </div>
   );
