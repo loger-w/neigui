@@ -7,6 +7,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { api } from "../lib/api";
+import type { ChipHistoryMajor } from "../lib/api";
 import type { ChipHistory, ChipSummary } from "../lib/chip-data";
 import { useChipData } from "./useChipData";
 import { makeQueryWrapper } from "../test-utils/query-wrapper";
@@ -42,52 +43,69 @@ const mkHistory = (): ChipHistory =>
     major: [],
   }) as ChipHistory;
 
+const mkHistoryMajor = (): ChipHistoryMajor => ({
+  symbol: "2330",
+  fetched_at: "",
+  last_date: "2026-06-22",
+  major: [],
+});
+
+/** All three spies wired the same way every test needs. */
+function spyChipApis() {
+  return {
+    chip: vi.spyOn(api, "chip").mockResolvedValue(mkSummary("2026-06-22")),
+    base: vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory()),
+    major: vi.spyOn(api, "chipHistoryMajor").mockResolvedValue(mkHistoryMajor()),
+  };
+}
+
 describe("useChipData split fetches", () => {
-  it("initial mount fires both api.chip and api.chipHistory", async () => {
-    const chipSpy = vi.spyOn(api, "chip").mockResolvedValue(mkSummary("2026-06-22"));
-    const histSpy = vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
+  it("initial mount fires summary + history/base + history/major", async () => {
+    const { chip, base, major } = spyChipApis();
     renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
     await waitFor(() => {
-      expect(chipSpy).toHaveBeenCalledTimes(1);
-      expect(histSpy).toHaveBeenCalledTimes(1);
+      expect(chip).toHaveBeenCalledTimes(1);
+      expect(base).toHaveBeenCalledTimes(1);
+      expect(major).toHaveBeenCalledTimes(1);
     });
   });
 
-  it("date change fires api.chip ONLY (not api.chipHistory)", async () => {
-    const chipSpy = vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
-    const histSpy = vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
+  it("date change fires api.chip ONLY (not history endpoints)", async () => {
+    const { chip, base, major } = spyChipApis();
     const { rerender } = renderHook(
       ({ d }: { d: string }) => useChipData("2330", d),
       { initialProps: { d: "2026-06-22" }, wrapper: makeQueryWrapper() },
     );
-    await waitFor(() => expect(chipSpy).toHaveBeenCalledTimes(1));
-    expect(histSpy).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(chip).toHaveBeenCalledTimes(1));
+    expect(base).toHaveBeenCalledTimes(1);
+    expect(major).toHaveBeenCalledTimes(1);
     rerender({ d: "2026-06-21" });
-    await waitFor(() => expect(chipSpy).toHaveBeenCalledTimes(2));
-    expect(histSpy).toHaveBeenCalledTimes(1); // unchanged
+    await waitFor(() => expect(chip).toHaveBeenCalledTimes(2));
+    expect(base).toHaveBeenCalledTimes(1); // unchanged
+    expect(major).toHaveBeenCalledTimes(1); // unchanged
   });
 
-  it("symbol change fires both endpoints", async () => {
-    const chipSpy = vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
-    const histSpy = vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
+  it("symbol change fires all three endpoints", async () => {
+    const { chip, base, major } = spyChipApis();
     const { rerender } = renderHook(
       ({ sym }: { sym: string }) => useChipData(sym, "2026-06-22"),
       { initialProps: { sym: "2330" }, wrapper: makeQueryWrapper() },
     );
     await waitFor(() => {
-      expect(chipSpy).toHaveBeenCalledTimes(1);
-      expect(histSpy).toHaveBeenCalledTimes(1);
+      expect(chip).toHaveBeenCalledTimes(1);
+      expect(base).toHaveBeenCalledTimes(1);
+      expect(major).toHaveBeenCalledTimes(1);
     });
     rerender({ sym: "2454" });
     await waitFor(() => {
-      expect(chipSpy).toHaveBeenCalledTimes(2);
-      expect(histSpy).toHaveBeenCalledTimes(2);
+      expect(chip).toHaveBeenCalledTimes(2);
+      expect(base).toHaveBeenCalledTimes(2);
+      expect(major).toHaveBeenCalledTimes(2);
     });
   });
 
   it("history persists across date change (no null flash)", async () => {
-    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
-    vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
+    spyChipApis();
     const { result, rerender } = renderHook(
       ({ d }: { d: string }) => useChipData("2330", d),
       { initialProps: { d: "2026-06-22" }, wrapper: makeQueryWrapper() },
@@ -109,7 +127,8 @@ describe("useChipData split fetches", () => {
             resolveSecond = r;
           }),
       );
-    vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
+    vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
+    vi.spyOn(api, "chipHistoryMajor").mockResolvedValue(mkHistoryMajor());
     const { result, rerender } = renderHook(
       ({ d }: { d: string }) => useChipData("2330", d),
       { initialProps: { d: "2026-06-22" }, wrapper: makeQueryWrapper() },
@@ -123,46 +142,94 @@ describe("useChipData split fetches", () => {
     await waitFor(() => expect(result.current.summary?.date).toBe("2026-06-21"));
   });
 
-  it("loading is OR of summaryLoading and historyLoading", async () => {
-    let resolveHist!: (v: ChipHistory) => void;
+  it("loading = summaryLoading OR historyLoading; majorLoading is independent", async () => {
+    let resolveBase!: (v: ChipHistory) => void;
+    let resolveMajor!: (v: ReturnType<typeof mkHistoryMajor>) => void;
     vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
-    vi.spyOn(api, "chipHistory").mockImplementation(
+    vi.spyOn(api, "chipHistoryBase").mockImplementation(
       () =>
         new Promise<ChipHistory>((r) => {
-          resolveHist = r;
+          resolveBase = r;
+        }),
+    );
+    vi.spyOn(api, "chipHistoryMajor").mockImplementation(
+      () =>
+        new Promise<ReturnType<typeof mkHistoryMajor>>((r) => {
+          resolveMajor = r;
         }),
     );
     const { result } = renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
     await waitFor(() => expect(result.current.summary).not.toBeNull());
     expect(result.current.summaryLoading).toBe(false);
     expect(result.current.historyLoading).toBe(true);
+    expect(result.current.majorLoading).toBe(true);
     expect(result.current.loading).toBe(true);
-    resolveHist(mkHistory());
+    // Resolving base alone is enough to flip global `loading` off — major
+    // continues in background without blocking the "重新整理" spinner.
+    resolveBase(mkHistory());
     await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.majorLoading).toBe(true);
+    resolveMajor(mkHistoryMajor());
+    await waitFor(() => expect(result.current.majorLoading).toBe(false));
   });
 
-  it("refresh() forces both endpoints with refresh=true", async () => {
-    const chipSpy = vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
-    const histSpy = vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
+  it("refresh() forces all three endpoints with refresh=true", async () => {
+    const { chip, base, major } = spyChipApis();
     const { result } = renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
-    await waitFor(() => expect(chipSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(chip).toHaveBeenCalledTimes(1));
     act(() => result.current.refresh());
     await waitFor(() => {
-      expect(chipSpy).toHaveBeenCalledTimes(2);
-      expect(histSpy).toHaveBeenCalledTimes(2);
+      expect(chip).toHaveBeenCalledTimes(2);
+      expect(base).toHaveBeenCalledTimes(2);
+      expect(major).toHaveBeenCalledTimes(2);
     });
-    expect(chipSpy.mock.calls[1]![2]).toBe(true);
-    // chipHistory now uses 3-arg form: (symbol, 540, force) — force at [2].
-    expect(histSpy.mock.calls[1]![1]).toBe(540);
-    expect(histSpy.mock.calls[1]![2]).toBe(true);
+    expect(chip.mock.calls[1]![2]).toBe(true);
+    expect(base.mock.calls[1]![1]).toBe(540);
+    expect(base.mock.calls[1]![2]).toBe(true);
+    expect(major.mock.calls[1]![1]).toBe(540);
+    expect(major.mock.calls[1]![2]).toBe(true);
   });
 
-  it("history fetch always carries days=540 (large window for K-line zoom)", async () => {
-    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
-    const histSpy = vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
+  it("history base + major both carry days=540 (K-line zoom window)", async () => {
+    const { base, major } = spyChipApis();
     renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
-    await waitFor(() => expect(histSpy).toHaveBeenCalledTimes(1));
-    expect(histSpy.mock.calls[0]![1]).toBe(540);
+    await waitFor(() => {
+      expect(base).toHaveBeenCalledTimes(1);
+      expect(major).toHaveBeenCalledTimes(1);
+    });
+    expect(base.mock.calls[0]![1]).toBe(540);
+    expect(major.mock.calls[0]![1]).toBe(540);
+  });
+
+  it("history merges base + major: major[] empty until major lands", async () => {
+    let resolveMajor!: (v: ReturnType<typeof mkHistoryMajor>) => void;
+    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
+    vi.spyOn(api, "chipHistoryBase").mockResolvedValue({
+      ...mkHistory(),
+      candles: [
+        { date: "2026-06-22", open: 1, high: 1, low: 1, close: 1, volume: 0 },
+      ],
+    });
+    vi.spyOn(api, "chipHistoryMajor").mockImplementation(
+      () =>
+        new Promise<ReturnType<typeof mkHistoryMajor>>((r) => {
+          resolveMajor = r;
+        }),
+    );
+    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
+    // base lands first → K-line ready, major still empty
+    await waitFor(() => expect(result.current.history?.candles.length).toBe(1));
+    expect(result.current.history?.major).toEqual([]);
+    expect(result.current.majorLoading).toBe(true);
+    // major arrives → merged in
+    resolveMajor({
+      symbol: "2330",
+      fetched_at: "",
+      last_date: "2026-06-22",
+      major: [{ date: "2026-06-22", major_net: 123 }],
+    });
+    await waitFor(() => expect(result.current.history?.major.length).toBe(1));
+    expect(result.current.history?.major[0]?.major_net).toBe(123);
   });
 
   it("rapid date flip drops stale summary response (seq)", async () => {
@@ -175,7 +242,8 @@ describe("useChipData split fetches", () => {
           }),
       )
       .mockResolvedValueOnce(mkSummary("FRESH"));
-    vi.spyOn(api, "chipHistory").mockResolvedValue(mkHistory());
+    vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
+    vi.spyOn(api, "chipHistoryMajor").mockResolvedValue(mkHistoryMajor());
     const { result, rerender } = renderHook(
       ({ d }: { d: string }) => useChipData("2330", d),
       { initialProps: { d: "2026-06-22" }, wrapper: makeQueryWrapper() },

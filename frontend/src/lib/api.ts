@@ -91,6 +91,38 @@ function chipHistoryImpl(
   return get(`${BASE}/chip/${symbol}/history`, params);
 }
 
+// /history/base = same shape, `major: []`. Paired with /history/major for
+// parallel fetch — K-line first-paint drops from ~24s cold to ~1.5s.
+function chipHistoryBaseImpl(
+  symbol: string,
+  days: number,
+  refresh?: boolean,
+): Promise<ChipHistory> {
+  const params: Record<string, string> = { days: String(days) };
+  if (refresh) params.refresh = "true";
+  return get(`${BASE}/chip/${symbol}/history/base`, params);
+}
+
+// /history/major = slim {symbol, fetched_at, last_date, major: [...]}. Runs
+// the per-day TradingDailyReport fan-out independently from /history/base.
+export interface ChipHistoryMajor {
+  symbol: string;
+  fetched_at: string;
+  last_date: string;
+  major: ChipHistory["major"];
+  stale?: boolean;
+}
+
+function chipHistoryMajorImpl(
+  symbol: string,
+  days: number,
+  refresh?: boolean,
+): Promise<ChipHistoryMajor> {
+  const params: Record<string, string> = { days: String(days) };
+  if (refresh) params.refresh = "true";
+  return get(`${BASE}/chip/${symbol}/history/major`, params);
+}
+
 type ChipBrokerHistoryFn = {
   (symbol: string, ids: string[]): Promise<ChipBrokerHistory>;
   (symbol: string, ids: string[], refresh: boolean): Promise<ChipBrokerHistory>;
@@ -125,6 +157,8 @@ export const api = {
     return get(`${BASE}/chip/${symbol}/bubble`, params);
   },
   chipHistory: chipHistoryImpl as ChipHistoryFn,
+  chipHistoryBase: chipHistoryBaseImpl,
+  chipHistoryMajor: chipHistoryMajorImpl,
   chipBrokerHistory: chipBrokerHistoryImpl as ChipBrokerHistoryFn,
   chipBrokersWindow(
     symbol: string, date: string, days: number, refresh?: boolean,
