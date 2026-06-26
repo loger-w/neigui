@@ -150,3 +150,28 @@ docs/specs/          spec / plan(規格優先看這)
 | Backend feature-based 重構 | 官方 template + 現況都是 layered,共識本身分歧,不動 |
 | RFC 7807 problem details | FastAPI 官方未實作,frontend 已依賴 `{"detail": {"error": "<code>"}}` 格式,改動成本 > 收益 |
 | mypy strict | research 此項共識不強;選 pyright 因比 mypy 快、預設 basic 即可,不上 strict |
+
+---
+
+## 8. Lessons Learned(累積 — 從 /feat 等流程的 Phase 8.5 沉澱)
+
+### FinMind API 接入細節
+- **Sponsor tier 必須用 `Authorization: Bearer <token>` header**,**不是** `?token=` query。`?token=` 會回 400 "Token is illegal"。Probe / 直 httpx 呼叫都要套。`FinMindClient._get` 已是這個 pattern,跟著用。(Trigger:新接 FinMind dataset、寫一次性 probe 腳本時)
+- **JWT 過期是日常事件**:token 的 `exp` claim 是 unix epoch,內嵌在 JWT payload。要備好「token 過期 → 真實環境驗證 blocked」的 fallback 設計(hand-built fixture + 標 R# known risk + Phase 6 deferred 路線)。(Trigger:跑 `/feat` 進入 Phase 6 real-env 前)
+
+### TXO 籌碼指標(reflexivity hedge 慣例)
+- **支撐 = bull (紅)** / **壓力 = bear (綠)** — 跟「up = bull = 紅」一致,但 wall context 的直覺常被搞反。Call Wall = 壓力 = 漲不上去 = bear color;Put Wall = 支撐 = 跌不下去 = bull color。寫顏色 binding 一律加 data-testid + 正向 assertion 鎖住。
+- **PCR / Max Pain UI 嚴禁方向性文案**:不寫「做多 / 做空 / 滿倉 / 賣選」。只呈現分位 + region 標(高/中/低)+ 統計表。元件測試 `expect(screen.queryByText(/做多|做空|賣選|滿倉/)).toBeNull()` 鎖住。原因見 [[txo-chip-framework reflexivity hedge]]。
+- **三大法人鍵名一律 `foreign / dealer / trust`**,**不是 `prop`**。對齊既有 `chip-data.ts` 慣例(自營商 = dealer)。同 repo 用兩個 key 表示同一個監管實體會撞 bug + 撞測試。
+- **Hit rate 用 T-1 day's Max Pain / OI Wall,不要用 settlement 當天**:settlement 13:00-13:25 結算前 OI 已 collapse,當天的 Max Pain 機械式逼近 settlement,看起來命中率 90%+ 全是 look-ahead bias。寫 hit_rate parser 一定要明確設定 `t_minus_1` 取值。
+
+### 共用 FinMind window 設計
+- `services/finmind.py::fetch_taiwan_option_daily_window` 是「一份 250-day window 給三個 endpoint 共用」的範本。新 chip endpoint 跟著:
+  - 用 `_run_once(f"window_{cache_key}", ...)` inflight dedup
+  - Invalidation 必須在 `_run_once` coroutine 內、dedup 之後、實際 fetch 之前
+  - parse cache 用 `_invalidate_chip_parse_caches(end_date)` pattern delete(`utils.cache.chip_cache_dir().iterdir()` 單次掃)
+- Refresh 流前端要設「全 4 hook refresh 一起跑」(`mp.refresh(); ow.refresh(); pcr.refresh(); inst.refresh()`),**不要**用 `queryClient.invalidateQueries` cascade — cascade 不會帶 `refresh=true` 到後端,sibling 撞 parse cache 拿到 stale。
+
+### Test infrastructure
+- `backend/tests/conftest.py` 統一處理 `FinMindClient` singleton reset + `FINMIND_TOKEN` env + `CHIP_DATA_DIR` env + `NoOpBucket` 跳過 rate limiter。每個新 test 檔**不**要再寫 `_reset_singleton`,直接用 conftest 的 autouse。`bypass_finmind_rate_limiter` 是 opt-in fixture(非 autouse)。
+- 寫 hook + component 測試一律用 `vi.spyOn(optionsApi, "...").mockResolvedValue / mockRejectedValue` pattern,**不要**引入 MSW(專案沒裝)。Failure-isolation E2E 在 `OptionsChipPanel.test.tsx` 用 `vi.spyOn` + `screen.getByText` 驗,**不**走 DevTools MCP。
