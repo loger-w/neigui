@@ -41,10 +41,24 @@ async def load_symbols() -> None:
         logger.warning("Failed to load symbols: %s", exc)
 
 
+async def _ensure_loaded() -> None:
+    # _symbols starts empty and is filled by lifespan startup. When that load
+    # fails (FinMind blip, transient 4xx) _symbols stays [] indefinitely, so
+    # every subsequent request used to silently return nothing until process
+    # restart. Retry on first miss; if upstream is still down, surface 503
+    # via main.py's ValueError handler rather than masking it as success.
+    if _symbols:
+        return
+    await load_symbols()
+    if not _symbols:
+        raise ValueError("symbols_unavailable")
+
+
 @router.get("/api/symbols")
 async def search_symbols(search: str = Query(default="", min_length=1)) -> list[dict]:
     if not search:
         return []
+    await _ensure_loaded()
     q = search.lower()
     results = []
     for s in _symbols:
@@ -57,4 +71,5 @@ async def search_symbols(search: str = Query(default="", min_length=1)) -> list[
 
 @router.get("/api/symbols/all")
 async def all_symbols() -> list[dict]:
+    await _ensure_loaded()
     return _symbols
