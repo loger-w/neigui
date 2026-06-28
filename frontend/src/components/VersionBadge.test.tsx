@@ -39,7 +39,9 @@ describe("VersionBadge — SC-2", () => {
   it("popover 內含『版本資訊面板』seed 條目", () => {
     render(<VersionBadge />);
     fireEvent.click(screen.getByRole("button", { name: /版本資訊/ }));
-    expect(screen.getByText(/版本資訊面板/)).toBeTruthy();
+    // 用 `新增版本資訊面板` 精確命中 change 條目;`版本資訊面板` 子字串會
+    // 同時 match highlights `<p>` 與 changes `<li>` 兩個元素。
+    expect(screen.getByText(/新增版本資訊面板/)).toBeTruthy();
   });
 
   it("popover 顯示 scope 標籤(個股 / 選擇權 / 全局)", () => {
