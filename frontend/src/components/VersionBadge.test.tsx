@@ -17,7 +17,7 @@ describe("VersionBadge — SC-1", () => {
     expect(btn).toBeTruthy();
   });
 
-  it("trigger button 文字為 v${CURRENT_VERSION}", () => {
+  it(`trigger button 文字為 v${CURRENT_VERSION}`, () => {
     render(<VersionBadge />);
     const btn = screen.getByRole("button", { name: /版本資訊/ });
     expect(btn.textContent).toBe(`v${CURRENT_VERSION}`);
