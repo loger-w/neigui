@@ -14,7 +14,7 @@ const MODES: Array<{ key: Mode; label: string }> = [
 
 export function ModeSwitch({ value, onChange }: Props): ReactElement {
   return (
-    <div className="shrink-0 flex border-b border-line bg-bg" role="tablist">
+    <div className="flex" role="tablist">
       {MODES.map(({ key, label }) => {
         const active = key === value;
         return (
