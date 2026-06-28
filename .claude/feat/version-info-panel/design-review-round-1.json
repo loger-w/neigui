@@ -1,0 +1,42 @@
+{
+  "round": 1,
+  "phase": "phase_1",
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "P0",
+      "location": "design.md §4.3 popover header span",
+      "problem": "JSX 渲染 `資料來源:{join}` → `資料來源:FinMind`,但 brainstorm SC-2 unit-test 斷言 `getByText('資料來源: FinMind')`(冒號後有 space),嚴格 match 會失敗",
+      "suggested_fix": "改 render `資料來源: {DATA_SOURCES.join(' / ')}`",
+      "rationale": "Phase 1 必須產出 Phase 3 test 找得到的字串,一字之差會在 TDD red→green 才被發現",
+      "resolution": "accepted"
+    },
+    {
+      "id": "F2",
+      "severity": "P1",
+      "location": "design.md §3 §8 CURRENT_VERSION derivation",
+      "problem": "module-level const fallback 無法用簡單 unit-test 驗證空陣列分支,要 vi.doMock + dynamic import,fragile",
+      "suggested_fix": "抽 `deriveCurrentVersion(entries: readonly VersionEntry[]): string`,export 出來測,CURRENT_VERSION = deriveCurrentVersion(CHANGELOG)",
+      "rationale": "SC-5 三分支(倒序 / derive / 空 fallback)直接呼叫 pure helper 即可,符合既有 vitest 用法",
+      "resolution": "accepted"
+    },
+    {
+      "id": "F3",
+      "severity": "P2",
+      "location": "design.md §4.3 badge button className",
+      "problem": "`font-variant-numeric` 不是 Tailwind utility,純 no-op;同 codebase 既有錯誤散落不該擴散",
+      "suggested_fix": "新 code 只留 `tabular-nums`,既有 no-op 不順手清",
+      "rationale": "新增檔案不要 entrench 已知壞 pattern",
+      "resolution": "accepted"
+    },
+    {
+      "id": "F4",
+      "severity": "P2",
+      "location": "design.md §4.1 top bar snippet",
+      "problem": "OptionsPage 既有 Suspense fallback,snippet 沒寫 fallback prop,若 Phase 2 照抄會 regress 載入 UX",
+      "suggested_fix": "§4.1 加備註:既有 Suspense fallback 必須保留",
+      "rationale": "snippet 看起來像直接 replace,顯式說明避免 Phase 2 漏",
+      "resolution": "accepted"
+    }
+  ]
+}

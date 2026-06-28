@@ -1,0 +1,51 @@
+{
+  "round": 1,
+  "phase": "phase_4",
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "P2",
+      "category": "test",
+      "file": "frontend/src/lib/changelog.test.ts",
+      "line": 34,
+      "problem": "`expect(CURRENT_VERSION).toBe(CHANGELOG[0]?.version ?? '0.0')` 與 production code 同表達式,看似 tautology",
+      "suggested_fix": "刪除或改成 format regex",
+      "rationale": "tautological coverage signal 不真實",
+      "resolution": "rejected_with_reason",
+      "rejection_reason": "此 test 捕捉的是『未來有人把 CURRENT_VERSION 改寫成 literal hard-code』的回歸 — 若 someone 把 `export const CURRENT_VERSION = '1.0'` 而 CHANGELOG[0].version = '0.1',test 仍會 fail。即 wiring contract 仍有 teeth。Format regex 是不同 invariant,不在 SC-5 spec 內,不為了 review feedback 擴 scope。"
+    },
+    {
+      "id": "F2",
+      "severity": "P2",
+      "category": "test",
+      "file": "frontend/src/components/VersionBadge.test.tsx",
+      "line": 20,
+      "problem": "Test 描述用 double quote 導致 `${CURRENT_VERSION}` 字面顯示在 reporter 而不是插值",
+      "suggested_fix": "改 backtick template literal",
+      "rationale": "cosmetic,但 test 報表可讀性",
+      "resolution": "accepted"
+    },
+    {
+      "id": "F3",
+      "severity": "P2",
+      "category": "convention",
+      "file": "frontend/src/lib/changelog.ts",
+      "line": 28,
+      "problem": "seed text 含實作細節(`(header v0.x badge + popover changelog)` / `TaiwanOptionDaily`),違背本 PR 自己新增的 §7 規則『不寫實作細節』",
+      "suggested_fix": "改為 user-facing wording,例如 `新增版本資訊面板` 與 `選擇權日資料冷啟動加速(27s → 4.3s)`",
+      "rationale": "新規則的 seed 應做榜樣不該違規",
+      "resolution": "accepted"
+    },
+    {
+      "id": "F4",
+      "severity": "P2",
+      "category": "bug",
+      "file": "frontend/src/components/VersionBadge.tsx",
+      "line": 25,
+      "problem": "Popover.Content 內含 h2 但無 aria-labelledby,SR 拿不到 popover accessible name",
+      "suggested_fix": "h2 加 id,Content 加 aria-labelledby",
+      "rationale": "a11y polish,趁檔案熱便宜處理",
+      "resolution": "accepted"
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "round": 1,
+  "phase": "phase_2",
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "P1",
+      "location": { "file": "implementation/VersionBadge.md", "section": "Imports + 內部結構" },
+      "problem": "三個 function signature 用 ReactElement 但 imports 沒帶 `import type { ReactElement } from 'react'`,strict tsc 會 TS2304",
+      "suggested_fix": "imports 加 `import type { ReactElement } from \"react\"`",
+      "rationale": "範例自洽 — 既有 ModeSwitch.tsx 同 pattern",
+      "resolution": "accepted"
+    },
+    {
+      "id": "F2",
+      "severity": "P2",
+      "location": { "file": "implementation/changelog.md", "section": "SC-5 — CHANGELOG 倒序 invariant" },
+      "problem": "assertion `CURRENT_VERSION === deriveCurrentVersion(CHANGELOG)` 是 tautology(production code 本就如此 define),不會 fail",
+      "suggested_fix": "改 value-based `expect(CURRENT_VERSION).toBe(CHANGELOG[0]?.version ?? '0.0')`",
+      "rationale": "失敗測試應在 production code 漂移時 fail,不是定義上必真",
+      "resolution": "accepted"
+    },
+    {
+      "id": "F3",
+      "severity": "P2",
+      "location": { "file": "implementation/changelog.md", "section": "SC-3 — v0.1 seed 條件" },
+      "problem": "brainstorm SC-3 列舉 keywords(Max Pain/Bollinger/N-day brokers/OI Walls 任三),測試只檢 length >= 4 不夠強",
+      "suggested_fix": "新增 keyword hit check:filter 上述 keywords 命中 >= 3",
+      "rationale": "test enforce brainstorm contract,避免未來條目漂移仍假綠",
+      "resolution": "accepted"
+    },
+    {
+      "id": "F4",
+      "severity": "P2",
+      "location": { "file": "implementation/VersionBadge.md", "section": "SC-2 點擊開 popover" },
+      "problem": "`getAllByText(/v0\\.1/)` 會 match trigger button 文字,popover 沒開也綠 — 死 assertion",
+      "suggested_fix": "刪除該行(另兩條 `資料來源: FinMind` + `版本資訊面板` 已足夠證明 popover 開啟)",
+      "rationale": "test 必須對 production code 漂移敏感",
+      "resolution": "accepted"
+    }
+  ]
+}

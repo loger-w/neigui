@@ -1,0 +1,39 @@
+{
+  "round": 1,
+  "phase": "phase_6",
+  "feature_shape": "web",
+  "dev_server": "http://localhost:5173 (vite, 200 OK)",
+  "results": [
+    {
+      "sc_id": "SC-1",
+      "evidence_path": [
+        "evidence/SC-1_options-badge.png",
+        "evidence/SC-1_equity-badge.png"
+      ],
+      "a11y_snapshot_excerpt": "uid=1_4 button \"版本資訊,目前 v0.1\" expandable haspopup=\"dialog\"",
+      "verdict": "pass",
+      "notes": "兩個 mode(equity / options)切換時 top bar 右側 badge 恆顯示 v0.1,button aria-label 含『版本資訊』與當前版本號"
+    },
+    {
+      "sc_id": "SC-2",
+      "evidence_path": ["evidence/SC-2_popover-open.png"],
+      "a11y_snapshot_excerpt": "uid=2_1 dialog \"版本資訊\" focusable focused / uid=2_3 heading \"版本資訊\" level=\"2\" / uid=2_4 StaticText \"資料來源: FINMIND\" / v0.1 / 2026-06-29 / 7 條 changes 全部展開含 scope 標籤(全局/選擇權/個股)+ 新增功能 / 修正 兩個 group",
+      "verdict": "pass",
+      "notes": "點 badge 後 Radix Popover.Content 以 dialog role 開啟,aria-labelledby 連到 h2 #version-info-title。資料來源在視覺上呈現 FINMIND(CSS uppercase),DOM text 仍是 FinMind,vitest 測試與 a11y 都對得上"
+    }
+  ],
+  "console_errors": [
+    {
+      "msg": "Failed to load resource: 404 (favicon or asset)",
+      "attributed_to_feature": false,
+      "classification": "infra_pre_existing"
+    },
+    {
+      "msg": "Failed to load resource: 500 x9 (/api/options/*)",
+      "attributed_to_feature": false,
+      "classification": "infra_pre_existing - backend 未啟,跟 version-info feature 無關;此 feature 無 API 依賴"
+    }
+  ],
+  "hypothesis": null,
+  "verdict_summary": "SC-1 / SC-2 both pass via a11y snapshot + screenshot. SC-3 / SC-4 / SC-5 由 Phase 5 自動化測試 cover,Phase 6 不需重複。"
+}
