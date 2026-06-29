@@ -1,0 +1,151 @@
+{
+  "round": 1,
+  "agents": [
+    { "id": "a34a88f1db3d6f2b4", "type": "Plan", "scope": "backend (services + routes)" },
+    { "id": "af84fcac9504af448", "type": "Plan", "scope": "frontend data layer (lib + hook)" },
+    { "id": "aa37080cdc9602c41", "type": "Plan", "scope": "frontend UI layer (components + app)" }
+  ],
+  "completed_at": "2026-06-29T17:30:00+08:00",
+  "findings": [
+    {
+      "id": "B1",
+      "severity": "P1",
+      "location": "implementation/backend-services.md File 1 + 2",
+      "problem": "is_in_session 宣告接受 naive last_tick(視為 TPE),但 fetch_market_snapshot pipeline 傳 aware datetime.now(tz=TPE_TZ);naive - aware 會 raise TypeError;沒有 normalisation step + 沒測 naive case。",
+      "suggested_fix": "is_in_session 內部 normalise:`if last_tick is not None and last_tick.tzinfo is None: last_tick = last_tick.replace(tzinfo=TPE_TZ)`;加 test_naive_last_tick_treated_as_tpe。",
+      "rationale": "FinMind ISO date string parse 通常 naive,production 第一個 tick 就 TypeError crash。",
+      "resolution": "accepted",
+      "resolution_note": "在 spec File 1 加 naive normalisation + 補一條 test。"
+    },
+    {
+      "id": "B2",
+      "severity": "P2",
+      "location": "implementation/backend-services.md File 1 doctest",
+      "problem": "pre-open doctest lag = 70200 應為 69600(19h20m = 69600s,70200 = 19h30m)。",
+      "suggested_fix": "改 70200 → 69600;test_pre_open_returns_false 也鎖 literal 69600。",
+      "rationale": "spec self-consistency;Phase 3 會 copy-paste,值錯後續難 debug。",
+      "resolution": "accepted",
+      "resolution_note": "doctest example + test fixture 對齊 69600。"
+    },
+    {
+      "id": "B3",
+      "severity": "P2",
+      "location": "implementation/backend-services.md File 4",
+      "problem": "_max_tick_date import 但無 test;ISO format edge case(microseconds / 'Z' suffix / +08:00 suffix)未覆。",
+      "suggested_fix": "補三條:test_max_tick_date_with_microseconds / test_max_tick_date_picks_latest / test_max_tick_date_empty_returns_none。",
+      "rationale": "Untested helper 在 Phase 6 才 trip 代價高;import 無 test 也會 trigger ruff F401。",
+      "resolution": "accepted",
+      "resolution_note": "spec File 4 加 _max_tick_date 段三條 test。"
+    },
+    {
+      "id": "B4",
+      "severity": "P2",
+      "location": "implementation/backend-services.md File 4 test_dedup_filters_non_twse_tpex",
+      "problem": "只 assert 'index'/'other' 被過濾,沒 assert 'tpex' 被保留 — typo 把 ('twse',) only 仍 pass。",
+      "suggested_fix": "extend fixture 加 tpex row + assert 出現;或拆 keeps_twse_and_tpex / filters_index_and_other 兩條對稱。",
+      "rationale": "filter 是 gatekeeper,asymmetric coverage 是常見 false-negative。",
+      "resolution": "accepted",
+      "resolution_note": "對稱補 assertion 鎖 tpex 包含。"
+    },
+    {
+      "id": "L1",
+      "severity": "P0",
+      "location": "implementation/frontend-lib.md heatmap-svg.test.ts colorForChange tests",
+      "problem": "5/6 條 color test 對 stub return '#cfd8dc' trivially pass,沒鎖實際 hex / R>G channel;Phase 3 若紅綠寫反不會紅。",
+      "suggested_fix": "lock 具體 hex `expect(colorForChange(5)).toBe('#ef5350')` + RGB channel `R > G` for positive + cross-check `colorForChange(5) !== colorForChange(-5)` + 9 bin 各鎖具體 hex。",
+      "rationale": "SC-2 hard rule(bull=紅 / bear=綠);test docstring 標 SC 但 assertion 不對應 = 假 gate。",
+      "resolution": "accepted",
+      "resolution_note": "P0 必修;改用具體 hex assert + RGB channel + cross-check。"
+    },
+    {
+      "id": "L2",
+      "severity": "P1",
+      "location": "implementation/frontend-lib.md heatmap-svg.test.ts layoutHeatmap tests",
+      "problem": "R-D3 邊界 case 缺三條:sector 全 null market_value / 極端 aspect ratio / many tiles 不 crash。'fits within canvas' / 'no NaN' for-loop 對 stub return [] 也 trivially pass。",
+      "suggested_fix": "補:(1) test_falls_back_to_whole_market_median_when_sector_all_null;(2) test_handles_extreme_aspect_ratio;(3) test_handles_many_tiles_without_crash;既有兩條加 expect(layout.length).toBeGreaterThan(0) guard 避免空 trivially pass。",
+      "rationale": "R-D3 是 design.md §13 self-flagged known risk,Phase 2 spec 不覆完會 push 到 Phase 6 才爆。",
+      "resolution": "accepted",
+      "resolution_note": "P1 必修;補三條 + guard。"
+    },
+    {
+      "id": "L3",
+      "severity": "P2",
+      "location": "implementation/frontend-hook.md useMarketSnapshot.test.ts loading test",
+      "problem": "同步 expect(loading=true) 沒包 waitFor;TanStack v5 + jsdom microtask race。",
+      "suggested_fix": "改 await waitFor(...);或對齊 sibling test pattern 不測同步 loading=true 只測終態。",
+      "rationale": "對齊 useOptionsLargeTraders.test.ts 樣板,避免 flaky test 混淆 TDD 訊號。",
+      "resolution": "accepted",
+      "resolution_note": "改用 mocked-delay promise + waitFor 或刪同步 assertion。"
+    },
+    {
+      "id": "L4",
+      "severity": "P2",
+      "location": "implementation/frontend-lib.md TileLayout / SectorGroupLayout",
+      "problem": "TileLayout 加 fillColor + marketValueIsFallback 在 frontend-lib.md 但 design.md §6.3 沒同步 amend;Phase 4 reviewer 對 type 拿 design 對 spec 找 diff 會誤判 drift。",
+      "suggested_fix": "design.md §6.3 加註(或 changelog v3.1)說明 TileLayout 加兩 derived field;或 frontend-lib.md File 3 開頭明標 spec 對 design 做 backward-compatible expansion。",
+      "rationale": "design.md 是 source of truth,backward-compatible expansion 仍應同步以免後續 review 誤判。",
+      "resolution": "accepted",
+      "resolution_note": "選擇後者(spec 明標 expansion + 理由)避免 design.md 第四版"
+    },
+    {
+      "id": "C1",
+      "severity": "P0",
+      "location": "implementation/frontend-app.md File 3 + App.tsx:257-422",
+      "problem": "spec 「JSX 最末加 hidden block」假設既有用 hidden 慣例,但 App.tsx 既有 ternary `mode === 'equity' ? equity : OptionsPage`;mode='market' 時 OptionsPage + MarketPage 同時 mount → UI 疊圖 + OptionsPage 持續 fetch 浪費 quota。",
+      "suggested_fix": "改 App.tsx 為 3-way ternary:`mode === 'equity' ? equity : mode === 'options' ? <Suspense><OptionsPage /></Suspense> : <Suspense><MarketPage isActive onSymbolPick /></Suspense>`。spec 必須明寫整個 conditional block diff,不是「最末加」。",
+      "rationale": "Phase 3 工程師照 spec 改會產出可編譯但行為錯誤 UI;Phase 3 自動化測試抓不到(App.tsx 無單測),會漏到 Phase 6。",
+      "resolution": "accepted",
+      "resolution_note": "P0 必修;frontend-app.md File 3 改寫 conditional block 完整 diff。"
+    },
+    {
+      "id": "C2",
+      "severity": "P0",
+      "location": "implementation/frontend-components.md MarketHeatmap.test.tsx + MarketPage.test.tsx",
+      "problem": "jsdom 沒有 ResizeObserver,`useContainerSize.ts:37` `new ResizeObserver()` 直接 ReferenceError;且 jsdom getBoundingClientRect 回 0×0 → layoutHeatmap 回空 → 所有 tile assertion 落空。",
+      "suggested_fix": "兩份 test 開頭加 `beforeAll(() => { globalThis.ResizeObserver ??= class { observe(){} unobserve(){} disconnect(){} } as any; })`;再 `vi.mock(\"../hooks/useContainerSize\", () => ({ useContainerSize: () => ({ width: 800, height: 600 }) }))` 確保 tile 有實際 area render。",
+      "rationale": "jsdom 環境 hard requirement;既有 ChipKlineChart.test.tsx 已是 stub 樣板,新 test 漏對齊。",
+      "resolution": "accepted",
+      "resolution_note": "P0 必修;補 ResizeObserver stub + mock useContainerSize 在兩份 test。"
+    },
+    {
+      "id": "C3",
+      "severity": "P1",
+      "location": "implementation/frontend-app.md File 3 handleSymbolPick",
+      "problem": "handleSymbolPick 只 setMode + setSymbol,沒 reset symbolName / selectedBrokerIds / userPickedDate;切到 equity 顯示上一檔 symbolName + 上一檔的選券商。",
+      "suggested_fix": "對齊既有 handlePick(App.tsx:202-207)— 4 件重置全做;或 `handleSymbolPick = (sid) => { setMode('equity'); handlePick(sid, null); }` 複用。",
+      "rationale": "SC-4 driving force 是「一鍵跳籌碼頁」,跳過去看到舊狀態就破功;Phase 6 才抓到代價高。",
+      "resolution": "accepted",
+      "resolution_note": "建議用 handlePick 複用,deps 沿用 []。"
+    },
+    {
+      "id": "C4",
+      "severity": "P2",
+      "location": "implementation/frontend-app.md ModeSwitch.test.tsx diff",
+      "problem": "diff 只加 `+expect(\"大盤\")` 沒展示重命名 `\"renders both modes\"` → `\"renders three modes\"`;照 diff 改會留下 test 名跟內容不符。",
+      "suggested_fix": "diff 補一行 `- it(\"renders both modes\") + it(\"renders three modes\")`;順手把 marks active 第二條測補大盤 button aria-current=null assertion。",
+      "rationale": "TDD 紀錄完整性;cheap fix。",
+      "resolution": "accepted",
+      "resolution_note": "diff 補完整重命名 + 鎖大盤 button 在 active=options 時 aria-current=null。"
+    },
+    {
+      "id": "C5",
+      "severity": "P2",
+      "location": "implementation/frontend-components.md MarketLeaderboard.test.tsx bull/bear pair",
+      "problem": "只 `querySelector('.text-red-500')` 正向 truthy,沒驗 `.text-green-500` null;同時 red + green 都加上就會通過。",
+      "suggested_fix": "各補一行反向 assert null;或改用 `data-color-bin=\"bull|bear\"` data attr 統一鎖。",
+      "rationale": "CLAUDE.md §9 反射性 hedge 教訓「正向 + 反向 assertion」;Heatmap 已對齊,Leaderboard 跟。",
+      "resolution": "accepted",
+      "resolution_note": "選反向 assert null 路徑,改動較小。"
+    }
+  ],
+  "summary": {
+    "total": 13,
+    "p0": 3,
+    "p1": 3,
+    "p2": 7,
+    "accepted": 13,
+    "rejected": 0,
+    "needs_more_context": 0
+  },
+  "next_action": "amend 6 implementation specs → bump state.json.pending_review_rounds.phase_2: 1 → dispatch round 2 verification"
+}
