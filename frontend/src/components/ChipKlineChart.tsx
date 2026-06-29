@@ -8,6 +8,7 @@ import {
 import { InstBarSvg, MarginLineSvg } from "../lib/chip-inst-bar-svg";
 import { BrokerAggBarSvg } from "../lib/chip-broker-agg-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
+import { computeRangeBand } from "../lib/chip-range-band";
 
 interface Props {
   history: ChipHistory | null;
@@ -31,6 +32,9 @@ interface Props {
    *  normally; the 主力買賣超 subchart overlays "資料載入中" until major lands.
    *  Decoupled from `loading` so the global header spinner doesn't sit ~24s. */
   majorLoading?: boolean;
+  /** chip-controls-v2: N 日聚合視窗。> 1 時 K 線 + subchart 顯示半透明區間 band,
+   *  涵蓋從 selectedDate 往前 N-1 個 trading day。<=1 / undefined 不渲染。 */
+  windowDays?: number;
 }
 
 const KLINE_ZOOM_MIN = 30;     // 太小無法看 BB(period 20) + MA20
@@ -43,6 +47,7 @@ export function ChipKlineChart({
   history, selectedDate, selectedBrokerIds, brokerSeries,
   onPickDate, onClearAllBrokers,
   loading, loadingSymbol, majorLoading,
+  windowDays,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { width, height } = useContainerSize(containerRef);
@@ -301,6 +306,10 @@ export function ChipKlineChart({
     return i >= 0 ? i : null;
   })();
 
+  // chip-controls-v2: compute range band from sliced candles + windowDays.
+  // null when windowDays <= 1, selectedDate not visible, or no candles.
+  const rangeBand = computeRangeBand(selectedIndex, windowDays ?? 0, candles.length);
+
   const w = width || 600;
   const totalH = height || 500;
 
@@ -357,6 +366,15 @@ export function ChipKlineChart({
           載入 {loadingSymbol} 中…
         </div>
       )}
+      {rangeBand && windowDays !== undefined && (
+        <div
+          data-testid="kline-range-chip"
+          className="absolute top-2 left-2 z-20 text-xs text-ink-dim bg-bg-deep/80 px-2 py-0.5 border border-line tabular-nums select-none pointer-events-none"
+          title={`過去 ${windowDays} 日聚合範圍`}
+        >
+          過去 {windowDays} 日
+        </div>
+      )}
       <div style={{ height: klineH, minHeight: 0 }}>
         {klineH > 0 && (
           <KlineChartSvg
@@ -372,6 +390,7 @@ export function ChipKlineChart({
             ma5Override={slicedIndicators?.ma5}
             ma20Override={slicedIndicators?.ma20}
             bbOverride={slicedIndicators?.bb}
+            rangeBand={rangeBand}
           />
         )}
       </div>
@@ -390,6 +409,7 @@ export function ChipKlineChart({
             data={majorNet} width={w} height={subH}
             label="主力買賣超" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
+            rangeBand={rangeBand}
           />
         )}
         {majorLoading && subH > 0 && (
@@ -417,6 +437,7 @@ export function ChipKlineChart({
             data={foreignNet} width={w} height={subH}
             label="外資" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
+            rangeBand={rangeBand}
           />
         )}
       </div>
@@ -426,6 +447,7 @@ export function ChipKlineChart({
             data={trustNet} width={w} height={subH}
             label="投信" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
+            rangeBand={rangeBand}
           />
         )}
       </div>
@@ -435,6 +457,7 @@ export function ChipKlineChart({
             data={dealerNet} width={w} height={subH}
             label="自營商" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
+            rangeBand={rangeBand}
           />
         )}
       </div>
@@ -453,6 +476,7 @@ export function ChipKlineChart({
             label="融資融券"
             hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
+            rangeBand={rangeBand}
           />
         )}
       </div>
@@ -469,6 +493,7 @@ export function ChipKlineChart({
               label={`分點 (${selectedBrokerIds.size})`}
               hoverIndex={hoverIndex}
               selectedIndex={selectedIndex}
+              rangeBand={rangeBand}
             />
           )}
           <button

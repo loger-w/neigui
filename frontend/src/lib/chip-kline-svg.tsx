@@ -3,6 +3,7 @@
 import { memo } from "react";
 import type { DailyCandle } from "../lib/chip-data";
 import { CHIP } from "./chip-theme";
+import { rangeBandX, type RangeBand } from "./chip-range-band";
 
 const CHIP_THEME = {
   bg: "#14110c",
@@ -137,6 +138,9 @@ interface KlineChartProps {
     upper: (number | null)[];
     lower: (number | null)[];
   };
+  /** chip-controls-v2: N 日聚合區間 highlight。null = 不渲染。
+   *  startIdx/endIdx 對應目前 sliced candles 的 index 範圍。 */
+  rangeBand?: RangeBand | null;
 }
 
 export const KlineChartSvg = memo(KlineChartSvgImpl);
@@ -147,6 +151,7 @@ function KlineChartSvgImpl({
   hoverY, onHoverY,
   selectedIndex, onClickIndex,
   ma5Override, ma20Override, bbOverride,
+  rangeBand,
 }: KlineChartProps) {
   if (candles.length === 0) return null;
 
@@ -325,6 +330,25 @@ function KlineChartSvgImpl({
           </text>
         </g>
       ))}
+
+      {/* chip-controls-v2: N 日 range band — after grid, before volume.
+          Sits behind candles / BB / MA. Fill + left hairline; right edge is
+          painted by selectedIndex cursor later (rangeBand.endIdx === selectedIndex). */}
+      {rangeBand && (() => {
+        const { x, width: bandW } = rangeBandX(rangeBand, width, n, padL, padR);
+        return (
+          <g data-testid="kline-range-band" pointerEvents="none">
+            <rect
+              x={x} y={padT} width={bandW} height={chartH}
+              fill={t.ma5} fillOpacity={0.07} stroke="none"
+            />
+            <line
+              x1={x} y1={padT} x2={x} y2={padT + chartH}
+              stroke={t.ma5} strokeOpacity={0.45} strokeWidth={1}
+            />
+          </g>
+        );
+      })()}
 
       {/* volume separator */}
       <line
