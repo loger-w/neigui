@@ -218,14 +218,43 @@ export function ChipBrokersPanel({
         </div>
       )}
 
-      {/* F7: 主力買賣超 above 融資融券 (was below). F4 also removed the
-          right-side symbol/date header and 三大法人 block — that data lives
-          in the K-line sub-charts on the left. */}
+      {/* F7: 主力買賣超 above 融資融券. chip-controls-v3 (2026-06-29) brings
+          back 三大法人 N-day net between them — K-line subcharts no longer
+          carry the N-day range band, so the aggregate numbers belong here. */}
       <div className="px-3 py-2 border-b border-line flex items-center justify-between text-base">
         <span className="text-ink-dim">主力買賣超</span>
         <span className={`tabular-nums font-medium ${majorNet >= 0 ? "text-accent" : "text-bear"}`}>
           {majorNet > 0 ? "+" : ""}{fmtVol(majorNet)} 張
         </span>
+      </div>
+
+      <div
+        data-testid="panel-institutional"
+        className="px-3 py-2.5 border-b border-line"
+      >
+        <div className="text-sm text-ink-dim uppercase tracking-wider mb-2">三大法人</div>
+        <div className="grid grid-cols-3 gap-2 text-base">
+          {(
+            [
+              ["外資", "foreign", summary.institutional?.foreign?.net ?? 0],
+              ["投信", "trust", summary.institutional?.trust?.net ?? 0],
+              ["自營商", "dealer", summary.institutional?.dealer?.net ?? 0],
+            ] as const
+          ).map(([label, key, net]) => {
+            const cls = net > 0 ? "text-accent" : net < 0 ? "text-bear" : "text-ink-dim";
+            return (
+              <div key={key}>
+                <div className="text-ink-dim mb-0.5">{label}</div>
+                <div
+                  data-testid={`inst-${key}-net`}
+                  className={`tabular-nums font-medium ${cls}`}
+                >
+                  {net > 0 ? "+" : ""}{fmtVol(net)} 張
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <div className="px-3 py-2.5 border-b border-line">

@@ -171,21 +171,102 @@ describe("ChipBrokersPanel — N-day window header", () => {
 // (chip-controls-v2 2026-06-29) panel-window-frame describe deprecated —
 // 區間視覺改在 K 線上,panel 不再做左緣 accent 直條。對應實作 + testid 已移除。
 
-describe("ChipBrokersPanel F4 — symbol/date + 三大法人 removed", () => {
-  it("does NOT render 三大法人 block", () => {
+describe("ChipBrokersPanel — 三大法人 N-day net (chip-controls-v3)", () => {
+  // F4 (v0.16.0) removed 三大法人 block under the assumption that K-line
+  // subcharts cover that info. chip-controls-v3 brings it back into the
+  // panel because subcharts no longer carry the N-day range band — user
+  // needs aggregate net numbers visible alongside 主力買賣超.
+  const instSummary = (foreignNet: number, trustNet: number, dealerNet: number) =>
+    ({
+      symbol: "2330",
+      date: "2026-06-22",
+      fetched_at: "",
+      institutional: {
+        foreign: { buy: foreignNet > 0 ? foreignNet : 0, sell: foreignNet < 0 ? -foreignNet : 0, net: foreignNet },
+        trust: { buy: trustNet > 0 ? trustNet : 0, sell: trustNet < 0 ? -trustNet : 0, net: trustNet },
+        dealer: { buy: dealerNet > 0 ? dealerNet : 0, sell: dealerNet < 0 ? -dealerNet : 0, net: dealerNet },
+      },
+      margin: {
+        margin_purchase: { balance: 1000, change: 100, limit: 5000 },
+        short_sale: { balance: 200, change: -10, limit: 5000 },
+        short_balance_ratio: 20,
+      },
+      top_brokers: topBrokers,
+    }) as ChipSummary;
+
+  it("renders 外資 / 投信 / 自營商 net rows", () => {
     const { container } = render(
       <ChipBrokersPanel
-        summary={mkSummary(topBrokers)}
+        summary={instSummary(50000, -3000, 1234)}
         dayTotalLots={1000}
         selectedBrokerIds={new Set()}
         onToggleBroker={noop}
         onClearAllBrokers={noop}
+        windowDays={30}
       />,
     );
-    expect(container.textContent).not.toContain("三大法人");
-    expect(container.textContent).not.toContain("外資");
-    expect(container.textContent).not.toContain("投信");
-    expect(container.textContent).not.toContain("自營商");
+    const inst = container.querySelector("[data-testid=panel-institutional]");
+    expect(inst).toBeTruthy();
+    expect(inst!.textContent).toContain("外資");
+    expect(inst!.textContent).toContain("投信");
+    expect(inst!.textContent).toContain("自營商");
+    // Net values formatted with thousand separators + sign
+    expect(inst!.textContent).toContain("+50,000");
+    expect(inst!.textContent).toContain("-3,000");
+    expect(inst!.textContent).toContain("+1,234");
+  });
+
+  it("positive net uses bull color (台股紅), negative uses bear (綠)", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={instSummary(50000, -3000, 0)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        windowDays={1}
+      />,
+    );
+    const inst = container.querySelector("[data-testid=panel-institutional]")!;
+    const foreignVal = inst.querySelector("[data-testid=inst-foreign-net]");
+    const trustVal = inst.querySelector("[data-testid=inst-trust-net]");
+    expect(foreignVal!.className).toContain("accent"); // bull = accent
+    expect(trustVal!.className).toContain("bear");
+  });
+
+  it("zero net renders as 0 with neutral color", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={instSummary(0, 0, 0)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        windowDays={1}
+      />,
+    );
+    const inst = container.querySelector("[data-testid=panel-institutional]")!;
+    const dealerVal = inst.querySelector("[data-testid=inst-dealer-net]");
+    expect(dealerVal!.textContent).toContain("0");
+  });
+
+  it("appears BEFORE 融資融券 in DOM order", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={instSummary(100, 200, 300)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        windowDays={30}
+      />,
+    );
+    const html = container.innerHTML;
+    const instIdx = html.indexOf("外資");
+    const marginIdx = html.indexOf("融資融券");
+    expect(instIdx).toBeGreaterThan(-1);
+    expect(marginIdx).toBeGreaterThan(-1);
+    expect(instIdx).toBeLessThan(marginIdx);
   });
 
   it("does NOT render the top-level symbol+date header", () => {
