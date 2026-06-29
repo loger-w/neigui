@@ -105,9 +105,12 @@ def test_naive_last_tick_treated_as_tpe() -> None:
 
 
 def test_pre_open_lag_value_locked() -> None:
-    """v3 B2: 鎖住 doctest 範例 literal 值,避免 spec / impl 漂移。
-    週一 08:50 vs 上週五 13:30 → lag = 19h20m = 69600。"""
+    """v3 B2 / Phase 4 R9 修:
+    週一 08:50 vs 上週五 13:30(真實 Friday = 2026-06-26)→
+    lag = 約 67h20m = 242400s。"""
     now = datetime(2026, 6, 29, 8, 50, tzinfo=TPE_TZ)
-    last_tick = datetime(2026, 6, 28, 13, 30, tzinfo=TPE_TZ)
+    # 2026-06-26 是上週五 (2026-06-29 為週一);原 2026-06-28 為 Sunday
+    last_tick = datetime(2026, 6, 26, 13, 30, tzinfo=TPE_TZ)
     _, lag = is_in_session(now, last_tick)
-    assert lag == 69600
+    # 67h20m = 242400
+    assert lag == 242400

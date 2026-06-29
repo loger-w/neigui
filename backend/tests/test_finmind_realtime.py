@@ -254,6 +254,18 @@ def test_max_tick_date_empty_returns_none() -> None:
     assert _max_tick_date([]) is None
 
 
+def test_max_tick_date_z_suffix_converts_utc_to_tpe() -> None:
+    """Phase 4 R2: 帶 Z 尾的 ISO 視為 UTC,轉成 TPE 時間(+8h)。"""
+    from services.trading_session import TPE_TZ
+
+    universe = [{"date": "2026-06-29T05:00:00Z", "stock_id": "X"}]
+    ts = _max_tick_date(universe)
+    assert ts is not None
+    # UTC 05:00 → TPE 13:00
+    assert ts.tzinfo is not None
+    assert ts.astimezone(TPE_TZ).hour == 13
+
+
 # --------------------------------------------------------------------------
 # fetch_market_snapshot integration (SC-1 / E7)
 # --------------------------------------------------------------------------
@@ -298,3 +310,61 @@ async def test_fetch_market_snapshot_all_fail_raises_unreachable() -> None:
                new=AsyncMock(side_effect=RuntimeError("upstream down"))):
         with pytest.raises(ValueError, match="finmind_unreachable"):
             await fetch_market_snapshot(refresh=False)
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_stale_false_when_only_sector_fetch_fails() -> None:
+    """Phase 4 R3: universe ok + sector_map fail → stale=False
+    (daily-cache miss 不該誤報 intraday stale banner)。"""
+    fake_universe = [{
+        "stock_id": "2330", "open": 2300, "high": 2400, "low": 2300,
+        "close": 2390, "change_rate": 1.92, "total_amount": 36e9,
+        "volume_ratio": 1.14, "date": "2026-06-29 10:30:00.123456",
+    }]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(side_effect=RuntimeError("daily fail"))), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})):
+        result = await fetch_market_snapshot(refresh=False)
+    assert result["stale"] is False
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_stale_true_when_universe_fails_with_cache() -> None:
+    """Phase 4 R3: universe fail + 有 disk cache 兜底 → stale=True 真實警示。"""
+    # 直接 prime disk cache
+    from services.finmind_realtime import _write_cache
+    fake_universe = [{
+        "stock_id": "2330", "close": 2390, "change_rate": 1.92,
+        "total_amount": 36e9, "volume_ratio": 1.14,
+        "date": "2026-06-29 10:30:00.123456",
+    }]
+    _write_cache("realtime_universe", {
+        "rows": fake_universe, "fetched_at": "2026-06-29T10:30:00+08:00",
+    })
+    # universe fail,disk cache 兜底
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(side_effect=RuntimeError("blip"))), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=[])), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={})):
+        result = await fetch_market_snapshot(refresh=False)
+    assert result["stale"] is True
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_refresh_propagates_to_all_three_fetchers() -> None:
+    """Phase 4 R4: refresh=True 帶到 universe / sector / market_value 三個 fetcher。"""
+    u_mock = AsyncMock(return_value=[])
+    s_mock = AsyncMock(return_value=[])
+    m_mock = AsyncMock(return_value={})
+    with patch("services.finmind_realtime._fetch_universe", new=u_mock), \
+         patch("services.finmind_realtime._fetch_sector_map", new=s_mock), \
+         patch("services.finmind_realtime._fetch_market_value_map", new=m_mock):
+        await fetch_market_snapshot(refresh=True)
+    u_mock.assert_awaited_once_with(True)
+    s_mock.assert_awaited_once_with(refresh=True)
+    m_mock.assert_awaited_once_with(refresh=True)

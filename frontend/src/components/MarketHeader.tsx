@@ -21,6 +21,9 @@ export function MarketHeader({
     : isTradingSession
       ? "盤中"
       : "已收盤";
+  // Phase 4 R7: lag pill 只在「盤中」有意義,!isTradingSession 時(已收盤 /
+  // 假日 / 開盤前)隱藏,避免 "1080 分鐘" 這種無意義的數字。
+  const showLagPill = isTradingSession && lagSeconds != null;
   const lagLabel = lagSeconds == null
     ? "—"
     : lagSeconds < 30
@@ -44,9 +47,11 @@ export function MarketHeader({
           {sessionLabel}
           {lastUpdated && ` · ${formatTime(lastUpdated)}`}
         </span>
-        <span className={cn("text-xs px-2 py-0.5 rounded", lagPillColor)}>
-          {lagLabel}
-        </span>
+        {showLagPill && (
+          <span className={cn("text-xs px-2 py-0.5 rounded", lagPillColor)}>
+            {lagLabel}
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-2">
         {isStale && (

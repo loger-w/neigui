@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from services.finmind import get_finmind
@@ -117,6 +117,11 @@ def _dedup_sector_map(rows: list[dict]) -> dict[str, str]:
     2. filter type in ("twse", "tpex")
     3. stable two-pass sort: (industry_category ASC), (date DESC)
     4. 取 first row per stock_id
+
+    R10(Phase 4 review):當 same-date 多 row 走 tie-breaker 用 Unicode
+    codepoint ASC 排,可能挑出非直覺 sector(e.g. 「光電業」codepoint <
+    「電子工業」,即使 user 更熟悉後者)。短期 10 個 override 覆蓋台股
+    top 權值股;Phase 0b-2 probe 後擴 override table 或改 strategy。
     """
     out: dict[str, str] = {}
     filtered = [r for r in rows if r.get("type") in ("twse", "tpex")]
@@ -144,7 +149,12 @@ def _dedup_sector_map(rows: list[dict]) -> dict[str, str]:
 
 
 def _max_tick_date(universe: list[dict]) -> datetime | None:
-    """Parse universe[].date (ISO string) → max datetime; None if empty."""
+    """Parse universe[].date (ISO string) → max datetime; None if empty.
+
+    R2(Phase 4 review):若 raw 帶 'Z' 尾(UTC ISO),先 parse 為 aware UTC
+    再 astimezone(TPE_TZ),避免 strip Z 後當 naive→ is_in_session 視為 TPE
+    而產生 8h skew(CLAUDE.md §9 timezone trap)。
+    """
     if not universe:
         return None
     parsed: list[datetime] = []
@@ -153,9 +163,15 @@ def _max_tick_date(universe: list[dict]) -> datetime | None:
         if not raw:
             continue
         try:
-            # Accept both "YYYY-MM-DD HH:MM:SS.ffffff" and "YYYY-MM-DDTHH:MM:SS"
-            cleaned = str(raw).replace("T", " ").rstrip("Z")
-            parsed.append(datetime.fromisoformat(cleaned))
+            s = str(raw).replace("T", " ")
+            has_z = s.endswith("Z")
+            if has_z:
+                s = s[:-1]
+            dt = datetime.fromisoformat(s)
+            if has_z:
+                # 標記 UTC → 拉到 TPE 時間
+                dt = dt.replace(tzinfo=timezone.utc).astimezone(TPE_TZ)
+            parsed.append(dt)
         except ValueError:
             continue
     if not parsed:
@@ -286,12 +302,17 @@ async def _fetch_universe(refresh: bool = False) -> list[dict]:
     return rows
 
 
-async def _fetch_sector_map() -> list[dict]:
-    """Call FinMind /data?dataset=TaiwanStockInfo;cache 24 h on disk."""
+async def _fetch_sector_map(refresh: bool = False) -> list[dict]:
+    """Call FinMind /data?dataset=TaiwanStockInfo;cache 24 h on disk.
+
+    R4(Phase 4 review):refresh=True 跳 cache 重抓,對齊 CLAUDE.md §4
+    `?refresh=true` 慣例(half-honored before)。
+    """
     cache_key = "realtime_sector_map"
-    cached = _read_cache(cache_key)
-    if cached is not None and _is_fresh(cached, _SECTOR_MAP_TTL_HOURS * 3600):
-        return cached.get("rows", [])
+    if not refresh:
+        cached = _read_cache(cache_key)
+        if cached is not None and _is_fresh(cached, _SECTOR_MAP_TTL_HOURS * 3600):
+            return cached.get("rows", [])
     client = get_finmind()
     rows = await client._get(  # type: ignore[attr-defined]
         f"{_FINMIND_BASE}/data",
@@ -304,13 +325,20 @@ async def _fetch_sector_map() -> list[dict]:
     return rows
 
 
-async def _fetch_market_value_map(today: date | None = None) -> dict[str, int]:
+async def _fetch_market_value_map(
+    today: date | None = None,
+    refresh: bool = False,
+) -> dict[str, int]:
     """Call FinMind /data?dataset=TaiwanStockMarketValue with start=end=T-1.
-    Return dict[stock_id, market_value]."""
+    Return dict[stock_id, market_value]。
+
+    R4(Phase 4 review):refresh=True 跳 cache 重抓。
+    """
     cache_key = "realtime_market_value"
-    cached = _read_cache(cache_key)
-    if cached is not None and _is_fresh(cached, _MARKET_VALUE_TTL_HOURS * 3600):
-        return cached.get("by_id", {})
+    if not refresh:
+        cached = _read_cache(cache_key)
+        if cached is not None and _is_fresh(cached, _MARKET_VALUE_TTL_HOURS * 3600):
+            return cached.get("by_id", {})
     if today is None:
         today = date.today()
     # T-1 calendar day (簡化版 — Phase 0b 若需更精確改 trading_calendar)
@@ -360,15 +388,17 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     # Parallel fetch — return_exceptions=True so partial failure → stale fallback
     results = await asyncio.gather(
         _fetch_universe(refresh),
-        _fetch_sector_map(),
-        _fetch_market_value_map(),
+        _fetch_sector_map(refresh=refresh),
+        _fetch_market_value_map(refresh=refresh),
         return_exceptions=True,
     )
     universe_res, sector_res, mv_res = results
 
-    # If any failed:try stale fallback
-    failures = [r for r in results if isinstance(r, BaseException)]
-    stale = bool(failures)
+    # R3(Phase 4 review):stale 只反映「即時行情」是否新鮮(=universe),
+    # daily cache 失效不該誤觸發 frontend 黃色 banner。daily fetch fail 仍
+    # 走 disk cache fallback,只是 sector/mv 可能是 24 小時前的值 — 對使用者
+    # 視覺體驗無感。
+    stale = isinstance(universe_res, BaseException)
 
     if isinstance(universe_res, BaseException):
         cached = _read_cache("realtime_universe")
