@@ -1,5 +1,6 @@
 import type {
   ChipSummary, ChipBubbleData, ChipHistory, ChipBrokerHistory, ChipBrokersWindow,
+  ChipIntraday,
 } from "./chip-data";
 
 const BASE = "/api";
@@ -155,6 +156,12 @@ export const api = {
     if (date) params.date = date;
     if (refresh) params.refresh = "true";
     return get(`${BASE}/chip/${symbol}/bubble`, params);
+  },
+  chipIntraday(symbol: string, date?: string, refresh?: boolean): Promise<ChipIntraday> {
+    const params: Record<string, string> = {};
+    if (date) params.date = date;
+    if (refresh) params.refresh = "true";
+    return get(`${BASE}/chip/${symbol}/intraday`, params);
   },
   chipHistory: chipHistoryImpl as ChipHistoryFn,
   chipHistoryBase: chipHistoryBaseImpl,

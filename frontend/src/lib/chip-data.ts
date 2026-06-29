@@ -79,6 +79,18 @@ export interface ChipBubbleData {
   trades: BrokerTrade[];
 }
 
+export interface IntradayPoint {
+  t: string;
+  price: number;
+}
+
+export interface ChipIntraday {
+  symbol: string;
+  date: string;
+  fetched_at: string;
+  points: IntradayPoint[];
+}
+
 export interface DailyCandle {
   date: string;
   open: number;
