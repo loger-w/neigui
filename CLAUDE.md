@@ -113,28 +113,41 @@ docs/specs/          spec / plan(規格優先看這)
 
 ## 7. 版本管理慣例
 
-User-facing changelog 在 `frontend/src/lib/changelog.ts`,前端 top bar 右側 `v0.x` badge 點開即顯示。**每次 commit / PR 前必須討論一次**:本次改動要:
-- **(a) 累加** 到當前最新 v0.x 的 `changes` 陣列,或
-- **(b) bump** 到 v0.(x+1) 開新條目(`{ version, date, highlights, changes: [...] }`)
+User-facing changelog 在 `frontend/src/lib/changelog.ts`,前端 top bar 右側 `v0.x.y` badge 點開即顯示。版本字串遵循 **SemVer 2.0.0 三段式** `MAJOR.MINOR.PATCH`(2026-06-29 deep-research 21 條 verified claim 為基礎)。
 
-判準:
+### Pre-1.0 階段(0.x.y)bump 規則
 
-| 情境 | 動作 |
-|---|---|
-| 順手小修、未獨立發布的 WIP、單條補丁 | 累加 |
-| 完成一個對使用者可感的獨立功能 | bump |
-| 修一個影響使用體驗的 bug | bump |
-| 一系列相關 commit 收尾(/feat 流程 Phase 8) | bump |
-| 純內部 refactor / 測試補強 / 文件 | 通常不入 changelog,如要入則累加 |
+| 變動類型 | bump 位 | 範例 |
+|---|---|---|
+| 使用者可感的新功能(新 panel / 新指標 / 新分析模式 / 新資料源) | **MINOR** | `0.14.0` → `0.15.0` |
+| 使用者可感的 UX / 視覺改動(layout 大改、popover redesign) | **MINOR** | `0.13.0` → `0.14.0` |
+| 影響體驗的 bug fix(使用者會抱怨的) | **PATCH** | `0.14.0` → `0.14.1` |
+| 非關鍵 bug / 性能改進(使用者可感受) | **PATCH** | cache 加速、回應更穩 |
+| Breaking change(pre-1.0 階段) | **MINOR**(per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定) | API 重命名 |
+| 純內部 refactor / 測試補強 / 文件 | **不入 changelog** | refactor 不算 release |
+| 真正 production-ready 宣告 | **MAJOR → 1.0.0**(由 user 自行決定發布時點) | — |
 
-實作要求:
-- changelog 條目 `scope` 三選一:`equity` / `options` / `global`,**不要混用** `prop` 或自由文字
+### 每次 commit / PR 前
+
+判斷本次改動屬於哪一格,**新增 VersionEntry 條目**(最新放陣列 index 0):
+- 同一 ship event 多 commit 收尾 → 一個新 entry,date = 最後 commit 日期
+- Hotfix 一個既有 release → 新 entry,bump PATCH(`0.14.0` → `0.14.1`)
+- Refactor 不入 changelog,除非伴隨 user-visible 變動則合併到該變動的 entry
+
+### 撰寫 change item 規則
+
+- `kind` 二選一:`feature`(新功能 / 新視覺)或 `fix`(影響體驗的修正)
+- `scope` 三選一:`equity` / `options` / `global`,**不要混用** `prop` 或自由文字
 - `date` 用 `YYYY-MM-DD`(同專案其他 date 慣例)
-- `text` 一句話描述使用者看得懂的內容,**不寫實作細節**(壞:「refactor brokers_window cache key」/ 好:「N 日券商窗冷啟動加速」)
-- 提交 message body 註明對應版本動作,例 `chore(changelog): bump v0.1 → v0.2 for chip framework`
-- 起始版本為 v0.1。**v1 留給 user 自行決定發布時點**
+- `text` 一句話 user-facing,**不寫實作細節 / 工程術語**:
+  - 壞:「refactor brokers_window cache key」、「permutation 相關係數」、「T-1 look-ahead」、「fallback 行為」、「資料載入吞吐提升」
+  - 好:「N 日券商窗冷啟動加速」、「附歷史相關性」、「結算前一交易日資料」、「資料缺漏時改用最近可用日期」、「資料載入更快」
 
-不在此次自動化驗證強制,屬 PR 流程紀律(類似 commit message convention)。
+### 1.0.0 升級標準
+
+SemVer FAQ 建議「production use 或 stable consumed API」。本專案無外部 API consumer,1.0.0 留給 user 自行宣告「日常依賴」的時點。
+
+不在自動化驗證強制,屬 PR 流程紀律(類似 commit message convention)。
 
 ---
 

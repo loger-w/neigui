@@ -8,16 +8,16 @@ import {
 } from "./changelog";
 
 describe("deriveCurrentVersion", () => {
-  it("回傳空陣列時的 fallback '0.0'", () => {
-    expect(deriveCurrentVersion([])).toBe("0.0");
+  it("回傳空陣列時的 fallback '0.0.0'(SemVer 三段式)", () => {
+    expect(deriveCurrentVersion([])).toBe("0.0.0");
   });
 
   it("取第一筆 entry 的 version", () => {
     const entries: VersionEntry[] = [
-      { version: "0.2", date: "2026-07-01", changes: [] },
-      { version: "0.1", date: "2026-06-29", changes: [] },
+      { version: "0.2.0", date: "2026-07-01", changes: [] },
+      { version: "0.1.0", date: "2026-06-29", changes: [] },
     ];
-    expect(deriveCurrentVersion(entries)).toBe("0.2");
+    expect(deriveCurrentVersion(entries)).toBe("0.2.0");
   });
 });
 
@@ -31,31 +31,29 @@ describe("CHANGELOG invariants", () => {
   });
 
   it("CURRENT_VERSION 等於 CHANGELOG[0].version(value-based)", () => {
-    expect(CURRENT_VERSION).toBe(CHANGELOG[0]?.version ?? "0.0");
-  });
-});
-
-describe("v0.1 seed", () => {
-  it("CHANGELOG 第一筆是 v0.1", () => {
-    expect(CHANGELOG[0]?.version).toBe("0.1");
+    expect(CURRENT_VERSION).toBe(CHANGELOG[0]?.version ?? "0.0.0");
   });
 
-  it("v0.1 包含至少 4 條 changes", () => {
-    expect(CHANGELOG[0]?.changes.length).toBeGreaterThanOrEqual(4);
+  it("所有 version 字串符合 SemVer 三段式 MAJOR.MINOR.PATCH", () => {
+    const semverRe = /^\d+\.\d+\.\d+$/;
+    for (const v of CHANGELOG) {
+      expect(semverRe.test(v.version)).toBe(true);
+    }
   });
 
-  it("v0.1 changes 包含『版本資訊面板』相關條目", () => {
-    const v01 = CHANGELOG[0]!;
-    const hit = v01.changes.some((c) => c.text.includes("版本資訊面板"));
+  it("CHANGELOG 至少含 14 個歷史版本(retroactive 上線)", () => {
+    expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
+  });
+
+  it("最新版本是 v0.14.0(版本資訊面板上線)", () => {
+    expect(CHANGELOG[0]?.version).toBe("0.14.0");
+  });
+
+  it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
+    const hit = CHANGELOG.some((v) =>
+      v.changes.some((c) => c.text.includes("版本資訊面板")),
+    );
     expect(hit).toBe(true);
-  });
-
-  it("v0.1 changes 涵蓋近期至少 3 個既有主功能(SC-3 keywords)", () => {
-    const v01 = CHANGELOG[0]!;
-    const texts = v01.changes.map((c) => c.text).join("|");
-    const keywords = ["Max Pain", "Bollinger", "券商窗", "鍵盤"];
-    const hits = keywords.filter((k) => texts.includes(k));
-    expect(hits.length).toBeGreaterThanOrEqual(3);
   });
 
   it("每條 change 的 kind 屬於 feature / fix,scope 屬於 equity / options / global", () => {
@@ -67,6 +65,16 @@ describe("v0.1 seed", () => {
         expect(scopes.has(c.scope)).toBe(true);
       }
     }
+  });
+
+  it("覆蓋 equity / options / global 三 scope", () => {
+    const seen = new Set<string>();
+    for (const v of CHANGELOG) {
+      for (const c of v.changes) seen.add(c.scope);
+    }
+    expect(seen.has("equity")).toBe(true);
+    expect(seen.has("options")).toBe(true);
+    expect(seen.has("global")).toBe(true);
   });
 });
 
