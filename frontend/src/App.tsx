@@ -3,6 +3,7 @@ import { SymbolSearch } from "./components/SymbolSearch";
 import { ChipBrokersPanel } from "./components/ChipBrokersPanel";
 import { ChipKlineChart } from "./components/ChipKlineChart";
 import { DateField } from "./components/ui/date-field";
+import { TradingDayStepper } from "./components/ui/TradingDayStepper";
 import {
   RangeSelector,
   WINDOW_DAYS_MIN,
@@ -17,8 +18,9 @@ import { useChipBrokersWindow } from "./hooks/useChipBrokersWindow";
 import { ModeSwitch, type Mode } from "./components/ModeSwitch";
 import { VersionBadge } from "./components/VersionBadge";
 import type { ChipSummary } from "./lib/chip-data";
+import { prevTradingDay, nextTradingDay } from "./lib/trading-days";
 
-const DEFAULT_WINDOW_DAYS: WindowDays = 30;
+const DEFAULT_WINDOW_DAYS: WindowDays = 1;
 
 function readStoredWindowDays(): WindowDays {
   const raw = localStorage.getItem("chip_window_days");
@@ -209,6 +211,41 @@ export default function App() {
     return c?.close ?? history?.candles?.[history.candles.length - 1]?.close;
   }, [history, date]);
 
+  // chip-date-controls (2026-06-29): trading-day stepper wiring.
+  // tradingDays is derived from K-line candles (already fetched, ~360 days);
+  // effectiveMax caps "next" at min(today, last candle) so the user cannot
+  // page into the future and trigger a 422 / no-data response.
+  const tradingDays = useMemo(
+    () => history?.candles.map((c) => c.date) ?? [],
+    [history],
+  );
+  const effectiveMax = useMemo(() => {
+    if (tradingDays.length === 0) return todayStr();
+    const lastCandle = tradingDays[tradingDays.length - 1]!;
+    const t = todayStr();
+    return lastCandle < t ? lastCandle : t;
+  }, [tradingDays]);
+  const prevDisabled =
+    !symbol ||
+    tradingDays.length === 0 ||
+    date <= (tradingDays[0] ?? "");
+  const nextDisabled =
+    !symbol ||
+    tradingDays.length === 0 ||
+    date >= effectiveMax;
+  const handlePrevDay = useCallback(() => {
+    const target = prevTradingDay(date, tradingDays);
+    if (target === null) return;
+    userPickedDate.current = true;
+    setDate(target);
+  }, [date, tradingDays]);
+  const handleNextDay = useCallback(() => {
+    const target = nextTradingDay(date, tradingDays, effectiveMax);
+    if (target === null) return;
+    userPickedDate.current = true;
+    setDate(target);
+  }, [date, tradingDays, effectiveMax]);
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <div className="shrink-0 flex items-center border-b border-line bg-bg">
@@ -233,11 +270,24 @@ export default function App() {
               {symbolName && <span className="text-ink-muted">{symbolName}</span>}
             </div>
           )}
-          <DateField
-            value={date}
-            aria-label="選擇日期"
-            onChange={(e) => { userPickedDate.current = true; setDate(e.target.value); }}
-          />
+          <div className="inline-flex items-stretch gap-px">
+            <TradingDayStepper
+              direction="prev"
+              disabled={prevDisabled}
+              onClick={handlePrevDay}
+            />
+            <DateField
+              value={date}
+              aria-label="選擇日期"
+              snapToDates={tradingDays}
+              onChange={(e) => { userPickedDate.current = true; setDate(e.target.value); }}
+            />
+            <TradingDayStepper
+              direction="next"
+              disabled={nextDisabled}
+              onClick={handleNextDay}
+            />
+          </div>
           <RangeSelector
             value={windowDays}
             onChange={setWindowDays}

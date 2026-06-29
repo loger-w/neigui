@@ -172,10 +172,15 @@ export function ChipBrokersPanel({
   const netHeaderCols = "grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]";
   const volHeaderCols = "grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
 
+  const isMultiDay = windowDays !== undefined && windowDays > 1;
+
   return (
     <div
-      className="h-full flex flex-col overflow-hidden"
+      className={`h-full flex flex-col overflow-hidden ${
+        isMultiDay ? "border-l-2 border-accent/60" : ""
+      }`}
       aria-busy={loading || undefined}
+      data-testid={isMultiDay ? "panel-window-frame" : undefined}
     >
       {/* Cluster B 🟢: localized loading indicator — a 2 px-tall scanning
           accent bar shown while a refetch is in flight. The outer wrapper is
@@ -198,13 +203,24 @@ export function ChipBrokersPanel({
       {windowDays !== undefined && (
         <div
           data-testid="window-header"
-          className="px-3 py-1.5 border-b border-line text-xs text-ink-dim bg-bg-deep/40 flex items-baseline gap-1.5"
+          className={`px-3 py-1.5 border-b border-line text-xs text-ink-dim flex items-baseline gap-1.5 ${
+            isMultiDay ? "bg-bg-deep" : "bg-bg-deep/40"
+          }`}
         >
-          <span>過去</span>
-          <span className="text-ink-muted tabular-nums">{windowDays}</span>
-          <span>日加總</span>
-          {actualDays !== undefined && actualDays < windowDays && (
-            <span className="text-accent">(實際 {actualDays} 日)</span>
+          {windowDays === 1 ? (
+            <>
+              <span>當日</span>
+              <span className="text-ink-muted tabular-nums">{summary.date}</span>
+            </>
+          ) : (
+            <>
+              <span>過去</span>
+              <span className="text-ink-muted tabular-nums">{windowDays}</span>
+              <span>日加總</span>
+              {actualDays !== undefined && actualDays < windowDays && (
+                <span className="text-accent">(實際 {actualDays} 日)</span>
+              )}
+            </>
           )}
         </div>
       )}
