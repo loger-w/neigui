@@ -409,7 +409,6 @@ export function ChipKlineChart({
             data={majorNet} width={w} height={subH}
             label="主力買賣超" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
-            rangeBand={rangeBand}
           />
         )}
         {majorLoading && subH > 0 && (
@@ -437,7 +436,6 @@ export function ChipKlineChart({
             data={foreignNet} width={w} height={subH}
             label="外資" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
-            rangeBand={rangeBand}
           />
         )}
       </div>
@@ -447,7 +445,6 @@ export function ChipKlineChart({
             data={trustNet} width={w} height={subH}
             label="投信" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
-            rangeBand={rangeBand}
           />
         )}
       </div>
@@ -457,7 +454,6 @@ export function ChipKlineChart({
             data={dealerNet} width={w} height={subH}
             label="自營商" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
-            rangeBand={rangeBand}
           />
         )}
       </div>
@@ -476,7 +472,6 @@ export function ChipKlineChart({
             label="融資融券"
             hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
-            rangeBand={rangeBand}
           />
         )}
       </div>
@@ -493,7 +488,6 @@ export function ChipKlineChart({
               label={`分點 (${selectedBrokerIds.size})`}
               hoverIndex={hoverIndex}
               selectedIndex={selectedIndex}
-              rangeBand={rangeBand}
             />
           )}
           <button

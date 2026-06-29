@@ -6,7 +6,6 @@
 import { memo } from "react";
 import { CHIP } from "./chip-theme";
 import { KLINE_PAD_L, KLINE_PAD_R } from "./chip-kline-svg";
-import { rangeBandX, type RangeBand } from "./chip-range-band";
 
 // -- theme constants (from shared chip-theme) --
 const BULL = CHIP.bull;
@@ -42,8 +41,6 @@ export interface InstBarProps {
   label?: string;
   hoverIndex?: number | null;
   selectedIndex?: number | null;
-  /** chip-controls-v2: N 日聚合區間 highlight。null = 不渲染。 */
-  rangeBand?: RangeBand | null;
 }
 
 export const InstBarSvg = memo(function InstBarSvg({
@@ -53,7 +50,6 @@ export const InstBarSvg = memo(function InstBarSvg({
   label,
   hoverIndex,
   selectedIndex,
-  rangeBand,
 }: InstBarProps) {
   if (data.length === 0) {
     return (
@@ -86,17 +82,6 @@ export const InstBarSvg = memo(function InstBarSvg({
 
   return (
     <svg width={width} height={height}>
-      {/* chip-controls-v2: N 日 range band */}
-      {rangeBand && (() => {
-        const { x, width: bandW } = rangeBandX(rangeBand, width, data.length, KLINE_PAD_L, KLINE_PAD_R);
-        return (
-          <g data-testid="subchart-range-band" pointerEvents="none">
-            <rect x={x} y={0} width={bandW} height={height} fill={CHIP.ma5} fillOpacity={0.07} stroke="none" />
-            <line x1={x} y1={0} x2={x} y2={height} stroke={CHIP.ma5} strokeOpacity={0.45} strokeWidth={1} />
-          </g>
-        );
-      })()}
-
       {/* zero line */}
       <line
         x1={KLINE_PAD_L}
@@ -168,8 +153,6 @@ export interface MarginLineProps {
   label?: string;
   hoverIndex?: number | null;
   selectedIndex?: number | null;
-  /** chip-controls-v2: N 日聚合區間 highlight。null = 不渲染。 */
-  rangeBand?: RangeBand | null;
 }
 
 export const MarginLineSvg = memo(function MarginLineSvg({
@@ -182,7 +165,6 @@ export const MarginLineSvg = memo(function MarginLineSvg({
   label,
   hoverIndex,
   selectedIndex,
-  rangeBand,
 }: MarginLineProps) {
   const len = Math.max(marginData.length, shortData.length);
   if (len === 0) {
@@ -228,17 +210,6 @@ export const MarginLineSvg = memo(function MarginLineSvg({
 
   return (
     <svg width={width} height={height}>
-      {/* chip-controls-v2: N 日 range band */}
-      {rangeBand && (() => {
-        const { x, width: bandW } = rangeBandX(rangeBand, width, len, KLINE_PAD_L, KLINE_PAD_R);
-        return (
-          <g data-testid="subchart-range-band" pointerEvents="none">
-            <rect x={x} y={0} width={bandW} height={height} fill={CHIP.ma5} fillOpacity={0.07} stroke="none" />
-            <line x1={x} y1={0} x2={x} y2={height} stroke={CHIP.ma5} strokeOpacity={0.45} strokeWidth={1} />
-          </g>
-        );
-      })()}
-
       {/* zero reference line (clamped to plot area) */}
       {yMin <= 0 && yMax >= 0 && (
         <line

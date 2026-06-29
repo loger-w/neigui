@@ -7,7 +7,6 @@ import { memo } from "react";
 import { CHIP } from "./chip-theme";
 import { KLINE_PAD_L, KLINE_PAD_R } from "./chip-kline-svg";
 import { instBarHeight } from "./chip-inst-bar-svg";
-import { rangeBandX, type RangeBand } from "./chip-range-band";
 
 const BULL = CHIP.bull;
 const BEAR = CHIP.bear;
@@ -28,12 +27,10 @@ export interface BrokerAggBarProps {
   label: string;
   hoverIndex?: number | null;
   selectedIndex?: number | null;
-  /** chip-controls-v2: N 日聚合區間 highlight。null = 不渲染。 */
-  rangeBand?: RangeBand | null;
 }
 
 export const BrokerAggBarSvg = memo(function BrokerAggBarSvg({
-  data, width, height, label, hoverIndex, selectedIndex, rangeBand,
+  data, width, height, label, hoverIndex, selectedIndex,
 }: BrokerAggBarProps) {
   const midY = height / 2;
   const halfH = midY - 2;
@@ -54,17 +51,6 @@ export const BrokerAggBarSvg = memo(function BrokerAggBarSvg({
 
   return (
     <svg width={width} height={height}>
-      {/* chip-controls-v2: N 日 range band */}
-      {rangeBand && data.length > 0 && (() => {
-        const { x, width: bandW } = rangeBandX(rangeBand, width, data.length, KLINE_PAD_L, KLINE_PAD_R);
-        return (
-          <g data-testid="subchart-range-band" pointerEvents="none">
-            <rect x={x} y={0} width={bandW} height={height} fill={CHIP.ma5} fillOpacity={0.07} stroke="none" />
-            <line x1={x} y1={0} x2={x} y2={height} stroke={CHIP.ma5} strokeOpacity={0.45} strokeWidth={1} />
-          </g>
-        );
-      })()}
-
       <line
         x1={KLINE_PAD_L} x2={width - KLINE_PAD_R}
         y1={midY} y2={midY}
