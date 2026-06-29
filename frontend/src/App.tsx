@@ -54,6 +54,10 @@ const OptionsPage = lazy(() =>
   import("./components/OptionsPage").then((m) => ({ default: m.OptionsPage })),
 );
 
+const MarketPage = lazy(() =>
+  import("./components/MarketPage").then((m) => ({ default: m.MarketPage })),
+);
+
 type Tab = "overview" | "bubble";
 
 function todayStr(): string {
@@ -205,6 +209,13 @@ export default function App() {
     setSelectedBrokerIds(new Set());
     userPickedDate.current = false;
   };
+
+  // v3 C3 — 跨 mode pivot:reuse handlePick 確保 sibling state 全 reset
+  const handleSymbolPick = useCallback((sid: string) => {
+    setMode("equity");
+    handlePick(sid, null);
+     
+  }, []);
 
   const closePrice = useMemo(() => {
     const c = history?.candles.find((c) => c.date === date);
@@ -409,7 +420,7 @@ export default function App() {
         </div>
       </div>
       </div>
-      ) : (
+      ) : mode === "options" ? (
         <Suspense
           fallback={
             <div className="flex-1 flex items-center justify-center text-ink-dim text-sm">
@@ -418,6 +429,16 @@ export default function App() {
           }
         >
           <OptionsPage />
+        </Suspense>
+      ) : (
+        <Suspense
+          fallback={
+            <div className="flex-1 flex items-center justify-center text-ink-dim text-sm">
+              載入大盤掃描...
+            </div>
+          }
+        >
+          <MarketPage isActive={mode === "market"} onSymbolPick={handleSymbolPick} />
         </Suspense>
       )}
     </div>
