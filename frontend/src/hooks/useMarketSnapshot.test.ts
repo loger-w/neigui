@@ -69,7 +69,12 @@ describe("useMarketSnapshot", () => {
     const { result } = renderHook(() => useMarketSnapshot(true), {
       wrapper: makeQueryWrapper(),
     });
-    await waitFor(() => expect(result.current.error).toBe("finmind_unreachable"));
+    // hook 的 retry:1 + default exponential backoff(初始 1s,第 1 次重試後 2s)→
+    // 最差 case 約 3 秒 settle;waitFor default 1s 不足。
+    await waitFor(
+      () => expect(result.current.error).toBe("finmind_unreachable"),
+      { timeout: 5000 },
+    );
     expect(result.current.data).toBeNull();
   });
 
