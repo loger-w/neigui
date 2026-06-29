@@ -64,4 +64,71 @@ describe("DateField", () => {
     // Must carry the marker class so the index.css ::-webkit rule applies.
     expect(input.className).toContain("date-field-input");
   });
+
+  // --- snapToDates (chip-date-controls 2026-06-29) ---
+
+  it("snaps onChange value to the latest trading day when target is not a trading day", () => {
+    // user types Saturday 2026-06-27; snap to Friday 2026-06-26
+    let captured: string | undefined;
+    const onChange = vi.fn((e: React.ChangeEvent<HTMLInputElement>) => {
+      captured = e.target.value;
+    });
+    const { container } = render(
+      <DateField
+        value="2026-06-25"
+        snapToDates={["2026-06-24", "2026-06-25", "2026-06-26"]}
+        onChange={onChange}
+      />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "2026-06-27" } });
+    expect(onChange).toHaveBeenCalled();
+    expect(captured).toBe("2026-06-26");
+  });
+
+  it("passes raw value through when snapToDates is empty (W9: race noop)", () => {
+    let captured: string | undefined;
+    const onChange = vi.fn((e: React.ChangeEvent<HTMLInputElement>) => {
+      captured = e.target.value;
+    });
+    const { container } = render(
+      <DateField value="2026-06-25" snapToDates={[]} onChange={onChange} />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "2026-06-27" } });
+    expect(captured).toBe("2026-06-27");
+  });
+
+  it("does not wrap onChange when snapToDates is undefined (W2: OptionsHeader)", () => {
+    // W2 — without snapToDates DateField must remain pure-native;
+    // OptionsHeader depends on this to keep its raw onChange contract.
+    let captured: string | undefined;
+    const onChange = vi.fn((e: React.ChangeEvent<HTMLInputElement>) => {
+      captured = e.target.value;
+    });
+    const { container } = render(
+      <DateField value="2026-06-25" onChange={onChange} />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    // Saturday value — without snapToDates the DateField must forward verbatim
+    fireEvent.change(input, { target: { value: "2026-06-27" } });
+    expect(captured).toBe("2026-06-27");
+  });
+
+  it("forwards in-list value without snapping (idempotent)", () => {
+    let captured: string | undefined;
+    const onChange = vi.fn((e: React.ChangeEvent<HTMLInputElement>) => {
+      captured = e.target.value;
+    });
+    const { container } = render(
+      <DateField
+        value="2026-06-25"
+        snapToDates={["2026-06-24", "2026-06-25", "2026-06-26"]}
+        onChange={onChange}
+      />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "2026-06-24" } });
+    expect(captured).toBe("2026-06-24");
+  });
 });
