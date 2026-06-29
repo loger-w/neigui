@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.16.0",
+    date: "2026-06-29",
+    highlights: "日期切換更快,預設只看當日籌碼,要看區間自己挑",
+    changes: [
+      { kind: "feature", scope: "equity", text: "預設籌碼期間改為當日,要看更長期間可手動選 1 / 10 / 20 / 30 / 60 日" },
+      { kind: "feature", scope: "equity", text: "日期欄左右新增前/後一交易日按鈕,自動跳過週末與非交易日,未來日卡在當日" },
+      { kind: "feature", scope: "equity", text: "選到非交易日(週末等)時自動跳到最近的交易日,避免空資料" },
+      { kind: "feature", scope: "equity", text: "聚合多日籌碼時分點面板左緣顯示彩色邊條,一眼分辨當日 vs 區間加總" },
+    ],
+  },
+  {
     version: "0.15.0",
     date: "2026-06-29",
     highlights: "泡泡圖背景多了當日分時走勢線,看 bubble 落點時對齊股價形狀",

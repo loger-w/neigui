@@ -144,6 +144,75 @@ describe("ChipBrokersPanel — N-day window header", () => {
     const header = container.querySelector("[data-testid=window-header]");
     expect(header!.textContent).toContain("實際 7 日");
   });
+
+  // chip-date-controls 2026-06-29: windowDays=1 應顯「當日 YYYY-MM-DD」
+  // (取 summary.date),不應顯「過去 1 日加總」。
+  it("renders '當日 YYYY-MM-DD' when windowDays=1", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        windowDays={1}
+        actualDays={1}
+      />,
+    );
+    const header = container.querySelector("[data-testid=window-header]");
+    expect(header).toBeTruthy();
+    expect(header!.textContent).toContain("當日");
+    expect(header!.textContent).toContain("2026-06-22");
+    expect(header!.textContent).not.toContain("過去");
+    expect(header!.textContent).not.toContain("加總");
+  });
+});
+
+describe("ChipBrokersPanel — multi-day region framing (chip-date-controls)", () => {
+  // windowDays > 1 → panel 外層加 data-testid="panel-window-frame" 標記區域框;
+  // windowDays = 1 / undefined → 不出現該標記。視覺風格(色 / 寬)由實作決定。
+  it("renders the multi-day frame marker when windowDays > 1", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        windowDays={30}
+        actualDays={30}
+      />,
+    );
+    expect(container.querySelector("[data-testid=panel-window-frame]")).toBeTruthy();
+  });
+
+  it("does NOT render the multi-day frame marker when windowDays = 1", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        windowDays={1}
+        actualDays={1}
+      />,
+    );
+    expect(container.querySelector("[data-testid=panel-window-frame]")).toBeFalsy();
+  });
+
+  it("does NOT render the multi-day frame marker when windowDays is undefined (legacy)", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    expect(container.querySelector("[data-testid=panel-window-frame]")).toBeFalsy();
+  });
 });
 
 describe("ChipBrokersPanel F4 — symbol/date + 三大法人 removed", () => {
