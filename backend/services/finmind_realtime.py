@@ -1,0 +1,412 @@
+"""Market snapshot fetch + aggregate + leaderboard.
+
+Sibling to services/finmind.py — shares FinMindClient (HTTP / token /
+rate limiter) via get_finmind() but isolates its own cache version + TTL
+for the realtime universe / sector_map / market_value stream.
+
+Cache versions:
+- _CACHE_VERSION_REALTIME = 1
+
+TTLs:
+- universe snapshot: 5 s (intraday live)
+- sector_map: 24 h (TaiwanStockInfo 慢動)
+- market_value: 24 h (EOD 上一交易日值)
+
+design.md §5
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+from services.finmind import get_finmind
+from services.trading_session import TPE_TZ, is_in_session
+from utils.cache import atomic_write_json, chip_cache_dir, read_json
+
+logger = logging.getLogger(__name__)
+
+_FINMIND_BASE = "https://api.finmindtrade.com/api/v4"
+_CACHE_VERSION_REALTIME = 1
+_UNIVERSE_TTL_SECONDS = 5
+_SECTOR_MAP_TTL_HOURS = 24
+_MARKET_VALUE_TTL_HOURS = 24
+_HEATMAP_STOCKS_CAP_PER_SECTOR = 30  # v3 F8
+_LEADERBOARD_SIZE = 30
+
+_PRIMARY_INDUSTRY_OVERRIDE: dict[str, str] = {
+    "2330": "半導體業",
+    "2454": "半導體業",
+    "2317": "其他電子業",
+    "2308": "電子零組件業",
+    "2382": "電子工業",
+    "2412": "通信網路業",
+    "2882": "金融保險業",
+    "2891": "金融保險業",
+    "1216": "食品工業",
+    "1101": "水泥工業",
+}
+
+# Module-level inflight dedup (對齊 finmind.py:69 慣例)
+_inflight: dict[str, asyncio.Task] = {}
+
+
+# ---------------------------------------------------------------------------
+# Cache helpers
+# ---------------------------------------------------------------------------
+
+
+def _cache_path(key: str) -> Path:
+    return chip_cache_dir() / f"{key}.json"
+
+
+def _read_cache(key: str) -> dict | None:
+    p = _cache_path(key)
+    if not p.exists():
+        return None
+    data = read_json(p, default=None)
+    if data is None:
+        return None
+    if data.get("_cache_version") != _CACHE_VERSION_REALTIME:
+        return None
+    data.pop("_cache_version", None)
+    return data
+
+
+def _write_cache(key: str, payload: dict) -> None:
+    cached = {**payload, "_cache_version": _CACHE_VERSION_REALTIME}
+    atomic_write_json(_cache_path(key), cached)
+
+
+def _is_fresh(cached: dict, ttl_seconds: float) -> bool:
+    fetched_at = cached.get("fetched_at", "")
+    if not fetched_at:
+        return False
+    try:
+        dt = datetime.fromisoformat(fetched_at)
+    except ValueError:
+        return False
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TPE_TZ)
+    age = (datetime.now(tz=TPE_TZ) - dt).total_seconds()
+    return age < ttl_seconds
+
+
+async def _run_once(key: str, coro_fn):
+    if key in _inflight:
+        return await _inflight[key]
+    _inflight[key] = asyncio.ensure_future(coro_fn())
+    try:
+        return await _inflight[key]
+    finally:
+        _inflight.pop(key, None)
+
+
+# ---------------------------------------------------------------------------
+# Sector dedup (v3 §5.3 deterministic)
+# ---------------------------------------------------------------------------
+
+
+def _dedup_sector_map(rows: list[dict]) -> dict[str, str]:
+    """Build stock_id -> primary industry_category (deterministic).
+
+    Tie-breaker order:
+    1. _PRIMARY_INDUSTRY_OVERRIDE 命中直接取
+    2. filter type in ("twse", "tpex")
+    3. stable two-pass sort: (industry_category ASC), (date DESC)
+    4. 取 first row per stock_id
+    """
+    out: dict[str, str] = {}
+    filtered = [r for r in rows if r.get("type") in ("twse", "tpex")]
+    # v3 F9 — Python stable sort two-pass:secondary key ASC 先,primary key DESC 後
+    sorted_rows = sorted(
+        sorted(filtered, key=lambda r: r.get("industry_category") or ""),
+        key=lambda r: r.get("date") or "",
+        reverse=True,
+    )
+    for row in sorted_rows:
+        sid = row.get("stock_id")
+        if not sid or sid in out:
+            continue
+        if sid in _PRIMARY_INDUSTRY_OVERRIDE:
+            out[sid] = _PRIMARY_INDUSTRY_OVERRIDE[sid]
+        else:
+            cat = row.get("industry_category")
+            out[sid] = cat if cat else "其他"
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Tick timestamp extraction
+# ---------------------------------------------------------------------------
+
+
+def _max_tick_date(universe: list[dict]) -> datetime | None:
+    """Parse universe[].date (ISO string) → max datetime; None if empty."""
+    if not universe:
+        return None
+    parsed: list[datetime] = []
+    for row in universe:
+        raw = row.get("date")
+        if not raw:
+            continue
+        try:
+            # Accept both "YYYY-MM-DD HH:MM:SS.ffffff" and "YYYY-MM-DDTHH:MM:SS"
+            cleaned = str(raw).replace("T", " ").rstrip("Z")
+            parsed.append(datetime.fromisoformat(cleaned))
+        except ValueError:
+            continue
+    if not parsed:
+        return None
+    return max(parsed)
+
+
+# ---------------------------------------------------------------------------
+# Trim row + leaderboards
+# ---------------------------------------------------------------------------
+
+
+def _trim(rows: list[dict]) -> list[dict]:
+    """v3 F5 — includes volume_ratio (None if missing)."""
+    return [
+        {
+            "stock_id": r["stock_id"],
+            "name": r.get("name") or r["stock_id"],
+            "change_rate": r.get("change_rate") or 0.0,
+            "total_amount": r.get("total_amount") or 0,
+            "volume_ratio": r.get("volume_ratio"),
+            "sector": r.get("sector") or "其他",
+        }
+        for r in rows
+    ]
+
+
+def _compute_leaderboards(
+    universe: list[dict],
+    primary_sector: dict[str, str],
+    size: int = _LEADERBOARD_SIZE,
+) -> dict[str, list[dict]]:
+    enriched = [
+        {
+            **row,
+            "sector": primary_sector.get(row.get("stock_id", ""), "其他"),
+            "name": row.get("name") or row.get("stock_id", ""),
+        }
+        for row in universe
+    ]
+    gainers = sorted(enriched, key=lambda r: r.get("change_rate") or 0.0, reverse=True)[:size]
+    losers = sorted(enriched, key=lambda r: r.get("change_rate") or 0.0)[:size]
+    amount = sorted(enriched, key=lambda r: r.get("total_amount") or 0, reverse=True)[:size]
+    vr = sorted(enriched, key=lambda r: r.get("volume_ratio") or 0.0, reverse=True)[:size]
+    return {
+        "gainers": _trim(gainers),
+        "losers": _trim(losers),
+        "amount": _trim(amount),
+        "volume_ratio": _trim(vr),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Group by sector (heatmap)
+# ---------------------------------------------------------------------------
+
+
+def _group_by_sector(
+    universe: list[dict],
+    primary_sector: dict[str, str],
+    mv_map: dict[str, int],
+    cap_per_sector: int = _HEATMAP_STOCKS_CAP_PER_SECTOR,
+) -> list[dict]:
+    """Build sectors[] for heatmap (design.md §6.6)."""
+    groups: dict[str, list[dict]] = {}
+    for row in universe:
+        sid = row.get("stock_id")
+        if not sid:
+            continue
+        sector = primary_sector.get(sid) or "其他"
+        groups.setdefault(sector, []).append(row)
+
+    sectors: list[dict] = []
+    for sector_id, rows in groups.items():
+        # Sort by market_value desc — None 視為最小(排後),再 cap
+        def _mv(row: dict) -> int:
+            return mv_map.get(row.get("stock_id", ""), 0)
+
+        rows_sorted = sorted(rows, key=_mv, reverse=True)
+        capped = rows_sorted[:cap_per_sector]
+        # Compute sector-level stats
+        change_rates = [r.get("change_rate") or 0.0 for r in capped]
+        avg_chg = sum(change_rates) / len(change_rates) if change_rates else 0.0
+        total_amount = sum(r.get("total_amount") or 0 for r in capped)
+        # Build stock tiles
+        stocks = []
+        for r in capped:
+            mv = mv_map.get(r.get("stock_id", ""))
+            stocks.append({
+                "stock_id": r["stock_id"],
+                "name": r.get("name") or r["stock_id"],
+                "change_rate": r.get("change_rate") or 0.0,
+                "total_amount": r.get("total_amount") or 0,
+                "market_value": mv,  # None if missing — frontend layoutHeatmap E2 fallback
+            })
+        sectors.append({
+            "id": sector_id,
+            "name": sector_id,
+            "member_count": len(rows),
+            "avg_change_rate": avg_chg,
+            "total_amount": total_amount,
+            "stocks": stocks,
+        })
+    return sectors
+
+
+# ---------------------------------------------------------------------------
+# Internal fetchers — universe / sector_map / market_value
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_universe(refresh: bool = False) -> list[dict]:
+    """Call FinMind taiwan_stock_tick_snapshot;cache 5 s on disk."""
+    cache_key = "realtime_universe"
+    if not refresh:
+        cached = _read_cache(cache_key)
+        if cached is not None and _is_fresh(cached, _UNIVERSE_TTL_SECONDS):
+            return cached.get("rows", [])
+    client = get_finmind()
+    rows = await client._get(  # type: ignore[attr-defined]
+        f"{_FINMIND_BASE}/taiwan_stock_tick_snapshot",
+        {},
+    )
+    _write_cache(cache_key, {
+        "rows": rows,
+        "fetched_at": datetime.now(tz=TPE_TZ).isoformat(timespec="seconds"),
+    })
+    return rows
+
+
+async def _fetch_sector_map() -> list[dict]:
+    """Call FinMind /data?dataset=TaiwanStockInfo;cache 24 h on disk."""
+    cache_key = "realtime_sector_map"
+    cached = _read_cache(cache_key)
+    if cached is not None and _is_fresh(cached, _SECTOR_MAP_TTL_HOURS * 3600):
+        return cached.get("rows", [])
+    client = get_finmind()
+    rows = await client._get(  # type: ignore[attr-defined]
+        f"{_FINMIND_BASE}/data",
+        {"dataset": "TaiwanStockInfo"},
+    )
+    _write_cache(cache_key, {
+        "rows": rows,
+        "fetched_at": datetime.now(tz=TPE_TZ).isoformat(timespec="seconds"),
+    })
+    return rows
+
+
+async def _fetch_market_value_map(today: date | None = None) -> dict[str, int]:
+    """Call FinMind /data?dataset=TaiwanStockMarketValue with start=end=T-1.
+    Return dict[stock_id, market_value]."""
+    cache_key = "realtime_market_value"
+    cached = _read_cache(cache_key)
+    if cached is not None and _is_fresh(cached, _MARKET_VALUE_TTL_HOURS * 3600):
+        return cached.get("by_id", {})
+    if today is None:
+        today = date.today()
+    # T-1 calendar day (簡化版 — Phase 0b 若需更精確改 trading_calendar)
+    t_minus_1 = today - timedelta(days=1)
+    client = get_finmind()
+    rows = await client._get(  # type: ignore[attr-defined]
+        f"{_FINMIND_BASE}/data",
+        {
+            "dataset": "TaiwanStockMarketValue",
+            "start_date": t_minus_1.isoformat(),
+            "end_date": t_minus_1.isoformat(),
+        },
+    )
+    by_id: dict[str, int] = {}
+    for r in rows:
+        sid = r.get("stock_id")
+        mv = r.get("market_value")
+        if sid and mv:
+            try:
+                by_id[sid] = int(mv)
+            except (TypeError, ValueError):
+                continue
+    _write_cache(cache_key, {
+        "by_id": by_id,
+        "fetched_at": datetime.now(tz=TPE_TZ).isoformat(timespec="seconds"),
+    })
+    return by_id
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+async def fetch_market_snapshot(refresh: bool = False) -> dict:
+    """Return MarketSnapshot dict matching design.md §4 contract.
+
+    On any FinMind upstream failure:
+        - if disk cache 兜底:return {**cached_universe_payload, "stale": True}
+        - else raise ValueError("finmind_unreachable") — caught by routes layer → 502
+    """
+    dedup_key = f"market_snapshot_r{int(refresh)}"
+    return await _run_once(dedup_key, lambda: _do_fetch_market_snapshot(refresh))
+
+
+async def _do_fetch_market_snapshot(refresh: bool) -> dict:
+    # Parallel fetch — return_exceptions=True so partial failure → stale fallback
+    results = await asyncio.gather(
+        _fetch_universe(refresh),
+        _fetch_sector_map(),
+        _fetch_market_value_map(),
+        return_exceptions=True,
+    )
+    universe_res, sector_res, mv_res = results
+
+    # If any failed:try stale fallback
+    failures = [r for r in results if isinstance(r, BaseException)]
+    stale = bool(failures)
+
+    if isinstance(universe_res, BaseException):
+        cached = _read_cache("realtime_universe")
+        if cached is None:
+            logger.warning(
+                "market snapshot: universe fetch failed and no disk cache: %s",
+                universe_res,
+            )
+            raise ValueError("finmind_unreachable") from universe_res
+        universe = cached.get("rows", [])
+    else:
+        universe = universe_res  # type: ignore[assignment]
+
+    if isinstance(sector_res, BaseException):
+        cached = _read_cache("realtime_sector_map")
+        sector_rows = cached.get("rows", []) if cached else []
+    else:
+        sector_rows = sector_res  # type: ignore[assignment]
+
+    if isinstance(mv_res, BaseException):
+        cached = _read_cache("realtime_market_value")
+        mv_map = cached.get("by_id", {}) if cached else {}
+    else:
+        mv_map = mv_res  # type: ignore[assignment]
+
+    primary_sector = _dedup_sector_map(sector_rows)
+    last_tick = _max_tick_date(universe)
+    now = datetime.now(tz=TPE_TZ)
+    in_session, lag = is_in_session(now, last_tick)
+    sectors = _group_by_sector(universe, primary_sector, mv_map)
+    leaderboards = _compute_leaderboards(universe, primary_sector)
+
+    return {
+        "as_of": now.isoformat(),
+        "last_tick": last_tick.isoformat() if last_tick else None,
+        "is_trading_session": in_session,
+        "stale": stale,
+        "lag_seconds": lag,
+        "sectors": sectors,
+        "leaderboards": leaderboards,
+    }
