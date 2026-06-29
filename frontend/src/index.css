@@ -12,6 +12,11 @@
   --color-accent: #e85a4f;
   --color-bull: #e85a4f;
   --color-bear: #7fc99a;
+  /* X5 sweep — semantic warn/danger separate from bull/bear so the designer
+   * can tune them independently(雖然 danger 和 bull 同色相,語義不同)。
+   * Hue 對齊既有 yellow-600 / red-600 視覺,migration 為 no-visual-change。*/
+  --color-warn: #ca8a04;
+  --color-danger: #dc2626;
 }
 
 * {

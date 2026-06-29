@@ -78,21 +78,21 @@ describe("MarketLeaderboard", () => {
     expect(spy).toHaveBeenCalledWith("2330");
   });
 
-  it("uses bull-red for positive change (台股慣例,正反向 assertion 鎖 v3 C5)", () => {
+  it("uses bull binding for positive change (台股慣例 bull=紅,Audit X11 contract via data-color-bin)", () => {
     render(<MarketLeaderboard leaderboards={mockLb} onSymbolPick={() => {}} />);
     const row = document.querySelector('[data-testid="lb-row-2330"]')!;
-    expect(row.querySelector(".text-red-500")).toBeTruthy();
-    expect(row.querySelector(".text-green-500")).toBeNull();
+    // X11:改 data-color-bin 正向 assertion(對齊 heatmap-svg data-fill-bin),
+    // 不鎖 raw class — X5 semantic token sweep 不會撞這個 test。
+    expect(row.getAttribute("data-color-bin")).toBe("bull");
   });
 
-  it("uses bear-green for negative change (台股慣例,正反向 assertion 鎖 v3 C5)", () => {
+  it("uses bear binding for negative change (台股慣例 bear=綠,Audit X11)", () => {
     render(<MarketLeaderboard leaderboards={mockLb} onSymbolPick={() => {}} />);
     const row = document.querySelector('[data-testid="lb-row-2412"]')!;
-    expect(row.querySelector(".text-green-500")).toBeTruthy();
-    expect(row.querySelector(".text-red-500")).toBeNull();
+    expect(row.getAttribute("data-color-bin")).toBe("bear");
   });
 
-  it("change_rate === 0 falls into neutral (Audit X6:對齊 heatmap colorForChange)", () => {
+  it("change_rate === 0 falls into neutral (Audit X6 + X11:對齊 heatmap colorForChange)", () => {
     const lb: Leaderboards = {
       ...mockLb,
       gainers: [mkRow("0000", "中性股", 0, 1e6, 1.0)],
@@ -100,19 +100,17 @@ describe("MarketLeaderboard", () => {
     };
     render(<MarketLeaderboard leaderboards={lb} onSymbolPick={() => {}} />);
     const row = document.querySelector('[data-testid="lb-row-0000"]')!;
-    // 0% 不該套 bear green(原 bug);也不該套 bull red
-    expect(row.querySelector(".text-green-500")).toBeNull();
-    expect(row.querySelector(".text-red-500")).toBeNull();
-    // data-color-bin 鎖 contract,方便將來搬 semantic token 不需碰 raw class
     expect(row.getAttribute("data-color-bin")).toBe("neutral");
   });
 
-  it("data-color-bin attribute reflects bull/bear binning (Audit X6 contract)", () => {
+  it("does NOT lock raw Tailwind class (X11:contract is on data-color-bin only)", () => {
+    // 鎖 X5 sweep 之後不能再有 raw class assertion;一旦回 raw class
+    // 就會把 token migration 卡住。
     render(<MarketLeaderboard leaderboards={mockLb} onSymbolPick={() => {}} />);
-    const bullRow = document.querySelector('[data-testid="lb-row-2330"]')!;
-    const bearRow = document.querySelector('[data-testid="lb-row-2412"]')!;
-    expect(bullRow.getAttribute("data-color-bin")).toBe("bull");
-    expect(bearRow.getAttribute("data-color-bin")).toBe("bear");
+    const row = document.querySelector('[data-testid="lb-row-2330"]')!;
+    expect(row.getAttribute("data-color-bin")).toBe("bull");
+    // 不寫 .text-red-500 / .text-bull 等具體 class assertion — token 名可能
+    // 還會變,但 data-color-bin 是契約名稱不會動。
   });
 
   it("renders gracefully when leaderboards is null", () => {
