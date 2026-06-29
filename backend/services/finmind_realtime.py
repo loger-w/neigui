@@ -269,11 +269,14 @@ def _group_by_sector(
 
     sectors: list[dict] = []
     for sector_id, rows in groups.items():
-        # Sort by market_value desc — None 視為最小(排後),再 cap
-        def _mv(row: dict) -> int:
-            return mv_map.get(row.get("stock_id", ""), 0)
-
-        rows_sorted = sorted(rows, key=_mv, reverse=True)
+        # Audit X12:從 per-iteration def _mv 改 inline lambda — _mv 只 close
+        # over mv_map(loop 外不變),原寫法每個 sector 重新 allocate function
+        # object;inline 後讀者也不用驗證閉包沒抓到 sector_id / rows 迴圈變數。
+        rows_sorted = sorted(
+            rows,
+            key=lambda r: mv_map.get(r.get("stock_id", ""), 0),
+            reverse=True,
+        )
         capped = rows_sorted[:cap_per_sector]
         # Compute sector-level stats
         change_rates = [r.get("change_rate") or 0.0 for r in capped]
