@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
-  ChipBubbleData, SortDir, SortSpec, TradeRow, TradeSortKey,
+  ChipBubbleData, IntradayPoint, SortDir, SortSpec, TradeRow, TradeSortKey,
 } from "../lib/chip-data";
 import {
   DEFAULT_TRADE_SORT, aggregateByPrice, buildTradeRows, fmtVol,
@@ -15,6 +15,9 @@ interface Props {
   bubbleData: ChipBubbleData | null;
   closePrice?: number;
   symbol: string;
+  /** Optional 當日分時走勢線 (背景). 透傳給 BubbleChartSvg.
+   *  Hook mount 在 App.tsx,對齊既有 useChipBubble 樣板。 */
+  intradayPoints?: IntradayPoint[] | null;
 }
 
 // F12: surface every broker who traded today, including 1-張 ones. The
@@ -23,7 +26,7 @@ interface Props {
 // the long tail visible there.
 const MAX_TRADE_ROWS = Number.POSITIVE_INFINITY;
 
-export function ChipBubbleView({ bubbleData, closePrice, symbol }: Props) {
+export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints }: Props) {
   const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
   // F2: independent sort state per side. Header click toggles dir when the
   // same key is re-clicked; switching key resets dir to "desc" (matches the
@@ -152,6 +155,7 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol }: Props) {
               selectedBroker={selectedBroker}
               onBubbleHover={handleBubbleHover}
               onBubbleClick={handleBubbleClick}
+              intradayPoints={intradayPoints}
             />
           ) : null}
         </div>

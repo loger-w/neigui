@@ -11,6 +11,7 @@ import {
 } from "./components/ui/RangeSelector";
 import { useChipData } from "./hooks/useChipData";
 import { useChipBubble } from "./hooks/useChipBubble";
+import { useChipIntraday } from "./hooks/useChipIntraday";
 import { useBrokerHistory } from "./hooks/useBrokerHistory";
 import { useChipBrokersWindow } from "./hooks/useChipBrokersWindow";
 import { ModeSwitch, type Mode } from "./components/ModeSwitch";
@@ -126,6 +127,7 @@ export default function App() {
     refresh: refreshChip,
   } = useChipData(symbol, date);
   const bubbleHook = useChipBubble(symbol, date);
+  const intradayHook = useChipIntraday(symbol, date);
   const brokerHistoryHook = useBrokerHistory(symbol, selectedBrokerIds);
   const brokersWindow = useChipBrokersWindow(symbol, date, windowDays);
 
@@ -344,6 +346,7 @@ export default function App() {
               symbol={symbol}
               bubbleData={bubbleHook.data}
               closePrice={closePrice}
+              intradayPoints={intradayHook.data?.points ?? null}
             />
           </Suspense>
         </div>
