@@ -20,9 +20,8 @@ export function VersionBadge(): ReactElement {
         <button
           type="button"
           aria-label={`版本資訊,目前 v${CURRENT_VERSION}`}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs text-ink-muted hover:text-accent border border-line hover:border-accent transition-colors cursor-pointer font-mono tabular-nums"
+          className="px-2.5 py-1 text-xs text-ink-muted hover:text-accent border border-line hover:border-accent transition-colors cursor-pointer font-mono tabular-nums"
         >
-          <span aria-hidden="true" className="w-1.5 h-1.5 rounded-full bg-accent" />
           v{CURRENT_VERSION}
         </button>
       </PopoverPrimitive.Trigger>
