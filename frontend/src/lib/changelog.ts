@@ -18,6 +18,23 @@ export function deriveCurrentVersion(entries: readonly VersionEntry[]): string {
   return entries[0]?.version ?? "0.0.0";
 }
 
+export function totalUpdates(entries: readonly VersionEntry[]): number {
+  return entries.reduce((sum, v) => sum + v.changes.length, 0);
+}
+
+// SemVer 三段式 X.Y.Z 字典序比較。回傳 a > b。供 changelog.test.ts 在
+// 同日多 entry 的情況檢查版本降冪(date `>=` 不足以鎖 SemVer 順序)。
+export function semverGt(a: string, b: string): boolean {
+  const pa = a.split(".").map(Number);
+  const pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    const av = pa[i] ?? 0;
+    const bv = pb[i] ?? 0;
+    if (av !== bv) return av > bv;
+  }
+  return false;
+}
+
 // 最新版本排第一筆(陣列倒序),維護者寫入時手動維護;test 強制驗證 date 單調遞減。
 // 版本字串遵循 SemVer 2.0.0 三段式 MAJOR.MINOR.PATCH;pre-1.0 階段 breaking change 也只 bump MINOR
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。

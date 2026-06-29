@@ -4,6 +4,8 @@ import {
   CURRENT_VERSION,
   DATA_SOURCES,
   deriveCurrentVersion,
+  semverGt,
+  totalUpdates,
   type VersionEntry,
 } from "./changelog";
 
@@ -21,12 +23,44 @@ describe("deriveCurrentVersion", () => {
   });
 });
 
+describe("semverGt", () => {
+  it("major / minor / patch 各位比較正確", () => {
+    expect(semverGt("0.14.0", "0.13.0")).toBe(true);
+    expect(semverGt("0.14.1", "0.14.0")).toBe(true);
+    expect(semverGt("1.0.0", "0.99.99")).toBe(true);
+    expect(semverGt("0.13.0", "0.14.0")).toBe(false);
+    expect(semverGt("0.14.0", "0.14.0")).toBe(false);
+  });
+});
+
+describe("totalUpdates", () => {
+  it("加總所有 entries 的 changes 個數", () => {
+    const entries: VersionEntry[] = [
+      { version: "0.2.0", date: "2026-07-01", changes: [
+        { kind: "feature", scope: "global", text: "a" },
+        { kind: "fix", scope: "equity", text: "b" },
+      ] },
+      { version: "0.1.0", date: "2026-06-29", changes: [
+        { kind: "feature", scope: "options", text: "c" },
+      ] },
+    ];
+    expect(totalUpdates(entries)).toBe(3);
+  });
+
+  it("空陣列回傳 0", () => {
+    expect(totalUpdates([])).toBe(0);
+  });
+});
+
 describe("CHANGELOG invariants", () => {
-  it("以 date 嚴格遞減排序(最新在前)", () => {
+  it("以 date 遞減排序(最新在前);同日內以 SemVer 降冪 tiebreak", () => {
     for (let i = 0; i < CHANGELOG.length - 1; i++) {
       const cur = CHANGELOG[i]!;
       const next = CHANGELOG[i + 1]!;
-      expect(cur.date >= next.date).toBe(true);
+      const ok =
+        cur.date > next.date ||
+        (cur.date === next.date && semverGt(cur.version, next.version));
+      expect(ok).toBe(true);
     }
   });
 

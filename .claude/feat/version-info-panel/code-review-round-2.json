@@ -1,0 +1,135 @@
+{
+  "round": 2,
+  "phase": "phase_4_revisit",
+  "trigger": "user goal: 批次跑 /code-review /requesting-code-review /receiving-code-review",
+  "review_method": "xhigh workflow (10 angles + 1-vote verify + sweep)",
+  "stats": {
+    "total_candidates": 52,
+    "after_dedup": 51,
+    "verified_surviving": 48,
+    "in_top_15_findings": 15,
+    "sweep_added": 8
+  },
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "P1",
+      "angle": "B/C(double-found)",
+      "file": "frontend/src/App.tsx",
+      "line": 206,
+      "problem": "新增 outer <header> 與既有 inner <header>(equity line 214 / OptionsHeader)同時暴露 role=banner。WCAG / axe-core 規範 landmark-no-duplicate-banner — 兩個 banner 違反",
+      "resolution": "accepted",
+      "fix": "outer <header> 改 <div>(semantic 中性,無 implicit role)"
+    },
+    {
+      "id": "F2",
+      "severity": "P1",
+      "angle": "B + sweep",
+      "file": "frontend/src/components/VersionBadge.tsx",
+      "line": 134,
+      "problem": "scopeColor 把 options scope 綁 text-bear。bear 在 CLAUDE.md §3 是 directional token(綠 = 跌)、§9 lessons 強調 PCR/Max Pain UI 嚴禁方向性文案、color binding 要 testid 鎖。挪用 directional token 為「選擇權 scope」label 違反單義性",
+      "resolution": "accepted",
+      "fix": "options scope 改 text-ink(白色中性)。equity 留 text-accent(對齊 equity tab 色),global 留 text-ink-dim(灰)。三 grade brightness 視覺區隔但不挪用方向 token"
+    },
+    {
+      "id": "F3",
+      "severity": "P1",
+      "angle": "B/C(dup)",
+      "file": "frontend/src/components/VersionBadge.test.tsx",
+      "line": 35,
+      "problem": "getByText('FinMind') 用 exact match,DATA_SOURCES 擴成 ['FinMind','TAIFEX'] 後 textContent 變 'FinMind / TAIFEX',test 紅。§5 已預告 TAIFEX 會用於補資料",
+      "resolution": "accepted",
+      "fix": "改 getByText(/FinMind/) regex match"
+    },
+    {
+      "id": "F4",
+      "severity": "P1",
+      "angle": "B/C/D(triple-found)",
+      "file": "frontend/src/lib/changelog.test.ts",
+      "line": 32,
+      "problem": "test 名稱「以 date 嚴格遞減排序」但 assertion 用 `cur.date >= next.date` `>=` 是 non-strict;同日 entries 可任意排序(本 PR 已有 0.5/0.6/0.7 都 06-24 + 0.8/0.9/0.10 都 06-26)。未來 v0.14.1 hotfix 同日可能擺錯位 → deriveCurrentVersion 取錯",
+      "resolution": "accepted",
+      "fix": "加 semver tiebreak:同日內以版本號降冪。改 test 名描述 + add semverGt helper"
+    },
+    {
+      "id": "F9",
+      "severity": "P2",
+      "angle": "D",
+      "file": "frontend/src/components/VersionBadge.test.tsx",
+      "line": 23,
+      "problem": "test 註解提及『button 內含 aria-hidden 的 accent dot span』但 commit 2f10ac5 已移除 dot,`.trim()` 變 vestigial",
+      "resolution": "accepted",
+      "fix": "drop .trim() + 砍註解。回 toBe(`v${CURRENT_VERSION}`) 簡潔"
+    },
+    {
+      "id": "F10",
+      "severity": "P2",
+      "angle": "F-reuse",
+      "file": "frontend/src/components/VersionBadge.tsx",
+      "line": 99,
+      "problem": "className template literal 拼接(L72 isLatest ? ... : ...、L112 scopeColor)未走 lib/utils.ts 的 cn() helper。違反 CLAUDE.md §3「`cn(...)` 走 lib/utils.ts」",
+      "resolution": "accepted",
+      "fix": "import cn from '../lib/utils';用 cn() 包所有 className concatenation"
+    },
+    {
+      "id": "F11",
+      "severity": "P2",
+      "angle": "F-reuse",
+      "file": "frontend/src/components/VersionBadge.tsx",
+      "line": 12,
+      "problem": "totalUpdates reduce 在 VersionBadge.tsx 與 VersionBadge.test.tsx 兩處重複實作",
+      "resolution": "accepted",
+      "fix": "extract `totalUpdates(entries)` helper export from changelog.ts,兩處 consume"
+    },
+    {
+      "id": "F12",
+      "severity": "P2",
+      "angle": "F-reuse",
+      "file": "frontend/src/components/VersionBadge.tsx",
+      "line": 117,
+      "problem": "scopeLabel(equity→個股 / options→選擇權)與 ModeSwitch.tsx MODES 標籤對應重複",
+      "resolution": "rejected_with_reason",
+      "rejection_reason": "Partial overlap only(scope 有 'global',Mode 沒有)。抽 share table 需要決定誰當 source of truth、處理 mismatch case,複雜度超過維護成本。CLAUDE.md 鐵則 B「不為未來可能加 abstraction」。第三 consumer 出現再抽。"
+    },
+    {
+      "id": "F13",
+      "severity": "P2",
+      "angle": "G-simplification",
+      "file": "frontend/src/components/VersionBadge.tsx",
+      "line": 38,
+      "problem": "`CHANGELOG.length === 0 ? '無版本紀錄' : map(...)` 是 dead branch。test invariant L48 強制 length >= 14,執行期不可能空。「不為不會發生的情境加 fallback」鐵則",
+      "resolution": "accepted",
+      "fix": "drop ternary,直接 CHANGELOG.map(...)"
+    },
+    {
+      "id": "F14",
+      "severity": "P2",
+      "angle": "G-simplification",
+      "file": "frontend/src/components/VersionBadge.tsx",
+      "line": 75,
+      "problem": "`entry.changes.length === 0 ? '(無條目)' : <Section ...>` dead branch。§7 規則「refactor 不入 changelog」+ 14 entries 全 ≥3 changes,執行期不會空",
+      "resolution": "accepted",
+      "fix": "drop ternary,直接 render Features/Fixes 區塊"
+    },
+    {
+      "id": "F15",
+      "severity": "P2",
+      "angle": "G-simplification",
+      "file": "frontend/src/components/VersionBadge.tsx",
+      "line": 36,
+      "problem": "Popover header 的『最新 v0.14.0』與 trigger button v{CURRENT_VERSION} + 第一個 VersionSection isLatest 顯示同一個值三次重複",
+      "resolution": "accepted",
+      "fix": "drop header pill,只留 h2 標題。First VersionSection isLatest styling 已是視覺錨點"
+    },
+    {
+      "id": "F16",
+      "severity": "P1",
+      "angle": "J-conventions(sweep)",
+      "file": "frontend/src/components/VersionBadge.tsx",
+      "line": 85,
+      "problem": "ChangeTable label 用英文 'Features' / 'Fixes',違反 CLAUDE.md §3「UI 文字一律繁體中文」",
+      "resolution": "accepted",
+      "fix": "改成「新增功能」/「修正」(對齊 v0.13.0 / Direction A preview 既有風格)"
+    }
+  ]
+}

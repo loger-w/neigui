@@ -203,12 +203,12 @@ export default function App() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      <header className="shrink-0 flex items-center border-b border-line bg-bg">
+      <div className="shrink-0 flex items-center border-b border-line bg-bg">
         <ModeSwitch value={mode} onChange={setMode} />
         <div className="ml-auto pr-4">
           <VersionBadge />
         </div>
-      </header>
+      </div>
       {mode === "equity" ? (
       <div className="flex-1 flex flex-col overflow-hidden">
       <header className="shrink-0 px-6 pt-5 pb-3 border-b border-line">

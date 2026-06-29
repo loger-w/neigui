@@ -4,7 +4,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { VersionBadge } from "./VersionBadge";
-import { CHANGELOG, CURRENT_VERSION } from "../lib/changelog";
+import { CHANGELOG, CURRENT_VERSION, totalUpdates } from "../lib/changelog";
 
 afterEach(() => {
   cleanup();
@@ -20,9 +20,7 @@ describe("VersionBadge — SC-1", () => {
   it(`trigger button 文字為 v${CURRENT_VERSION}`, () => {
     render(<VersionBadge />);
     const btn = screen.getByRole("button", { name: /版本資訊/ });
-    // trim 因為 button 內含 aria-hidden 的 accent dot span(無 text),
-    // JSX 換行可能在 dot 與版本字串間留下 whitespace。
-    expect(btn.textContent?.trim()).toBe(`v${CURRENT_VERSION}`);
+    expect(btn.textContent).toBe(`v${CURRENT_VERSION}`);
   });
 });
 
@@ -32,19 +30,20 @@ describe("VersionBadge — SC-2", () => {
     expect(screen.queryByRole("heading", { name: "版本資訊" })).toBeNull();
   });
 
-  it("點擊 trigger 後 popover 開,footer 顯示資料來源『FinMind』", () => {
+  it("點擊 trigger 後 popover 開,footer 顯示資料來源含『FinMind』", () => {
     render(<VersionBadge />);
     fireEvent.click(screen.getByRole("button", { name: /版本資訊/ }));
-    // Direction B:資料來源在 footer 單純顯示 `FinMind`(無『資料來源:』前綴)
-    expect(screen.getByText("FinMind")).toBeTruthy();
+    // Regex match — 容許 DATA_SOURCES 未來擴成 ['FinMind', 'TAIFEX']
+    // 不會像 exact string 那樣 break。
+    expect(screen.getByText(/FinMind/)).toBeTruthy();
   });
 
   it("popover footer 顯示版本計數與 update 總數", () => {
     render(<VersionBadge />);
     fireEvent.click(screen.getByRole("button", { name: /版本資訊/ }));
-    const totalUpdates = CHANGELOG.reduce((s, v) => s + v.changes.length, 0);
+    const total = totalUpdates(CHANGELOG);
     expect(
-      screen.getByText(`${CHANGELOG.length} 版本 · ${totalUpdates} updates`),
+      screen.getByText(`${CHANGELOG.length} 版本 · ${total} updates`),
     ).toBeTruthy();
   });
 
@@ -62,5 +61,14 @@ describe("VersionBadge — SC-2", () => {
     expect(screen.getAllByText("全局").length).toBeGreaterThan(0);
     expect(screen.getAllByText("個股").length).toBeGreaterThan(0);
     expect(screen.getAllByText("選擇權").length).toBeGreaterThan(0);
+  });
+
+  it("section label 用繁體中文(『新增功能』『修正』),不留英文『Features/Fixes』", () => {
+    render(<VersionBadge />);
+    fireEvent.click(screen.getByRole("button", { name: /版本資訊/ }));
+    expect(screen.queryAllByText(/^Features\s/).length).toBe(0);
+    expect(screen.queryAllByText(/^Fixes\s/).length).toBe(0);
+    expect(screen.getAllByText(/新增功能 · /).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/修正 · /).length).toBeGreaterThan(0);
   });
 });
