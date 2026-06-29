@@ -127,12 +127,24 @@ function Row({
   onPick: (sid: string) => void;
   extraValue?: string;
 }) {
-  const positive = row.change_rate > 0;
+  // Audit X6:三分支對齊 SC-2 「bull=紅 / bear=綠 / 平=灰」。原 `> 0`
+  // 二分把 change_rate === 0 撞到 bear green,但 heatmap colorForChange(0)
+  // 是 NEUTRAL gray,同檔在兩個 view 顏色不一致。
+  const colorBin: "bull" | "bear" | "neutral" =
+    row.change_rate > 0 ? "bull" : row.change_rate < 0 ? "bear" : "neutral";
+  const colorClass =
+    colorBin === "bull"
+      ? "text-red-500"
+      : colorBin === "bear"
+        ? "text-green-500"
+        : "text-ink-dim";
+  const sign = colorBin === "bull" ? "+" : "";
   return (
     <button
       type="button"
       onClick={() => onPick(row.stock_id)}
       data-testid={`lb-row-${row.stock_id}`}
+      data-color-bin={colorBin}
       className={cn(
         "flex justify-between items-center w-full px-3 py-1",
         "hover:bg-bg-deep cursor-pointer text-xs",
@@ -142,8 +154,8 @@ function Row({
         {row.stock_id} <span className="text-ink-muted">{row.name}</span>
       </span>
       <span className="flex gap-2 items-baseline">
-        <span className={cn(positive ? "text-red-500" : "text-green-500")}>
-          {positive ? "+" : ""}
+        <span className={colorClass}>
+          {sign}
           {row.change_rate.toFixed(2)}%
         </span>
         {extraValue && <span className="text-ink-dim">{extraValue}</span>}

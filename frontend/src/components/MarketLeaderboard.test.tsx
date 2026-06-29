@@ -92,6 +92,29 @@ describe("MarketLeaderboard", () => {
     expect(row.querySelector(".text-red-500")).toBeNull();
   });
 
+  it("change_rate === 0 falls into neutral (Audit X6:對齊 heatmap colorForChange)", () => {
+    const lb: Leaderboards = {
+      ...mockLb,
+      gainers: [mkRow("0000", "中性股", 0, 1e6, 1.0)],
+      losers: [],
+    };
+    render(<MarketLeaderboard leaderboards={lb} onSymbolPick={() => {}} />);
+    const row = document.querySelector('[data-testid="lb-row-0000"]')!;
+    // 0% 不該套 bear green(原 bug);也不該套 bull red
+    expect(row.querySelector(".text-green-500")).toBeNull();
+    expect(row.querySelector(".text-red-500")).toBeNull();
+    // data-color-bin 鎖 contract,方便將來搬 semantic token 不需碰 raw class
+    expect(row.getAttribute("data-color-bin")).toBe("neutral");
+  });
+
+  it("data-color-bin attribute reflects bull/bear binning (Audit X6 contract)", () => {
+    render(<MarketLeaderboard leaderboards={mockLb} onSymbolPick={() => {}} />);
+    const bullRow = document.querySelector('[data-testid="lb-row-2330"]')!;
+    const bearRow = document.querySelector('[data-testid="lb-row-2412"]')!;
+    expect(bullRow.getAttribute("data-color-bin")).toBe("bull");
+    expect(bearRow.getAttribute("data-color-bin")).toBe("bear");
+  });
+
   it("renders gracefully when leaderboards is null", () => {
     render(<MarketLeaderboard leaderboards={null} onSymbolPick={() => {}} />);
     expect(screen.getByRole("tab", { name: "漲跌幅" })).toBeTruthy();
