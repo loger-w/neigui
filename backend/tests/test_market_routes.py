@@ -8,7 +8,6 @@ import gzip
 import json
 from unittest.mock import AsyncMock, patch
 
-import httpx
 from fastapi.testclient import TestClient
 
 from main import app
@@ -101,15 +100,10 @@ def test_snapshot_returns_503_on_unexpected_value_error() -> None:
     assert resp.json()["detail"]["error"] == "snapshot_unavailable"
 
 
-def test_snapshot_returns_502_on_httpx_timeout() -> None:
-    """E3: service 內漏 catch → 路由 catch httpx 例外 → 502。"""
-    with patch(
-        "routes.market.fetch_market_snapshot",
-        new=AsyncMock(side_effect=httpx.TimeoutException("up")),
-    ):
-        resp = TestClient(app).get("/api/market/snapshot")
-    assert resp.status_code == 502
-    assert resp.json()["detail"]["error"] == "finmind_unreachable"
+# Audit X4 / Round-1 R5:test_snapshot_returns_502_on_httpx_timeout 已刪。
+# 原因:routes/market.py 不再 catch httpx,service 用 asyncio.gather(return_exceptions=True)
+# 並只 re-raise ValueError;httpx 例外無法穿過 service 邊界。原 test 直接 mock service
+# raise httpx 是 fake path,留著只會誤導未來 reviewer 對錯誤處理的真實覆蓋度。
 
 
 # ---------------------------------------------------------------------------
