@@ -1,0 +1,300 @@
+"""SC-1 / SC-3 — fetch_market_snapshot + helpers."""
+from __future__ import annotations
+
+import json
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from services.finmind_realtime import (
+    _PRIMARY_INDUSTRY_OVERRIDE,
+    _compute_leaderboards,
+    _dedup_sector_map,
+    _group_by_sector,
+    _max_tick_date,
+    _trim,
+    fetch_market_snapshot,
+)
+
+# --------------------------------------------------------------------------
+# _dedup_sector_map (E4 / F6 deterministic / v3 B4)
+# --------------------------------------------------------------------------
+
+
+def test_dedup_single_row_basic() -> None:
+    """SC-1: 單筆 row → {stock_id: sector_name}。"""
+    rows = [
+        {"stock_id": "9001", "industry_category": "電子工業",
+         "type": "twse", "date": "2026-06-26"},
+    ]
+    assert _dedup_sector_map(rows) == {"9001": "電子工業"}
+
+
+def test_dedup_multi_row_same_stock_uses_latest_date() -> None:
+    """E4: 同 stock_id 兩 row,date desc 取最新。"""
+    rows = [
+        {"stock_id": "9002", "industry_category": "電子工業",
+         "type": "twse", "date": "2026-06-25"},
+        {"stock_id": "9002", "industry_category": "半導體業",
+         "type": "twse", "date": "2026-06-26"},
+    ]
+    assert _dedup_sector_map(rows)["9002"] == "半導體業"
+
+
+def test_dedup_multi_row_same_date_uses_industry_asc() -> None:
+    """E4: 同 date 時,industry_category 字典序 ASC 當 tie-breaker。"""
+    rows = [
+        {"stock_id": "9003", "industry_category": "電子工業",
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "9003", "industry_category": "光電業",
+         "type": "twse", "date": "2026-06-26"},
+    ]
+    # Tie-breaker: industry_category ASC -> 光電業 < 電子工業 (Unicode order)
+    out = _dedup_sector_map(rows)["9003"]
+    # Stable two-pass sorted(sorted(..., key=industry ASC), key=date DESC)
+    # date 都同 → 第二 sort 不換,所以最前面是 industry asc 第一個
+    sorted_industries = sorted(["電子工業", "光電業"])
+    assert out == sorted_industries[0]
+
+
+def test_dedup_override_table_wins() -> None:
+    """E4: _PRIMARY_INDUSTRY_OVERRIDE 命中時無論 FinMind 回什麼皆此值。"""
+    rows = [
+        {"stock_id": "2330", "industry_category": "電子工業",
+         "type": "twse", "date": "2026-06-26"},
+    ]
+    assert _dedup_sector_map(rows)["2330"] == _PRIMARY_INDUSTRY_OVERRIDE["2330"]
+    assert _PRIMARY_INDUSTRY_OVERRIDE["2330"] == "半導體業"
+
+
+def test_dedup_filters_non_twse_tpex_keeps_both() -> None:
+    """v3 B4: type='index'/'other' 過濾;type='twse' AND 'tpex' 皆保留(對稱)。"""
+    rows = [
+        {"stock_id": "9101", "industry_category": "半導體業",
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "9102", "industry_category": "電子零組件業",
+         "type": "tpex", "date": "2026-06-26"},
+        {"stock_id": "TAIEX", "industry_category": "指數",
+         "type": "index", "date": "2026-06-26"},
+        {"stock_id": "OTHER", "industry_category": "?",
+         "type": "other", "date": "2026-06-26"},
+    ]
+    out = _dedup_sector_map(rows)
+    assert out["9101"] == "半導體業"
+    assert out["9102"] == "電子零組件業"
+    assert "TAIEX" not in out
+    assert "OTHER" not in out
+
+
+def test_dedup_missing_industry_falls_to_qita() -> None:
+    """E1: industry_category 為 None / 空 → '其他'。"""
+    rows = [
+        {"stock_id": "9201", "industry_category": None,
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "9202", "industry_category": "",
+         "type": "twse", "date": "2026-06-26"},
+    ]
+    out = _dedup_sector_map(rows)
+    assert out["9201"] == "其他"
+    assert out["9202"] == "其他"
+
+
+# --------------------------------------------------------------------------
+# _trim & _compute_leaderboards (SC-3 / F5)
+# --------------------------------------------------------------------------
+
+
+def _mk_row(sid: str, chg: float, amt: float, vr: float | None = None) -> dict:
+    return {
+        "stock_id": sid,
+        "name": sid,
+        "change_rate": chg,
+        "total_amount": amt,
+        "volume_ratio": vr,
+        "sector": "電子工業",
+    }
+
+
+def test_trim_includes_volume_ratio_field() -> None:
+    """v3 F5: _trim 必須含 volume_ratio key,None 也要保留。"""
+    rows = [{"stock_id": "9999", "name": "X", "change_rate": 1.0,
+             "total_amount": 1000, "volume_ratio": None,
+             "sector": "電子工業"}]
+    out = _trim(rows)
+    assert "volume_ratio" in out[0]
+    assert out[0]["volume_ratio"] is None
+
+
+def test_leaderboards_gainers_sorted_desc() -> None:
+    """SC-3: gainers by change_rate desc top size。"""
+    universe = [
+        {**_mk_row("A", 1.0, 100, 1.0)},
+        {**_mk_row("B", 5.0, 200, 2.0)},
+        {**_mk_row("C", 3.0, 300, 1.5)},
+    ]
+    out = _compute_leaderboards(universe, primary_sector={}, size=2)
+    assert [r["stock_id"] for r in out["gainers"]] == ["B", "C"]
+
+
+def test_leaderboards_losers_sorted_asc() -> None:
+    """SC-3: losers by change_rate asc。"""
+    universe = [
+        {**_mk_row("A", 1.0, 100)},
+        {**_mk_row("B", -5.0, 200)},
+        {**_mk_row("C", -3.0, 300)},
+    ]
+    out = _compute_leaderboards(universe, primary_sector={}, size=2)
+    assert [r["stock_id"] for r in out["losers"]] == ["B", "C"]
+
+
+def test_leaderboards_amount_sorted_desc() -> None:
+    """SC-3: amount by total_amount desc。"""
+    universe = [
+        {**_mk_row("A", 0, 1_000_000)},
+        {**_mk_row("B", 0, 3_000_000)},
+        {**_mk_row("C", 0, 2_000_000)},
+    ]
+    out = _compute_leaderboards(universe, primary_sector={}, size=2)
+    assert [r["stock_id"] for r in out["amount"]] == ["B", "C"]
+
+
+def test_leaderboards_volume_ratio_sorted_desc_null_as_zero() -> None:
+    """SC-3 / F5: volume_ratio desc;None 視為 0。"""
+    universe = [
+        {**_mk_row("A", 0, 100, 5.0)},
+        {**_mk_row("B", 0, 100, None)},
+        {**_mk_row("C", 0, 100, 2.0)},
+    ]
+    out = _compute_leaderboards(universe, primary_sector={}, size=3)
+    assert [r["stock_id"] for r in out["volume_ratio"]] == ["A", "C", "B"]
+
+
+def test_leaderboards_attach_sector_from_primary_map() -> None:
+    """SC-3: 排行榜每筆掛 sector 名(從 primary_sector lookup);未對到 → 其他。"""
+    universe = [_mk_row("X", 1.0, 100, 1.0), _mk_row("Y", 0.5, 50, 0.8)]
+    primary = {"X": "半導體業"}  # Y 沒在 primary
+    out = _compute_leaderboards(universe, primary_sector=primary, size=2)
+    sectors = {r["stock_id"]: r["sector"] for r in out["gainers"]}
+    assert sectors["X"] == "半導體業"
+    assert sectors["Y"] == "其他"
+
+
+# --------------------------------------------------------------------------
+# _group_by_sector (E1 / E2 / SC-2)
+# --------------------------------------------------------------------------
+
+
+def test_group_by_sector_caps_stocks() -> None:
+    """SC-2: 每 sector cap 30 個(取 market_value 大者)。"""
+    universe = [_mk_row(f"{i:04d}", 0, 1_000_000, 1.0) for i in range(50)]
+    mv_map = {f"{i:04d}": (50 - i) * 1_000_000_000 for i in range(50)}
+    # 全部歸同一 sector "電子工業"
+    primary = {f"{i:04d}": "電子工業" for i in range(50)}
+    sectors = _group_by_sector(universe, primary, mv_map, cap_per_sector=30)
+    assert len(sectors) == 1
+    assert sectors[0]["id"] == "電子工業"
+    assert len(sectors[0]["stocks"]) == 30
+    # 最大市值排在前(0000 mv=50e9 最大)
+    assert sectors[0]["stocks"][0]["stock_id"] == "0000"
+
+
+def test_group_by_sector_orphan_to_qita() -> None:
+    """E1: primary_sector 沒 mapping 的 stock_id → 進 '其他'。"""
+    universe = [_mk_row("orphan", 0, 100, 1.0)]
+    sectors = _group_by_sector(universe, primary_sector={}, mv_map={"orphan": 100})
+    sector_ids = [s["id"] for s in sectors]
+    assert "其他" in sector_ids
+
+
+def test_group_by_sector_market_value_fallback_to_median() -> None:
+    """E2: 缺 market_value 的 stock → sector 內 median fallback;tile size 仍 > 0。"""
+    universe = [
+        _mk_row("A", 0, 100, 1.0),
+        _mk_row("B", 0, 100, 1.0),
+        _mk_row("C", 0, 100, 1.0),
+    ]
+    primary = {"A": "電子工業", "B": "電子工業", "C": "電子工業"}
+    # C 缺 mv
+    mv_map = {"A": 5_000_000_000, "B": 1_000_000_000}
+    sectors = _group_by_sector(universe, primary, mv_map, cap_per_sector=30)
+    stocks = sectors[0]["stocks"]
+    c_tile = next(s for s in stocks if s["stock_id"] == "C")
+    assert c_tile["market_value"] is None  # 仍標示 null 讓 frontend 知道是 fallback
+    # 但 stock 仍在 list 內,不被砍掉
+    assert {s["stock_id"] for s in stocks} == {"A", "B", "C"}
+
+
+# --------------------------------------------------------------------------
+# _max_tick_date (E5 / v3 B3)
+# --------------------------------------------------------------------------
+
+
+def test_max_tick_date_with_microseconds() -> None:
+    """v3 B3: FinMind 真實 ISO `2026-06-29 13:29:50.123456` 能 parse。"""
+    universe = [{"date": "2026-06-29 13:29:50.123456", "stock_id": "2330"}]
+    ts = _max_tick_date(universe)
+    assert ts is not None
+    assert ts.microsecond == 123456
+
+
+def test_max_tick_date_picks_latest() -> None:
+    """v3 B3: 多 row 混順序 → 取 max。"""
+    universe = [
+        {"date": "2026-06-29 10:00:00", "stock_id": "A"},
+        {"date": "2026-06-29 13:00:00", "stock_id": "B"},
+        {"date": "2026-06-29 11:00:00", "stock_id": "C"},
+    ]
+    ts = _max_tick_date(universe)
+    assert ts is not None
+    assert ts.hour == 13
+
+
+def test_max_tick_date_empty_returns_none() -> None:
+    """v3 B3: 空 universe → None。"""
+    assert _max_tick_date([]) is None
+
+
+# --------------------------------------------------------------------------
+# fetch_market_snapshot integration (SC-1 / E7)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_fetch_market_snapshot_happy_path() -> None:
+    """SC-1: 三個 internal fetch 成功 → return shape 對齊 §4 contract。"""
+    fake_universe = [
+        {"stock_id": "2330", "open": 2300, "high": 2400, "low": 2300, "close": 2390,
+         "change_rate": 1.92, "total_amount": 36e9, "volume_ratio": 1.14,
+         "date": "2026-06-29 10:30:00.123456"},
+    ]
+    fake_sector_rows = [
+        {"stock_id": "2330", "industry_category": "半導體業",
+         "type": "twse", "date": "2026-06-26"},
+    ]
+    fake_mv_map = {"2330": 60_000_000_000_000}
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value=fake_mv_map)):
+        result = await fetch_market_snapshot(refresh=False)
+    assert "as_of" in result
+    assert result["last_tick"] is not None
+    assert result["stale"] is False
+    assert "sectors" in result
+    assert "leaderboards" in result
+    assert {"gainers", "losers", "amount", "volume_ratio"} <= set(result["leaderboards"].keys())
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_fetch_market_snapshot_all_fail_raises_unreachable() -> None:
+    """E7: 全失敗 + 無 disk cache → raise ValueError('finmind_unreachable')。"""
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(side_effect=RuntimeError("upstream down"))), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(side_effect=RuntimeError("upstream down"))), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(side_effect=RuntimeError("upstream down"))):
+        with pytest.raises(ValueError, match="finmind_unreachable"):
+            await fetch_market_snapshot(refresh=False)
