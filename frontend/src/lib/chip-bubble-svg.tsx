@@ -2,8 +2,9 @@
 // Pure functions exported for testing; component uses automatic JSX transform.
 
 import { memo, useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
-import type { BrokerTrade } from "./chip-data";
+import type { BrokerTrade, IntradayPoint } from "./chip-data";
 import { CHIP } from "./chip-theme";
+import { IntradayLineLayer } from "./intraday-line-svg";
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -101,6 +102,10 @@ export interface BubbleChartProps {
   onBubbleHover?: (payload: BubbleHoverPayload | null, x: number, y: number) => void;
   /** Click callback — broker name when clicking a bubble, null when clicking empty area. */
   onBubbleClick?: (broker: string | null) => void;
+  /** Optional 1-min KBar close-price series (背景分時走勢線).
+   *  Y 軸 reuse 此圖 price scale,X 軸獨立為時間 09:00→13:30。
+   *  缺則不畫,既有行為不變(向下相容)。 */
+  intradayPoints?: IntradayPoint[] | null;
 }
 
 interface Bubble {
@@ -122,6 +127,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   selectedBroker,
   onBubbleHover,
   onBubbleClick,
+  intradayPoints,
 }: BubbleChartProps) {
   // --- All hooks MUST be called before any conditional return ---
 
@@ -417,6 +423,21 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           </g>
         );
       })}
+
+      {/* Background intraday close-price line — Y reuse sY price scale,
+          X 軸獨立(時間 09:00→13:30)。pointer-events: none,不擋互動。
+          位於 close dashed line 之前(close line 顏色較深可辨)、bubbles 之後。 */}
+      {intradayPoints && intradayPoints.length > 0 && (
+        <IntradayLineLayer
+          points={intradayPoints}
+          yLow={yLow}
+          yHigh={yHigh}
+          paddingLeft={PADDING.left}
+          paddingTop={PADDING.top}
+          chartWidth={width - PADDING.left - PADDING.right}
+          chartHeight={cH}
+        />
+      )}
 
       {/* Close price dashed line */}
       {closePrice != null && closePrice >= yLow && closePrice <= yHigh && (

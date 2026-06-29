@@ -253,3 +253,81 @@ describe("BubbleChartSvg F11 — filter hides non-matched bubbles; axes stay inv
     expect(circles[0]!.getAttribute("data-broker-id")).toBe("TARGET");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Intraday line overlay — additive optional prop (向下相容)
+// ---------------------------------------------------------------------------
+
+describe("BubbleChartSvg intraday line overlay (additive optional prop)", () => {
+  const baseTrades: BrokerTrade[] = [
+    mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 50, sell: 0 }),
+    mkTrade({ broker: "B", broker_id: "B1", price: 110, buy: 0, sell: 30 }),
+  ];
+
+  it("no intradayPoints prop → no polyline rendered (向下相容)", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={baseTrades} width={400} height={300} />,
+    );
+    expect(container.querySelector("polyline")).toBeNull();
+    expect(container.querySelector('[data-testid="intraday-line"]')).toBeNull();
+  });
+
+  it("intradayPoints=[] → no polyline (空 series 不畫)", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={baseTrades}
+        width={400}
+        height={300}
+        intradayPoints={[]}
+      />,
+    );
+    expect(container.querySelector("polyline")).toBeNull();
+  });
+
+  it("intradayPoints with data → polyline rendered with correct style", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={baseTrades}
+        width={400}
+        height={300}
+        intradayPoints={[
+          { t: "09:00", price: 105 },
+          { t: "13:30", price: 108 },
+        ]}
+      />,
+    );
+    const line = container.querySelector('[data-testid="intraday-line"]');
+    expect(line).not.toBeNull();
+    expect(line!.getAttribute("stroke")).toBe("#7c6f55");
+    expect(line!.getAttribute("stroke-width")).toBe("1");
+    expect(line!.getAttribute("fill")).toBe("none");
+  });
+
+  it("bubble pixel positions are unchanged regardless of intradayPoints presence", () => {
+    const { container: without } = render(
+      <BubbleChartSvg trades={baseTrades} width={400} height={300} />,
+    );
+    const withoutPositions = Array.from(without.querySelectorAll("circle"))
+      .map((c) => `${c.getAttribute("cx")},${c.getAttribute("cy")},${c.getAttribute("r")}`)
+      .sort();
+
+    cleanup();
+
+    const { container: withPts } = render(
+      <BubbleChartSvg
+        trades={baseTrades}
+        width={400}
+        height={300}
+        intradayPoints={[
+          { t: "09:00", price: 105 },
+          { t: "13:30", price: 108 },
+        ]}
+      />,
+    );
+    const withPositions = Array.from(withPts.querySelectorAll("circle"))
+      .map((c) => `${c.getAttribute("cx")},${c.getAttribute("cy")},${c.getAttribute("r")}`)
+      .sort();
+
+    expect(withPositions).toEqual(withoutPositions);
+  });
+});
