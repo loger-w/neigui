@@ -23,6 +23,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from services.finmind import get_finmind
+from services.trading_calendar import get_trading_days
 from services.trading_session import TPE_TZ, is_in_session
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
 
@@ -268,11 +269,14 @@ def _group_by_sector(
 
     sectors: list[dict] = []
     for sector_id, rows in groups.items():
-        # Sort by market_value desc — None 視為最小(排後),再 cap
-        def _mv(row: dict) -> int:
-            return mv_map.get(row.get("stock_id", ""), 0)
-
-        rows_sorted = sorted(rows, key=_mv, reverse=True)
+        # Audit X12:從 per-iteration def _mv 改 inline lambda — _mv 只 close
+        # over mv_map(loop 外不變),原寫法每個 sector 重新 allocate function
+        # object;inline 後讀者也不用驗證閉包沒抓到 sector_id / rows 迴圈變數。
+        rows_sorted = sorted(
+            rows,
+            key=lambda r: mv_map.get(r.get("stock_id", ""), 0),
+            reverse=True,
+        )
         capped = rows_sorted[:cap_per_sector]
         # Compute sector-level stats
         change_rates = [r.get("change_rate") or 0.0 for r in capped]
@@ -352,10 +356,13 @@ async def _fetch_market_value_map(
     today: date | None = None,
     refresh: bool = False,
 ) -> dict[str, int]:
-    """Call FinMind /data?dataset=TaiwanStockMarketValue with start=end=T-1.
+    """Call FinMind /data?dataset=TaiwanStockMarketValue with start=end=T-1 trading day.
     Return dict[stock_id, market_value]。
 
     R4(Phase 4 review):refresh=True 跳 cache 重抓。
+    Audit X3:從 calendar T-1 (today - 1 day) 改用 trading_calendar 的 T-1
+    交易日,解決週一/連假後抓到非交易日空資料 → tile fallback 退到 weight=1
+    導致整張 heatmap 等格的 SC-2 契約問題。
     """
     cache_key = "realtime_market_value"
     if not refresh:
@@ -364,8 +371,15 @@ async def _fetch_market_value_map(
             return cached.get("by_id", {})
     if today is None:
         today = date.today()
-    # T-1 calendar day (簡化版 — Phase 0b 若需更精確改 trading_calendar)
-    t_minus_1 = today - timedelta(days=1)
+    # Audit X3:取「今天之前(含)」的最近交易日 → 確保即使週一也對到上週五
+    # trading_calendar 有 12h cache + 自有 TaiwanFuturesDaily probe,失敗時退到
+    # calendar T-1 保命(不阻塞 mv 抓取,只是日期會精度退化)。
+    try:
+        trading_days = await get_trading_days(today - timedelta(days=1), 1)
+    except Exception:
+        logger.exception("trading_calendar lookup failed; fallback to calendar T-1")
+        trading_days = []
+    t_minus_1 = trading_days[0] if trading_days else today - timedelta(days=1)
     client = get_finmind()
     rows = await client._get(  # type: ignore[attr-defined]
         f"{_FINMIND_BASE}/data",
