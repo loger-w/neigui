@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.17.0",
+    date: "2026-06-29",
+    highlights: "N 日聚合範圍在 K 線上看得到,任意天數打字直接設",
+    changes: [
+      { kind: "feature", scope: "equity", text: "選 1 天以上聚合時,K 線與底下各資料區會用淡金色帶標出涵蓋的交易日範圍" },
+      { kind: "feature", scope: "equity", text: "頂部新增「過去 N 日」標籤,一眼知道現在看的是幾日加總" },
+      { kind: "feature", scope: "equity", text: "天數選擇器右側可直接輸入任意 1-60 整數,Enter 或滑開即套用;預設按鈕仍保留" },
+      { kind: "fix", scope: "equity", text: "右側面板左邊不再多畫彩色邊條(改在 K 線上呈現範圍,視覺更直觀)" },
+    ],
+  },
+  {
     version: "0.16.0",
     date: "2026-06-29",
     highlights: "日期切換更快,預設只看當日籌碼,要看區間自己挑",
