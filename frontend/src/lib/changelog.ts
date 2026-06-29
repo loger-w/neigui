@@ -40,6 +40,14 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.15.0",
+    date: "2026-06-29",
+    highlights: "泡泡圖背景多了當日分時走勢線,看 bubble 落點時對齊股價形狀",
+    changes: [
+      { kind: "feature", scope: "equity", text: "泡泡圖背景新增當日分時走勢線(灰色細線),Y 軸與泡泡共用價格刻度,可一眼看出 bubble 落在當日什麼價位區段" },
+    ],
+  },
+  {
     version: "0.14.0",
     date: "2026-06-29",
     highlights: "版本資訊面板上線,介面頂部視覺更整合",

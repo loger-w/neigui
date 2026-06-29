@@ -127,7 +127,10 @@ export default function App() {
     refresh: refreshChip,
   } = useChipData(symbol, date);
   const bubbleHook = useChipBubble(symbol, date);
-  const intradayHook = useChipIntraday(symbol, date);
+  // Gate intraday by bubble tab — 跳過 overview tab 浪費 FinMind 配額(1 分 K
+  // dataset 完整一日 ~266 rows,非 bubble view 時不需要)。tab 切回 bubble 時
+  // useChipIntraday queryKey 變化會自動觸發 fetch。
+  const intradayHook = useChipIntraday(tab === "bubble" ? symbol : "", date);
   const brokerHistoryHook = useBrokerHistory(symbol, selectedBrokerIds);
   const brokersWindow = useChipBrokersWindow(symbol, date, windowDays);
 
@@ -187,7 +190,10 @@ export default function App() {
     refreshChip();
     brokersWindow.refresh();
     if (selectedBrokerIds.size > 0) brokerHistoryHook.refresh();
-    if (tab === "bubble") bubbleHook.refresh();
+    if (tab === "bubble") {
+      bubbleHook.refresh();
+      intradayHook.refresh();
+    }
   };
   const isLoading = loading || bubbleHook.loading || brokersWindow.loading;
 

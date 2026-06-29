@@ -84,6 +84,16 @@ describe("pointsToPolyline", () => {
     const d = pointsToPolyline(pts, 100, 200, padL, padT, cW, cH);
     expect(d.split(" ").length).toBe(2);
   });
+
+  it("clips points whose price falls outside [yLow, yHigh]", () => {
+    const pts: IntradayPoint[] = [
+      { t: "09:00", price: 80 },   // below yLow → clipped
+      { t: "10:00", price: 150 },  // within → kept
+      { t: "13:30", price: 250 },  // above yHigh → clipped
+    ];
+    const d = pointsToPolyline(pts, 100, 200, padL, padT, cW, cH);
+    expect(d.split(" ").length).toBe(1);
+  });
 });
 
 describe("IntradayLineLayer rendering", () => {
