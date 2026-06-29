@@ -1,0 +1,191 @@
+"""SC-1 + SC-3 — Market routes integration.
+
+Mocks fetch_market_snapshot via unittest.mock.patch (對齊 test_options_routes.py)。
+"""
+from __future__ import annotations
+
+import gzip
+import json
+from unittest.mock import AsyncMock, patch
+
+import httpx
+from fastapi.testclient import TestClient
+
+from main import app
+
+
+_BASE_PAYLOAD = {
+    "as_of": "2026-06-29T10:30:00+08:00",
+    "last_tick": "2026-06-29T10:29:50",
+    "is_trading_session": True,
+    "stale": False,
+    "lag_seconds": 10,
+    "sectors": [
+        {
+            "id": "半導體業", "name": "半導體業", "member_count": 2,
+            "avg_change_rate": 0.5, "total_amount": 100_000_000,
+            "stocks": [
+                {
+                    "stock_id": "2330", "name": "台積電",
+                    "change_rate": 1.0, "total_amount": 100_000_000,
+                    "market_value": 60_000_000_000_000,
+                },
+            ],
+        },
+    ],
+    "leaderboards": {
+        "gainers": [], "losers": [], "amount": [], "volume_ratio": [],
+    },
+}
+
+
+# ---------------------------------------------------------------------------
+# Happy path
+# ---------------------------------------------------------------------------
+
+
+def test_snapshot_happy_path_returns_200_and_shape() -> None:
+    """SC-1: mock service 回完整 shape → 200 + sectors + leaderboards。"""
+    with patch(
+        "routes.market.fetch_market_snapshot",
+        new=AsyncMock(return_value=_BASE_PAYLOAD),
+    ):
+        resp = TestClient(app).get("/api/market/snapshot")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "sectors" in body
+    assert "leaderboards" in body
+    assert body["is_trading_session"] is True
+
+
+def test_snapshot_refresh_param_passed_to_service() -> None:
+    """SC-5: refresh=true → service 被 await 帶 refresh=True。"""
+    mock_svc = AsyncMock(return_value=_BASE_PAYLOAD)
+    with patch("routes.market.fetch_market_snapshot", new=mock_svc):
+        TestClient(app).get("/api/market/snapshot?refresh=true")
+    mock_svc.assert_awaited_once_with(refresh=True)
+
+
+def test_snapshot_no_refresh_defaults_to_false() -> None:
+    """SC-5: 無 refresh query → service 被 await 帶 refresh=False。"""
+    mock_svc = AsyncMock(return_value=_BASE_PAYLOAD)
+    with patch("routes.market.fetch_market_snapshot", new=mock_svc):
+        TestClient(app).get("/api/market/snapshot")
+    mock_svc.assert_awaited_once_with(refresh=False)
+
+
+# ---------------------------------------------------------------------------
+# Error path (E7 FinMind 失敗)
+# ---------------------------------------------------------------------------
+
+
+def test_snapshot_returns_502_when_service_raises_finmind_unreachable() -> None:
+    """E7 / SC-1: service raise ValueError('finmind_unreachable') → 502。"""
+    with patch(
+        "routes.market.fetch_market_snapshot",
+        new=AsyncMock(side_effect=ValueError("finmind_unreachable")),
+    ):
+        resp = TestClient(app).get("/api/market/snapshot")
+    assert resp.status_code == 502
+    assert resp.json()["detail"]["error"] == "finmind_unreachable"
+
+
+def test_snapshot_returns_503_on_unexpected_value_error() -> None:
+    """SC-1: service raise ValueError(別的)→ 503。"""
+    with patch(
+        "routes.market.fetch_market_snapshot",
+        new=AsyncMock(side_effect=ValueError("some_other_error")),
+    ):
+        resp = TestClient(app).get("/api/market/snapshot")
+    assert resp.status_code == 503
+    assert resp.json()["detail"]["error"] == "snapshot_unavailable"
+
+
+def test_snapshot_returns_502_on_httpx_timeout() -> None:
+    """E3: service 內漏 catch → 路由 catch httpx 例外 → 502。"""
+    with patch(
+        "routes.market.fetch_market_snapshot",
+        new=AsyncMock(side_effect=httpx.TimeoutException("up")),
+    ):
+        resp = TestClient(app).get("/api/market/snapshot")
+    assert resp.status_code == 502
+    assert resp.json()["detail"]["error"] == "finmind_unreachable"
+
+
+# ---------------------------------------------------------------------------
+# Stale fallback path
+# ---------------------------------------------------------------------------
+
+
+def test_snapshot_stale_fallback_returns_200_with_flag() -> None:
+    """E7: service 成功 return stale=True payload(disk cache 兜底)→ 200 + stale=true。"""
+    stale_payload = {**_BASE_PAYLOAD, "stale": True}
+    with patch(
+        "routes.market.fetch_market_snapshot",
+        new=AsyncMock(return_value=stale_payload),
+    ):
+        resp = TestClient(app).get("/api/market/snapshot")
+    assert resp.status_code == 200
+    assert resp.json()["stale"] is True
+
+
+# ---------------------------------------------------------------------------
+# v3 F10 — payload size measurement gate
+# ---------------------------------------------------------------------------
+
+
+def test_payload_size_under_budget() -> None:
+    """SC-1 budget assert: 28 sectors × 30 stocks fixture → encoded json size
+    < 50,000 bytes(SC-1 hard requirement);若 fail 改 cap 從 30 → 20。"""
+    sectors = [
+        {
+            "id": f"sector_{i:02d}",
+            "name": f"產業類別 {i:02d}",
+            "member_count": 30,
+            "avg_change_rate": 0.5,
+            "total_amount": 1_000_000_000,
+            "stocks": [
+                {
+                    "stock_id": f"{1000 + i * 30 + j}",
+                    "name": f"中文名稱 {i}-{j}",
+                    "change_rate": 1.92,
+                    "total_amount": 35_923_705_000,
+                    "market_value": 60_681_745_956_780,
+                }
+                for j in range(30)
+            ],
+        }
+        for i in range(28)
+    ]
+    leaderboards = {
+        key: [
+            {
+                "stock_id": f"{2000 + k:04d}",
+                "name": "中文名稱",
+                "change_rate": 5.5,
+                "total_amount": 1_000_000_000,
+                "volume_ratio": 2.5,
+                "sector": "半導體業",
+            }
+            for k in range(30)
+        ]
+        for key in ("gainers", "losers", "amount", "volume_ratio")
+    }
+    payload = {
+        "as_of": "2026-06-29T10:30:00+08:00",
+        "last_tick": "2026-06-29T10:29:50",
+        "is_trading_session": True,
+        "stale": False,
+        "lag_seconds": 10,
+        "sectors": sectors,
+        "leaderboards": leaderboards,
+    }
+    raw_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    raw_size = len(raw_bytes)
+    gz_size = len(gzip.compress(raw_bytes))
+    # SC-1 over-the-wire budget(brainstorm.md amendment 2026-06-29):
+    # 量 gzip 後而非 raw,對齊 FastAPI GzipMiddleware 實際傳輸量。
+    assert gz_size < 50_000, (
+        f"Gzip-after size {gz_size} >= 50000 (SC-1 budget);raw was {raw_size}。"
+        f" 若 fail 降 _HEATMAP_STOCKS_CAP_PER_SECTOR。"
+    )
