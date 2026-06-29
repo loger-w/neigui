@@ -49,6 +49,9 @@ const COLOR = {
   text: CHIP.inkDim,
   closeLine: "rgba(232, 90, 79, 0.5)",
   centerLine: CHIP.lineStrong,
+  crosshair: "rgba(237, 228, 211, 0.35)",
+  crosshairLabelBg: "rgba(15, 12, 8, 0.85)",
+  crosshairLabelText: CHIP.ink,
 } as const;
 
 const MIN_R = 3;
@@ -141,6 +144,102 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   const bubblesRef = useRef<Bubble[]>([]);
   const rafId = useRef(0);
 
+  // Crosshair refs — ref-based DOM mutation 跟既有 tooltip 同 pattern,避開
+  // RAF + memo 限制(高頻 mousemove 不走 React state)。Layout 變數每次
+  // render 寫進 layoutRef 給 updateCrosshair 反算 price / volume 用。
+  const crosshairVRef = useRef<SVGLineElement | null>(null);
+  const crosshairHRef = useRef<SVGLineElement | null>(null);
+  const crosshairXLabelRef = useRef<SVGTextElement | null>(null);
+  const crosshairYLabelRef = useRef<SVGTextElement | null>(null);
+  const crosshairXBgRef = useRef<SVGRectElement | null>(null);
+  const crosshairYBgRef = useRef<SVGRectElement | null>(null);
+  const layoutRef = useRef<{
+    centerX: number;
+    halfW: number;
+    volMax: number;
+    yLow: number;
+    yHigh: number;
+    cH: number;
+    paddingLeft: number;
+    paddingRight: number;
+    paddingTop: number;
+    paddingBottom: number;
+    width: number;
+    height: number;
+  } | null>(null);
+
+  const hideCrosshair = useCallback(() => {
+    for (const r of [
+      crosshairVRef, crosshairHRef,
+      crosshairXLabelRef, crosshairYLabelRef,
+      crosshairXBgRef, crosshairYBgRef,
+    ]) {
+      r.current?.setAttribute("opacity", "0");
+    }
+  }, []);
+
+  const updateCrosshair = useCallback((mx: number, my: number) => {
+    const layout = layoutRef.current;
+    const v = crosshairVRef.current;
+    const h = crosshairHRef.current;
+    const xL = crosshairXLabelRef.current;
+    const yL = crosshairYLabelRef.current;
+    const xBg = crosshairXBgRef.current;
+    const yBg = crosshairYBgRef.current;
+    if (!layout || !v || !h || !xL || !yL || !xBg || !yBg) return;
+    const {
+      centerX, halfW, volMax, yLow, yHigh, cH,
+      paddingLeft, paddingRight, paddingTop, paddingBottom, width, height,
+    } = layout;
+    // Bounds: 只在 chart 區域內顯示
+    if (
+      my < paddingTop || my > height - paddingBottom ||
+      mx < paddingLeft || mx > width - paddingRight
+    ) {
+      hideCrosshair();
+      return;
+    }
+    // Vertical line at mx
+    v.setAttribute("x1", String(mx));
+    v.setAttribute("x2", String(mx));
+    v.setAttribute("y1", String(paddingTop));
+    v.setAttribute("y2", String(height - paddingBottom));
+    v.setAttribute("opacity", "1");
+    // Horizontal line at my
+    h.setAttribute("x1", String(paddingLeft));
+    h.setAttribute("x2", String(width - paddingRight));
+    h.setAttribute("y1", String(my));
+    h.setAttribute("y2", String(my));
+    h.setAttribute("opacity", "1");
+    // X label: 張數 = |mx - centerX| / halfW * volMax(中軸=0,左右對稱)
+    const volume = halfW > 0 ? Math.round(Math.abs(mx - centerX) / halfW * volMax) : 0;
+    xL.textContent = String(volume);
+    xL.setAttribute("x", String(mx));
+    xL.setAttribute("y", String(height - paddingBottom + 16));
+    xL.setAttribute("opacity", "1");
+    // Y label: 價位 = yHigh - (my - paddingTop) / cH * (yHigh - yLow)
+    const yRange = yHigh - yLow;
+    const price = cH > 0 && yRange > 0 ? yHigh - ((my - paddingTop) / cH) * yRange : yHigh;
+    const priceStr = price.toFixed(1);
+    yL.textContent = priceStr;
+    yL.setAttribute("x", String(paddingLeft - 6));
+    yL.setAttribute("y", String(my + 4));
+    yL.setAttribute("opacity", "1");
+    // Backgrounds (簡單矩形,sized to label)
+    const xBgW = String(volume).length * 7 + 8;
+    xBg.setAttribute("x", String(mx - xBgW / 2));
+    xBg.setAttribute("y", String(height - paddingBottom + 5));
+    xBg.setAttribute("width", String(xBgW));
+    xBg.setAttribute("height", "14");
+    xBg.setAttribute("opacity", "1");
+    const yBgW = priceStr.length * 6 + 8;
+    yBg.setAttribute("x", String(paddingLeft - 6 - yBgW));
+    yBg.setAttribute("y", String(my - 7));
+    yBg.setAttribute("width", String(yBgW));
+    yBg.setAttribute("height", "14");
+    yBg.setAttribute("opacity", "1");
+  }, [hideCrosshair]);
+
   const hitTest = useCallback(
     (clientX: number, clientY: number, svgRect: DOMRect) => {
       const mx = clientX - svgRect.left;
@@ -168,9 +267,12 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
       const svg = e.currentTarget.ownerSVGElement;
       const svgRect = svg?.getBoundingClientRect();
       if (!svgRect) return;
+      const mx = clientX - svgRect.left;
+      const my = clientY - svgRect.top;
       if (rafId.current) cancelAnimationFrame(rafId.current);
       rafId.current = requestAnimationFrame(() => {
         rafId.current = 0;
+        updateCrosshair(mx, my);
         const hit = hitTest(clientX, clientY, svgRect);
         if (hit) {
           onBubbleHover?.(hit.payload, clientX, clientY);
@@ -179,14 +281,15 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         }
       });
     },
-    [hitTest, onBubbleHover],
+    [hitTest, onBubbleHover, updateCrosshair],
   );
 
   const handleMouseLeave = useCallback(() => {
     if (rafId.current) cancelAnimationFrame(rafId.current);
     rafId.current = 0;
+    hideCrosshair();
     onBubbleHover?.(null, 0, 0);
-  }, [onBubbleHover]);
+  }, [onBubbleHover, hideCrosshair]);
 
   const handleClick = useCallback(
     (e: ReactMouseEvent<SVGRectElement>) => {
@@ -351,6 +454,14 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
 
   bubblesRef.current = bubbles;
 
+  // Layout snapshot for crosshair reverse-mapping (pixel → price / volume)
+  layoutRef.current = {
+    centerX, halfW, volMax, yLow, yHigh, cH,
+    paddingLeft: PADDING.left, paddingRight: PADDING.right,
+    paddingTop: PADDING.top, paddingBottom: PADDING.bottom,
+    width, height,
+  };
+
   return (
     <svg
       width={width}
@@ -480,6 +591,58 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           {selectedBroker} 今日無顯著成交量
         </text>
       )}
+
+      {/* Crosshair — ref-managed via DOM mutation, opacity 0 by default,
+          shown when mouse enters chart area. V/H 雙虛線 + 軸標籤(張數 / 價位)
+          給 user 精確讀數。pointer-events: none 不擋 overlay 的 mouse events。 */}
+      <g pointerEvents="none" data-testid="crosshair">
+        <line
+          ref={crosshairVRef}
+          stroke={COLOR.crosshair}
+          strokeWidth={1}
+          strokeDasharray="4 3"
+          opacity={0}
+          x1={0} x2={0} y1={0} y2={0}
+        />
+        <line
+          ref={crosshairHRef}
+          stroke={COLOR.crosshair}
+          strokeWidth={1}
+          strokeDasharray="4 3"
+          opacity={0}
+          x1={0} x2={0} y1={0} y2={0}
+        />
+        <rect
+          ref={crosshairXBgRef}
+          fill={COLOR.crosshairLabelBg}
+          rx={2}
+          opacity={0}
+          x={0} y={0} width={0} height={0}
+        />
+        <text
+          ref={crosshairXLabelRef}
+          textAnchor="middle"
+          fill={COLOR.crosshairLabelText}
+          fontSize={11}
+          opacity={0}
+          x={0} y={0}
+        />
+        <rect
+          ref={crosshairYBgRef}
+          fill={COLOR.crosshairLabelBg}
+          rx={2}
+          opacity={0}
+          x={0} y={0} width={0} height={0}
+        />
+        <text
+          ref={crosshairYLabelRef}
+          textAnchor="end"
+          fill={COLOR.crosshairLabelText}
+          fontSize={11}
+          opacity={0}
+          x={0} y={0}
+        />
+      </g>
 
       {/* Invisible overlay for mouse interaction (single handler instead of per-bubble) */}
       <rect

@@ -303,6 +303,36 @@ describe("BubbleChartSvg intraday line overlay (additive optional prop)", () => 
     expect(line!.getAttribute("fill")).toBe("none");
   });
 
+  it("crosshair group + 6 child elements exist, all opacity=0 by default (hidden)", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={baseTrades} width={400} height={300} />,
+    );
+    const g = container.querySelector('[data-testid="crosshair"]');
+    expect(g).not.toBeNull();
+    const lines = g!.querySelectorAll("line");
+    const rects = g!.querySelectorAll("rect");
+    const texts = g!.querySelectorAll("text");
+    expect(lines).toHaveLength(2);   // V + H
+    expect(rects).toHaveLength(2);   // X label bg + Y label bg
+    expect(texts).toHaveLength(2);   // X label + Y label
+    for (const el of [...Array.from(lines), ...Array.from(rects), ...Array.from(texts)]) {
+      expect(el.getAttribute("opacity")).toBe("0");
+    }
+  });
+
+  it("crosshair lines have dashed stroke + pointer-events none on parent group", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={baseTrades} width={400} height={300} />,
+    );
+    const g = container.querySelector('[data-testid="crosshair"]');
+    expect(g!.getAttribute("pointer-events")).toBe("none");
+    const lines = g!.querySelectorAll("line");
+    for (const l of Array.from(lines)) {
+      expect(l.getAttribute("stroke-dasharray")).toBe("4 3");
+      expect(l.getAttribute("stroke-width")).toBe("1");
+    }
+  });
+
   it("bubble pixel positions are unchanged regardless of intradayPoints presence", () => {
     const { container: without } = render(
       <BubbleChartSvg trades={baseTrades} width={400} height={300} />,
