@@ -78,6 +78,42 @@ describe("useMarketSnapshot", () => {
     expect(result.current.data).toBeNull();
   });
 
+  it("pauses polling after first fetch when is_trading_session=false (Audit X8 / SC-5)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const spy = vi.spyOn(marketApi, "fetchMarketSnapshot")
+      .mockResolvedValue({ ...mockSnapshot, is_trading_session: false });
+    const { result } = renderHook(() => useMarketSnapshot(true), {
+      wrapper: makeQueryWrapper(),
+    });
+    await vi.waitFor(() => {
+      expect(result.current.data).not.toBeNull();
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockClear();
+    // 收盤後 polling 應停。等遠超 2500ms (refetchInterval) 仍不該再次呼叫
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(spy).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("polls every ~2.5s when is_trading_session=true (Audit X8 / SC-5)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const spy = vi.spyOn(marketApi, "fetchMarketSnapshot")
+      .mockResolvedValue({ ...mockSnapshot, is_trading_session: true });
+    renderHook(() => useMarketSnapshot(true), {
+      wrapper: makeQueryWrapper(),
+    });
+    await vi.waitFor(() => {
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+    // 推 3 秒 → 已過一個 2500ms tick,refetch 至少觸發 1 次
+    await vi.advanceTimersByTimeAsync(3000);
+    await vi.waitFor(() => {
+      expect(spy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    vi.useRealTimers();
+  });
+
   it("loading flips false after fetch resolves (對齊 useOptionsLargeTraders.ts 樣板)", async () => {
     let resolveFetch: (v: MarketSnapshot) => void = () => {};
     vi.spyOn(marketApi, "fetchMarketSnapshot")
