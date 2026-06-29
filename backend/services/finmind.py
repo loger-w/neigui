@@ -827,9 +827,12 @@ class FinMindClient:
                 if not self._is_today(date_str) or not self._is_stale(cached):
                     return cached
 
+        # refresh is part of the dedup key so a concurrent refresh=True caller
+        # never awaits an in-flight refresh=False task (which would skip the
+        # force-today refetch despite the explicit refresh request).
         return await self._run_once(
-            f"oi_lt_{cache_key}",
-            lambda: self._do_fetch_oi_large_traders(contract, date_str, cache_key),
+            f"oi_lt_{cache_key}_r{int(refresh)}",
+            lambda: self._do_fetch_oi_large_traders(contract, date_str, cache_key, refresh),
         )
 
     async def _do_fetch_oi_large_traders(
@@ -837,6 +840,7 @@ class FinMindClient:
         contract: dict,
         date_str: str,
         cache_key: str,
+        refresh: bool,
     ) -> dict:
         from services.finmind_options import (
             _CACHE_VERSION_OPTIONS,
@@ -844,17 +848,33 @@ class FinMindClient:
         )
 
         end = date.fromisoformat(date_str)
+        today = date.today()
         # FinMind TaiwanOptionOpenInterestLargeTraders silently ignores
         # `end_date` — it only returns rows for `start_date`. A single
         # multi-day call therefore yields just one date, breaking the 20D
         # series. Fan out 30 single-date fetches in parallel (token bucket
         # serialises them) and aggregate; weekends/holidays naturally drop
         # out as empty payloads, leaving ~20 real trading days.
+        #
+        # 2026-06-29 perf S2: each single-date result is also cached under
+        # ``oi_lt_day_{date_iso}`` so date changes within the 30-day window
+        # amortise — switching from end=D to end=D+1 only refetches 1 new
+        # day (overlap = 29 days). Mirrors fetch_taiwan_option_daily_window.
         dates_to_fetch = [end - timedelta(days=i) for i in range(30)]
 
         async def fetch_one(d: date) -> list:
+            day_key = f"oi_lt_day_{d.isoformat()}"
+            # refresh=True on the outer call forces re-fetch of the trailing
+            # days (today + yesterday) since FinMind publication lag can
+            # update them; historical days are frozen so we always trust cache.
+            force_today = refresh and d >= (today - timedelta(days=1))
+            if not force_today:
+                cached_day = self._read_cache_v(day_key, _CACHE_VERSION_OPTIONS)
+                if cached_day is not None:
+                    if d != today or not self._is_stale(cached_day):
+                        return list(cached_day.get("rows", []))
             try:
-                return await self._get(
+                rows = await self._get(
                     f"{_FINMIND_BASE}/data",
                     {
                         "dataset": "TaiwanOptionOpenInterestLargeTraders",
@@ -869,6 +889,20 @@ class FinMindClient:
                     exc,
                 )
                 return []
+            # Cache write is best-effort: if writing the per-day cache fails
+            # (disk full / permission), still return the successfully-fetched
+            # rows so the aggregate isn't lost. Without this guard a single
+            # cache write failure across 30 fan-out tasks would crash the
+            # whole gather() (return_exceptions is NOT set on line below).
+            try:
+                self._write_cache_v(
+                    day_key,
+                    {"rows": rows, "fetched_at": datetime.now().isoformat(timespec="seconds")},
+                    _CACHE_VERSION_OPTIONS,
+                )
+            except OSError as exc:
+                logger.warning("oi_lt per-day cache write failed for %s: %s", day_key, exc)
+            return rows
 
         batches = await asyncio.gather(*[fetch_one(d) for d in dates_to_fetch])
         raw = [r for batch in batches for r in batch]

@@ -551,6 +551,113 @@ async def test_fetch_oi_large_traders_returns_cached_on_second_call():
 
 
 @pytest.mark.asyncio
+async def test_fetch_oi_large_traders_concurrent_refresh_does_not_dedup_into_non_refresh():
+    """Regression guard: a concurrent refresh=True call MUST NOT await an
+    in-flight refresh=False task — otherwise the refresh caller silently
+    receives stale cached data (force_today logic is skipped). The fix is
+    `_r{int(refresh)}` in the _run_once dedup key."""
+    import asyncio
+    from services.finmind import FinMindClient
+    by_date = {
+        "2025-01-15": [_oi_row("2025-01-15", "call",
+                                buy_top10_trader_open_interest=100,
+                                sell_top10_trader_open_interest=50)],
+    }
+
+    saw_get_calls: list[dict] = []
+
+    async def fake_get(url, params=None, **_kw):
+        # Yield once so both concurrent callers race through _run_once before either resolves.
+        await asyncio.sleep(0)
+        saw_get_calls.append(dict(params or {}))
+        d = (params or {}).get("start_date", "")
+        return _fm_resp(by_date.get(d, []))
+
+    mc = AsyncMock()
+    mc.get = AsyncMock(side_effect=fake_get)
+
+    fm = FinMindClient()
+    fm._http = mc
+    contract = {"option_id": "TXO", "contract_date": "202501", "contract_type": "202501"}
+
+    # Concurrent refresh=False + refresh=True with identical (contract, date).
+    # Pre-fix: both share dedup key, only one fan-out runs → 30 HTTP calls total.
+    # Post-fix: separate dedup keys → both run → 60 HTTP calls total.
+    await asyncio.gather(
+        fm.fetch_oi_large_traders(contract, "2025-01-15", refresh=False),
+        fm.fetch_oi_large_traders(contract, "2025-01-15", refresh=True),
+    )
+    assert mc.get.await_count == 60
+
+
+@pytest.mark.asyncio
+async def test_fetch_oi_large_traders_per_day_cache_write_failure_does_not_crash_gather():
+    """S2 per-day cache write is best-effort: a single OSError from one
+    fetch_one task must not crash the asyncio.gather across the 30-day
+    fan-out. Pre-S2-guard: gather() had no return_exceptions and any disk
+    failure killed the whole request.
+    """
+    from services.finmind import FinMindClient
+
+    by_date = {
+        "2025-01-15": [_oi_row("2025-01-15", "call",
+                                buy_top10_trader_open_interest=100,
+                                sell_top10_trader_open_interest=50)],
+    }
+    mc = _mock_http_by_start_date(by_date)
+    fm = FinMindClient()
+    fm._http = mc
+
+    # Make ONLY the per-day write fail; outer aggregate write is unrelated
+    # to the S2 guard (pre-existing code) so swap the instance method to
+    # raise on the per-day key prefix only.
+    original_write = fm._write_cache_v
+
+    def selective_write(key, payload, version):
+        if key.startswith("oi_lt_day_"):
+            raise OSError("simulated per-day disk full")
+        return original_write(key, payload, version)
+
+    fm._write_cache_v = selective_write  # type: ignore[assignment]
+
+    contract = {"option_id": "TXO", "contract_date": "202501", "contract_type": "202501"}
+    out = await fm.fetch_oi_large_traders(contract, "2025-01-15")
+    # Per-day write failure must not surface — caller still gets aggregate.
+    assert out["contract"] == "TXO202501"
+    assert "current" in out
+    assert "series" in out
+
+
+@pytest.mark.asyncio
+async def test_fetch_oi_large_traders_per_day_cache_amortises_date_step():
+    """S2 perf: switching date by one day should only re-fetch the one new day
+    (the prior 29 days overlap and hit per-day cache). Pre-S2 every call
+    re-ran all 30 fan-out fetches."""
+    from services.finmind import FinMindClient
+    # Each date returns a stable single row so we can tell calls apart.
+    by_date = {
+        f"2025-01-{i:02d}": [
+            _oi_row(f"2025-01-{i:02d}", "call",
+                    buy_top10_trader_open_interest=100 + i,
+                    sell_top10_trader_open_interest=50 + i),
+        ]
+        for i in range(1, 32)
+    }
+    mc = _mock_http_by_start_date(by_date)
+    fm = FinMindClient()
+    fm._http = mc
+    contract = {"option_id": "TXO", "contract_date": "202501", "contract_type": "202501"}
+    # First call: 30 fan-out fetches for [2025-01-15, ..., 2024-12-17].
+    await fm.fetch_oi_large_traders(contract, "2025-01-15")
+    first_count = mc.get.await_count
+    assert first_count == 30
+    # Second call: end shifts +1 day. 29 of 30 days overlap → cached.
+    # Only the new tip (2025-01-16) misses cache → 1 extra fetch.
+    await fm.fetch_oi_large_traders(contract, "2025-01-16")
+    assert mc.get.await_count == first_count + 1
+
+
+@pytest.mark.asyncio
 async def test_fetch_strike_volume_writes_cache_and_returns_shape():
     from services.finmind import FinMindClient
     today = "2026-06-23"
