@@ -37,6 +37,16 @@ async def get_chip_bubble(
     return await get_finmind().fetch_chip_bubble(symbol, d, refresh)
 
 
+@router.get("/api/chip/{symbol}/intraday")
+async def get_chip_intraday(
+    symbol: str,
+    date: str = Query(default=""),
+    refresh: bool = Query(default=False),
+) -> dict:
+    d = date or _today()
+    return await get_finmind().fetch_chip_intraday(symbol, d, refresh)
+
+
 @router.get("/api/chip/{symbol}/history")
 async def get_chip_history(
     symbol: str,

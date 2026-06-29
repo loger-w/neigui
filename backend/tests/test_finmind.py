@@ -874,3 +874,134 @@ async def test_legacy_fetch_chip_history_unchanged():
     assert "candles" in r and "institutional" in r and "margin" in r
     assert "major" in r and len(r["major"]) == 1
     assert r["major"][0]["major_net"] == 2000
+
+
+# ---------------------------------------------------------------------------
+# fetch_chip_intraday — 1-min KBar close-price time series for bubble overlay
+# ---------------------------------------------------------------------------
+#
+# Fixture rows below are VERBATIM copies from the 2026-06-29 EOD probe of
+# 2330 on 2026-06-26 (scratchpad/kbar_golden_row.json). Schema verified:
+#   {date: "YYYY-MM-DD", minute: "HH:MM:SS",
+#    stock_id, open, high, low, close, volume}
+# Do NOT alter field names or formats; they reflect real FinMind output.
+
+KBAR_GOLDEN_ROWS = [
+    {
+        "date": "2026-06-26",
+        "minute": "09:00:00",
+        "stock_id": "2330",
+        "open": 2360.0,
+        "high": 2365.0,
+        "low": 2355.0,
+        "close": 2360.0,
+        "volume": 3595,
+    },
+    {
+        "date": "2026-06-26",
+        "minute": "09:01:00",
+        "stock_id": "2330",
+        "open": 2360.0,
+        "high": 2365.0,
+        "low": 2355.0,
+        "close": 2365.0,
+        "volume": 478,
+    },
+    {
+        "date": "2026-06-26",
+        "minute": "09:02:00",
+        "stock_id": "2330",
+        "open": 2365.0,
+        "high": 2370.0,
+        "low": 2360.0,
+        "close": 2365.0,
+        "volume": 443,
+    },
+]
+
+
+@pytest.mark.asyncio
+async def test_fetch_chip_intraday_transforms():
+    """real FinMind row → {t: "HH:MM", price: float} points, sorted ascending."""
+    from services.finmind import FinMindClient
+
+    mc = _mock_http(_fm_response(KBAR_GOLDEN_ROWS))
+    client = FinMindClient()
+    client._http = mc
+    r = await client.fetch_chip_intraday("2330", "2026-06-26")
+
+    assert r["symbol"] == "2330"
+    assert r["date"] == "2026-06-26"
+    assert "fetched_at" in r
+    assert r["points"] == [
+        {"t": "09:00", "price": 2360.0},
+        {"t": "09:01", "price": 2365.0},
+        {"t": "09:02", "price": 2365.0},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_fetch_chip_intraday_empty_when_no_kbar():
+    """假日 / 該日無交易 / 盤中前 → FinMind 回空 list,points: []。"""
+    from services.finmind import FinMindClient
+
+    mc = _mock_http(_fm_response([]))
+    client = FinMindClient()
+    client._http = mc
+    r = await client.fetch_chip_intraday("2330", "2026-06-28")  # Sunday
+
+    assert r["points"] == []
+    assert r["symbol"] == "2330"
+
+
+@pytest.mark.asyncio
+async def test_fetch_chip_intraday_sorts_unsorted_input():
+    """Defensive sort: even if FinMind returns out-of-order rows, points 升序。"""
+    from services.finmind import FinMindClient
+
+    unsorted = [
+        KBAR_GOLDEN_ROWS[2],
+        KBAR_GOLDEN_ROWS[0],
+        KBAR_GOLDEN_ROWS[1],
+    ]
+    mc = _mock_http(_fm_response(unsorted))
+    client = FinMindClient()
+    client._http = mc
+    r = await client.fetch_chip_intraday("2330", "2026-06-26")
+
+    assert [p["t"] for p in r["points"]] == ["09:00", "09:01", "09:02"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_chip_intraday_cache_hit_skips_http():
+    """warm cache → 第二次 fetch 0 HTTP calls(對齊 bubble cache 行為)。"""
+    from services.finmind import FinMindClient
+
+    mc = _mock_http(_fm_response(KBAR_GOLDEN_ROWS))
+    client = FinMindClient()
+    client._http = mc
+    await client.fetch_chip_intraday("2330", "2026-06-26")
+    first_calls = mc.get.await_count
+
+    # second fetch — same (symbol, date), no refresh
+    r2 = await client.fetch_chip_intraday("2330", "2026-06-26")
+    assert mc.get.await_count == first_calls  # no new HTTP
+    assert r2["points"][0]["t"] == "09:00"
+
+
+@pytest.mark.asyncio
+async def test_fetch_chip_intraday_refresh_bypasses_cache():
+    """refresh=True 跳過 cache,重新打 FinMind。"""
+    from services.finmind import FinMindClient
+
+    mc = _mock_http(
+        _fm_response(KBAR_GOLDEN_ROWS),
+        _fm_response(KBAR_GOLDEN_ROWS),
+    )
+    client = FinMindClient()
+    client._http = mc
+    await client.fetch_chip_intraday("2330", "2026-06-26")
+    first_calls = mc.get.await_count
+
+    await client.fetch_chip_intraday("2330", "2026-06-26", refresh=True)
+    assert mc.get.await_count == first_calls + 1

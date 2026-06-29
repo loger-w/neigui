@@ -89,6 +89,18 @@ MOCK_HISTORY_MAJOR = {
 }
 
 
+MOCK_INTRADAY = {
+    "symbol": "2330",
+    "date": "2026-06-26",
+    "fetched_at": "2026-06-26T15:55:00",
+    "points": [
+        {"t": "09:00", "price": 2360.0},
+        {"t": "09:01", "price": 2365.0},
+        {"t": "13:30", "price": 2340.0},
+    ],
+}
+
+
 @pytest.fixture
 def mock_fm():
     svc = AsyncMock()
@@ -97,6 +109,7 @@ def mock_fm():
     svc.fetch_chip_history = AsyncMock(return_value=MOCK_HISTORY)
     svc.fetch_chip_history_base = AsyncMock(return_value=MOCK_HISTORY_BASE)
     svc.fetch_chip_history_major = AsyncMock(return_value=MOCK_HISTORY_MAJOR)
+    svc.fetch_chip_intraday = AsyncMock(return_value=MOCK_INTRADAY)
     with patch("routes.chip.get_finmind", return_value=svc):
         yield svc
 
@@ -123,6 +136,32 @@ def test_chip_bubble(mock_fm):
     resp = TestClient(app).get("/api/chip/2330/bubble?date=2026-06-19")
     assert resp.status_code == 200
     assert resp.json()["trades"][0]["broker"] == "美林"
+
+
+def test_chip_intraday_route_returns_payload(mock_fm):
+    resp = TestClient(app).get("/api/chip/2330/intraday?date=2026-06-26")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["symbol"] == "2330"
+    assert body["date"] == "2026-06-26"
+    assert body["points"][0]["t"] == "09:00"
+    mock_fm.fetch_chip_intraday.assert_awaited_once_with("2330", "2026-06-26", False)
+
+
+def test_chip_intraday_default_date(mock_fm):
+    """無 date param → 走 _today() default,refresh=False。"""
+    resp = TestClient(app).get("/api/chip/2330/intraday")
+    assert resp.status_code == 200
+    # called with (symbol, some_date_string, False); just check signature length
+    call = mock_fm.fetch_chip_intraday.await_args
+    assert call.args[0] == "2330"
+    assert call.args[2] is False
+
+
+def test_chip_intraday_refresh_param(mock_fm):
+    resp = TestClient(app).get("/api/chip/2330/intraday?date=2026-06-26&refresh=true")
+    assert resp.status_code == 200
+    mock_fm.fetch_chip_intraday.assert_awaited_once_with("2330", "2026-06-26", True)
 
 
 def test_chip_history(mock_fm):

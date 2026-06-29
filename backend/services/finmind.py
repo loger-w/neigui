@@ -235,6 +235,64 @@ class FinMindClient:
         self._write_cache(cache_key, result)
         return result
 
+    # -- intraday (1-min KBar close-price series for bubble overlay) --------
+
+    async def fetch_chip_intraday(
+        self,
+        symbol: str,
+        date_str: str,
+        refresh: bool = False,
+    ) -> dict:
+        """Return EOD 1-min KBar close-price time series for the bubble overlay.
+
+        Payload: {symbol, date, fetched_at, points: [{t: "HH:MM", price: float}]}
+        Empty list when FinMind has no rows (holiday, pre-EOD, no trades).
+        """
+        cache_key = f"{symbol}_{date_str}_intraday"
+        if not refresh:
+            cached = self._read_cache(cache_key)
+            if cached is not None:
+                if not self._is_today(date_str) or not self._is_stale(cached):
+                    return cached
+        return await self._run_once(
+            f"intraday_{cache_key}",
+            lambda: self._do_fetch_intraday(symbol, date_str, cache_key),
+        )
+
+    async def _do_fetch_intraday(
+        self,
+        symbol: str,
+        date_str: str,
+        cache_key: str,
+    ) -> dict:
+        raw = await self._get(
+            f"{_FINMIND_BASE}/data",
+            {
+                "dataset": "TaiwanStockKBar",
+                "data_id": symbol,
+                "start_date": date_str,
+                "end_date": date_str,
+            },
+        )
+        # FinMind TaiwanStockKBar row (verified 2026-06-29 probe of 2330 2026-06-26):
+        #   {date: "YYYY-MM-DD", minute: "HH:MM:SS",
+        #    stock_id, open, high, low, close, volume}
+        # date and minute are SEPARATE fields; do not slice date for time.
+        points = [
+            {"t": str(r["minute"])[:5], "price": float(r["close"])}
+            for r in raw
+            if "minute" in r and "close" in r
+        ]
+        points.sort(key=lambda p: p["t"])
+        result = {
+            "symbol": symbol,
+            "date": date_str,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "points": points,
+        }
+        self._write_cache(cache_key, result)
+        return result
+
     # -- history (configurable-window candles + institutional + margin) ------
 
     @staticmethod
