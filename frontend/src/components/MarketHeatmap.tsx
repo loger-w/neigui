@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactElement } from "react";
+import { useMemo, useRef, useState, type ReactElement } from "react";
 import { useContainerSize } from "../hooks/useContainerSize";
 import { layoutHeatmap, type TileLayout } from "../lib/heatmap-svg";
 import type { Sector } from "../lib/market-types";
@@ -13,7 +13,13 @@ export function MarketHeatmap({ sectors, onSymbolPick }: Props): ReactElement {
   const { width, height } = useContainerSize(containerRef);
   const [hoveredTile, setHoveredTile] = useState<TileLayout | null>(null);
 
-  const groups = layoutHeatmap(sectors, width, height);
+  // Audit X2:hover state 變動會重 render 此元件;裸呼叫 layoutHeatmap 等於
+  // 每次 hover 都重跑整張 squarified treemap(28 sector × ~30 tile)。包 useMemo
+  // 後僅在 sectors / width / height 變動時才重排。
+  const groups = useMemo(
+    () => layoutHeatmap(sectors, width, height),
+    [sectors, width, height],
+  );
 
   return (
     <div ref={containerRef} className="relative w-full h-full bg-bg-deep">
