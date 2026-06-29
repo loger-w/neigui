@@ -40,6 +40,15 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.17.1",
+    date: "2026-06-29",
+    highlights: "右側面板顯示外資 / 投信 / 自營商區間加總,K 線下方圖表更乾淨",
+    changes: [
+      { kind: "feature", scope: "equity", text: "右側面板新增「三大法人」加總列(外資 / 投信 / 自營商),依當前選擇的天數加總,單日也適用" },
+      { kind: "fix", scope: "equity", text: "K 線下方的主力 / 外資 / 投信 / 自營商 / 融資融券走勢圖移除金色區間色帶,只保留 K 線本身的範圍標示,避免重複資訊" },
+    ],
+  },
+  {
     version: "0.17.0",
     date: "2026-06-29",
     highlights: "N 日聚合範圍在 K 線上看得到,任意天數打字直接設",

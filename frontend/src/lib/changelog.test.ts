@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
   });
 
-  it("最新版本是 v0.17.0(K 線 N 日 highlight + 自訂天數)", () => {
-    expect(CHANGELOG[0]?.version).toBe("0.17.0");
+  it("最新版本是 v0.17.1(三大法人 N 日加總 + 拔 subchart band)", () => {
+    expect(CHANGELOG[0]?.version).toBe("0.17.1");
   });
 
   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
