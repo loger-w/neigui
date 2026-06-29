@@ -131,4 +131,74 @@ describe("DateField", () => {
     fireEvent.change(input, { target: { value: "2026-06-24" } });
     expect(captured).toBe("2026-06-24");
   });
+
+  // --- A1: snap path must NOT strip HTMLInputElement / SyntheticEvent prototype.
+  // The old impl synthesized a POJO via { ...e, target: { ...e.target } }, which
+  // dropped focus()/checkValidity()/preventDefault() etc. New impl mutates
+  // e.target.value in place and forwards the real event.
+  it("preserves HTMLInputElement on e.target after snap (no prototype strip)", () => {
+    let target: EventTarget | null = null;
+    const onChange = vi.fn((e: React.ChangeEvent<HTMLInputElement>) => {
+      target = e.target;
+    });
+    const { container } = render(
+      <DateField
+        value="2026-06-25"
+        snapToDates={["2026-06-24", "2026-06-25", "2026-06-26"]}
+        onChange={onChange}
+      />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "2026-06-27" } });
+    // The forwarded target must still be the real input element,
+    // not a plain object lacking HTMLInputElement methods.
+    expect(target).toBe(input);
+    expect(target).not.toBeNull();
+    expect((target as unknown as HTMLInputElement).focus).toBeTypeOf("function");
+  });
+
+  // --- A2: controlled-input desync — when snapped value equals current `value`
+  // prop, React's Object.is bail-out skips re-render and the DOM input retains
+  // the user-typed value unless we also mutate the DOM in place. Verify the
+  // DOM value reflects the snapped result.
+  it("forces DOM input.value to the snapped value (avoids controlled-input desync)", () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <DateField
+        value="2026-06-26"
+        snapToDates={["2026-06-24", "2026-06-25", "2026-06-26"]}
+        onChange={onChange}
+      />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    // user types Saturday — would snap to Friday (2026-06-26) which equals
+    // the controlled value prop, so React bails out and would NOT resync DOM.
+    fireEvent.change(input, { target: { value: "2026-06-27" } });
+    expect(input.value).toBe("2026-06-26");
+  });
+
+  // --- A1/A2 alternative API: onValueChange receives the post-snap string.
+  it("calls onValueChange with snapped string (preferred over onChange for snap-aware callers)", () => {
+    const onValueChange = vi.fn();
+    const { container } = render(
+      <DateField
+        value="2026-06-25"
+        snapToDates={["2026-06-24", "2026-06-25", "2026-06-26"]}
+        onValueChange={onValueChange}
+      />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "2026-06-27" } });
+    expect(onValueChange).toHaveBeenCalledWith("2026-06-26");
+  });
+
+  it("calls onValueChange with raw value when snapToDates is undefined (W2 backward compat)", () => {
+    const onValueChange = vi.fn();
+    const { container } = render(
+      <DateField value="2026-06-25" onValueChange={onValueChange} />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "2026-06-27" } });
+    expect(onValueChange).toHaveBeenCalledWith("2026-06-27");
+  });
 });

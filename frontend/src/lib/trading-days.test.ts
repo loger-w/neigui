@@ -17,9 +17,12 @@ describe("snapToTradingDay", () => {
     expect(snapToTradingDay("2026-06-25", dates)).toBe("2026-06-25");
   });
 
-  it("returns target unchanged when target is earlier than every trading day", () => {
+  it("snaps to the earliest date when target is earlier than every trading day", () => {
+    // A3 fix: pre-fix snap returned target unchanged, which let the caller
+    // forward an out-of-range date and lock userPickedDate=true. Clamp into
+    // the trading-day range instead so the controlled-input flow stays sane.
     const dates = ["2026-06-24", "2026-06-25"];
-    expect(snapToTradingDay("2026-01-01", dates)).toBe("2026-01-01");
+    expect(snapToTradingDay("2026-01-01", dates)).toBe("2026-06-24");
   });
 
   it("returns target unchanged when dates list is empty", () => {

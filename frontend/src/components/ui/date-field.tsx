@@ -13,10 +13,18 @@ import { snapToTradingDay } from "@/lib/trading-days";
  * glyph (acceptable per spec out-of-scope).
  *
  * `snapToDates` (optional) — when provided AND non-empty, any onChange value
- * not present in the list is replaced with the latest trading day <= target
- * before being forwarded. When omitted (or empty), onChange is forwarded
- * verbatim — OptionsHeader and other callers stay on the pure-native path
- * (W2 backward-compat).
+ * not in the list is replaced with the latest trading day <= target (or the
+ * earliest, when target predates the list). The replaced value is written
+ * back to the DOM input *in place* so the controlled input never desyncs
+ * even when React's Object.is bail-out would skip a re-render.
+ *
+ * `onValueChange` (optional) — preferred string-only callback for snap-aware
+ * callers. Receives the post-snap value directly without wrapping in a
+ * SyntheticEvent. Both `onChange` and `onValueChange` fire when present.
+ *
+ * Pure-native path (W2 OptionsHeader): when both `snapToDates` and
+ * `onValueChange` are omitted, the rendered input behaves identically to a
+ * raw `<input type="date">` — no event wrapping, no DOM mutation.
  */
 export type DateFieldProps = Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
@@ -24,30 +32,32 @@ export type DateFieldProps = Omit<
 > & {
   ref?: React.Ref<HTMLInputElement>;
   snapToDates?: string[];
+  onValueChange?: (value: string) => void;
 };
 
 export function DateField({
   className,
   ref,
   snapToDates,
+  onValueChange,
   onChange,
   ...props
 }: DateFieldProps) {
-  const shouldWrap = snapToDates !== undefined && snapToDates.length > 0;
-  const wrappedOnChange = shouldWrap
+  const shouldSnap = snapToDates !== undefined && snapToDates.length > 0;
+  const needsWrap = shouldSnap || onValueChange !== undefined;
+  const handleChange = needsWrap
     ? (e: React.ChangeEvent<HTMLInputElement>) => {
         const raw = e.target.value;
-        const snapped = snapToTradingDay(raw, snapToDates!);
-        if (snapped === raw) {
-          onChange?.(e);
-          return;
+        const finalValue = shouldSnap ? snapToTradingDay(raw, snapToDates!) : raw;
+        if (shouldSnap && finalValue !== raw) {
+          // In-place DOM mutation: React diff would otherwise bail out when
+          // the new state equals the prior controlled value (e.g. Saturday →
+          // snap-to-Friday when the state was already Friday) and the DOM
+          // would stay on the user-typed Saturday.
+          e.target.value = finalValue;
         }
-        const synthetic = {
-          ...e,
-          target: { ...e.target, value: snapped },
-          currentTarget: { ...e.currentTarget, value: snapped },
-        } as React.ChangeEvent<HTMLInputElement>;
-        onChange?.(synthetic);
+        onValueChange?.(finalValue);
+        onChange?.(e);
       }
     : onChange;
 
@@ -55,7 +65,7 @@ export function DateField({
     <input
       ref={ref}
       type="date"
-      onChange={wrappedOnChange}
+      onChange={handleChange}
       className={cn(
         "date-field-input",
         "h-8 px-2.5",

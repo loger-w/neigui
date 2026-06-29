@@ -10,7 +10,10 @@ export function snapToTradingDay(targetDate: string, dates: string[]): string {
     if (d <= targetDate) snapped = d;
     else break;
   }
-  return snapped ?? targetDate;
+  // Target earlier than every trading day → clamp to earliest (sorted[0]);
+  // otherwise the caller would forward an out-of-range date and the App's
+  // controlled-input + userPickedDate flag would lock onto a no-data state.
+  return snapped ?? sorted[0]!;
 }
 
 export function prevTradingDay(currentDate: string, dates: string[]): string | null {
