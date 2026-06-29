@@ -172,15 +172,10 @@ export function ChipBrokersPanel({
   const netHeaderCols = "grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]";
   const volHeaderCols = "grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
 
-  const isMultiDay = windowDays !== undefined && windowDays > 1;
-
   return (
     <div
-      className={`h-full flex flex-col overflow-hidden ${
-        isMultiDay ? "border-l-2 border-accent/60" : ""
-      }`}
+      className="h-full flex flex-col overflow-hidden"
       aria-busy={loading || undefined}
-      data-testid={isMultiDay ? "panel-window-frame" : undefined}
     >
       {/* Cluster B 🟢: localized loading indicator — a 2 px-tall scanning
           accent bar shown while a refetch is in flight. The outer wrapper is
@@ -203,9 +198,7 @@ export function ChipBrokersPanel({
       {windowDays !== undefined && (
         <div
           data-testid="window-header"
-          className={`px-3 py-1.5 border-b border-line text-xs text-ink-dim flex items-baseline gap-1.5 ${
-            isMultiDay ? "bg-bg-deep" : "bg-bg-deep/40"
-          }`}
+          className="px-3 py-1.5 border-b border-line text-xs text-ink-dim flex items-baseline gap-1.5 bg-bg-deep/40"
         >
           {windowDays === 1 ? (
             <>
