@@ -6,7 +6,7 @@ weekday filter, lag computation, naive-tz fallback.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 
 from services.trading_session import TPE_TZ, is_in_session
 

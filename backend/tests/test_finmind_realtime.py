@@ -1,7 +1,6 @@
 """SC-1 / SC-3 — fetch_market_snapshot + helpers."""
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
