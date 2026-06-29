@@ -11,6 +11,7 @@ Strategy:
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
@@ -361,6 +362,128 @@ async def test_fetch_brokers_window_passes_refresh_through(monkeypatch):
     # Trading calendar is independent of per-day data freshness; no refresh param
     calendar_mock.assert_awaited_once_with(date(2026, 6, 19), n=10)
     client.fetch_chip_summary.assert_awaited_once_with("2330", "2026-06-19", True)
+
+
+@pytest.mark.asyncio
+async def test_fetch_brokers_window_caches_aggregate_payload(monkeypatch):
+    """2nd call same (symbol, date, days) hits self-cache → fetch_chip_summary
+    not called again (perf S1 — was N×fetch_chip_summary per call, now 1 read).
+    Past dates served unconditionally; today path still respects TTL."""
+    from services.finmind import FinMindClient
+    import services.trading_calendar as tc
+
+    calendar_mock = _mock_trading_calendar(["2026-06-18", "2026-06-19"])
+    monkeypatch.setattr(tc, "get_trading_days", calendar_mock)
+
+    client = FinMindClient()
+    client.fetch_chip_summary = AsyncMock(
+        side_effect=lambda symbol, d, refresh: _summary(
+            d, a_buy=10, a_sell=2, a_buy_price=100, a_sell_price=101,
+        ),
+    )
+
+    # past date — cache served unconditionally on second call
+    out1 = await client.fetch_brokers_window("2330", "2026-06-19", days=2)
+    out2 = await client.fetch_brokers_window("2330", "2026-06-19", days=2)
+    assert out1 == out2
+    # First call ran fan-out (2 trading days); second hit cache → no extra calls
+    assert client.fetch_chip_summary.await_count == 2
+    # Calendar likewise consulted exactly once (cache hit short-circuits it)
+    assert calendar_mock.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_brokers_window_refresh_bypasses_cache(monkeypatch):
+    """refresh=True must skip the self-cache and re-fan-out (so user's
+    `重新整理` actually pulls fresh data)."""
+    from services.finmind import FinMindClient
+    import services.trading_calendar as tc
+
+    monkeypatch.setattr(
+        tc, "get_trading_days",
+        _mock_trading_calendar(["2026-06-18", "2026-06-19"]),
+    )
+
+    client = FinMindClient()
+    client.fetch_chip_summary = AsyncMock(
+        side_effect=lambda symbol, d, refresh: _summary(
+            d, a_buy=10, a_sell=2, a_buy_price=100, a_sell_price=101,
+        ),
+    )
+
+    await client.fetch_brokers_window("2330", "2026-06-19", days=2)
+    await client.fetch_brokers_window("2330", "2026-06-19", days=2, refresh=True)
+    # 2 days × 2 calls (refresh forced re-fan-out)
+    assert client.fetch_chip_summary.await_count == 4
+
+
+@pytest.mark.asyncio
+async def test_fetch_brokers_window_concurrent_refresh_does_not_dedup_into_non_refresh(monkeypatch):
+    """Regression guard: a concurrent refresh=True call MUST NOT await an
+    in-flight refresh=False task — otherwise the refresh caller silently
+    receives stale cached data. The fix is `_r{int(refresh)}` in the
+    _run_once dedup key; without it both callers collapse onto one task
+    and refresh=True semantics break.
+    """
+    from services.finmind import FinMindClient
+    import services.trading_calendar as tc
+
+    monkeypatch.setattr(
+        tc, "get_trading_days",
+        _mock_trading_calendar(["2026-06-18", "2026-06-19"]),
+    )
+
+    client = FinMindClient()
+    seen_refresh: list[bool] = []
+
+    async def fake_summary(symbol: str, d: str, refresh: bool) -> dict:
+        # Yield once so both concurrent callers reach this point in-flight
+        await asyncio.sleep(0)
+        seen_refresh.append(refresh)
+        return _summary(d, a_buy=10, a_sell=2, a_buy_price=100, a_sell_price=101)
+
+    client.fetch_chip_summary = AsyncMock(side_effect=fake_summary)
+
+    # Concurrent: refresh=False + refresh=True with identical (symbol, date, days).
+    # Pre-fix: only one of them would actually fan out (await_count == 2);
+    # post-fix: both run their own fan-out (await_count == 4).
+    await asyncio.gather(
+        client.fetch_brokers_window("2330", "2026-06-19", days=2, refresh=False),
+        client.fetch_brokers_window("2330", "2026-06-19", days=2, refresh=True),
+    )
+    assert client.fetch_chip_summary.await_count == 4
+    # And both refresh values reach the inner fetch_chip_summary
+    assert True in seen_refresh and False in seen_refresh
+
+
+@pytest.mark.asyncio
+async def test_fetch_brokers_window_cache_write_failure_still_returns_result(monkeypatch):
+    """Cache write is best-effort: if atomic_write_json raises (disk full,
+    permission), the user still gets their aggregated result instead of a 500.
+    """
+    from services.finmind import FinMindClient
+    import services.trading_calendar as tc
+    import services.finmind as fm_mod
+
+    monkeypatch.setattr(
+        tc, "get_trading_days", _mock_trading_calendar(["2026-06-19"]),
+    )
+
+    def boom(*_a, **_kw):
+        raise OSError("simulated disk full")
+
+    monkeypatch.setattr(fm_mod, "atomic_write_json", boom)
+
+    client = FinMindClient()
+    client.fetch_chip_summary = AsyncMock(
+        return_value=_summary("2026-06-19", a_buy=10, a_sell=2,
+                              a_buy_price=100, a_sell_price=101),
+    )
+
+    out = await client.fetch_brokers_window("2330", "2026-06-19", days=1)
+    # User-visible result is intact despite cache write failure.
+    assert out["symbol"] == "2330"
+    assert out["actual_days"] == 1
 
 
 @pytest.mark.asyncio

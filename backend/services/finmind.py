@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 
 _FINMIND_BASE = "https://api.finmindtrade.com/api/v4"
 _CACHE_VERSION = 3
+# Aggregate-payload cache for fetch_brokers_window — written once per
+# (symbol, date, days). Independent of _CACHE_VERSION so bumping one
+# doesn't invalidate the other.
+_CACHE_VERSION_BW = 1
 
 # ---------------------------------------------------------------------------
 # Singleton
@@ -638,15 +642,38 @@ class FinMindClient:
         trading_dates (cheap shared 12h cache); fans out fetch_chip_summary per
         day (each independently cached).
 
-        Previously routed via fetch_chip_history(540) just to read candles[].date,
-        which cold-fetched 360 per-day TaiwanStockTradingDailyReport calls for
-        the major-net series (~24s through the 5/s rate limiter) on first-ever
-        symbol load — pure waste since brokers_window never reads `major`.
-
-        Does NOT cache its own result: every underlying summary is cached
-        per-day, so a second call lands an O(N) cache-hit sweep with no
-        FinMind round-trips.
+        2026-06-29 perf: now self-caches the aggregated payload keyed by
+        ``{symbol}_{date}_w{days}_bw``. Today TTL = 30 min via ``_is_stale``;
+        past dates served unconditionally once written. Drops the N-disk-read
+        + N-parse + aggregate cost on every warm request (was ~45ms / 10-day
+        window because of asyncio.gather barrier + per-summary JSON parse) to
+        a single file read. Inflight dedup (``_run_once``) prevents concurrent
+        same-key callers from each triggering a fan-out.
         """
+        cache_key = f"{symbol}_{date_str}_w{days}_bw"
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_BW)
+            if cached is not None:
+                if not self._is_today(date_str) or not self._is_stale(cached):
+                    return cached
+
+        # refresh is part of the dedup key so a concurrent refresh=True caller
+        # never awaits an in-flight refresh=False task (which would serve
+        # stale data despite the explicit refresh request). Mirrors the
+        # `_r{int(refresh)}` pattern in fetch_taiwan_option_daily_window.
+        return await self._run_once(
+            f"brokers_window_{cache_key}_r{int(refresh)}",
+            lambda: self._do_fetch_brokers_window(symbol, date_str, days, refresh, cache_key),
+        )
+
+    async def _do_fetch_brokers_window(
+        self,
+        symbol: str,
+        date_str: str,
+        days: int,
+        refresh: bool,
+        cache_key: str,
+    ) -> dict:
         from services.trading_calendar import get_trading_days
 
         end = date.fromisoformat(date_str)
@@ -669,13 +696,22 @@ class FinMindClient:
         # quiet day to the user — surface as 503 brokers_window_unavailable.
         if not summaries:
             raise ValueError("brokers_window_unavailable")
-        return _aggregate_brokers_window(
+        result = _aggregate_brokers_window(
             symbol=symbol,
             date_str=date_str,
             days=days,
             trading_dates=trading_dates,
             summaries=summaries,
         )
+        # Cache write is an optimisation, not a correctness requirement: if disk
+        # is full / read-only / permission-denied, the aggregated result is
+        # still valid in memory and the user gets their data. Without this
+        # guard, atomic_write_json's re-raised OSError would 500 the request.
+        try:
+            self._write_cache_v(cache_key, result, _CACHE_VERSION_BW)
+        except OSError as exc:
+            logger.warning("brokers_window cache write failed for %s: %s", cache_key, exc)
+        return result
 
     async def fetch_broker_history(
         self,
