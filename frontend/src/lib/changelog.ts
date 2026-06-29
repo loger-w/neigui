@@ -40,6 +40,16 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.18.1",
+    date: "2026-06-29",
+    highlights: "進股票 / 選擇權的載入更穩、重新整理大幅加速",
+    changes: [
+      { kind: "fix", scope: "equity", text: "進個股時 K 線與籌碼欄的出現順序不再隨機顛倒,K 線一律先出來" },
+      { kind: "fix", scope: "equity", text: "個股籌碼欄重複開啟同股大幅加速" },
+      { kind: "fix", scope: "options", text: "選擇權頁面重新整理 / 切換交易日大幅加速" },
+    ],
+  },
+  {
     version: "0.18.0",
     date: "2026-06-29",
     highlights: "新增「大盤」掃描頁面 — 一眼看整盤族群熱力圖 + 漲跌幅 / 大量單 / 量比三榜",
