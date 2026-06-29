@@ -40,6 +40,7 @@ export function pointsToPolyline(
   for (const p of points) {
     const minutes = parseMinute(p.t);
     if (Number.isNaN(minutes)) continue;
+    if (p.price < yLow || p.price > yHigh) continue;
     const x = paddingLeft + ((minutes - SESSION_START_MIN) / SESSION_RANGE_MIN) * chartWidth;
     const y = paddingTop + ((yHigh - p.price) / yRange) * chartHeight;
     coords.push(`${x.toFixed(1)},${y.toFixed(1)}`);

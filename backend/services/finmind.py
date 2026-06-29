@@ -278,11 +278,11 @@ class FinMindClient:
         #   {date: "YYYY-MM-DD", minute: "HH:MM:SS",
         #    stock_id, open, high, low, close, volume}
         # date and minute are SEPARATE fields; do not slice date for time.
-        points = [
-            {"t": str(r["minute"])[:5], "price": float(r["close"])}
-            for r in raw
-            if "minute" in r and "close" in r
-        ]
+        # 不寫 over-defensive `if "minute" in r and "close" in r` filter
+        # (CLAUDE.md §C「不懂的 error 不要 catch」):若 FinMind schema 改了,
+        # KeyError 應該噴到 main.py 502 handler 讓 user 看到明確錯誤,而不是
+        # silent 回空 line 誤導為「當日無交易」。
+        points = [{"t": str(r["minute"])[:5], "price": float(r["close"])} for r in raw]
         points.sort(key=lambda p: p["t"])
         result = {
             "symbol": symbol,
