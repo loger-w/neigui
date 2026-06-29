@@ -139,9 +139,10 @@ User-facing changelog 在 `frontend/src/lib/changelog.ts`,前端 top bar 右側 
 - `kind` 二選一:`feature`(新功能 / 新視覺)或 `fix`(影響體驗的修正)
 - `scope` 三選一:`equity` / `options` / `global`,**不要混用** `prop` 或自由文字
 - `date` 用 `YYYY-MM-DD`(同專案其他 date 慣例)
-- `text` 一句話 user-facing,**不寫實作細節 / 工程術語 / 具體 benchmark 數字**(非工程觀眾沒 baseline 無從感受):
-  - 壞:「refactor brokers_window cache key」、「permutation 相關係數」、「T-1 look-ahead」、「fallback 行為」、「資料載入吞吐提升」、「冷啟動 27 秒縮至 4 秒」
-  - 好:「N 日券商窗冷啟動大幅加速」、「附歷史相關性」、「結算前一交易日資料」、「資料缺漏時改用最近可用日期」、「資料載入更快」
+- `text` 一句話 user-facing,**不寫實作細節 / 工程術語 / 具體 benchmark 數字**(讀者可能含非工程背景的人,沒 baseline 也無從理解專業詞):
+  - 壞:`refactor brokers_window cache key` / `permutation 相關係數` / `T-1 look-ahead` / `fallback 行為` / `資料載入吞吐提升` / `冷啟動 27 秒縮至 4 秒` / `top bar` / `dashboard` / `popover` / `badge` / `sparkline` / `trade list` / `crosshair` / `overlay` / `MVP` / `UI 元件` / `UX` / `OHLCV` / `虛擬化` / `spinner` / `骨架動畫`
+  - 好:`N 日券商窗首次開啟大幅加速` / `附歷史相關性` / `結算前一交易日資料` / `資料缺漏時改用最近可用日期` / `資料載入更快` / `首次開啟大幅加速` / `頂部` / `分析工具` / `彈出視窗` / `版本號` / `迷你走勢圖` / `成交列表` / `十字游標` / `(把 overlay 略掉不另寫)` / `首版` / `介面元件` / `體驗` / `K 線資訊` / `大量資料捲動` / `讀取動畫指示`
+  - 通用判準:**寫出「使用者體感到什麼」,不寫「工程上怎麼做」**。金融術語(`Max Pain` / `OI 牆` / `Call Wall` / `Put Wall` / `PCR` / `TXO` / `履約價` / `布林通道` / `台指期`)與 UI 標籤一致時保留,讓使用者能對應介面找到功能。
 
 ### 1.0.0 升級標準
 
