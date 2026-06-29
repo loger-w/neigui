@@ -90,6 +90,32 @@ describe("api cache", () => {
     expect(cached!.data).toEqual(MOCK_HISTORY);
   });
 
+  it("chipIntraday URL contains date + refresh", async () => {
+    const fetchMock = mockFetch({
+      symbol: "2330", date: "2026-06-26", fetched_at: "", points: [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.chipIntraday("2330", "2026-06-26", true);
+    const url = (fetchMock.mock.calls[0]![0] as URL).toString();
+    expect(url).toContain("/api/chip/2330/intraday");
+    expect(url).toContain("date=2026-06-26");
+    expect(url).toContain("refresh=true");
+  });
+
+  it("chipIntraday URL omits refresh when not given", async () => {
+    const fetchMock = mockFetch({
+      symbol: "2330", date: "2026-06-26", fetched_at: "", points: [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.chipIntraday("2330", "2026-06-26");
+    const url = (fetchMock.mock.calls[0]![0] as URL).toString();
+    expect(url).toContain("/api/chip/2330/intraday");
+    expect(url).toContain("date=2026-06-26");
+    expect(url).not.toContain("refresh=");
+  });
+
   it("chipBrokerHistory builds URL with comma-joined ids and refresh", async () => {
     const fetchMock = mockFetch({
       symbol: "2330", fetched_at: "", last_date: "", brokers: {},
