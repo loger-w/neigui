@@ -228,7 +228,7 @@ export default function App() {
   const prevDisabled =
     !symbol ||
     tradingDays.length === 0 ||
-    date <= (tradingDays[0] ?? "");
+    date <= tradingDays[0]!;
   const nextDisabled =
     !symbol ||
     tradingDays.length === 0 ||
@@ -280,7 +280,7 @@ export default function App() {
               value={date}
               aria-label="選擇日期"
               snapToDates={tradingDays}
-              onChange={(e) => { userPickedDate.current = true; setDate(e.target.value); }}
+              onValueChange={(v) => { userPickedDate.current = true; setDate(v); }}
             />
             <TradingDayStepper
               direction="next"

@@ -46,8 +46,8 @@ export const CHANGELOG: VersionEntry[] = [
     changes: [
       { kind: "feature", scope: "equity", text: "預設籌碼期間改為當日,要看更長期間可手動選 1 / 10 / 20 / 30 / 60 日" },
       { kind: "feature", scope: "equity", text: "日期欄左右新增前/後一交易日按鈕,自動跳過週末與非交易日,未來日卡在當日" },
-      { kind: "feature", scope: "equity", text: "選到非交易日(週末等)時自動跳到最近的交易日,避免空資料" },
-      { kind: "feature", scope: "equity", text: "聚合多日籌碼時分點面板左緣顯示彩色邊條,一眼分辨當日 vs 區間加總" },
+      { kind: "feature", scope: "equity", text: "選到非交易日(週末等)時自動跳到最近的交易日,避免畫面空白" },
+      { kind: "feature", scope: "equity", text: "聚合多日籌碼時右側面板左緣顯示彩色邊條,一眼分辨當日 vs 區間加總" },
     ],
   },
   {
