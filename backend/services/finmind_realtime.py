@@ -109,6 +109,23 @@ async def _run_once(key: str, coro_fn):
 # ---------------------------------------------------------------------------
 
 
+def _build_name_map(rows: list[dict]) -> dict[str, str]:
+    """Build stock_id -> stock_name lookup from TaiwanStockInfo rows.
+
+    Phase 6 real-env fix:snapshot endpoint 不回 name,frontend 顯示
+    'stock_id stock_id'。TaiwanStockInfo 已有 stock_name 欄,順手 build。
+    """
+    out: dict[str, str] = {}
+    # Sort by date desc so latest name wins for re-listed stocks
+    sorted_rows = sorted(rows, key=lambda r: r.get("date") or "", reverse=True)
+    for row in sorted_rows:
+        sid = row.get("stock_id")
+        name = row.get("stock_name")
+        if sid and name and sid not in out:
+            out[sid] = name
+    return out
+
+
 def _dedup_sector_map(rows: list[dict]) -> dict[str, str]:
     """Build stock_id -> primary industry_category (deterministic).
 
@@ -202,13 +219,15 @@ def _trim(rows: list[dict]) -> list[dict]:
 def _compute_leaderboards(
     universe: list[dict],
     primary_sector: dict[str, str],
+    name_map: dict[str, str] | None = None,
     size: int = _LEADERBOARD_SIZE,
 ) -> dict[str, list[dict]]:
+    name_map = name_map or {}
     enriched = [
         {
             **row,
             "sector": primary_sector.get(row.get("stock_id", ""), "其他"),
-            "name": row.get("name") or row.get("stock_id", ""),
+            "name": name_map.get(row.get("stock_id", "")) or row.get("name") or row.get("stock_id", ""),
         }
         for row in universe
     ]
@@ -233,9 +252,11 @@ def _group_by_sector(
     universe: list[dict],
     primary_sector: dict[str, str],
     mv_map: dict[str, int],
+    name_map: dict[str, str] | None = None,
     cap_per_sector: int = _HEATMAP_STOCKS_CAP_PER_SECTOR,
 ) -> list[dict]:
     """Build sectors[] for heatmap (design.md §6.6)."""
+    name_map = name_map or {}
     groups: dict[str, list[dict]] = {}
     for row in universe:
         sid = row.get("stock_id")
@@ -259,13 +280,14 @@ def _group_by_sector(
         # Build stock tiles
         stocks = []
         for r in capped:
-            mv = mv_map.get(r.get("stock_id", ""))
+            sid = r["stock_id"]
+            mv = mv_map.get(sid)
             stocks.append({
-                "stock_id": r["stock_id"],
-                "name": r.get("name") or r["stock_id"],
+                "stock_id": sid,
+                "name": name_map.get(sid) or r.get("name") or sid,
                 "change_rate": r.get("change_rate") or 0.0,
                 "total_amount": r.get("total_amount") or 0,
-                "market_value": mv,  # None if missing — frontend layoutHeatmap E2 fallback
+                "market_value": mv,
             })
         sectors.append({
             "id": sector_id,
@@ -425,11 +447,16 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
         mv_map = mv_res  # type: ignore[assignment]
 
     primary_sector = _dedup_sector_map(sector_rows)
+    name_map = _build_name_map(sector_rows)
     last_tick = _max_tick_date(universe)
     now = datetime.now(tz=TPE_TZ)
     in_session, lag = is_in_session(now, last_tick)
-    sectors = _group_by_sector(universe, primary_sector, mv_map)
-    leaderboards = _compute_leaderboards(universe, primary_sector)
+    # Phase 6 real-env fix:universe 包含「加權指數 / 不含金融指數」等 index rows
+    # (stock_id 001, 002 等),會佔據 amount 排行榜。Filter 為僅含 TaiwanStockInfo
+    # 有對到的 stock_id(個股 / ETF),指數天然被排除(不在 TaiwanStockInfo)。
+    stock_universe = [r for r in universe if r.get("stock_id") in primary_sector]
+    sectors = _group_by_sector(stock_universe, primary_sector, mv_map, name_map=name_map)
+    leaderboards = _compute_leaderboards(stock_universe, primary_sector, name_map=name_map)
 
     return {
         "as_of": now.isoformat(),

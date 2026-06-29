@@ -7,6 +7,7 @@ import pytest
 
 from services.finmind_realtime import (
     _PRIMARY_INDUSTRY_OVERRIDE,
+    _build_name_map,
     _compute_leaderboards,
     _dedup_sector_map,
     _group_by_sector,
@@ -221,6 +222,46 @@ def test_group_by_sector_market_value_fallback_to_median() -> None:
     assert c_tile["market_value"] is None  # 仍標示 null 讓 frontend 知道是 fallback
     # 但 stock 仍在 list 內,不被砍掉
     assert {s["stock_id"] for s in stocks} == {"A", "B", "C"}
+
+
+# --------------------------------------------------------------------------
+# _build_name_map (Phase 6 real-env fix)
+# --------------------------------------------------------------------------
+
+
+def test_build_name_map_basic() -> None:
+    """Phase 6: stock_id → stock_name from TaiwanStockInfo rows。"""
+    rows = [
+        {"stock_id": "2330", "stock_name": "台積電",
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "2317", "stock_name": "鴻海",
+         "type": "twse", "date": "2026-06-26"},
+    ]
+    name_map = _build_name_map(rows)
+    assert name_map["2330"] == "台積電"
+    assert name_map["2317"] == "鴻海"
+
+
+def test_build_name_map_picks_latest_date() -> None:
+    """Phase 6: 重複 stock_id 取最新 date(re-list 換名)。"""
+    rows = [
+        {"stock_id": "X", "stock_name": "舊名",
+         "type": "twse", "date": "2024-01-01"},
+        {"stock_id": "X", "stock_name": "新名",
+         "type": "twse", "date": "2026-06-26"},
+    ]
+    assert _build_name_map(rows)["X"] == "新名"
+
+
+def test_build_name_map_skips_missing_name() -> None:
+    """Phase 6: stock_name 為 None / 空 → 不入 map。"""
+    rows = [
+        {"stock_id": "X", "stock_name": None,
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "X", "stock_name": "正常名",
+         "type": "twse", "date": "2026-06-25"},
+    ]
+    assert _build_name_map(rows)["X"] == "正常名"
 
 
 # --------------------------------------------------------------------------
