@@ -353,9 +353,25 @@ async def test_fetch_market_snapshot_all_fail_raises_unreachable() -> None:
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
-async def test_stale_false_when_only_sector_fetch_fails() -> None:
-    """Phase 4 R3: universe ok + sector_map fail → stale=False
-    (daily-cache miss 不該誤報 intraday stale banner)。"""
+async def test_stale_false_when_sector_fetch_fails_with_disk_cache() -> None:
+    """Phase 4 R3 + Audit X1:universe ok + sector_map fail BUT 有 disk cache 兜底
+    → primary_sector 非空 → stale=False(daily-cache fallback 對 user 無感)。
+
+    新增 Audit X1 對照 case `test_snapshot_sector_fail_no_cache_surfaces_stale_true`
+    驗證「無 cache 兜底時 stale=True 拉 banner」。
+    """
+    from services.finmind_realtime import _write_cache
+
+    # 預存 sector_map disk cache 模擬 fallback 可用
+    _write_cache("realtime_sector_map", {
+        "rows": [
+            {"stock_id": "2330", "stock_name": "台積電",
+             "industry_category": "半導體業", "type": "twse",
+             "date": "2026-06-26"},
+        ],
+        "fetched_at": "2026-06-28T10:00:00+08:00",
+    })
+
     fake_universe = [{
         "stock_id": "2330", "open": 2300, "high": 2400, "low": 2300,
         "close": 2390, "change_rate": 1.92, "total_amount": 36e9,
@@ -393,6 +409,82 @@ async def test_stale_true_when_universe_fails_with_cache() -> None:
                new=AsyncMock(return_value={})):
         result = await fetch_market_snapshot(refresh=False)
     assert result["stale"] is True
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_filters_indices_via_primary_sector_whitelist() -> None:
+    """Audit X1 + X9 regression(whitelist 策略 + CLAUDE.md §9 lesson):
+
+    taiwan_stock_tick_snapshot universe 含 ~49 個 3-digit index ID
+    (001 / 036 / 040 等;FinMind TaiwanStockInfo 並沒有 type='index'),
+    靠 `stock_id in primary_sector` whitelist 天然排除。本 test 鎖:
+      - 指數 '001' '036' 不出現在 leaderboards / sectors
+      - 普通個股 '2330' 正常顯示
+    """
+    fake_universe = [
+        {"stock_id": "001", "change_rate": 0.5, "total_amount": 9e12,
+         "volume_ratio": 1.0, "date": "2026-06-29 10:30:00"},
+        {"stock_id": "036", "change_rate": 0.8, "total_amount": 3e11,
+         "volume_ratio": 1.0, "date": "2026-06-29 10:30:00"},
+        {"stock_id": "2330", "change_rate": 1.5, "total_amount": 5e10,
+         "volume_ratio": 2.0, "date": "2026-06-29 10:30:00"},
+    ]
+    # 指數 001/036 不在 TaiwanStockInfo(empirical),只 2330 在
+    fake_sector_rows = [
+        {"stock_id": "2330", "stock_name": "台積電",
+         "industry_category": "半導體業", "type": "twse", "date": "2026-06-26"},
+    ]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})):
+        result = await fetch_market_snapshot(refresh=False)
+    all_lb_ids = {
+        r["stock_id"]
+        for lb in result["leaderboards"].values()
+        for r in lb
+    }
+    all_sector_ids = {
+        s["stock_id"]
+        for sector in result["sectors"]
+        for s in sector["stocks"]
+    }
+    assert "001" not in all_lb_ids, "Audit X1 / Phase 6: 指數 '001' 不應出現在排行榜"
+    assert "036" not in all_lb_ids, "Audit X1 / Phase 6: 指數 '036' 不應出現在排行榜"
+    assert "001" not in all_sector_ids
+    assert "036" not in all_sector_ids
+    assert "2330" in all_lb_ids
+    assert "2330" in all_sector_ids
+    # sector ok → stale=False
+    assert result["stale"] is False
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_sector_fail_no_cache_surfaces_stale_true() -> None:
+    """Audit X1 cold-start scenario:
+
+    Universe ok + sector_map fail + 無 disk cache → primary_sector={} →
+    whitelist filter drops 所有 stock → 空 sectors / leaderboards。
+    為避免 silent empty dashboard,sector_degraded → stale=True,前端 banner
+    會出現「資料停滯」提示。
+    """
+    fake_universe = [
+        {"stock_id": "2330", "change_rate": 1.0, "total_amount": 1e9,
+         "volume_ratio": 1.0, "date": "2026-06-29 10:30:00"},
+        {"stock_id": "001", "change_rate": 0.5, "total_amount": 9e12,
+         "volume_ratio": 1.0, "date": "2026-06-29 10:30:00"},
+    ]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(side_effect=RuntimeError("upstream"))), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={})):
+        result = await fetch_market_snapshot(refresh=False)
+    # Audit X1:cold-start sector fail → stale=True 拉 banner
+    assert result["stale"] is True, "Audit X1: sector cold-start fail 應 surface stale=True"
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")

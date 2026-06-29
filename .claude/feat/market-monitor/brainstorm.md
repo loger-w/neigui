@@ -79,7 +79,10 @@ User 要的盤中(09:00-13:30 TPE)「整體市場掃描」工具,聚焦兩件:
 - **E4**:同 `stock_id` 多 `industry_category` row(v1 R9:2330 = 半導體業 + 電子工業) → backend dedup 取 `type="twse"` 且最新 `date` 那筆當 primary sector,其他 row 丟棄(明確不採 1-to-many,避免某檔出現在多 sector tile)
 - **E5**:收盤後 13:30+,snapshot 仍回資料但 tick_ts 不推進 → backend 算 lag,前端顯示「已收盤,last_tick HH:MM」banner + 暫停 polling
 - **E6**:開盤前(< 09:00) / 假日 / 颱風天 → backend 透過 `services.trading_calendar.get_trading_days` 判斷是否交易日,`is_trading_session=false` 時 payload 仍回上一交易日資料(snapshot 會給),前端顯示「無交易日 / 未開盤,顯示 YYYY-MM-DD 收盤資料」+ 不 polling
-- **E7**:FinMind 全掛 → 三個 endpoint 任一失敗 → backend 走 stale fallback(serve disk cache + `stale=true`),前端 banner 警示「資料 X 秒未更新」,polling 持續嘗試
+- **E7**:FinMind 全掛 → backend 走 stale fallback。`stale=true` 在兩種情境拉起:
+  1. **即時 universe (`taiwan_stock_tick_snapshot`) 失敗時觸發**(R3 narrowing,使用者體感「資料停滯」)
+  2. **sector_map 失敗 + 無 disk cache 兜底(冷啟動退化)**(Audit X1 — primary_sector 空 → whitelist filter 把 universe 全剃 → 空 dashboard,必須拉 banner 讓 user 知道,而非 silent empty)
+  `sector_map` / `market_value` 失敗**但有 disk cache 兜底**時 → 不報 stale(24h daily cache 對 user 體感無感)。前端 banner 警示「資料 X 秒未更新」polling 持續嘗試。Audit X1 + X10 — 對齊 routes/market.py / finmind_realtime.py 實作
 
 ---
 

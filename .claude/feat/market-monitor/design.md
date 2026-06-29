@@ -244,7 +244,13 @@ async def fetch_market_snapshot(refresh: bool = False) -> dict:
 
 **Concurrency dedup**:`_run_once("market_snapshot", fn)` inflight + 同 key dedup(對齊 `finmind.py` 樣板)。
 
-**Stale fallback**(E7):任一 FinMind fetch 失敗 → catch `httpx.HTTPError`,若有 disk cache 兜底 + payload `stale=true`;若無 cache → 502。
+**Stale fallback**(E7,R3 narrowed + Audit X1):
+- **universe fail + disk cache 兜底** → `stale=true`(使用者體感到 tick 不推進)
+- **universe fail + 無 cache** → 502 `{"error":"finmind_unreachable"}`
+- **sector_map fail + disk cache 兜底** → 走 disk cache fallback,**不報 stale**(24h daily cache,失敗對使用者體感無感)
+- **sector_map fail + 無 cache(冷啟動退化)** → `primary_sector={}` → whitelist filter 把 universe 全剃 → 空 sectors / leaderboards。為避免 silent blank dashboard,設 `stale=true` 讓前端 banner 拉警示(Audit X1)
+- **market_value fail** → 走 disk cache fallback,**不報 stale**(同上,daily cache)
+- Audit X1 + X10:原本 brainstorm 寫「任一失敗 → stale=true」,Phase 4 R3 narrow 後 spec 沒跟著改,2026-06-29 同步並補 cold-start sector fail 的 stale 規則
 
 ### 5.3 Sector dedup(E4)詳細(v2 — F6 修 deterministic)
 

@@ -49,6 +49,7 @@ _PRIMARY_INDUSTRY_OVERRIDE: dict[str, str] = {
     "1101": "水泥工業",
 }
 
+
 # Module-level inflight dedup (對齊 finmind.py:69 慣例)
 _inflight: dict[str, asyncio.Task] = {}
 
@@ -416,12 +417,6 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     )
     universe_res, sector_res, mv_res = results
 
-    # R3(Phase 4 review):stale 只反映「即時行情」是否新鮮(=universe),
-    # daily cache 失效不該誤觸發 frontend 黃色 banner。daily fetch fail 仍
-    # 走 disk cache fallback,只是 sector/mv 可能是 24 小時前的值 — 對使用者
-    # 視覺體驗無感。
-    stale = isinstance(universe_res, BaseException)
-
     if isinstance(universe_res, BaseException):
         cached = _read_cache("realtime_universe")
         if cached is None:
@@ -451,12 +446,29 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     last_tick = _max_tick_date(universe)
     now = datetime.now(tz=TPE_TZ)
     in_session, lag = is_in_session(now, last_tick)
-    # Phase 6 real-env fix:universe 包含「加權指數 / 不含金融指數」等 index rows
-    # (stock_id 001, 002 等),會佔據 amount 排行榜。Filter 為僅含 TaiwanStockInfo
-    # 有對到的 stock_id(個股 / ETF),指數天然被排除(不在 TaiwanStockInfo)。
+    # Phase 6 fix + Audit X1 revision:走 whitelist `r.stock_id in primary_sector`
+    # 把 taiwan_stock_tick_snapshot 的 index rows(001 加權指數 / 036 半導體業類股
+    # 指數 / 等 ~49 個 3-digit ID,FinMind TaiwanStockInfo 並未收錄)天然排除。
+    # CLAUDE.md §9 lesson 明文背書這個策略,§9 也警告不要走 pattern filter。
+    #
+    # Audit X1 trade-off accepted:當 sector_map 冷啟動 fail + no cache 時 primary
+    # _sector 為空 → 整 universe 被剃掉 → stocks=[] / sectors=[]。為避免 silent
+    # blank dashboard,下面 sector_degraded 旗標把 stale=True 拉起來,前端 banner
+    # 會顯示「資料停滯」提示。
+    # 新上市未及收錄個股的 24h 隱形期同樣記為 known limitation(brainstorm E1
+    # 文字略寬於現況,以 doc 為註腳)。
     stock_universe = [r for r in universe if r.get("stock_id") in primary_sector]
     sectors = _group_by_sector(stock_universe, primary_sector, mv_map, name_map=name_map)
     leaderboards = _compute_leaderboards(stock_universe, primary_sector, name_map=name_map)
+
+    # Stale 規則(Phase 4 R3 + Audit X1):
+    # - universe failure(intraday tick 不推進)→ user 體感「資料停滯」 → stale=True
+    # - sector_map 失敗且無 cache 兜底(primary_sector 為空)→ dashboard 退化成空頁
+    #   → 同樣 stale=True,讓 banner 拉起來;否則 silent empty
+    # - sector_map / mv 失敗但有 cache 兜底 → stale=False(24h daily cache,user
+    #   感受不到)
+    sector_degraded = not primary_sector
+    stale = isinstance(universe_res, BaseException) or sector_degraded
 
     return {
         "as_of": now.isoformat(),
