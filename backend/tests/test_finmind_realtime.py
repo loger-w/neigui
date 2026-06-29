@@ -488,6 +488,71 @@ async def test_snapshot_sector_fail_no_cache_surfaces_stale_true() -> None:
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_market_value_uses_trading_calendar_t_minus_1() -> None:
+    """Audit X3:_fetch_market_value_map 從 calendar T-1 改用 trading_calendar
+    get_trading_days(today-1, 1)。當 today=Monday 時,T-1 應該是上週五,而非
+    Sunday(原行為會回 FinMind 空資料,heatmap tile 全 fallback weight=1)。
+    """
+    from datetime import date
+    from unittest.mock import patch
+    from services.finmind_realtime import _fetch_market_value_map
+
+    monday = date(2026, 6, 29)  # Monday
+    last_friday = date(2026, 6, 26)  # Previous Friday
+
+    # Mock get_trading_days → 回上週五,模擬 trading_calendar cache hit
+    fake_client = AsyncMock()
+    fake_client._get = AsyncMock(return_value=[
+        {"stock_id": "2330", "market_value": 6e13},
+    ])
+
+    with patch("services.finmind_realtime.get_trading_days",
+               new=AsyncMock(return_value=[last_friday])), \
+         patch("services.finmind_realtime.get_finmind",
+               return_value=fake_client):
+        # refresh=True 跳 cache 確保走 fetch path
+        result = await _fetch_market_value_map(today=monday, refresh=True)
+
+    # 確認 FinMind 收到的是上週五,不是 calendar T-1 (Sunday)
+    fake_client._get.assert_awaited_once()
+    args, kwargs = fake_client._get.call_args
+    params = args[1] if len(args) > 1 else kwargs.get("params") or args[-1]
+    assert params["start_date"] == "2026-06-26", (
+        f"Audit X3: 期望 trading_calendar 提供的上週五 2026-06-26,實際 {params['start_date']}"
+    )
+    assert params["end_date"] == "2026-06-26"
+    assert result == {"2330": 60_000_000_000_000}
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_market_value_falls_back_to_calendar_when_trading_calendar_fails() -> None:
+    """Audit X3 fallback:get_trading_days raise 任何 exception 時,
+    code 不該整個 fail,要退到 calendar T-1 (today - 1 day) 保命。
+    """
+    from datetime import date
+    from unittest.mock import patch
+    from services.finmind_realtime import _fetch_market_value_map
+
+    today = date(2026, 6, 29)
+    expected_fallback = date(2026, 6, 28)  # calendar T-1
+
+    fake_client = AsyncMock()
+    fake_client._get = AsyncMock(return_value=[])
+
+    with patch("services.finmind_realtime.get_trading_days",
+               new=AsyncMock(side_effect=RuntimeError("calendar down"))), \
+         patch("services.finmind_realtime.get_finmind",
+               return_value=fake_client):
+        result = await _fetch_market_value_map(today=today, refresh=True)
+
+    fake_client._get.assert_awaited_once()
+    args, kwargs = fake_client._get.call_args
+    params = args[1] if len(args) > 1 else kwargs.get("params") or args[-1]
+    assert params["start_date"] == expected_fallback.isoformat()
+    assert result == {}
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
 async def test_refresh_propagates_to_all_three_fetchers() -> None:
     """Phase 4 R4: refresh=True 帶到 universe / sector / market_value 三個 fetcher。"""
     u_mock = AsyncMock(return_value=[])
