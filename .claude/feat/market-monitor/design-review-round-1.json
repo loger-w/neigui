@@ -1,0 +1,88 @@
+{
+  "round": 1,
+  "agent_id": "a2f90a0ce01d64992",
+  "agent_type": "Plan",
+  "completed_at": "2026-06-29T16:35:00+08:00",
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "P0",
+      "location": "design.md §6.2 / CLAUDE.md §4",
+      "problem": "useMarketSnapshot 的 refresh() 寫 q.refetch({queryKey:...}) — TanStack v5 refetch() 不吃 queryKey 參數,且不會帶 ?refresh=true 到 backend,違反 CLAUDE.md §4 refresh 鐵則。",
+      "suggested_fix": "對齊 useOptionsLargeTraders.ts 樣板:forceRefreshRef + queryFn 讀後 reset + refresh() 設 ref=true 再 q.refetch()。",
+      "rationale": "CLAUDE.md §4 明文 refresh=true 慣例;既有 sibling hook 是樣板;TS 不過 + behavior 失效。",
+      "resolution": "accepted",
+      "resolution_note": "完全對齊既有 hook 樣板 + CLAUDE.md 鐵則,P0 必修。"
+    },
+    {
+      "id": "F2",
+      "severity": "P0",
+      "location": "design.md §6.1",
+      "problem": "引用不存在的 useLocalStorageState hook;實際專案用 useState + useEffect inline pattern。",
+      "suggested_fix": "改用 useState(() => (localStorage.getItem('mode') as Mode) || 'equity') + useEffect 寫回,symbol 維持非持久。",
+      "rationale": "設計引用不存在 API 會誤導 Phase 2 spec;既有 App.tsx mode 就是這個 pattern。",
+      "resolution": "accepted",
+      "resolution_note": "驗證 App.tsx:67-71 親眼確認,P0 必修。"
+    },
+    {
+      "id": "F3",
+      "severity": "P0",
+      "location": "design.md §4 payload size 估算",
+      "problem": "stock row JSON 真實大小 ~115B(中文 UTF-8 + 13 位金額 + key 名),不是 50B;cap 50/sector 在實際資料下可能爆 50KB 預算。",
+      "suggested_fix": "重新估算:用 ~115B/stock + cap 降 30/sector + Phase 3 / Phase 6 加 real-payload-measurement gate(curl wc -c 真值驗證 SC-1 < 50000)。",
+      "rationale": "SC-1 hard requirement,估算誤差倍數會在 Phase 6 真實環境爆掉;低估 raw size 也讓 trim 決策失準。",
+      "resolution": "accepted",
+      "resolution_note": "Estimation correction:重算 28 sector × 30 stocks × 119B + leaderboards ≈ 105 KB raw / gzip 19 KB,留 buffer 在 SC-1 預算內;Phase 3 加 measurement gate。"
+    },
+    {
+      "id": "F4",
+      "severity": "P1",
+      "location": "design.md §6.1 / §9 末行",
+      "problem": "useMarketSnapshot 在 mode 切走 (equity/options) 仍 polling;refetchIntervalInBackground 只擋 tab 不擋 mode 切換。",
+      "suggested_fix": "hook 加 enabled prop;MarketPage 從 App.tsx 接 mode === 'market' 當 enabled。",
+      "rationale": "Sponsor 6000/hr 配額 vs 2.5s × 24hr × 同 tab 切 mode = 34560 req/day,設計層面 enabled prop 乾淨可測。",
+      "resolution": "accepted",
+      "resolution_note": "P1 必修;hook signature 加 enabled,App.tsx 傳 mode==='market'。"
+    },
+    {
+      "id": "F5",
+      "severity": "P1",
+      "location": "design.md §5.5 / §10 LeaderboardRow",
+      "problem": "_trim() 沒帶 volume_ratio;量比 tab 只有排名沒數值,SC-3 半破。",
+      "suggested_fix": "LeaderboardRow type 加 volume_ratio: number | null;_trim 帶這欄;量比 tab 顯示 1.14x 格式。",
+      "rationale": "SC-3 明寫三 tab(漲跌幅 / 大量 / 量比),量比 tab 沒值無法呈現程度差異。",
+      "resolution": "accepted",
+      "resolution_note": "payload 加 4 bytes × 120 row = 0.5 KB,不影響 size 預算。"
+    },
+    {
+      "id": "F6",
+      "severity": "P1",
+      "location": "design.md §5.3 sector dedup",
+      "problem": "同 stock_id 同日多 row 取 first row 是 non-deterministic;2330 可能歸電子工業而非半導體業,跨跑次不穩。",
+      "suggested_fix": "Phase 1 寫 deterministic rule:(type asc, date desc, industry_category asc) 字典序 tie-breaker + override 表處理 top 權值股已知 case。Phase 0b-2 probe 完 amend 擴 override / 調 strategy。",
+      "rationale": "Brainstorm E4 明列 edge case,設計要 deterministic;non-determinism 跨跑次 silently 變更 sector 歸屬,debug 痛苦。",
+      "resolution": "accepted",
+      "resolution_note": "Phase 1 寫 deterministic baseline + 10 個權值股 override 表,Phase 0b-2 probe 後再 amend。"
+    },
+    {
+      "id": "F7",
+      "severity": "P1",
+      "location": "design.md §3 / §11 step 13",
+      "problem": "File list 漏列 ModeSwitch.test.tsx 修改;§11 step 13 沒明示既有測試要先紅(TDD)。",
+      "suggested_fix": "§3 表加列;§11 step 13 描述改成 TDD 先紅再綠。",
+      "rationale": "SC-4 驗證方式第一條已點名這檔;TDD 嚴格 red-green,漏登容易 CI red。",
+      "resolution": "accepted",
+      "resolution_note": "P1 必修;§3 表 + §11 step 順序明列。"
+    }
+  ],
+  "summary": {
+    "total": 7,
+    "p0": 3,
+    "p1": 4,
+    "p2": 0,
+    "accepted": 7,
+    "rejected": 0,
+    "needs_more_context": 0
+  },
+  "next_action": "amend design.md to v2 → bump state.json.pending_review_rounds.phase_1 → re-dispatch round 2 review"
+}

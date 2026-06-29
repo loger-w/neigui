@@ -40,6 +40,16 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.18.0",
+    date: "2026-06-29",
+    highlights: "新增「大盤」掃描頁面 — 一眼看整盤族群熱力圖 + 漲跌幅 / 大量單 / 量比三榜",
+    changes: [
+      { kind: "feature", scope: "global", text: "新增「大盤」掃描頁面:左側是按產業分類的熱力圖、右側是漲跌幅 / 大量單 / 量比 top 30 切換榜單" },
+      { kind: "feature", scope: "global", text: "熱力圖或榜單點任一檔股票直接跳到該檔的籌碼分析頁(個股 mode)" },
+      { kind: "feature", scope: "global", text: "盤中自動每 2-3 秒抓最新整盤資料,收盤後自動暫停 polling" },
+    ],
+  },
+  {
     version: "0.17.1",
     date: "2026-06-29",
     highlights: "右側面板顯示外資 / 投信 / 自營商區間加總,K 線下方圖表更乾淨",

@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
 
 from routes.chip import router as chip_router
+from routes.market import router as market_router
 from routes.symbols import router as symbols_router
 from routes.options import router as options_router
 
@@ -49,6 +50,7 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(chip_router)
+app.include_router(market_router, prefix="/api/market")
 app.include_router(symbols_router)
 app.include_router(options_router)
 

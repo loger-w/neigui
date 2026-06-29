@@ -1,0 +1,49 @@
+{
+  "slug": "market-monitor",
+  "start_sha": "611d9f0dd5819b76532fd1888f35cb382d971679",
+  "branch": "feat/market-monitor",
+  "worktree_path": null,
+  "current_phase": 8,
+  "completed_phases": [-1, 0, 1, 2, 3, 4, 5, 6, 7],
+  "scope": "L",
+  "pending_review_rounds": {
+    "phase_1": 0,
+    "phase_2": 0,
+    "phase_4": 0
+  },
+  "blockers": [],
+  "last_updated": "2026-06-29T16:40:00+08:00",
+  "project_shape": "fullstack",
+  "last_commit_sha": null,
+  "final_merge_sha": null,
+  "sc_cycle_counts": {
+    "SC-1": { "phase_1": 0, "phase_2": 0, "phase_3": 1, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 1, "_amend_note": "phase_3 cycle = SC-1 measurement unit clarification (gzip 前 → gzip 後)" },
+    "SC-2": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-3": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-4": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-5": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "_unscoped": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 1,
+      "phase_7": 0,
+      "total": 1,
+      "_amend_note": "phase_6 = browser MCP infra_fail (DevTools profile conflict + claude-in-chrome 未連線);per /feat rule (d) 不算 SC 回退"
+    }
+  },
+  "paused": null,
+  "notes": {
+    "branch_base_rationale": "Branched from origin/main HEAD 611d9f0 after chip-controls-v2 PR merged. No rebase needed (no own commits yet).",
+    "initial_design_source": "docs/superpowers/specs/2026-06-26-stock-realtime-sector-monitor-design.md (v1, approved-with-fixes) — copied to initial-design.md, original rm'd. v1 covered larger scope (含 sector cross-link + per-symbol realtime panel); 本次 Phase 0 收斂到 heatmap + leaderboard 兩件,其餘列 backlog.",
+    "key_corrections_from_v1": [
+      "v1 用 cache TTL 10s;本次採 polling 2-3 秒(2026-06-29 實測甜蜜點)",
+      "v1 設計含 SectorList + SectorMembersTable + RealtimeSnapshotPanel 三件;本次只做熱力圖 + 排行榜",
+      "v1 R9: TaiwanStockInfo 同 stock_id 可能多 row(2330 半導體+電子工業)— 本次必須處理 sector dedup",
+      "v1 R10: TickType 含義未知 — backend 不暴露 raw 給 frontend",
+      "v1 R11: snapshot 只有最佳 1 檔 bid/ask,UI 不可假設五檔"
+    ]
+  }
+}

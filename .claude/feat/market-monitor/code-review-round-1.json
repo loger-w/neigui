@@ -1,0 +1,118 @@
+{
+  "round": 1,
+  "agent_id": "a2713404cf1d3335e",
+  "agent_type": "general-purpose",
+  "completed_at": "2026-06-29T18:15:00+08:00",
+  "findings": [
+    {
+      "id": "R1",
+      "severity": "P1",
+      "verdict": "CONFIRMED",
+      "file": "frontend/src/components/MarketPage.tsx",
+      "line": 16,
+      "summary": "error early-return wipes last-good data on transient blip — single poll fail loses full UI for a retry cycle",
+      "resolution": "accepted",
+      "resolution_note": "Change to banner overlay over last-good data;keep MarketHeader/Heatmap/Leaderboard mounted when error AND data exist."
+    },
+    {
+      "id": "R2",
+      "severity": "P1",
+      "verdict": "PLAUSIBLE",
+      "file": "backend/services/finmind_realtime.py",
+      "line": 157,
+      "summary": "_max_tick_date strips Z then parses as naive → re-stamp TPE → 8h skew if upstream emits UTC",
+      "resolution": "accepted",
+      "resolution_note": "If trailing Z detected,parse as UTC then astimezone(TPE_TZ);real probe never showed Z but defensive correctness required (CLAUDE.md §9 Lessons)."
+    },
+    {
+      "id": "R3",
+      "severity": "P1",
+      "verdict": "CONFIRMED",
+      "file": "backend/services/finmind_realtime.py",
+      "line": 370,
+      "summary": "stale=True triggered by any of 3 fetches failing — daily-cache miss spuriously flags intraday banner",
+      "resolution": "accepted",
+      "resolution_note": "Set stale=True only when universe fetch failed (true intraday staleness signal);log daily fetch failures but don't taint payload flag."
+    },
+    {
+      "id": "R4",
+      "severity": "P2",
+      "verdict": "CONFIRMED",
+      "file": "backend/services/finmind_realtime.py",
+      "line": 289,
+      "summary": "_fetch_sector_map / _fetch_market_value_map 忽略 refresh flag — CLAUDE.md §4 contract half-honored",
+      "resolution": "accepted",
+      "resolution_note": "Wire refresh=True through both daily fetchers,bypass cache when explicitly asked."
+    },
+    {
+      "id": "R5",
+      "severity": "P2",
+      "verdict": "CONFIRMED",
+      "file": "backend/routes/market.py",
+      "line": 49,
+      "summary": "httpx exception catch in route is dead code — service swallows via gather(return_exceptions=True)",
+      "resolution": "accepted",
+      "resolution_note": "Remove the dead httpx tuple catch (rely on service-level + global ValueError handler);drop the misleading test or refactor it to mock at HTTP layer."
+    },
+    {
+      "id": "R6",
+      "severity": "P2",
+      "verdict": "PLAUSIBLE",
+      "file": "backend/main.py vs routes/market.py",
+      "line": 65,
+      "summary": "Global httpx handler emits `finmind_error` but market route emits `finmind_unreachable` for same failure class",
+      "resolution": "rejected_with_reason",
+      "resolution_note": "Reject:main.py:65 global handler 是給其他 route(chip/options 已用 finmind_error)。改 main.py code 會 break 其他 endpoint 的既有契約;改 market 用 finmind_error 又少了 unreachable 語意。風險>收益,保留現狀並加 comment 說明差異。Phase 8.5 沉澱:雙 error code 慣例可後續統一(獨立 refactor PR)。"
+    },
+    {
+      "id": "R7",
+      "severity": "P2",
+      "verdict": "CONFIRMED",
+      "file": "frontend/src/components/MarketHeader.tsx",
+      "line": 30,
+      "summary": "Lag pill 顯示 `1080 分鐘` 而非「已收盤」label 在 !isTradingSession 時",
+      "resolution": "accepted",
+      "resolution_note": "!isTradingSession 時隱藏 lag pill(改顯示 '已收盤'/' 假日 ' label 即足)。"
+    },
+    {
+      "id": "R8",
+      "severity": "P2",
+      "verdict": "PLAUSIBLE",
+      "file": "frontend/src/hooks/useMarketSnapshot.ts",
+      "line": 22,
+      "summary": "forceRefreshRef race with concurrent polling — user click consumed by in-flight poll,refresh 一個 tick 後才生效",
+      "resolution": "accepted",
+      "resolution_note": "refresh() 內先呼 queryClient.cancelQueries 取消 in-flight 再 refetch();成本低,徹底解 race。"
+    },
+    {
+      "id": "R9",
+      "severity": "P2",
+      "verdict": "CONFIRMED",
+      "file": "backend/tests/test_trading_session.py",
+      "line": 108,
+      "summary": "docstring says '上週五' but 2026-06-28 is Sunday — misleading comment",
+      "resolution": "accepted",
+      "resolution_note": "Fix docstring 'Sunday' or 改用真正的 Friday date(2026-06-26 13:30)+ 更新 literal 69600 → 67h+ 的對應值。"
+    },
+    {
+      "id": "R10",
+      "severity": "P2",
+      "verdict": "PLAUSIBLE",
+      "file": "backend/services/finmind_realtime.py",
+      "line": 125,
+      "summary": "Codepoint ASC tie-breaker 可能挑出非直覺 industry(non-override 多 row stocks)",
+      "resolution": "accepted",
+      "resolution_note": "已 design.md §13 R-D5 同類 risk 標記;加 comment 明示 Phase 0b-2 probe 後可能擴 override table。"
+    }
+  ],
+  "summary": {
+    "total": 10,
+    "p0": 0,
+    "p1": 3,
+    "p2": 7,
+    "accepted": 9,
+    "rejected": 1,
+    "needs_more_context": 0
+  },
+  "next_action": "fix accepted findings via Phase 3 (test 紅 → impl 綠);R6 documented as known and skipped this round"
+}
