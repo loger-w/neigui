@@ -365,6 +365,7 @@ export default function App() {
                 loading={!!symbol && isLoading}
                 loadingSymbol={symbol || undefined}
                 majorLoading={!!symbol && majorLoading}
+                windowDays={windowDays}
               />
             </div>
             <div
