@@ -36,6 +36,14 @@ export type SectorGroupLayout = {
 
 // ---------------------------------------------------------------------------
 // colorForChange — 9 bins, bull=紅 / bear=綠(台股慣例 CLAUDE.md §3 / SC-2)
+//
+// Audit X5 design decision:9-stop gradient 故意跟 @theme `--color-bull` /
+// `--color-bear` (UI text 用的單一 hue) 解耦,這是 data-viz palette,任務是
+// 在熱力圖 tile 內讓「強漲 / 弱漲 / 平 / 弱跌 / 強跌」5 個方向 + 9 個級距
+// 一眼可分。跟 UI text bull/bear 共用同色相會丟失對比層次,違反 data-viz
+// 原則。因此這 9 個 const 不轉成 CSS var,維持 hex,放在 heatmap-svg.tsx
+// 模組 scope 表示「私有 palette」。
+// 若未來 designer 想改色相,改這幾個 const 即可,不該動 @theme bull/bear。
 // ---------------------------------------------------------------------------
 
 const BULL_DARKEST = "#d32f2f";

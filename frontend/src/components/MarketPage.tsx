@@ -43,7 +43,7 @@ export function MarketPage({ isActive, onSymbolPick }: Props): ReactElement {
       {error && (
         <div
           role="alert"
-          className="px-4 py-1 text-xs bg-red-500/10 text-red-600 border-b border-red-500/30"
+          className="px-4 py-1 text-xs bg-danger/10 text-danger border-b border-danger/30"
         >
           資料更新失敗:{error}(顯示上次成功結果)
         </div>

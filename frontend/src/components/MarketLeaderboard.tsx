@@ -127,16 +127,16 @@ function Row({
   onPick: (sid: string) => void;
   extraValue?: string;
 }) {
-  // Audit X6:三分支對齊 SC-2 「bull=紅 / bear=綠 / 平=灰」。原 `> 0`
+  // Audit X6 + X5:三分支對齊 SC-2 「bull=紅 / bear=綠 / 平=灰」。原 `> 0`
   // 二分把 change_rate === 0 撞到 bear green,但 heatmap colorForChange(0)
-  // 是 NEUTRAL gray,同檔在兩個 view 顏色不一致。
+  // 是 NEUTRAL gray,同檔在兩個 view 顏色不一致。X5 改 semantic token。
   const colorBin: "bull" | "bear" | "neutral" =
     row.change_rate > 0 ? "bull" : row.change_rate < 0 ? "bear" : "neutral";
   const colorClass =
     colorBin === "bull"
-      ? "text-red-500"
+      ? "text-bull"
       : colorBin === "bear"
-        ? "text-green-500"
+        ? "text-bear"
         : "text-ink-dim";
   const sign = colorBin === "bull" ? "+" : "";
   return (

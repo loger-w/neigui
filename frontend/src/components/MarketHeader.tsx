@@ -31,13 +31,15 @@ export function MarketHeader({
       : lagSeconds < 60
         ? `${lagSeconds}s`
         : `${Math.floor(lagSeconds / 60)} 分鐘`;
+  // X5:bg-yellow-500/text-yellow-600 / bg-red-500/text-red-600 改 semantic
+  // token,跟 chip/options mode 同 designer hue tuning 路徑。
   const lagPillColor = lagSeconds == null
     ? "bg-bg-deep text-ink-dim"
     : lagSeconds < 30
       ? "bg-accent/20 text-accent"
       : lagSeconds < 60
-        ? "bg-yellow-500/20 text-yellow-600"
-        : "bg-red-500/20 text-red-600";
+        ? "bg-warn/20 text-warn"
+        : "bg-danger/20 text-danger";
 
   return (
     <header className="flex items-center justify-between px-4 py-2 border-b border-line">
@@ -55,7 +57,7 @@ export function MarketHeader({
       </div>
       <div className="flex items-center gap-2">
         {isStale && (
-          <span className="text-yellow-600 text-xs">資料停滯</span>
+          <span className="text-warn text-xs">資料停滯</span>
         )}
         <button
           type="button"

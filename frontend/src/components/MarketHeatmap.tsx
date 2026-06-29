@@ -83,14 +83,31 @@ export function MarketHeatmap({ sectors, onSymbolPick }: Props): ReactElement {
           <div className="font-medium">
             {hoveredTile.stockId} {hoveredTile.name}
           </div>
-          <div className={hoveredTile.changeRate > 0 ? "text-red-500" : "text-green-500"}>
+          {/* X5 + X6 三分支:bull(>0) / bear(<0) / neutral(=0) 對齊
+              MarketLeaderboard,避免「0% 撞 bear」跨 view 顏色不一致 */}
+          <div
+            data-color-bin={
+              hoveredTile.changeRate > 0
+                ? "bull"
+                : hoveredTile.changeRate < 0
+                  ? "bear"
+                  : "neutral"
+            }
+            className={
+              hoveredTile.changeRate > 0
+                ? "text-bull"
+                : hoveredTile.changeRate < 0
+                  ? "text-bear"
+                  : "text-ink-dim"
+            }
+          >
             {hoveredTile.changeRate >= 0 ? "+" : ""}
             {hoveredTile.changeRate.toFixed(2)}%
           </div>
           <div className="text-ink-dim">
             成交額 {(hoveredTile.totalAmount / 1e6).toFixed(1)}M
             {hoveredTile.marketValueIsFallback && (
-              <span className="text-yellow-600 ml-1">(市值估)</span>
+              <span className="text-warn ml-1">(市值估)</span>
             )}
           </div>
         </div>
