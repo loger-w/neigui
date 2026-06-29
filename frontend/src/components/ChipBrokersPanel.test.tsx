@@ -168,52 +168,8 @@ describe("ChipBrokersPanel — N-day window header", () => {
   });
 });
 
-describe("ChipBrokersPanel — multi-day region framing (chip-date-controls)", () => {
-  // windowDays > 1 → panel 外層加 data-testid="panel-window-frame" 標記區域框;
-  // windowDays = 1 / undefined → 不出現該標記。視覺風格(色 / 寬)由實作決定。
-  it("renders the multi-day frame marker when windowDays > 1", () => {
-    const { container } = render(
-      <ChipBrokersPanel
-        summary={mkSummary(topBrokers)}
-        dayTotalLots={1000}
-        selectedBrokerIds={new Set()}
-        onToggleBroker={noop}
-        onClearAllBrokers={noop}
-        windowDays={30}
-        actualDays={30}
-      />,
-    );
-    expect(container.querySelector("[data-testid=panel-window-frame]")).toBeTruthy();
-  });
-
-  it("does NOT render the multi-day frame marker when windowDays = 1", () => {
-    const { container } = render(
-      <ChipBrokersPanel
-        summary={mkSummary(topBrokers)}
-        dayTotalLots={1000}
-        selectedBrokerIds={new Set()}
-        onToggleBroker={noop}
-        onClearAllBrokers={noop}
-        windowDays={1}
-        actualDays={1}
-      />,
-    );
-    expect(container.querySelector("[data-testid=panel-window-frame]")).toBeFalsy();
-  });
-
-  it("does NOT render the multi-day frame marker when windowDays is undefined (legacy)", () => {
-    const { container } = render(
-      <ChipBrokersPanel
-        summary={mkSummary(topBrokers)}
-        dayTotalLots={1000}
-        selectedBrokerIds={new Set()}
-        onToggleBroker={noop}
-        onClearAllBrokers={noop}
-      />,
-    );
-    expect(container.querySelector("[data-testid=panel-window-frame]")).toBeFalsy();
-  });
-});
+// (chip-controls-v2 2026-06-29) panel-window-frame describe deprecated —
+// 區間視覺改在 K 線上,panel 不再做左緣 accent 直條。對應實作 + testid 已移除。
 
 describe("ChipBrokersPanel F4 — symbol/date + 三大法人 removed", () => {
   it("does NOT render 三大法人 block", () => {
