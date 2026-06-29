@@ -48,7 +48,7 @@ export const CHANGELOG: VersionEntry[] = [
     highlights: "台指期盤後價含夜盤更穩定 + 選擇權冷啟動 27s → 4s",
     changes: [
       { kind: "fix", scope: "options", text: "台指期盤後價包含夜盤段,前端 60 秒輪詢更即時穩定" },
-      { kind: "fix", scope: "options", text: "選擇權冷啟動大幅加速(27 秒縮短至 4 秒)" },
+      { kind: "fix", scope: "options", text: "選擇權冷啟動大幅加速" },
       { kind: "fix", scope: "equity", text: "個股代號啟動初期查不到時自動補抓,不再需手動重整" },
     ],
   },
@@ -92,7 +92,7 @@ export const CHANGELOG: VersionEntry[] = [
     changes: [
       { kind: "feature", scope: "equity", text: "券商面板新增 N 日加總視窗:1/10/20/30/60 日預設檔位" },
       { kind: "feature", scope: "equity", text: "N 日範圍可用滾輪或鍵盤自訂任意天數" },
-      { kind: "fix", scope: "equity", text: "N 日券商窗冷啟動大幅加速(約 24 秒縮至 0.6 秒)" },
+      { kind: "fix", scope: "equity", text: "N 日券商窗冷啟動大幅加速" },
       { kind: "fix", scope: "equity", text: "券商加總視窗修正盤中可能取到未來資料的偏誤" },
       { kind: "fix", scope: "equity", text: "切換 N 日檔位不再短暫閃出舊資料" },
     ],

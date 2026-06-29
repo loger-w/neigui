@@ -139,9 +139,9 @@ User-facing changelog 在 `frontend/src/lib/changelog.ts`,前端 top bar 右側 
 - `kind` 二選一:`feature`(新功能 / 新視覺)或 `fix`(影響體驗的修正)
 - `scope` 三選一:`equity` / `options` / `global`,**不要混用** `prop` 或自由文字
 - `date` 用 `YYYY-MM-DD`(同專案其他 date 慣例)
-- `text` 一句話 user-facing,**不寫實作細節 / 工程術語**:
-  - 壞:「refactor brokers_window cache key」、「permutation 相關係數」、「T-1 look-ahead」、「fallback 行為」、「資料載入吞吐提升」
-  - 好:「N 日券商窗冷啟動加速」、「附歷史相關性」、「結算前一交易日資料」、「資料缺漏時改用最近可用日期」、「資料載入更快」
+- `text` 一句話 user-facing,**不寫實作細節 / 工程術語 / 具體 benchmark 數字**(非工程觀眾沒 baseline 無從感受):
+  - 壞:「refactor brokers_window cache key」、「permutation 相關係數」、「T-1 look-ahead」、「fallback 行為」、「資料載入吞吐提升」、「冷啟動 27 秒縮至 4 秒」
+  - 好:「N 日券商窗冷啟動大幅加速」、「附歷史相關性」、「結算前一交易日資料」、「資料缺漏時改用最近可用日期」、「資料載入更快」
 
 ### 1.0.0 升級標準
 
