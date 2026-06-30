@@ -33,12 +33,13 @@ export const TESTIDS = {
   putWall: "put-wall",
 } as const;
 
+// Mutation test 教訓(2026-06-30):Playwright `name: 'X'` 預設 **substring**
+// 匹配 — 改 label 從 `個股` → `個股X` 仍會被誤匹過。所有 mode 切換 button
+// 改用 exact RegExp `/^...$/` 鎖死,徹底 discriminative。
 export const ROLES = {
-  // ModeSwitch.tsx:10-14 真實 labels(F9 — 個股 / 選擇權 / 大盤,**不是**
-  // 個股籌碼 / 大盤掃描)
-  modeSwitchEquity: { role: "button" as const, name: "個股" },
-  modeSwitchOptions: { role: "button" as const, name: "選擇權" },
-  modeSwitchMarket: { role: "button" as const, name: "大盤" },
+  modeSwitchEquity: { role: "button" as const, name: /^個股$/ },
+  modeSwitchOptions: { role: "button" as const, name: /^選擇權$/ },
+  modeSwitchMarket: { role: "button" as const, name: /^大盤$/ },
   // active 用 aria-current='page'(F10 — 不是 data-state,Radix Tabs 已 drop)
   refresh: { role: "button" as const, name: "重新整理" },
   // RangeSelector.tsx:141 真實 aria-label(F15)
