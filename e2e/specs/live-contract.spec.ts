@@ -1,0 +1,56 @@
+/**
+ * SC-11 真打 FinMind upstream contract 3 tests(hard cap by live-guard.ts)。
+ * design.md v6 §3 SC-11。
+ *
+ * LIVE TESTS HARD CAP: 3 — helpers/live-guard.ts globalSetup 階段機械化
+ * fs.readFileSync + regex 數 `test(`,> 3 throw。
+ *
+ * 痛點:e2e:live 燒 FinMind quota + token expiry 易紅。沒 cap,新功能 PR
+ * 易順手加 live test 導致 CI 越來越脆 + cost 失控。本 cap 強制 brainstorm
+ * 升 SC 才能解。
+ */
+import { test, expect } from "@playwright/test";
+
+test.describe("@live upstream contract", () => {
+  test.beforeAll(() => {
+    if (process.env.FAKE_FINMIND === "1") {
+      throw new Error("e2e:live 不可在 FAKE_FINMIND=1 下跑 — unset 或設 'real' 再試");
+    }
+  });
+
+  test("L1: equity chip 真打回應 schema", async ({ request }) => {
+    // 痛點:FinMind upstream contract drift — 若 TaiwanStockInstitutionalInvestors
+    // 改欄位名,frontend chip-data.ts 解析錯。本 test 真打 1 次抓 drift。
+    const r = await request.get("/api/chip/2330?date=2026-06-26");
+    expect(r.status()).toBe(200);
+    const body = await r.json();
+    expect(body).toMatchObject({
+      symbol: expect.any(String),
+      institutional: expect.objectContaining({
+        foreign: expect.objectContaining({ net: expect.any(Number) }),
+        dealer: expect.objectContaining({ net: expect.any(Number) }),
+        trust: expect.objectContaining({ net: expect.any(Number) }),
+      }),
+    });
+  });
+
+  test("L2: options max_pain 真打回應 schema", async ({ request }) => {
+    // 痛點:TaiwanOptionDaily upstream schema drift(strike_price / call_put 等)。
+    const r = await request.get("/api/options/max_pain?contract=TXO202607");
+    expect(r.status()).toBe(200);
+    const body = await r.json();
+    expect(body).toMatchObject({
+      contract: "TXO202607",
+      current: expect.any(Object),
+    });
+  });
+
+  test("L3: market snapshot 真打回應 schema", async ({ request }) => {
+    // 痛點:taiwan_stock_tick_snapshot upstream schema drift。
+    const r = await request.get("/api/market/snapshot");
+    expect(r.status()).toBe(200);
+    const body = await r.json();
+    expect(body).toHaveProperty("sectors");
+    expect(body).toHaveProperty("leaderboards");
+  });
+});

@@ -1,0 +1,17 @@
+{
+  "name": "trash-cmoney-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test --grep-invert=@live",
+    "test:live": "cross-env FAKE_FINMIND=real playwright test --config=playwright.live.config.ts",
+    "test:ui": "playwright test --ui",
+    "test:update-snapshots": "playwright test --update-snapshots"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "cross-env": "^7.0.3",
+    "typescript": "^5.7.0"
+  }
+}
