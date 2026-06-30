@@ -1,0 +1,370 @@
+{
+  "summary": "Adversarial 3-lens review of e2e-tests design.md (architect / testability / scope)",
+  "agentCount": 4,
+  "logs": [
+    "Lenses returned: 3/3. Raw findings: 34."
+  ],
+  "result": {
+    "findings": [
+      {
+        "id": "F1",
+        "severity": "P0",
+        "location": "design.md §2 (services/finmind_fake.py) / §4 Data Flow",
+        "problem": "FAKE_FINMIND gate only intercepts services.finmind.get_finmind(), but THREE production code paths bypass that singleton entirely and hit FinMind directly via raw httpx: (1) services/finmind_realtime.py uses client._get(...) on a private method; (2) services/trading_calendar.py builds its own httpx.AsyncClient (_fetch_raw_dates_from_finmind) called by EVERY chip endpoint; (3) routes/symbols.py::load_symbols() also builds its own httpx client at lifespan startup. With FAKE_FINMIND=1 + FINMIND_TOKEN='fake', symbol load will fail, trading_calendar will raise → 503, and chip endpoints will 503 before fixture is touched. SC-3/4/5/8 cannot pass as written.",
+        "suggested_fix": "Either (a) extend FAKE_FINMIND gate inside trading_calendar._fetch_raw_dates_from_finmind + symbols.load_symbols + finmind_realtime._fetch_universe/_sector_map/_market_value_map to short-circuit to fixture files, OR (b) refactor those three paths to route through FinMindClient before Phase 2. Also explicitly list `_get` as part of FakeFinMindClient surface. Update §4 'No bypass' claim — currently false for three modules.",
+        "rationale": "design.md §4 promises 'transform pipeline 同條路徑,只換最底層 IO' but those three modules each open their own httpx client, leaving live network paths unmocked. Phase 3 will hit this on the first market/chip/symbol test.",
+        "lens": "architect"
+      },
+      {
+        "id": "F2",
+        "severity": "P0",
+        "location": "design.md §2 fixtures/ list + §3 SC-3/SC-4/SC-5",
+        "problem": "Fixture surface critically under-sized AND dataset names wrong. Real FinMind datasets called by services/finmind*.py: TaiwanOptionDaily, TaiwanOptionOpenInterestLargeTraders, TaiwanFuturesDaily, TaiwanOptionFinalSettlementPrice, TaiwanOptionInstitutionalInvestors(+AfterHours), TaiwanStockPrice, TaiwanStockInstitutionalInvestorsBuySellWide, TaiwanStockMarginPurchaseShortSale, taiwan_stock_trading_daily_report(_secid_agg), TaiwanStockKBar, TaiwanStockInfo, TaiwanStockMarketValue, taiwan_stock_tick_snapshot. There is no 'TaiwanFutOpt' dataset (design typo). Missing fixtures cascade: K-line empty (no TaiwanStockPrice), broker history empty, options spot/ladder empty, settlement/tx_close empty, market_value_map empty. brokers_window default days=10 fans out 10 dates × 3 datasets — single-date fixture will mostly miss and silently return zeros.",
+        "suggested_fix": "Phase 2: grep `_get(` call sites in services/finmind.py + finmind_realtime.py + finmind_options.py + trading_calendar.py; enumerate every (dataset, data_id) tuple. Add explicit fixture-coverage table to §2 mapping `(SC-N case) → (datasets consumed) → (fixture filename)`. For N-day fan-outs (brokers_window, 250-d option window, 30-d large_traders), pick policy: ship N fixtures per date OR have FakeFinMindClient return locked-date row for any start/end within a band.",
+        "rationale": "Two lenses (architect ARCH-5 + testability TEST-5) independently flagged this; severity bumped from P1→P0. Wrong dataset names block writing correct fixture files; insufficient fan-out makes assertions silently pass against empty payloads, inverting SC-3/4/5's 'golden path verified end-to-end' promise.",
+        "lens": "merged"
+      },
+      {
+        "id": "F3",
+        "severity": "P0",
+        "location": "design.md §2 finmind_fake.py docstring method list",
+        "problem": "Listed method surface is wrong: `fetch_history(symbol, days)` and `fetch_tick_snapshot()` don't exist on FinMindClient. Actual surface (grep services/finmind.py) is 18 fetch_* methods + close + private `_get` that finmind_realtime.py monkey-uses. Real names design omits: fetch_chip_bubble, fetch_chip_intraday, fetch_chip_history(_base/_major), fetch_broker_history, fetch_strike_volume, fetch_taiwan_option_daily_window, fetch_settlement_history, fetch_tx_close_history, fetch_max_pain, fetch_oi_walls, fetch_pcr, fetch_institutional. Design also doesn't decide whether to stub at high-level fetch_* boundary OR at `_get`.",
+        "suggested_fix": "Phase 2 replace placeholder list with verified 18 methods. Decide explicitly: high-level stubs (fewer fixtures, but miss internal aggregation bugs the §4 'transform pipeline' claim promises to cover) vs low-level _get proxy (auto-covers realtime + trading_calendar, but multiplies fixture maintenance). Document choice + naming convention in fixtures/README.md.",
+        "rationale": "FakeFinMindClient is the public-facing duck-type; any missing fetch_* → AttributeError in Phase 3 on first endpoint call.",
+        "lens": "architect"
+      },
+      {
+        "id": "F4",
+        "severity": "P0",
+        "location": "design.md §3 SC-1 playwright.config.ts webServer[0].url",
+        "problem": "Health-check URL is http://127.0.0.1:8000/api/symbols/2330 — but there is no /api/symbols/{symbol} route. Actual routes are /api/symbols?search=... (min_length=1) and /api/symbols/all. Playwright will poll a non-existent route forever (404 ≠ healthy in webServer probe — it waits for 2xx) and the suite never starts.",
+        "suggested_fix": "Use an existing 2xx endpoint, e.g. http://127.0.0.1:8000/api/symbols?search=2 or /api/market/snapshot. Better: add a cheap /api/health endpoint (no dependency on lifespan-loaded symbols) and use that — /api/symbols/all triggers full symbols load which is heavy + can fail under fake mode.",
+        "rationale": "Cross-checked routes/symbols.py: only /api/symbols and /api/symbols/all are registered. No path-param variant exists.",
+        "lens": "architect"
+      },
+      {
+        "id": "F5",
+        "severity": "P0",
+        "location": "design.md §3 SC-1 + SC-11 e2e/package.json scripts",
+        "problem": "Single playwright.config.ts hardcodes webServer[0].env: { FAKE_FINMIND: '1' }, but SC-11 'e2e:live' needs the SAME backend spawned with FAKE_FINMIND UNSET + real token. You can't conditionally drop an env key from webServer within one config. Additionally `\"test:live\": \"FAKE_FINMIND= playwright test --grep='@live'\"` uses POSIX shell syntax — silently ignored on Windows PowerShell/cmd. CLAUDE.md confirms Windows is the primary dev environment, so the `FAKE_FINMIND=` prefix is a parse no-op and the var keeps its prior value, defeating the gate.",
+        "suggested_fix": "(a) Split into playwright.config.ts (fake) + playwright.live.config.ts (live, webServer.env without FAKE_FINMIND), point scripts at --config; OR (b) make config read FAKE_FINMIND from process.env so npm script controls spawn env. Add `cross-env` to e2e/devDependencies for cross-platform env injection. Treat sentinel `FAKE_FINMIND=real` (or anything ≠ '1') as real-mode rather than relying on empty-unset semantics.",
+        "rationale": "Three independent lenses (architect ARCH-6 + testability TEST-6 + scope SCOPE-2) flagged this; severity bumped P1→P0. Local SC-11 verification on user's Win11+PowerShell silently runs against whatever FAKE_FINMIND was last set to.",
+        "lens": "merged"
+      },
+      {
+        "id": "F6",
+        "severity": "P0",
+        "location": "design.md §3 SC-1 playwright.config.ts webServer.reuseExistingServer",
+        "problem": "`reuseExistingServer: !process.env.CI` for backend webServer is dangerous: if a dev already runs `uvicorn main:app --reload --port 8000` with their real FINMIND_TOKEN (the normal CLAUDE.md §1 dev loop), Playwright will reuse it and silently run the entire E2E suite against the REAL FinMind backend — bypassing the `env: { FAKE_FINMIND: '1' }` injection. Tests become non-deterministic, hit rate limit, burn quota, and visual baselines drift. No startup probe asserts spawned/reused server is actually in FAKE mode.",
+        "suggested_fix": "Add a startup gate in `globalSetup` (or helpers/start-server.ts): GET /api/_meta/mode (new lightweight endpoint returning {fake: bool}) and fail loudly with 'detected real FinMind backend on :8000; free your dev server first' when non-live spec sees real-mode. Alternatively `reuseExistingServer: false` always for backend (pay cold-start) with the trade-off documented. Frontend reuse remains fine since vite is mode-agnostic.",
+        "rationale": "Two lenses (testability TEST-7 + scope EDGE-3) flagged this; severity bumped P1→P0. Silent fallthrough to live upstream is the single highest-risk failure mode of FAKE_FINMIND and inverts the brainstorm SC-2 isolation promise.",
+        "lens": "merged"
+      },
+      {
+        "id": "F7",
+        "severity": "P0",
+        "location": "design.md §3 SC-3/SC-4/SC-5 + §6 TESTIDS / ROLES contract",
+        "problem": "8 of 12 testids declared in §6 ROLES contract do NOT exist in any component (grep-verified). MISSING: chip-brokers-panel, chip-kline-chart, options-{max-pain,oi-walls,pcr,institutional}-card, options-large-traders-strip, options-strike-ladder, market-heatmap, market-leaderboard. EXISTING: refresh-spinner, panel-resize-handle, plus sub-parts (panel-institutional, kline-zoom-hud, tile-${stockId}, lb-row-${stock_id}, call-wall, put-wall, strip-card). §6 vague 'Phase 2 spec per file 階段檢核' hides ~10 component file edits behind one bullet. Same gap exists for role/copy strings (重新整理, 籌碼分析, 大盤掃描, 輸入股號, 10 日) and SC-6 N1 data-state='active' assertion (CLAUDE.md §9 sediment says we abandoned Radix Tabs).",
+        "suggested_fix": "Promote the testid gap into a first-class §2 modify table entry: list each of the 10 component files (ChipBrokersPanel, ChipKlineChart, OptionsMaxPainCard, OptionsOIWallsCard, OptionsPCRCard, OptionsInstitutionalCard, OptionsLargeTradersStrip, OptionsStrikeLadder, MarketHeatmap, MarketLeaderboard) with `add data-testid='<x>' to root div`, mapped to SC-3/4/5. Phase 1 also grep `data-testid=`, `重新整理`, `籌碼分析`, `大盤掃描`, `輸入股號`, `10 日` against frontend/src/ and produce a delta table (exists | needs-add | needs-rename).",
+        "rationale": "Two lenses (architect ARCH-9 + testability TEST-3) flagged this; severity bumped P1→P0. Without explicit modify entries, Phase 2 sub-agent will not know to spec these edits and Phase 3 spec runs will cascade `Timed out waiting for getByTestId(...)` failures.",
+        "lens": "merged"
+      },
+      {
+        "id": "F8",
+        "severity": "P0",
+        "location": "design.md §3 SC-5 (market.spec.ts) + SC-4 (options.spec.ts) + §8 Known Risks",
+        "problem": "brainstorm E5 explicitly calls out TanStack Query refetchInterval (useMarketSnapshot polls every few seconds, useOptionsSpot 60s polling — verified in hooks) interfering with E2E and requires page.clock.install() or a polling-disable flag. Design §3 SC-4/SC-5 has zero mitigation — no page.clock.install(), no env flag to disable polling, no route override. Mid-test refetches will silently re-fire fixture loads, race assertions, intermittently flake 'spinner disappeared' style checks, and inflate test duration. CLAUDE.md §9 sediment explicitly warns about polling-vs-refresh race in market hook.",
+        "suggested_fix": "Add explicit subsection in §3 SC-4/SC-5 (or §6 helpers) specifying mechanism: (a) `await page.clock.install({ time: '2026-06-27T13:30:00+08:00' })` before goto + `page.clock.fastForward()` per assertion, (b) query-param the hook reads to disable polling under E2E (e.g. ?e2e=1 → refetchInterval: false), or (c) build-time env. Pick one, write into helpers/. Add race to §8 Known Risks.",
+        "rationale": "Two lenses (architect ARCH-8 + scope EDGE-1) flagged this; severity bumped P1→P0. Brainstorm explicitly required mitigation; design ignored — Phase 3 will discover flake and rework harness.",
+        "lens": "merged"
+      },
+      {
+        "id": "F9",
+        "severity": "P0",
+        "location": "design.md §3 SC-4/SC-5/SC-6 + §6 ROLES + frontend/src/components/ModeSwitch.tsx",
+        "problem": "Mode-switch button labels in design (`個股籌碼` / `選擇權` / `大盤掃描`) DO NOT match actual ModeSwitch render (`個股` / `選擇權` / `大盤`). Only the middle one matches. Every spec calling `page.getByRole('button', { name: '大盤掃描' })` (SC-5 M1/M3) or `name: '個股籌碼'` (SC-6 N1) will fail with strict-mode no-match. §6 ROLES hard-codes the wrong names so the contract propagates project-wide.",
+        "suggested_fix": "Either (a) update §6 ROLES + all spec snippets to use actual labels `個股` / `選擇權` / `大盤`, or (b) flag in §2 modify-table that ModeSwitch.tsx MODES const must change labels (and update ModeSwitch.test.tsx). Pick one and lock it in Phase 2 before any spec is written, or Phase 3 will burn ≥3 cycles chasing flaky selectors.",
+        "rationale": "Grep of ModeSwitch.tsx shows literal `MODES = [{ label: '個股' }, { label: '選擇權' }, { label: '大盤' }]`. Role-based selectors match accessible name = text content.",
+        "lens": "testability"
+      },
+      {
+        "id": "F10",
+        "severity": "P0",
+        "location": "design.md §3 SC-6 navigation.spec.ts N1",
+        "problem": "`await expect(btn).toHaveAttribute('data-state', 'active')` will always fail. ModeSwitch.tsx does NOT emit `data-state`; active styling uses `aria-current={active ? 'page' : undefined}` only. No Radix Tabs primitive is used (CLAUDE.md §9 sediment explicitly says we rewrote away from Radix Tabs to plain buttons + aria-selected/aria-current).",
+        "suggested_fix": "Replace with `await expect(btn).toHaveAttribute('aria-current', 'page')`, OR add `data-state` emission as §2 modify entry for ModeSwitch.tsx. Former is cheaper and matches existing convention.",
+        "rationale": "Source: ModeSwitch.tsx line 25. CLAUDE.md §9 confirms Radix Tabs was intentionally replaced; design appears to assume the old (unused) shape.",
+        "lens": "testability"
+      },
+      {
+        "id": "F11",
+        "severity": "P0",
+        "location": "design.md §3 SC-7 test_api_error_shape.py example",
+        "problem": "Test asserts `GET /api/chip/9999?date=...` returns {detail:{error:'symbol_not_found'}} status 404. Grep confirms NO route raises this code or returns 404 for unknown stock symbols. routes/chip.py::get_chip_summary just delegates — FakeFinMindClient returns [] → parse functions return zeroed dict → 200 OK with empty institutional. The contract as written can never pass against current behavior.",
+        "suggested_fix": "Drop the 404 example from SC-7. Lock down REAL existing error codes instead: /api/chip/{sym}/broker_history → 400 ids_required / too_many_ids; /api/options/max_pain → 400 contract_required / invalid_contract / lookback_exceeds_canonical_window; /api/options/pcr → 400 invalid_scope / missing_contract_for_per_contract_scope / contract_not_applicable_for_scope. If you want 404 for unknown chip symbols, that is a behavior change requiring its own /mod ticket.",
+        "rationale": "brainstorm SC-7 §3 asks 'symbol 不存在 404' but no such logic exists. Locking the wrong assertion in design.md primes wasted Phase 2 work.",
+        "lens": "architect"
+      },
+      {
+        "id": "F12",
+        "severity": "P1",
+        "location": "design.md §2 (修改 row 5 'lifespan log mode') + §3 SC-2",
+        "problem": "Lifespan logging adds visibility but provides no programmatic check. A typo (FAKE_FINMD=1, FAKE_FINMIND=true) silently leaves backend in real mode; tests would hit live FinMind with token='fake' → 401 cascade, eating quota and producing misleading red.",
+        "suggested_fix": "Add fail-loud startup check: if FAKE_FINMIND=='1' and fixtures dir missing, raise; if FAKE_FINMIND set to non-empty value other than '0'/'1', raise. Optionally expose /api/_internal/mode endpoint returning {fake, fixtures_dir} and have tests_e2e/conftest.py assert it before first client call. Document mutual-exclusion (FAKE_FINMIND=1 with a real-looking FINMIND_TOKEN is suspicious — warn).",
+        "rationale": "Silent fallback to real upstream during 'fake' tests is the worst E2E failure mode — invisible quota burn + false negatives.",
+        "lens": "architect"
+      },
+      {
+        "id": "F13",
+        "severity": "P1",
+        "location": "design.md §3 SC-2 finmind_fake.py + §2 fixtures naming scheme",
+        "problem": "Fake client signature `_load(dataset, key, date)` and fixture filenames don't capture the `days` window param used by real client's window methods: `fetch_brokers_window(symbol, date, days)`, `fetch_taiwan_option_daily_window(option_id, end_date, days)`. SCs request different `days` values (broker series may want 60d; SC-6 chip_window_days roundtrip tests 10/30/60). Either every call collapses to same fixture (silently masks date-window bugs) or fixture key needs `days` (design omits). 'Phase 2 階段逐一寫' defers, but §2 directory layout is already committed.",
+        "suggested_fix": "Decide and pin: (a) fixture key includes window (`..._2026-06-27_d60.json`) and `_load` takes days param, OR (b) document explicitly that fake returns full 250-day window file and consumers slice — add integration sanity test asserting slice matches hand-checked count. Update §2 directory listing and FakeFinMindClient method stubs accordingly.",
+        "rationale": "Without nailing in Phase 1, Phase 3 hits conflicting expectations (broker-window-cache invalidation in services/finmind.py is non-trivial; fake must mirror its slicing contract) and forces fixtures-layout migration mid-implementation.",
+        "lens": "scope"
+      },
+      {
+        "id": "F14",
+        "severity": "P1",
+        "location": "design.md §3 SC-3 E2",
+        "problem": "`page.getByRole('option', { name: /2330/ }).first().click()` assumes SymbolSearch renders autocomplete dropdown items with role='option' (Radix Listbox style). Need to verify against actual SymbolSearch — it may be a custom popover with buttons/divs. Same concern for BrokerSearch (testid `broker-search-item` exists; design uses neither for SC-3).",
+        "suggested_fix": "Phase 2: grep SymbolSearch.tsx for actual role/testid emission and either (a) update spec selector to match real DOM, or (b) add `role='option'` / `data-testid='symbol-search-item'` to §2 modify table. Same audit for the autocomplete in equity header.",
+        "rationale": "Role assumptions silently fail in Playwright with `strict mode: 0 matches found`. Cheap now, expensive in Phase 3.",
+        "lens": "testability"
+      },
+      {
+        "id": "F15",
+        "severity": "P1",
+        "location": "design.md §3 SC-6 N3 + frontend/src/components/ui/RangeSelector.tsx",
+        "problem": "`page.getByRole('button', { name: '10 日' }).click()` will not match. RangeSelector renders each preset with `aria-label={`設為 ${n} 日`}` (e.g. `設為 10 日`). Accessible name resolution prefers aria-label over text content. Existing vitest at RangeSelector.test.tsx:76 uses `name: '設為 10 日'`.",
+        "suggested_fix": "Change N3 (and §6 ROLES if you add a `range10` entry) to `name: '設為 10 日'`. Same fix pattern for any other preset buttons (1/5/10/20/60 日).",
+        "rationale": "Cross-reference with existing vitest convention catches the mismatch immediately.",
+        "lens": "testability"
+      },
+      {
+        "id": "F16",
+        "severity": "P1",
+        "location": "design.md §3 SC-6 (navigation.spec.ts)",
+        "problem": "Brainstorm E3 + CLAUDE.md §9 sediment require verifying 'mode 切換時對應 data-testid 只出現一個 mode' to catch the ternary→hidden div regression that previously caused double-mount + double-fetch. Design's navigation.spec only checks `toHaveAttribute('data-state', 'active')` on the toggle button, which would still pass if both mode subtrees were mounted simultaneously. App.tsx 3-way ternary is fragile (adding a 4th mode via `<div hidden>` would re-introduce the bug exactly as sediment warns).",
+        "suggested_fix": "Add test case N4 in navigation.spec.ts: after switching to options, assert `expect(page.getByTestId('chip-brokers-panel')).toHaveCount(0)` AND `expect(page.getByTestId('market-heatmap')).toHaveCount(0)`. Symmetric checks for all 3 modes. Pins the mutual-exclusivity contract.",
+        "rationale": "Brainstorm explicitly lists this edge; without the assertion the regression that already burned the project in Phase 8.5 will recur unprotected.",
+        "lens": "scope"
+      },
+      {
+        "id": "F17",
+        "severity": "P1",
+        "location": "design.md §3 SC-7 — market endpoint scope",
+        "problem": "§2 lists `test_api_market.py # SC-7 market 2 endpoints` and brainstorm SC-7 case 3 says '/api/market/{type} (heatmap/leaderboard) happy + sector filter'. Real backend (routes/market.py) registers a SINGLE endpoint `/api/market/snapshot` returning sectors + leaderboards in one payload. No /api/market/heatmap, /api/market/leaderboard, or sector filter query param.",
+        "suggested_fix": "Update SC-7 case 3 + §2 file name to test the single /api/market/snapshot endpoint — assert payload shape (sectors[] with id/name/avg_change_rate/total_amount/stocks; leaderboards.{gainers,losers,amount,volume_ratio}; stale; is_trading_session; lag_seconds; as_of; last_tick). Drop 'sector filter' and '2 endpoints' wording.",
+        "rationale": "Cross-checked routes/market.py + finmind_realtime.fetch_market_snapshot return shape. Two-endpoint assumption fails immediately at Phase 3 import.",
+        "lens": "architect"
+      },
+      {
+        "id": "F18",
+        "severity": "P1",
+        "location": "design.md §3 SC-8",
+        "problem": "Design says 'Backend (test_api_no_trading_day.py): 打週六日期 2026-06-28, assert body[no_trading_day] is True + body[as_of_date]==2026-06-27' without specifying endpoint. Grep of backend/routes/ confirms `no_trading_day` is set ONLY in options.py (multiple sites), not in chip.py or market.py. A naive Phase 3 implementer hitting `/api/chip/2330?date=2026-06-28` will get a different shape and write wrong assertion. Frontend half is locked to options page — but brainstorm SC-8 wording is mode-agnostic.",
+        "suggested_fix": "In §3 SC-8 explicitly list endpoints: backend test hits `/api/options/TXO/202607/max-pain?date=2026-06-28` (or whichever option endpoint); frontend test pins to options mode. Add note: 'chip / market endpoints do NOT emit no_trading_day today — out of scope, do not assert.'",
+        "rationale": "Avoids Phase 3 confusion and prevents accidentally widening the no_trading_day contract to other routes.",
+        "lens": "scope"
+      },
+      {
+        "id": "F19",
+        "severity": "P1",
+        "location": "design.md §3 SC-9 visual.spec.ts + e2e/snapshots/ in §2",
+        "problem": "Design implies snapshots live in e2e/snapshots/, but Playwright's default toHaveScreenshot() writes to <spec-file>.spec.ts-snapshots/ next to each spec. Without configuring snapshotPathTemplate, the e2e/snapshots/ directory + its .gitattributes stay empty while actual baselines scatter under e2e/specs/visual.spec.ts-snapshots/. CI commits hit a different path than design plans for.",
+        "suggested_fix": "Add snapshotPathTemplate to playwright.config.ts, e.g. '{testDir}/../snapshots/{testFilePath}/{arg}{ext}'. OR drop the dedicated e2e/snapshots/ directory from §2 and document Playwright default colocated path.",
+        "rationale": "Default Playwright behavior; discovering this in Phase 5 means moving committed PNGs and rewriting paths in CI workflows.",
+        "lens": "architect"
+      },
+      {
+        "id": "F20",
+        "severity": "P2",
+        "location": "design.md §3 SC-1 webServer python command",
+        "problem": "`python -m uvicorn main:app --port 8000` assumes `python` is on PATH and resolves to a Python 3.12 venv. No pyproject.toml pin. On Windows fresh contributor may have python.org default (3.13/3.11) → import errors. CI works because setup-python pins it.",
+        "suggested_fix": "Document the Python 3.12 venv prerequisite in e2e/README.md or use a wrapper that resolves via `py -3.12` (Windows) / venv activation. Optional cosmetic.",
+        "rationale": "Polish; won't block Phase 2 but a new contributor will hit this within 10 minutes.",
+        "lens": "architect"
+      },
+      {
+        "id": "F21",
+        "severity": "P2",
+        "location": "design.md §3 SC-2 verification command vs brainstorm SC-2",
+        "problem": "brainstorm SC-2 verification: `FAKE_FINMIND=1 python -m uvicorn main:app --port 8001` then `curl localhost:8001/api/chip/2330?date=2026-06-27`. design.md SC-2 verification: `python -c \"from services.finmind import get_finmind; print(...)\"`. These verify different things — curl proves the route returns fixture JSON end-to-end; python -c only proves singleton swap works. Design's downgrade weakens the SC-2 promise.",
+        "suggested_fix": "Keep both: design's `python -c` as fast smoke + brainstorm's `curl` as integration check. Or pick the curl — it covers more.",
+        "rationale": "verification-before-completion gate later wants the curl to confirm fixture really flows through routes layer.",
+        "lens": "testability"
+      },
+      {
+        "id": "F22",
+        "severity": "P2",
+        "location": "design.md §3 SC-2 fixture rotation + §7 Decisions row 'Fixture 日期'",
+        "problem": "Hidden assumption: 'fixtures/README.md SOP' covers rotation, but design states no schedule or trigger. After ~6 months the 2026-06-27 fixture date will be far from `new Date()` in frontend's todayStr(); SCs that don't pin `date` explicitly will compare today's date against a 6-month-old fixture, behavior unclear. No SC asserts fixture-date is force-injected into every relevant API request, so e.g. useMarketSnapshot calling /api/market/snapshot (no date param) hits fake client with whatever 'today' is and may miss fixture.",
+        "suggested_fix": "In §7 or §8 add explicit decision: 'fixture rotation cadence = N months OR before each release; rotation owner = repo maintainer; in-code clock pin via page.clock.install for all UI specs to make 2026-06-27 the perpetual today'. Dovetails with F8's clock recommendation.",
+        "rationale": "Without a clock pin, fixture staleness manifests as silent test drift months from now — exactly what Phase 1 should preempt.",
+        "lens": "scope"
+      },
+      {
+        "id": "F23",
+        "severity": "P2",
+        "location": "design.md §3 SC-6 N2 + brainstorm E6",
+        "problem": "brainstorm E6 says reload-persistence requires `context.storageState()`. That's wrong context: `storageState()` saves/restores state ACROSS tests; within a single test, `page.reload()` already preserves localStorage in same browser context. Design correctly just uses `page.reload()` (good) but doesn't address the non-issue: Playwright creates fresh context per test by default, so cross-test localStorage pollution is impossible. Leaves Phase-3 author potentially adding unnecessary storageState plumbing.",
+        "suggested_fix": "Add one line to §5 邊界: 'Playwright 預設每 test 新 context,localStorage 不會跨 spec file 污染;單 test 內 page.reload() 即保留 localStorage,不需 storageState() 持久。'",
+        "rationale": "Pre-empts confused Phase-3 implementation and closes the brainstorm edge cleanly.",
+        "lens": "testability"
+      },
+      {
+        "id": "F24",
+        "severity": "P2",
+        "location": "design.md §3 SC-10 e2e.yml — backend-api-contract job",
+        "problem": "Job sets `env: { FINMIND_TOKEN: fake }` but does NOT export `FAKE_FINMIND: '1'`. tests_e2e/conftest.py's monkeypatch sets it per-test so recoverable, but inconsistency with webServer env (which sets both) is a footgun. Also `cd backend && python -m pytest tests_e2e/ -v` relies on bare imports which only resolve when cwd=backend AND no shadowing site-packages.",
+        "suggested_fix": "Add FAKE_FINMIND: '1' to backend-api-contract job env for belt-and-braces. Confirm pytest import path resolution in §3 SC-7 (existing tests/ work this way so should be fine, but make it explicit).",
+        "rationale": "Minor consistency + discoverability for future maintainers.",
+        "lens": "architect"
+      },
+      {
+        "id": "F25",
+        "severity": "P2",
+        "location": "design.md §3 SC-1 playwright.config.ts + SC-10 e2e.yml",
+        "problem": "`workers: 1` + `fullyParallel: false` is sensible for backend singleton, but combined with separate webServer cold-start (~30s backend probe + 60s frontend) AND 17+ tests + Chromium-only, the CI target `< 5 分鐘` becomes tight. Visual regression tests with waitForSelector add seconds per case. No design entry caps per-test timeout or accounts for cold-start budget. Also `npx playwright install --with-deps chromium` in CI requires unrestricted apt + chromium CDN access (~150MB download), no cache strategy designed.",
+        "suggested_fix": "Add expected timing breakdown to SC-10: cold-start budget (≤90s) + per-test target (≤8s) × 17 = ~3.5 min, leaving 1.5 min slack. Add Playwright browser cache (`~/.cache/ms-playwright`) to actions/cache step. If real measurement in Phase 5 blows budget, split backend-api-contract (already split) + tag slow specs.",
+        "rationale": "Better to set the expectation in design than discover blow-out in Phase 5.",
+        "lens": "testability"
+      },
+      {
+        "id": "F26",
+        "severity": "P2",
+        "location": "design.md §3 SC-11 live-contract.spec.ts",
+        "problem": "Brainstorm SC-11 scope: 'happy path × 3 (equity 一個 / options 一個 / market 一個)'. Design narrative matches but there's no mechanism (lint, CI grep, test count assertion) preventing this file from growing to 'test everything live' over time — exactly the scope creep the review criteria warns about for opt-in slow paths.",
+        "suggested_fix": "Add one-line guard in playwright config or dedicated CI step asserting test count ≤ 3 in live-contract.spec.ts (e.g. `grep -c '^  test(' e2e/specs/live-contract.spec.ts` with a max check), OR a top-of-file comment + meta-test that introspects test count. Minor friction, big anti-creep value.",
+        "rationale": "Live tests cost real FinMind quota and gate the slowest path; a hard cap codifies brainstorm scope.",
+        "lens": "scope"
+      },
+      {
+        "id": "F27",
+        "severity": "P2",
+        "location": "design.md §5 (Visual baseline LFS) + §2 e2e/snapshots/.gitattributes",
+        "problem": "Brainstorm SC-9 / E4 says baseline-on-Linux + Win32-skip, but never asks for git-LFS. Design adds `*.png filter=lfs diff=lfs merge=lfs` then waffles '若 user 拒裝 LFS → 改普通 binary commit, ~50KB / 圖 不會炸 repo'. At 3 images × ~50KB the LFS apparatus has no payoff; introducing LFS adds setup burden on every clone + CI runner config. Unjustified scope creep relative to brainstorm.",
+        "suggested_fix": "Drop the LFS line from §5 and remove `.gitattributes` from §2 file structure. Commit baselines as plain binary (~150KB total). If repo ever balloons past a few MB of screenshots, revisit then.",
+        "rationale": "YAGNI — Brainstorm did not request LFS; size threshold for needing LFS is not met.",
+        "lens": "scope"
+      },
+      {
+        "id": "F28",
+        "severity": "P2",
+        "location": "design.md §8 Known Risks (currently empty)",
+        "problem": "Phase 1 review criterion #7 (implicit assumptions about data format / external API / 效能) — §8 explicitly empty awaiting Plan sub-agent. Several risks already visible: (a) Win32 env-var syntax (F5), (b) reuseExistingServer real-upstream pollution (F6), (c) fixture rotation cost when 2026-06-27 drifts stale (F22), (d) playwright install CDN dependency + no cache strategy (F25), (e) fullyParallel:false + workers:1 + retries:1 + 17+ specs realistically ≥ 3 min — the '< 5 min' claim is unquantified.",
+        "suggested_fix": "Populate §8 with at least these 5 items, each with mitigation pointer or 'accept' note. Even a one-liner per risk gives Phase 3 implementer the heads-up.",
+        "rationale": "Phase 1 review-criteria gate item #7 demands these be surfaced; better to fill before Plan reviewer's pass than after.",
+        "lens": "scope"
+      }
+    ],
+    "summary": {
+      "p0_count": 11,
+      "p1_count": 8,
+      "p2_count": 9,
+      "top_themes": [
+        "FAKE_FINMIND gate has multiple bypass paths and silent-fallthrough foot-guns (raw httpx in trading_calendar / symbols / finmind_realtime; reuseExistingServer; lifespan typos)",
+        "Selector contract drifts from real DOM (10 missing testids, wrong ModeSwitch labels, aria-current vs data-state, RangeSelector aria-label, SymbolSearch role)",
+        "Fixture surface materially under-specified (wrong dataset names, missing fetch_* methods, no N-day window slicing policy, no rotation/clock-pin plan)",
+        "Cross-platform env handling (POSIX `VAR= cmd` syntax silently breaks on Win11 PowerShell; no cross-env)",
+        "TanStack Query polling race mitigation absent from spec design (page.clock.install or polling-disable flag required by brainstorm but ignored)",
+        "Endpoint scope mismatches (SC-7 404, SC-7 market 2-endpoints, SC-8 no_trading_day scope) lock false contracts before Phase 2"
+      ]
+    }
+  },
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Review"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 2,
+      "title": "Synthesize"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "review:architect",
+      "phaseIndex": 1,
+      "phaseTitle": "Review",
+      "agentId": "a73a519f25e05ea1c",
+      "model": "claude-opus-4-7[1m]",
+      "state": "done",
+      "startedAt": 1782748873439,
+      "queuedAt": 1782748873418,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "You are reviewing a design spec for an E2E testing framework being added to trash-cmoney (台股籌碼 / 選擇權 dashboard).\n\nREPOSITORY: C:/side-project/trash-cmoney/\nKEY FILES TO READ FIRST:\n- .claude/feat/e2e-tests/design.md         (THE design under review, v1)\n- .claude/feat/e2e-tests/brainstorm.md     (the 11 SC + edge cases this design must satisfy)\n- CLAUDE.md                                (project c…",
+      "lastProgressAt": 1782749202780,
+      "tokens": 117618,
+      "toolCalls": 22,
+      "durationMs": 329341,
+      "resultPreview": "{\"findings\":[{\"id\":\"ARCH-1\",\"severity\":\"P0\",\"location\":\"design.md §2 (services/finmind_fake.py) / §4 Data Flow\",\"problem\":\"FAKE_FINMIND gate only intercepts services.finmind.get_finmind(), but THREE production code paths bypass that singleton entirely and hit FinMind directly via raw httpx: (1) services/finmind_realtime.py uses client._get(...) on a private method (so a partial fake works only if …"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "review:testability",
+      "phaseIndex": 1,
+      "phaseTitle": "Review",
+      "agentId": "a20533e452630b790",
+      "model": "claude-opus-4-7[1m]",
+      "state": "done",
+      "startedAt": 1782748873440,
+      "queuedAt": 1782748873418,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "You are reviewing a design spec for an E2E testing framework being added to trash-cmoney (台股籌碼 / 選擇權 dashboard).\n\nREPOSITORY: C:/side-project/trash-cmoney/\nKEY FILES TO READ FIRST:\n- .claude/feat/e2e-tests/design.md         (THE design under review, v1)\n- .claude/feat/e2e-tests/brainstorm.md     (the 11 SC + edge cases this design must satisfy)\n- CLAUDE.md                                (project c…",
+      "lastProgressAt": 1782749066262,
+      "tokens": 73627,
+      "toolCalls": 15,
+      "durationMs": 192822,
+      "resultPreview": "{\"findings\":[{\"id\":\"TEST-1\",\"severity\":\"P0\",\"location\":\"design.md §3 SC-4/SC-5/SC-6 + §6 ROLES + frontend/src/components/ModeSwitch.tsx:10-14\",\"problem\":\"Mode-switch button labels in design (`個股籌碼` / `選擇權` / `大盤掃描`) DO NOT match the actual ModeSwitch render (`個股` / `選擇權` / `大盤`). Only the middle one matches. Every spec that calls `page.getByRole(\\\"button\\\", { name: \\\"大盤掃描\\\" })` (SC-5 M1/M3) or `na…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 3,
+      "label": "review:scope",
+      "phaseIndex": 1,
+      "phaseTitle": "Review",
+      "agentId": "a5a6de9d7aec0f397",
+      "model": "claude-opus-4-7[1m]",
+      "state": "done",
+      "startedAt": 1782748873441,
+      "queuedAt": 1782748873418,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "You are reviewing a design spec for an E2E testing framework being added to trash-cmoney (台股籌碼 / 選擇權 dashboard).\n\nREPOSITORY: C:/side-project/trash-cmoney/\nKEY FILES TO READ FIRST:\n- .claude/feat/e2e-tests/design.md         (THE design under review, v1)\n- .claude/feat/e2e-tests/brainstorm.md     (the 11 SC + edge cases this design must satisfy)\n- CLAUDE.md                                (project c…",
+      "lastProgressAt": 1782749035589,
+      "tokens": 61215,
+      "toolCalls": 11,
+      "durationMs": 162148,
+      "resultPreview": "{\"findings\":[{\"id\":\"EDGE-1\",\"severity\":\"P1\",\"location\":\"design.md §3 SC-5 (market.spec.ts) and §3 SC-4 (options.spec.ts)\",\"problem\":\"Brainstorm E5 explicitly calls out TanStack Query `refetchInterval` 干擾 test (useMarketSnapshot polling, useOptionsSpot 60s polling — verified in frontend/src/hooks/useMarketSnapshot.ts:28 + useOptionsSpot.ts:23), and says 'E2E 內 mock refetchInterval 設為 false 或用 page.…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 4,
+      "label": "synthesize",
+      "phaseIndex": 2,
+      "phaseTitle": "Synthesize",
+      "agentId": "a1ec180154272d84d",
+      "model": "claude-opus-4-7[1m]",
+      "state": "done",
+      "startedAt": 1782749202802,
+      "queuedAt": 1782749202786,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "Synthesize this multi-lens design review into a single deduplicated, prioritized findings list.\n\nRaw findings (34 total across 3 lenses):\n[\n  {\n    \"id\": \"ARCH-1\",\n    \"severity\": \"P0\",\n    \"location\": \"design.md §2 (services/finmind_fake.py) / §4 Data Flow\",\n    \"problem\": \"FAKE_FINMIND gate only intercepts services.finmind.get_finmind(), but THREE production code paths bypass that singleton enti…",
+      "lastProgressAt": 1782749405856,
+      "tokens": 52657,
+      "toolCalls": 1,
+      "durationMs": 203054,
+      "resultPreview": "{\"findings\":[{\"id\":\"F1\",\"severity\":\"P0\",\"location\":\"design.md §2 (services/finmind_fake.py) / §4 Data Flow\",\"problem\":\"FAKE_FINMIND gate only intercepts services.finmind.get_finmind(), but THREE production code paths bypass that singleton entirely and hit FinMind directly via raw httpx: (1) services/finmind_realtime.py uses client._get(...) on a private method; (2) services/trading_calendar.py bui…"
+    }
+  ],
+  "totalTokens": 305117,
+  "totalToolCalls": 49
+}

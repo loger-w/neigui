@@ -1,0 +1,18 @@
+{
+  "round": 4,
+  "date": "2026-06-30",
+  "source": "Workflow wf_afd0a26f-f39 — 3-lens review of design.md v4 (post-tech-pivot)",
+  "summary": { "p0_count": 0, "p1_count": 1, "p2_count": 1, "verdict": "escalate_to_user", "recommendation_if_escalate": "shrink_scope" },
+  "round3_coverage": {
+    "fully_addressed": ["R3-P0-URL-SHAPE","R3-P0-URL-ROUTING","R3-P1-NOOPBUCKET","R3-P1-CLOCK-ROUTES"],
+    "partially_addressed": ["R3-P0-PARSE"],
+    "not_addressed": []
+  },
+  "main_agent_disagreement_with_recommendation": "Reviewer 推 shrink_scope,但兩條 finding 都是 MANIFEST polish,非 scope 問題。Phase 1 新 cycle quota 還有 2 輪,改 'iterate v5' 比較合理。",
+  "findings": [
+    { "id": "R4-P1-MANIFEST-COLLISION", "severity": "P1", "kind": "new", "lens": "architect", "location": "§2 MANIFEST.json + §3 SC-2 finmind_fake.py preload", "problem": "兩條 MANIFEST entry 對映同 (TaiwanFuturesDaily, TX) key:calendar(長 backfill,trading_calendar gate 用)+ 2026-06-26 單日(fetch_spot 用)。preload last-write-wins,fetch_tx_close_history 拿 400 日 window 只剩 1 日 → SC-3/4/5 silent 降級綠。", "resolution": "accepted", "fix_in_v5": "(a) MANIFEST schema 加 `skip_store: true` flag,calendar 條目標記之,FakeFinMindClient.__init__ 跳過 push 入 _store(env-gate 路徑直接 fs read calendar 檔)。(b) test_fake_finmind_manifest.py 加 collision assert:`len(non_skip_entries) == len({(v['dataset'], v.get('data_id','')) for v in non_skip})`。" },
+    { "id": "R4-P2-MANIFEST-SHAPE-GATE-STUBBED", "severity": "P2", "kind": "new", "lens": "architect", "location": "§2 backend/tests/test_fake_finmind_manifest.py 第二段 stub", "problem": "test_manifest_keys_match_real_get_call_shapes 留 `pass # Phase 3 紅先行`,容易被忽略 → typo dataset 仍會 silent MISS。", "resolution": "accepted", "fix_in_v5": "design.md 直接寫 grep-based 實作:遍歷 services/finmind*.py 取所有 `\"dataset\": ?\"...\"` literal 與 MANIFEST values set-compare。OR §2 modify table 加 explicit Phase 3 [red] gate task `tests/test_fake_finmind_manifest.py::test_manifest_keys_match_real_get_call_shapes`。" }
+  ],
+  "resolution_counts": { "accepted": 2, "rejected_with_reason": 0, "needs_more_context": 0 },
+  "next_action": "v5 inline patch(MANIFEST schema 加 skip_store + collision test + 第二段 gate 改 explicit Phase 3 task)→ round 5 收尾,預期 0 P0/P1。"
+}

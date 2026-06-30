@@ -1,0 +1,12 @@
+{
+  "round": 5,
+  "date": "2026-06-30",
+  "source": "Workflow wf_019eab6e-462",
+  "summary": { "p0_count": 0, "p1_count": 1, "p2_count": 0, "verdict": "escalate_to_user" },
+  "round4_coverage_summary": "R4-P1 fully addressed;R4-P2 addressed 但 replacement gate test 引入新 P1",
+  "findings": [
+    { "id": "R5-P1-MANIFEST-GREP-INCOMPLETE", "severity": "P1", "kind": "new", "lens": "testability", "location": "§3 SC-2 test_manifest_keys_match_real_get_call_shapes regex", "problem": "v5 的 dataset literal regex `[\"']dataset[\"']\\s*:\\s*[\"']([A-Za-z_][\\w]*)[\"']` 只抓 `\"dataset\": \"...\"` 形式;3 個 MANIFEST dataset(`taiwan_stock_trading_daily_report` / `..._secid_agg` / `taiwan_stock_tick_snapshot`)是 URL-tail form(`f\"{_FINMIND_BASE}/<name>\"`)出現在 finmind.py:179/221/608/1766 + finmind_realtime.py:314/322,literal regex 抓不到 → test false-positive,3 條合法 MANIFEST 條目被誤標 unknown。", "resolution": "accepted", "fix_in_v6": "test 內 `real_datasets` 計算前加 URL-tail 抓取:`url_datasets = set(re.findall(r'_FINMIND_BASE\\}/([a-z][\\w]*)', src))`,union 進 real_datasets。註解說明對應 FakeFinMindClient._get 的 `url.rsplit('/', 1)[-1]` fallback。" }
+  ],
+  "resolution_counts": { "accepted": 1, "rejected_with_reason": 0, "needs_more_context": 0 },
+  "next_action": "v6 micro-patch(3 行 regex)+ round 6 收尾。"
+}
