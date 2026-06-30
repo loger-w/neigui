@@ -1,0 +1,22 @@
+{
+  "round": 3,
+  "date": "2026-06-30",
+  "source": "Workflow wf_5eadb176-474 — 3-lens FINAL review of design.md v3 + synthesis",
+  "summary": { "p0_count": 3, "p1_count": 2, "p2_count": 0, "verdict": "escalate_to_user", "recommendation_if_escalate": "tech_pivot" },
+  "round2_coverage": {
+    "fully_addressed": ["R2-P0-4","R2-P0-5","R2-P1-1","R2-P1-2","R2-P1-3","R2-P1-4","R2-P2-1","R2-P2-2","R2-P2-3","R2-P2-4"],
+    "partially_addressed": ["R2-P0-1","R2-P0-2","R2-P0-3","R2-P2-5"],
+    "not_addressed": []
+  },
+  "user_decision": "選 [2] tech_pivot — heuristic parse 改 explicit MANIFEST.json,~5% design 變更",
+  "verification_notes": "R3-P1-CLOCK-ROUTES grep-verified:routes/chip.py:110 / routes/options.py:24 + 32 都用 date.today();options:24 走 list_active_contracts(today) 是 timebomb(過 2026-07-15 TXO 結算 → TXO202607 脫離 active)。",
+  "findings": [
+    { "id": "R3-P0-PARSE",      "severity": "P0", "kind": "new", "lens": "architect",   "location": "design.md §3 SC-2 _parse_filename heuristic", "problem": "stem-split heuristic 解錯 3/17 fixture(TaiwanStockMarketValue / taiwan_stock_tick_snapshot / ...secid_agg_BROKER001)。", "resolution": "accepted", "fix_in_v4": "drop heuristic;改 explicit fixtures/MANIFEST.json:`{filename: {dataset, data_id}}`;FakeFinMindClient preload 讀 MANIFEST → lookup `_store[(dataset, data_id)]`;加 unit test `test_fake_finmind_manifest_consistency.py` 驗證 17 fixture 全在 MANIFEST 內 + 每條對映真實 service 層 _get 呼叫的 (dataset, data_id)。" },
+    { "id": "R3-P0-URL-SHAPE",  "severity": "P0", "kind": "new", "lens": "scope",       "problem": "SC-8 backend snippet URL `/api/options/TXO/202607/max-pain` 不存在,真實 `/api/options/max_pain?contract=TXO202607`。", "location": "design.md §3 SC-8 backend snippet", "resolution": "accepted", "fix_in_v4": "snippet URL 改成 `/api/options/max_pain?contract=TXO202607&date=2026-06-27`;同時 §3 整 SC test snippet pass audit 對齊 backend/routes/options.py 真實 router(由 main agent grep verify)。" },
+    { "id": "R3-P0-URL-ROUTING","severity": "P0", "kind": "new", "lens": "testability", "problem": "SC-8 frontend snippet `page.goto('/?mode=options&date=...')` 用了 App.tsx 不存在的 URL param。", "location": "design.md §3 SC-8 NTD1 snippet", "resolution": "accepted", "fix_in_v4": "snippet 改為 `await page.addInitScript(() => localStorage.setItem('mode','options')); await page.goto('/'); await page.getByLabel('選擇日期').fill('2026-06-27');` 用既有 N4 pattern + DateField.fill。" },
+    { "id": "R3-P1-NOOPBUCKET", "severity": "P1", "kind": "new", "lens": "architect",   "problem": "FinMindClient.__init__ skip 路徑寫 `from tests.conftest import NoOpBucket` — production 從 tests 反向 import,layering 違規 + runtime venv 需 pytest。", "location": "design.md §3 SC-2 FinMindClient.__init__", "resolution": "accepted", "fix_in_v4": "§2 modify table 加 2 rows:`services/rate_limiter.py` 新增 NoOpBucket 公開 class;`tests/conftest.py` 改 re-export 維持向後相容。§3 SC-2 import 改 `from services.rate_limiter import NoOpBucket`。Phase 3 順序:rate_limiter → conftest re-export → finmind init。" },
+    { "id": "R3-P1-CLOCK-ROUTES","severity": "P1","kind": "regression of R2-P0-3", "lens": "scope", "problem": "Clock swap 漏 routes/chip.py:110 + routes/options.py:24/32;options:24 `list_active_contracts(date.today())` 是 timebomb,過 2026-07-15 TXO202607 脫離 active 後 SC-4/SC-8 全紅。", "location": "design.md §1 + §2 modify table clock swap site list", "resolution": "accepted", "fix_in_v4": "§1/§2 swap site count 17 → 20(加 routes/chip.py 1 + routes/options.py 2);TDD anchor 寫 `backend/tests/test_options_routes_clock.py`:在 FAKE_TODAY=2026-06-26 但 wall-clock 已過 7/15 的情境下,`_resolve_contract('TXO202607')` 仍要回 dict 非 None。" }
+  ],
+  "resolution_counts": { "accepted": 5, "rejected_with_reason": 0, "needs_more_context": 0 },
+  "next_action_per_user_decision": "v4 寫 5 條 fix;state.json.pending_review_rounds.phase_1 reset 0(/feat [2] 計次歸零);觸發 round 4 review(round 4 是 v4 的 round 1)。"
+}
