@@ -18,8 +18,8 @@ test.describe("visual regression", () => {
     // 在 PR diff 立刻看到。
     await installFixtureClock(page);
     await page.goto("/");
-    await page.getByPlaceholder(/輸入股號/).fill("2330");
-    await page.locator('[role="option"], [data-testid="symbol-search-item"]').first().click();
+    await page.getByPlaceholder(/搜尋代號/).fill("2330");
+    await page.getByRole("option").first().click();
     await page.waitForSelector(`[data-testid="${TESTIDS.chipBrokersPanel}"]`);
     await expect(page).toHaveScreenshot("equity-2330.png", { ...VISUAL_THRESHOLD, fullPage: false });
   });
