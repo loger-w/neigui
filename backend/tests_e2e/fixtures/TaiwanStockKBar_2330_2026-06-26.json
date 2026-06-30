@@ -1,0 +1,103 @@
+{
+  "data": [
+    {
+      "date": "2026-06-26",
+      "stock_id": "2330",
+      "time": "09:00:00",
+      "open": 1100.9,
+      "max": 1102.9,
+      "min": 1099.9,
+      "close": 1101.9,
+      "Trading_Volume": 500000,
+      "Trading_money": 500000000
+    },
+    {
+      "date": "2026-06-26",
+      "stock_id": "2330",
+      "time": "09:30:00",
+      "open": 1100.9,
+      "max": 1102.9,
+      "min": 1099.9,
+      "close": 1101.9,
+      "Trading_Volume": 500000,
+      "Trading_money": 500000000
+    },
+    {
+      "date": "2026-06-26",
+      "stock_id": "2330",
+      "time": "10:00:00",
+      "open": 1101.0,
+      "max": 1103.0,
+      "min": 1100.0,
+      "close": 1102.0,
+      "Trading_Volume": 500000,
+      "Trading_money": 500000000
+    },
+    {
+      "date": "2026-06-26",
+      "stock_id": "2330",
+      "time": "10:30:00",
+      "open": 1101.0,
+      "max": 1103.0,
+      "min": 1100.0,
+      "close": 1102.0,
+      "Trading_Volume": 500000,
+      "Trading_money": 500000000
+    },
+    {
+      "date": "2026-06-26",
+      "stock_id": "2330",
+      "time": "11:00:00",
+      "open": 1101.1,
+      "max": 1103.1,
+      "min": 1100.1,
+      "close": 1102.1,
+      "Trading_Volume": 500000,
+      "Trading_money": 500000000
+    },
+    {
+      "date": "2026-06-26",
+      "stock_id": "2330",
+      "time": "11:30:00",
+      "open": 1101.1,
+      "max": 1103.1,
+      "min": 1100.1,
+      "close": 1102.1,
+      "Trading_Volume": 500000,
+      "Trading_money": 500000000
+    },
+    {
+      "date": "2026-06-26",
+      "stock_id": "2330",
+      "time": "12:00:00",
+      "open": 1101.2,
+      "max": 1103.2,
+      "min": 1100.2,
+      "close": 1102.2,
+      "Trading_Volume": 500000,
+      "Trading_money": 500000000
+    },
+    {
+      "date": "2026-06-26",
+      "stock_id": "2330",
+      "time": "12:30:00",
+      "open": 1101.2,
+      "max": 1103.2,
+      "min": 1100.2,
+      "close": 1102.2,
+      "Trading_Volume": 500000,
+      "Trading_money": 500000000
+    },
+    {
+      "date": "2026-06-26",
+      "stock_id": "2330",
+      "time": "13:00:00",
+      "open": 1101.3,
+      "max": 1103.3,
+      "min": 1100.3,
+      "close": 1102.3,
+      "Trading_Volume": 500000,
+      "Trading_money": 500000000
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "data": [
+    {
+      "date": "2026-06-26",
+      "securities_trader_id": "BROKER001",
+      "stock_id": "2330",
+      "buy": 100000,
+      "sell": 80000
+    }
+  ]
+}

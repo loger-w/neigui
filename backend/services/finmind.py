@@ -33,7 +33,15 @@ _client: FinMindClient | None = None
 def get_finmind() -> FinMindClient:
     global _client
     if _client is None:
-        _client = FinMindClient()
+        if os.getenv("FAKE_FINMIND") == "1":
+            # 延 import 避 services/finmind ↔ services/finmind_fake 循環(後者
+            # inherit FinMindClient 必先 import 此 module)。
+            from services.finmind_fake import FakeFinMindClient
+
+            logger.info("FinMind: FAKE mode (fixtures from tests_e2e/fixtures/)")
+            _client = FakeFinMindClient()
+        else:
+            _client = FinMindClient()
     return _client
 
 

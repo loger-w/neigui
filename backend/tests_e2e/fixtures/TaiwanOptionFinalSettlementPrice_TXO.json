@@ -1,0 +1,22 @@
+{
+  "data": [
+    {
+      "stock_id": "TXO",
+      "contract_date": "202602",
+      "date": "2026-03-18",
+      "settlement_price": 17000.0
+    },
+    {
+      "stock_id": "TXO",
+      "contract_date": "202602",
+      "date": "2026-04-18",
+      "settlement_price": 17000.0
+    },
+    {
+      "stock_id": "TXO",
+      "contract_date": "202602",
+      "date": "2026-05-18",
+      "settlement_price": 17000.0
+    }
+  ]
+}

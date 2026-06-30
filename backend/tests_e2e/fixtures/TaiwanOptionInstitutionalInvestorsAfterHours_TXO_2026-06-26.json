@@ -1,0 +1,13 @@
+{
+  "data": [
+    {
+      "date": "2026-06-26",
+      "name": "外資及陸資",
+      "futures_id": "TXO",
+      "long_deal_volume_call": 1000,
+      "short_deal_volume_call": 800,
+      "long_deal_volume_put": 700,
+      "short_deal_volume_put": 900
+    }
+  ]
+}
