@@ -275,6 +275,7 @@ export function ChipKlineChart({
     return (
       <div
         ref={containerRef}
+        data-testid="chip-kline-chart"
         className="h-full flex flex-col items-center justify-center text-ink-dim font-serif italic text-sm gap-3"
       >
         {loading && loadingSymbol ? (

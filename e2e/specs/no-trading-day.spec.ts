@@ -18,6 +18,7 @@ test("NTD1: options page 選 Sat 日期 → 顯示無交易日", async ({ page }
   await expect(page.getByTestId(TESTIDS.optionsMaxPainCard)).toBeVisible();
   // 選 2026-06-27 (Sat)
   await page.getByLabel("選擇日期").fill("2026-06-27");
-  // 4 cards 之一(max-pain)應該秀「無交易日」訊息
-  await expect(page.getByText("無交易日").first()).toBeVisible();
+  // 4 cards 之一秀「無交易」訊息(真實前端文案 — banner 顯示
+  // `<YYYY-MM-DD> 無交易`)
+  await expect(page.getByText("無交易").first()).toBeVisible();
 });

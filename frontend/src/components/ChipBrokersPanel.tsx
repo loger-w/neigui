@@ -161,7 +161,10 @@ export function ChipBrokersPanel({
 
   if (!summary) {
     return (
-      <div className="h-full flex items-center justify-center text-ink-dim font-serif italic text-sm">
+      <div
+        data-testid="chip-brokers-panel"
+        className="h-full flex items-center justify-center text-ink-dim font-serif italic text-sm"
+      >
         請搜尋股票代號
       </div>
     );

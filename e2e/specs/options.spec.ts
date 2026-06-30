@@ -38,15 +38,20 @@ test.describe("options mode", () => {
     await expect(page.getByTestId(TESTIDS.putWall)).toBeVisible();
   });
 
-  test("O4: refresh 觸發 — 4 cards 跟著 reload(SC-4 case 2)", async ({ page }) => {
-    // 痛點:OptionsPage 的 refresh button 應 fan-out invalidate 4 個 hook。
-    // 點完 button enabled state 仍存活 = 不是 button onClick 接錯 / disable
-    // 死。
-    const refresh = page.getByRole(ROLES.refresh.role, { name: ROLES.refresh.name });
+  test("O4: 各 card 自己的 refresh button 點得到(SC-4 case 2)", async ({ page }) => {
+    // 痛點:OptionsPage 每張 card 內各自 own 一個 refresh button(scope 在
+    // card 內以免跟 header refresh strict-mode conflict)。點 max-pain card
+    // 的 refresh 後 card 仍在,代表 onClick 不會死 mount。
+    const maxPainCard = page.getByTestId(TESTIDS.optionsMaxPainCard);
+    await expect(maxPainCard).toBeVisible();
+    const refresh = maxPainCard.getByRole(ROLES.refresh.role, { name: ROLES.refresh.name });
     await expect(refresh).toBeVisible();
     await refresh.click();
-    // 4 cards 還在(沒因 refresh race 而 unmount)
-    await expect(page.getByTestId(TESTIDS.optionsMaxPainCard)).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.optionsOIWallsCard)).toBeVisible();
+    await expect(maxPainCard).toBeVisible();
+    // OI walls card 同樣 each-card pattern
+    const oiCard = page.getByTestId(TESTIDS.optionsOIWallsCard);
+    await expect(oiCard).toBeVisible();
+    await oiCard.getByRole(ROLES.refresh.role, { name: ROLES.refresh.name }).click();
+    await expect(oiCard).toBeVisible();
   });
 });
