@@ -7,7 +7,10 @@ import { TESTIDS, ROLES } from "../helpers/selectors.ts";
 import { installFixtureClock } from "../helpers/clock.ts";
 import { VISUAL_THRESHOLD, skipOnWin32 } from "../helpers/visual.ts";
 
-test.describe("visual regression", () => {
+// @visual tag — 平時 npm test grep-invert 排除;只 e2e-update-snapshots workflow
+// 跑 update + 生 baseline。第一次 baseline auto-PR merge 後可考慮 npm test 拿掉
+// grep-invert 讓 visual diff 進主 CI lane。
+test.describe("@visual visual regression", () => {
   test.beforeEach(() => {
     skipOnWin32();
   });
