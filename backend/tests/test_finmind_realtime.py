@@ -329,7 +329,9 @@ async def test_fetch_market_snapshot_happy_path() -> None:
          patch("services.finmind_realtime._fetch_sector_map",
                new=AsyncMock(return_value=fake_sector_rows)), \
          patch("services.finmind_realtime._fetch_market_value_map",
-               new=AsyncMock(return_value=fake_mv_map)):
+               new=AsyncMock(return_value=fake_mv_map)), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())):
         result = await fetch_market_snapshot(refresh=False)
     assert "as_of" in result
     assert result["last_tick"] is not None
@@ -382,7 +384,9 @@ async def test_stale_false_when_sector_fetch_fails_with_disk_cache() -> None:
          patch("services.finmind_realtime._fetch_sector_map",
                new=AsyncMock(side_effect=RuntimeError("daily fail"))), \
          patch("services.finmind_realtime._fetch_market_value_map",
-               new=AsyncMock(return_value={"2330": 6e13})):
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())):
         result = await fetch_market_snapshot(refresh=False)
     assert result["stale"] is False
 
@@ -439,7 +443,9 @@ async def test_snapshot_filters_indices_via_primary_sector_whitelist() -> None:
          patch("services.finmind_realtime._fetch_sector_map",
                new=AsyncMock(return_value=fake_sector_rows)), \
          patch("services.finmind_realtime._fetch_market_value_map",
-               new=AsyncMock(return_value={"2330": 6e13})):
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())):
         result = await fetch_market_snapshot(refresh=False)
     all_lb_ids = {
         r["stock_id"]
@@ -481,7 +487,9 @@ async def test_snapshot_sector_fail_no_cache_surfaces_stale_true() -> None:
          patch("services.finmind_realtime._fetch_sector_map",
                new=AsyncMock(side_effect=RuntimeError("upstream"))), \
          patch("services.finmind_realtime._fetch_market_value_map",
-               new=AsyncMock(return_value={})):
+               new=AsyncMock(return_value={})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())):
         result = await fetch_market_snapshot(refresh=False)
     # Audit X1:cold-start sector fail → stale=True 拉 banner
     assert result["stale"] is True, "Audit X1: sector cold-start fail 應 surface stale=True"
@@ -560,8 +568,126 @@ async def test_refresh_propagates_to_all_three_fetchers() -> None:
     m_mock = AsyncMock(return_value={})
     with patch("services.finmind_realtime._fetch_universe", new=u_mock), \
          patch("services.finmind_realtime._fetch_sector_map", new=s_mock), \
-         patch("services.finmind_realtime._fetch_market_value_map", new=m_mock):
+         patch("services.finmind_realtime._fetch_market_value_map", new=m_mock), \
+         patch("services.finmind_realtime._fetch_watch_list", new=AsyncMock(return_value=set())):
         await fetch_market_snapshot(refresh=True)
     u_mock.assert_awaited_once_with(True)
     s_mock.assert_awaited_once_with(refresh=True)
     m_mock.assert_awaited_once_with(refresh=True)
+
+
+# --------------------------------------------------------------------------
+# market-monitor-v2 P1 integration: universe filter into snapshot
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_excludes_etf_warrant_watch_list_and_reports_counts() -> None:
+    """market-monitor-v2 plan P1 完成條件:
+
+    - snapshot payload 帶 `universe_size` + `excluded_count`
+    - leaderboards 不再含 ETF prefix `00` / 6 位數權證 / 處置股
+    - 4 位數普通股保留
+    """
+    fake_universe = [
+        {"stock_id": "2330", "change_rate": 5.0, "total_amount": 1e10,
+         "volume_ratio": 2.0, "date": "2026-06-29 10:30:00"},
+        {"stock_id": "0050", "change_rate": 8.0, "total_amount": 5e10,
+         "volume_ratio": 3.0, "date": "2026-06-29 10:30:00"},
+        {"stock_id": "712345", "change_rate": 10.0, "total_amount": 1e8,
+         "volume_ratio": 5.0, "date": "2026-06-29 10:30:00"},
+        {"stock_id": "3037", "change_rate": 1.0, "total_amount": 1e10,
+         "volume_ratio": 1.0, "date": "2026-06-29 10:30:00"},
+        {"stock_id": "8046", "change_rate": -2.0, "total_amount": 1e10,
+         "volume_ratio": 1.5, "date": "2026-06-29 10:30:00"},
+    ]
+    fake_sector_rows = [
+        {"stock_id": "2330", "industry_category": "半導體業",
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "0050", "industry_category": "ETF",
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "712345", "industry_category": "認購權證",
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "3037", "industry_category": "電子零組件業",
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "8046", "industry_category": "電子零組件業",
+         "type": "twse", "date": "2026-06-26"},
+    ]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value={"8046"})):
+        result = await fetch_market_snapshot(refresh=False)
+
+    # universe_size = 2330 + 3037 (2 隻普通股)
+    assert result["universe_size"] == 2
+    assert result["excluded_count"] == {
+        "etf": 1,
+        "warrant": 1,
+        "watch_list": 1,
+    }
+    all_lb_ids = {
+        r["stock_id"]
+        for lb in result["leaderboards"].values()
+        for r in lb
+    }
+    all_sector_ids = {
+        s["stock_id"]
+        for sector in result["sectors"]
+        for s in sector["stocks"]
+    }
+    # 排除
+    assert "0050" not in all_lb_ids, "ETF 應被 P1 universe filter 排除"
+    assert "712345" not in all_lb_ids, "權證應被 P1 universe filter 排除"
+    assert "8046" not in all_lb_ids, "處置股應被 P1 universe filter 排除"
+    assert "0050" not in all_sector_ids
+    assert "712345" not in all_sector_ids
+    assert "8046" not in all_sector_ids
+    # 保留
+    assert "2330" in all_lb_ids
+    assert "3037" in all_lb_ids
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_watch_list_fetch_failure_does_not_block() -> None:
+    """P1 健壯性:`_fetch_watch_list` 失敗 → 視為空 set,snapshot 仍正常回。
+
+    Phase 4 P2 finding update:watch_list raise 時不只 graceful empty,還要拉
+    `stale=True` — 否則 frontend 不知道處置股過濾失效,user 看到本該排除的 8046 / 1303
+    等 disposition 個股,沒任何警示。
+    """
+    fake_universe = [
+        {"stock_id": "2330", "change_rate": 1.0, "total_amount": 1e9,
+         "volume_ratio": 1.0, "date": "2026-06-29 10:30:00"},
+    ]
+    fake_sector_rows = [
+        {"stock_id": "2330", "industry_category": "半導體業",
+         "type": "twse", "date": "2026-06-26"},
+    ]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(side_effect=RuntimeError("disposition fetch down"))):
+        result = await fetch_market_snapshot(refresh=False)
+
+    assert result["universe_size"] == 1
+    assert result["excluded_count"]["watch_list"] == 0
+    all_lb_ids = {
+        r["stock_id"]
+        for lb in result["leaderboards"].values()
+        for r in lb
+    }
+    assert "2330" in all_lb_ids
+    # Phase 4 P2 fix:watch_list degradation 必須拉 stale=True
+    assert result["stale"] is True, (
+        "watch_list fetch fail 時 stale 必須 True,讓 frontend banner 警示"
+        "處置股過濾不可用"
+    )
