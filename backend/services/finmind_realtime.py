@@ -25,6 +25,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from services.finmind import get_finmind
+from services.market_universe import fetch_disposition_stocks, filter_universe
 from services.trading_calendar import get_trading_days
 from services.trading_session import TPE_TZ, is_in_session
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
@@ -354,6 +355,16 @@ async def _fetch_sector_map(refresh: bool = False) -> list[dict]:
     return rows
 
 
+async def _fetch_watch_list(refresh: bool = False) -> set[str]:
+    """Thin wrapper over market_universe.fetch_disposition_stocks for patchability.
+
+    market-monitor-v2 P1:套 universe filter 前先抓今日處置股清單。失敗時上層
+    `_do_fetch_market_snapshot` 視為空 set,不阻塞 snapshot(snapshot 仍可回,
+    只是 watch_list 不會排除任何 stock)。
+    """
+    return await fetch_disposition_stocks(refresh=refresh)
+
+
 async def _fetch_market_value_map(
     today: date | None = None,
     refresh: bool = False,
@@ -429,9 +440,10 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
         _fetch_universe(refresh),
         _fetch_sector_map(refresh=refresh),
         _fetch_market_value_map(refresh=refresh),
+        _fetch_watch_list(refresh=refresh),
         return_exceptions=True,
     )
-    universe_res, sector_res, mv_res = results
+    universe_res, sector_res, mv_res, watch_res = results
 
     if isinstance(universe_res, BaseException):
         cached = _read_cache("realtime_universe")
@@ -457,6 +469,16 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     else:
         mv_map = mv_res  # type: ignore[assignment]
 
+    watch_degraded = isinstance(watch_res, BaseException)
+    if watch_degraded:
+        logger.warning(
+            "market snapshot: watch_list fetch failed, treating as empty: %s",
+            watch_res,
+        )
+        watch_list: set[str] = set()
+    else:
+        watch_list = watch_res  # type: ignore[assignment]
+
     primary_sector = _dedup_sector_map(sector_rows)
     name_map = _build_name_map(sector_rows)
     last_tick = _max_tick_date(universe)
@@ -474,6 +496,16 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     # 新上市未及收錄個股的 24h 隱形期同樣記為 known limitation(brainstorm E1
     # 文字略寬於現況,以 doc 為註腳)。
     stock_universe = [r for r in universe if r.get("stock_id") in primary_sector]
+    # market-monitor-v2 P1: 套 universe filter — 排除 ETF prefix `00` / 6 位
+    # 數權證 / 處置股。Whitelist 已天然排除 index(non-4-digit 通常 sector_map
+    # 也沒收),P1 再加一層 structural filter 保險 + 把處置股動態剔除。
+    universe_filter = filter_universe(
+        [r.get("stock_id", "") for r in stock_universe],
+        watch_list=watch_list,
+    )
+    allowed = universe_filter["universe"]
+    excluded = universe_filter["excluded"]
+    stock_universe = [r for r in stock_universe if r.get("stock_id") in allowed]
     sectors = _group_by_sector(stock_universe, primary_sector, mv_map, name_map=name_map)
     leaderboards = _compute_leaderboards(stock_universe, primary_sector, name_map=name_map)
 
@@ -484,7 +516,11 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     # - sector_map / mv 失敗但有 cache 兜底 → stale=False(24h daily cache,user
     #   感受不到)
     sector_degraded = not primary_sector
-    stale = isinstance(universe_res, BaseException) or sector_degraded
+    # Phase 4 review P2 fix:watch_list 過濾失效是真實 user-facing 降級
+    # (處置股可能漏進 leaderboards / sectors)→ 必須拉 stale=True 讓
+    # frontend banner 警示。否則 silent fallback 讓使用者看到本該排除的
+    # 處置股無任何提示。
+    stale = isinstance(universe_res, BaseException) or sector_degraded or watch_degraded
 
     return {
         "as_of": now.isoformat(),
@@ -494,4 +530,11 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
         "lag_seconds": lag,
         "sectors": sectors,
         "leaderboards": leaderboards,
+        # market-monitor-v2 P1 — spec §8 contract
+        "universe_size": len(allowed),
+        "excluded_count": {
+            "etf": len(excluded["etf"]),
+            "warrant": len(excluded["warrant"]),
+            "watch_list": len(excluded["watch_list"]),
+        },
     }
