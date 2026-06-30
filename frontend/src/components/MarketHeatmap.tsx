@@ -22,7 +22,7 @@ export function MarketHeatmap({ sectors, onSymbolPick }: Props): ReactElement {
   );
 
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-bg-deep">
+    <div ref={containerRef} data-testid="market-heatmap" className="relative w-full h-full bg-bg-deep">
       <svg width={width} height={height} role="img" aria-label="大盤族群熱力圖">
         {groups.map((g) => (
           <g key={g.id}>

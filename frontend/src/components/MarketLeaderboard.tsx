@@ -22,7 +22,7 @@ export function MarketLeaderboard({
   const [tab, setTab] = useState<Tab>("gainers");
 
   return (
-    <div className="border-l border-line flex flex-col h-full bg-bg">
+    <div data-testid="market-leaderboard" className="border-l border-line flex flex-col h-full bg-bg">
       <div role="tablist" className="flex border-b border-line">
         {TAB_LABELS.map(({ key, label }) => {
           const active = key === tab;

@@ -1,4 +1,5 @@
 """Thread-safe token bucket rate limiter."""
+
 from __future__ import annotations
 
 import asyncio
@@ -47,3 +48,20 @@ class TokenBucket:
                     return False
                 wait = min(wait, remaining)
             await asyncio.sleep(wait)
+
+
+class NoOpBucket:
+    """Test / fake-mode 用無 sleep token bucket;duck-types TokenBucket。
+
+    設計依據:.claude/feat/e2e-tests/design.md §2 (R3-P1-NOOPBUCKET) —
+    放在 services/ 層讓 services + tests 共用;不在 tests/ 內否則 production
+    從 tests 反向 import 是 layering 違規。
+    """
+
+    rate: float = float("inf")
+
+    async def acquire_async(self, tokens: int = 1, timeout: float | None = None) -> bool:
+        return True
+
+    async def acquire(self, tokens: int = 1, timeout: float | None = None) -> bool:
+        return True

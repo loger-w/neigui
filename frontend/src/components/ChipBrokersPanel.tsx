@@ -174,6 +174,7 @@ export function ChipBrokersPanel({
 
   return (
     <div
+      data-testid="chip-brokers-panel"
       className="h-full flex flex-col overflow-hidden"
       aria-busy={loading || undefined}
     >

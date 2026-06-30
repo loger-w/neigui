@@ -17,7 +17,7 @@ export function OptionsOIWallsCard({
   data, loading, error, onRefresh,
 }: Props): ReactElement {
   return (
-    <div className="rounded-lg border border-line bg-bg-deep/50 p-4 flex flex-col">
+    <div data-testid="options-oi-walls-card" className="rounded-lg border border-line bg-bg-deep/50 p-4 flex flex-col">
       <div className="flex items-baseline justify-between mb-3">
         <h3 className="text-sm font-semibold text-ink-muted">OI 牆</h3>
         <button
