@@ -4,12 +4,12 @@ Error handling lives in main.py via global @app.exception_handler — httpx
 errors and ValueErrors propagate; the canonical 502 / 503 / detail.error
 shape comes back from those handlers.
 """
-from __future__ import annotations
 
-from datetime import date
+from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
+from services import clock
 from services.finmind import get_finmind
 from services.finmind_options import list_active_contracts
 
@@ -21,7 +21,7 @@ def _resolve_contract(contract: str) -> dict | None:
     `TXO202607W2`) against the seven slots produced by list_active_contracts."""
     if not contract:
         return None
-    today = date.today()
+    today = clock.today()
     for c in list_active_contracts(today):
         if f"{c['option_id']}{c['contract_date']}" == contract:
             return c
@@ -29,7 +29,7 @@ def _resolve_contract(contract: str) -> dict | None:
 
 
 def _today_str() -> str:
-    return date.today().isoformat()
+    return clock.today().isoformat()
 
 
 def _is_stale_for_requested(payload: dict, requested_date: str) -> bool:
@@ -145,7 +145,11 @@ async def get_oi_walls(
     _validate_lookback(lookback, period_days=10)
     d = date or _today_str()
     out = await get_finmind().fetch_oi_walls(
-        c, d, lookback=lookback, delta_window=delta_window, refresh=refresh,
+        c,
+        d,
+        lookback=lookback,
+        delta_window=delta_window,
+        refresh=refresh,
     )
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
@@ -188,8 +192,13 @@ async def get_pcr(
 
     d = date or _today_str()
     out = await get_finmind().fetch_pcr(
-        scope=scope, contract=c, date_str=d, lookback=lookback,
-        high_pct=high_pct, low_pct=low_pct, refresh=refresh,
+        scope=scope,
+        contract=c,
+        date_str=d,
+        lookback=lookback,
+        high_pct=high_pct,
+        low_pct=low_pct,
+        refresh=refresh,
     )
 
     # N5: per_contract + weekly contract → emit warning (not 400).
@@ -216,7 +225,10 @@ async def get_institutional(
     """SC-4 / SC-8: 三大法人 + foreign correlation."""
     d = date or _today_str()
     out = await get_finmind().fetch_institutional(
-        d, lookback=lookback, corr_window=corr_window, refresh=refresh,
+        d,
+        lookback=lookback,
+        corr_window=corr_window,
+        refresh=refresh,
     )
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}

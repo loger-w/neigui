@@ -8,10 +8,9 @@ status code (502 for upstream, 503 for service not ready).
 
 from __future__ import annotations
 
-from datetime import date
-
 from fastapi import APIRouter, HTTPException, Query
 
+from services import clock
 from services.finmind import get_finmind
 
 router = APIRouter()
@@ -107,4 +106,4 @@ async def get_chip_broker_history(
 
 
 def _today() -> str:
-    return date.today().isoformat()
+    return clock.today().isoformat()
