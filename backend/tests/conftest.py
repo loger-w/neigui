@@ -38,6 +38,12 @@ def _reset_finmind_singleton_and_env(monkeypatch, tmp_path):
     """
     monkeypatch.setenv("FINMIND_TOKEN", "test-token")
     monkeypatch.setenv("CHIP_DATA_DIR", str(tmp_path))
+    # CI 全域 FAKE_FINMIND=1(e2e job)會 leak 進 tests/(它們不預期 fake)。
+    # 此 autouse 主動 delenv,讓既有 19 tests 跑 real path(用 mocked httpx
+    # / TaiwanFuturesDaily wide mocks)。tests_e2e/conftest.py 會自己再 setenv
+    # FAKE_FINMIND=1 — 兩邊 conftest 互不汙染。
+    monkeypatch.delenv("FAKE_FINMIND", raising=False)
+    monkeypatch.delenv("FAKE_TODAY", raising=False)
     import services.finmind as fm
 
     monkeypatch.setattr(fm, "_client", None)
