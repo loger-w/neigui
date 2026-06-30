@@ -1,0 +1,13 @@
+{
+  "data": [
+    {
+      "date": "2026-06-26",
+      "name": "外資及陸資",
+      "futures_id": "TXO",
+      "long_open_interest_volume": 50000,
+      "long_open_interest_amount": 5000000000,
+      "short_open_interest_volume": 45000,
+      "short_open_interest_amount": 4500000000
+    }
+  ]
+}

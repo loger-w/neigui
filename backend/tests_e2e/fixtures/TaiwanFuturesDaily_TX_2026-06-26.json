@@ -1,0 +1,18 @@
+{
+  "data": [
+    {
+      "date": "2026-06-26",
+      "stock_id": "TX",
+      "contract_date": "202607",
+      "open": 17000,
+      "max": 17100,
+      "min": 16900,
+      "close": 17050,
+      "spread": 50,
+      "volume": 100000,
+      "settlement_price": 17050,
+      "open_interest": 50000,
+      "trading_session": "position"
+    }
+  ]
+}

@@ -1,0 +1,301 @@
+{
+  "data": [
+    {
+      "date": "2026-06-12",
+      "securities_trader": "分點001",
+      "securities_trader_id": "BROKER001",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-12",
+      "securities_trader": "分點002",
+      "securities_trader_id": "BROKER002",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-12",
+      "securities_trader": "分點003",
+      "securities_trader_id": "BROKER003",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-15",
+      "securities_trader": "分點001",
+      "securities_trader_id": "BROKER001",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-15",
+      "securities_trader": "分點002",
+      "securities_trader_id": "BROKER002",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-15",
+      "securities_trader": "分點003",
+      "securities_trader_id": "BROKER003",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-16",
+      "securities_trader": "分點001",
+      "securities_trader_id": "BROKER001",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-16",
+      "securities_trader": "分點002",
+      "securities_trader_id": "BROKER002",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-16",
+      "securities_trader": "分點003",
+      "securities_trader_id": "BROKER003",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-17",
+      "securities_trader": "分點001",
+      "securities_trader_id": "BROKER001",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-17",
+      "securities_trader": "分點002",
+      "securities_trader_id": "BROKER002",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-17",
+      "securities_trader": "分點003",
+      "securities_trader_id": "BROKER003",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-18",
+      "securities_trader": "分點001",
+      "securities_trader_id": "BROKER001",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-18",
+      "securities_trader": "分點002",
+      "securities_trader_id": "BROKER002",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-18",
+      "securities_trader": "分點003",
+      "securities_trader_id": "BROKER003",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-19",
+      "securities_trader": "分點001",
+      "securities_trader_id": "BROKER001",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-19",
+      "securities_trader": "分點002",
+      "securities_trader_id": "BROKER002",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-19",
+      "securities_trader": "分點003",
+      "securities_trader_id": "BROKER003",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-22",
+      "securities_trader": "分點001",
+      "securities_trader_id": "BROKER001",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-22",
+      "securities_trader": "分點002",
+      "securities_trader_id": "BROKER002",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-22",
+      "securities_trader": "分點003",
+      "securities_trader_id": "BROKER003",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-23",
+      "securities_trader": "分點001",
+      "securities_trader_id": "BROKER001",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-23",
+      "securities_trader": "分點002",
+      "securities_trader_id": "BROKER002",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-23",
+      "securities_trader": "分點003",
+      "securities_trader_id": "BROKER003",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-24",
+      "securities_trader": "分點001",
+      "securities_trader_id": "BROKER001",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-24",
+      "securities_trader": "分點002",
+      "securities_trader_id": "BROKER002",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-24",
+      "securities_trader": "分點003",
+      "securities_trader_id": "BROKER003",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-25",
+      "securities_trader": "分點001",
+      "securities_trader_id": "BROKER001",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-25",
+      "securities_trader": "分點002",
+      "securities_trader_id": "BROKER002",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-25",
+      "securities_trader": "分點003",
+      "securities_trader_id": "BROKER003",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-26",
+      "securities_trader": "分點001",
+      "securities_trader_id": "BROKER001",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-26",
+      "securities_trader": "分點002",
+      "securities_trader_id": "BROKER002",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    },
+    {
+      "date": "2026-06-26",
+      "securities_trader": "分點003",
+      "securities_trader_id": "BROKER003",
+      "stock_id": "2330",
+      "price": 1100.0,
+      "buy": 100000,
+      "sell": 80000
+    }
+  ]
+}

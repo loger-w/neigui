@@ -1,0 +1,21 @@
+{
+  "data": [
+    {
+      "date": "2026-06-26",
+      "stock_id": "2330",
+      "MarginPurchaseBuy": 1000,
+      "MarginPurchaseSell": 800,
+      "MarginPurchaseCashRepayment": 50,
+      "MarginPurchaseLimit": 30000,
+      "MarginPurchaseTodayBalance": 5000,
+      "MarginPurchaseYesterdayBalance": 4850,
+      "ShortSaleBuy": 200,
+      "ShortSaleSell": 300,
+      "ShortSaleCashRepayment": 20,
+      "ShortSaleLimit": 30000,
+      "ShortSaleTodayBalance": 1500,
+      "ShortSaleYesterdayBalance": 1620,
+      "OffsetLoanAndShort": 0
+    }
+  ]
+}

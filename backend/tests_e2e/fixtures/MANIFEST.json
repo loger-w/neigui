@@ -1,0 +1,18 @@
+{
+  "TaiwanStockInfo.json":                                                       {"dataset": "TaiwanStockInfo",                              "data_id": "", "skip_store": true, "_note": "env-gate only by routes/symbols.py"},
+  "TaiwanFuturesDaily_TX_calendar.json":                                        {"dataset": "TaiwanFuturesDaily",                           "data_id": "TX", "skip_store": true, "_note": "env-gate only by trading_calendar — 防跟 TaiwanFuturesDaily_TX_2026-06-26 key collision (R4-P1)"},
+  "TaiwanStockPrice_2330_2026-01-01_2026-06-26.json":                           {"dataset": "TaiwanStockPrice",                             "data_id": "2330"},
+  "TaiwanStockInstitutionalInvestorsBuySellWide_2330_2026-06-26.json":          {"dataset": "TaiwanStockInstitutionalInvestorsBuySellWide", "data_id": "2330"},
+  "TaiwanStockMarginPurchaseShortSale_2330_2026-06-26.json":                    {"dataset": "TaiwanStockMarginPurchaseShortSale",           "data_id": "2330"},
+  "TaiwanStockKBar_2330_2026-06-26.json":                                       {"dataset": "TaiwanStockKBar",                              "data_id": "2330"},
+  "taiwan_stock_trading_daily_report_2330_2026-06-12_2026-06-26.json":          {"dataset": "taiwan_stock_trading_daily_report",            "data_id": "2330"},
+  "taiwan_stock_trading_daily_report_secid_agg_2330_BROKER001_2026-06-26.json": {"dataset": "taiwan_stock_trading_daily_report_secid_agg", "data_id": "2330"},
+  "TaiwanStockMarketValue_2026-06-26.json":                                     {"dataset": "TaiwanStockMarketValue",                       "data_id": ""},
+  "taiwan_stock_tick_snapshot_2026-06-26.json":                                 {"dataset": "taiwan_stock_tick_snapshot",                   "data_id": ""},
+  "TaiwanOptionDaily_TXO_2026-04-01_2026-06-26.json":                           {"dataset": "TaiwanOptionDaily",                            "data_id": "TXO"},
+  "TaiwanOptionOpenInterestLargeTraders_TXO_2026-05-26_2026-06-26.json":        {"dataset": "TaiwanOptionOpenInterestLargeTraders",         "data_id": "TXO"},
+  "TaiwanFuturesDaily_TX_2026-06-26.json":                                      {"dataset": "TaiwanFuturesDaily",                           "data_id": "TX"},
+  "TaiwanOptionFinalSettlementPrice_TXO.json":                                  {"dataset": "TaiwanOptionFinalSettlementPrice",             "data_id": "TXO"},
+  "TaiwanOptionInstitutionalInvestors_TXO_2026-06-26.json":                     {"dataset": "TaiwanOptionInstitutionalInvestors",           "data_id": "TXO"},
+  "TaiwanOptionInstitutionalInvestorsAfterHours_TXO_2026-06-26.json":           {"dataset": "TaiwanOptionInstitutionalInvestorsAfterHours", "data_id": "TXO"}
+}

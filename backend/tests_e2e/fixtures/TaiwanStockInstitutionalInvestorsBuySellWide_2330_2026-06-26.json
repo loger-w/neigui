@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "date": "2026-06-26",
+      "stock_id": "2330",
+      "Foreign_Investor_buy": 5000000,
+      "Foreign_Investor_sell": 4000000,
+      "Investment_Trust_buy": 1000000,
+      "Investment_Trust_sell": 800000,
+      "Dealer_self_buy": 500000,
+      "Dealer_self_sell": 600000,
+      "Dealer_Hedging_buy": 100000,
+      "Dealer_Hedging_sell": 50000
+    }
+  ]
+}

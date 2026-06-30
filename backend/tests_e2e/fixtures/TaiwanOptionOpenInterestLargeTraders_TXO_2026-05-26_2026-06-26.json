@@ -1,0 +1,388 @@
+{
+  "data": [
+    {
+      "date": "2026-05-26",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-05-26",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-05-27",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-05-27",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-05-28",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-05-28",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-05-29",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-05-29",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-01",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-01",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-02",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-02",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-03",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-03",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-04",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-04",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-05",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-05",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-08",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-08",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-09",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-09",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-10",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-10",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-11",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-11",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-12",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-12",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-15",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-15",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-16",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-16",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-17",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-17",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-18",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-18",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-19",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-19",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-22",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-22",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-23",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-23",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-24",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-24",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-25",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-25",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    },
+    {
+      "date": "2026-06-26",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "call",
+      "name": "top10_prop_net",
+      "value": 500
+    },
+    {
+      "date": "2026-06-26",
+      "stock_id": "TXO",
+      "contract_date": "202607",
+      "call_put": "put",
+      "name": "top10_prop_net",
+      "value": -300
+    }
+  ]
+}
