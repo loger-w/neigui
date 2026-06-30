@@ -19,6 +19,12 @@ frontend/dist/
 frontend/tsconfig.app.tsbuildinfo
 frontend/tsconfig.node.tsbuildinfo
 
+# E2E
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
+e2e/.cache/
+
 # IDE
 .idea/
 .vscode/

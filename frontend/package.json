@@ -8,7 +8,11 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "e2e": "cd ../e2e && npm test",
+    "e2e:live": "cd ../e2e && npm run test:live",
+    "e2e:ui": "cd ../e2e && npm run test:ui",
+    "e2e:update-snapshots": "cd ../e2e && npm run test:update-snapshots"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.1",

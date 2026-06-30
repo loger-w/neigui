@@ -1,0 +1,44 @@
+name: e2e-update-snapshots
+on:
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: "pip" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: |
+            frontend/package-lock.json
+            e2e/package-lock.json
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-chromium-v1.49.0
+      - run: pip install -r backend/requirements.txt
+      - run: cd frontend && npm ci
+      - run: cd e2e && npm ci && npx playwright install --with-deps chromium
+      - run: cd e2e && npm run test:update-snapshots
+        env:
+          FAKE_FINMIND: "1"
+          FAKE_TODAY: "2026-06-26"
+          CHIP_DATA_DIR: "./.cache"
+          FINMIND_TOKEN: fake
+      - uses: peter-evans/create-pull-request@v6
+        with:
+          title: "chore(e2e): refresh visual baselines"
+          body: |
+            Auto-generated baseline refresh from `e2e-update-snapshots` workflow.
+
+            Review the PNG diffs in **Files changed** before merging.
+          branch: e2e/refresh-visual-baselines
+          add-paths: e2e/specs/**/*.png

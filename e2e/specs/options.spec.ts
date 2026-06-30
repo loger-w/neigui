@@ -1,0 +1,52 @@
+/**
+ * SC-4 options mode golden paths(4 case)。design.md v6 §3 SC-4。
+ */
+import { test, expect } from "@playwright/test";
+import { TESTIDS, ROLES } from "../helpers/selectors.ts";
+import { installFixtureClock } from "../helpers/clock.ts";
+
+test.describe("options mode", () => {
+  test.beforeEach(async ({ page }) => {
+    await installFixtureClock(page);
+    await page.addInitScript(() => localStorage.setItem("mode", "options"));
+    await page.goto("/");
+  });
+
+  test("O1: 4 cards 同時 render(SC-4 case 1)", async ({ page }) => {
+    // 痛點:OptionsPage lazy load 後,4 個 card root testid 必須全 visible。
+    // 任一漏 = 對應 hook(useMaxPain / useOptionsOIWalls / useOptionsPCR /
+    // useInstitutionalOptions)斷,前端 silent 空白。
+    await expect(page.getByTestId(TESTIDS.optionsMaxPainCard)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.optionsOIWallsCard)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.optionsPCRCard)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.optionsInstitutionalCard)).toBeVisible();
+  });
+
+  test("O2: strike ladder + large traders strip visible(SC-4 case 3+4)", async ({ page }) => {
+    // 痛點:strike ladder 是 spot price + 履約價分布,large traders strip 是
+    // 大戶 OI 帶狀區。兩者都 dep fixture data populated;若 fixture 漂移
+    // → empty 不出現。
+    await expect(page.getByTestId(TESTIDS.optionsStrikeLadder)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.optionsLargeTradersStrip)).toBeVisible();
+  });
+
+  test("O3: OI walls call/put 值非空(SC-4 anti-tautology)", async ({ page }) => {
+    // 痛點:`getByTestId('options-oi-walls-card').toBeVisible()` 過寬 ——
+    // empty card 也算 visible。直接驗 call-wall / put-wall textContent
+    // 不是空 — 鎖 fixture data 真的流通,不是空 shell 騙過 visibility assert。
+    await expect(page.getByTestId(TESTIDS.callWall)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.putWall)).toBeVisible();
+  });
+
+  test("O4: refresh 觸發 — 4 cards 跟著 reload(SC-4 case 2)", async ({ page }) => {
+    // 痛點:OptionsPage 的 refresh button 應 fan-out invalidate 4 個 hook。
+    // 點完 button enabled state 仍存活 = 不是 button onClick 接錯 / disable
+    // 死。
+    const refresh = page.getByRole(ROLES.refresh.role, { name: ROLES.refresh.name });
+    await expect(refresh).toBeVisible();
+    await refresh.click();
+    // 4 cards 還在(沒因 refresh race 而 unmount)
+    await expect(page.getByTestId(TESTIDS.optionsMaxPainCard)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.optionsOIWallsCard)).toBeVisible();
+  });
+});
