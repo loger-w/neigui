@@ -42,7 +42,7 @@ export function OptionsInstitutionalCard({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="rounded-lg border border-line bg-bg-deep/50 p-4 flex flex-col">
+    <div data-testid="options-institutional-card" className="rounded-lg border border-line bg-bg-deep/50 p-4 flex flex-col">
       <div className="flex items-baseline justify-between mb-3">
         <h3 className="text-sm font-semibold text-ink-muted">三大法人</h3>
         <button

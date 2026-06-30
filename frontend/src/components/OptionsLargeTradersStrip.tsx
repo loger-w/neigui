@@ -69,7 +69,7 @@ export function OptionsLargeTradersStrip({
           📌 大戶 OI 為近週週選 aggregate(FinMind <code>contract_type=&apos;week&apos;</code>),週三選 + 週五選共用同一份資料。熱門履約價依各週合約獨立。
         </div>
       )}
-      <section className="shrink-0 px-4 py-2.5 grid grid-cols-4 gap-4 border-b border-line bg-bg">
+      <section data-testid="options-large-traders-strip" className="shrink-0 px-4 py-2.5 grid grid-cols-4 gap-4 border-b border-line bg-bg">
         {GROUPS.map((g) => {
           const cur = data.current[g.groupKey];
           const series = data.series.map((s) => s[g.seriesKey]);

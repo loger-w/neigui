@@ -13,7 +13,7 @@ export function OptionsStrikeLadder({
   data, spot, loading, error,
 }: Props): ReactElement {
   return (
-    <section className="flex-1 flex flex-col overflow-hidden">
+    <section data-testid="options-strike-ladder" className="flex-1 flex flex-col overflow-hidden">
       <header className="shrink-0 px-4 py-2 text-xs text-ink-dim uppercase tracking-wide border-b border-line flex items-center gap-2">
         <span>成交量分布 · Strike Ladder</span>
         {data && (
