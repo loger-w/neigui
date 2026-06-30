@@ -19,6 +19,7 @@ from datetime import date, datetime, timedelta
 
 import httpx
 
+from services import clock
 from services.finmind import _FINMIND_BASE, get_finmind_rate_limiter
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
 from utils.trading_calendar_helpers import count_back_trading_days
@@ -87,12 +88,38 @@ def _is_stale(cached: dict) -> bool:
 
 async def _fetch_raw_dates_from_finmind() -> list[date]:
     """Direct httpx call against TaiwanFuturesDaily (avoids FinMindClient
-    to prevent a circular import; design v4 I2)."""
+    to prevent a circular import; design v4 I2)。
+
+    E2E fake-mode 旁路:讀 tests_e2e/fixtures/TaiwanFuturesDaily_TX_calendar.json
+    取代 httpx 呼叫(R2-P0-3 / R3-P1-CLOCK-ROUTES)。
+    """
+    if os.getenv("FAKE_FINMIND") == "1":
+        import json
+        from pathlib import Path
+
+        fixture_dir = Path(
+            os.getenv(
+                "FAKE_FINMIND_FIXTURES_DIR",
+                str(Path(__file__).resolve().parent.parent / "tests_e2e" / "fixtures"),
+            )
+        )
+        fixture = fixture_dir / "TaiwanFuturesDaily_TX_calendar.json"
+        payload = json.loads(fixture.read_text(encoding="utf-8"))
+        rows = payload.get("data", payload) if isinstance(payload, dict) else payload
+        seen: set[date] = set()
+        for row in rows:
+            d_str = row.get("date")
+            if d_str:
+                try:
+                    seen.add(date.fromisoformat(d_str))
+                except ValueError:
+                    continue
+        return sorted(seen)
     token = os.environ.get("FINMIND_TOKEN", "").strip()
     if not token:
         raise ValueError("FINMIND_TOKEN env var is required")
     await get_finmind_rate_limiter().acquire_async()
-    today = date.today()
+    today = clock.today()
     start = today - timedelta(days=_BACKFILL_DAYS)
     params = {
         "dataset": "TaiwanFuturesDaily",

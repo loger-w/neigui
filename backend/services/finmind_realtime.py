@@ -18,6 +18,8 @@ design.md §5
 from __future__ import annotations
 
 import asyncio
+
+from services import clock
 import logging
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -370,7 +372,7 @@ async def _fetch_market_value_map(
         if cached is not None and _is_fresh(cached, _MARKET_VALUE_TTL_HOURS * 3600):
             return cached.get("by_id", {})
     if today is None:
-        today = date.today()
+        today = clock.today()
     # Audit X3:取「今天之前(含)」的最近交易日 → 確保即使週一也對到上週五
     # trading_calendar 有 12h cache + 自有 TaiwanFuturesDaily probe,失敗時退到
     # calendar T-1 保命(不阻塞 mv 抓取,只是日期會精度退化)。

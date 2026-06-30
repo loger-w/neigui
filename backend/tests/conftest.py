@@ -21,19 +21,11 @@ from __future__ import annotations
 import pytest
 
 
-class NoOpBucket:
-    """Test-only no-op token bucket; duck-types services.rate_limiter.TokenBucket.
-
-    Avoids real sleeps when integration tests fan out hundreds of calls.
-    """
-
-    rate: float = float("inf")
-
-    async def acquire_async(self, tokens: int = 1, timeout: float | None = None) -> bool:
-        return True
-
-    async def acquire(self, tokens: int = 1, timeout: float | None = None) -> bool:
-        return True
+# Re-export NoOpBucket from services/rate_limiter — production needs it for
+# FAKE_FINMIND skip path(R3-P1-NOOPBUCKET);tests/ 反向 import 是 layering
+# 違規,所以 NoOpBucket 已搬到 services/rate_limiter.py,此處只 re-export
+# 維持既有 19 個 backend test 的 `from tests.conftest import NoOpBucket` 簽名。
+from services.rate_limiter import NoOpBucket  # noqa: F401, E402
 
 
 @pytest.fixture(autouse=True)

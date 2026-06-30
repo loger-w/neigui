@@ -1,4 +1,5 @@
 """Symbol search endpoint using FinMind TaiwanStockInfo."""
+
 from __future__ import annotations
 
 import logging
@@ -15,6 +16,35 @@ _symbols: list[dict] = []
 
 async def load_symbols() -> None:
     global _symbols
+    if os.getenv("FAKE_FINMIND") == "1":
+        # E2E fake-mode 旁路:讀 tests_e2e/fixtures/TaiwanStockInfo.json(R2-P0-1 / F1)。
+        import json
+        from pathlib import Path
+
+        fixture_dir = Path(
+            os.getenv(
+                "FAKE_FINMIND_FIXTURES_DIR",
+                str(Path(__file__).resolve().parent.parent / "tests_e2e" / "fixtures"),
+            )
+        )
+        fixture = fixture_dir / "TaiwanStockInfo.json"
+        if fixture.exists():
+            payload = json.loads(fixture.read_text(encoding="utf-8"))
+            data = payload.get("data", payload) if isinstance(payload, dict) else payload
+        else:
+            logger.warning("FAKE_FINMIND fixture %s missing, symbol list empty", fixture)
+            _symbols = []
+            return
+        seen: set[str] = set()
+        deduped: list[dict] = []
+        for r in data:
+            sid = r.get("stock_id", "")
+            if sid and sid not in seen and r.get("type") in ("twse", "tpex", "otc"):
+                seen.add(sid)
+                deduped.append({"symbol": sid, "name": r.get("stock_name", "")})
+        _symbols = deduped
+        logger.info("FAKE_FINMIND loaded %d symbols from fixture", len(_symbols))
+        return
     token = os.getenv("FINMIND_TOKEN", "")
     if not token:
         logger.warning("FINMIND_TOKEN not set, symbol search disabled")

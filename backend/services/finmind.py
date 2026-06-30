@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
+from services import clock
 from services.rate_limiter import TokenBucket
 
 logger = logging.getLogger(__name__)
@@ -66,20 +67,34 @@ def get_finmind_rate_limiter() -> TokenBucket:
 
 class FinMindClient:
     def __init__(self) -> None:
+        self._inflight: dict[str, asyncio.Task] = {}
+        if os.getenv("FAKE_FINMIND") == "1":
+            # E2E fake mode:skip httpx + token check;FakeFinMindClient subclass
+            # overrides _get,所以這條 client 永遠不 outbound call。NoOpBucket
+            # 確保 acquire_async() 不 sleep。R3-P1-NOOPBUCKET / R2-P0-1。
+            from services.rate_limiter import NoOpBucket
+
+            self._limiter = NoOpBucket()
+            self._token = ""
+            self._http = None  # type: ignore[assignment]
+            return
         self._token = os.getenv("FINMIND_TOKEN", "")
         if not self._token:
             raise ValueError("FINMIND_TOKEN env var is required")
         self._limiter = get_finmind_rate_limiter()
-        self._inflight: dict[str, asyncio.Task] = {}
         self._http = httpx.AsyncClient(timeout=30.0)
 
     async def close(self) -> None:
-        await self._http.aclose()
+        if self._http is not None:
+            await self._http.aclose()
 
     # -- internal helpers ---------------------------------------------------
 
     async def _get(self, url: str, params: dict) -> list:
         await self._limiter.acquire_async()
+        # fake mode 由 FakeFinMindClient subclass override 此 method;到這
+        # 表示 production 路徑,_http 必非 None。Pyright: union-attr 鎖死。
+        assert self._http is not None, "FAKE_FINMIND _get not overridden by FakeFinMindClient"
         headers = {"Authorization": f"Bearer {self._token}"}
         resp = await self._http.get(url, params=params, headers=headers)
         resp.raise_for_status()
@@ -107,7 +122,7 @@ class FinMindClient:
 
     @staticmethod
     def _is_today(date_str: str) -> bool:
-        return date_str == date.today().isoformat()
+        return date_str == clock.today().isoformat()
 
     @staticmethod
     def _is_stale(cached: dict, max_age_minutes: int = 30) -> bool:
@@ -320,7 +335,7 @@ class FinMindClient:
             # (refresh=false) returned the same JSON written hours ago.
             # Now apply 15-min TTL when cache is from today; pre-today
             # always falls through and re-fetches the new day's bar.
-            if last >= date.today().isoformat() and not self._is_stale(
+            if last >= clock.today().isoformat() and not self._is_stale(
                 cached,
                 max_age_minutes=15,
             ):
@@ -361,7 +376,7 @@ class FinMindClient:
         can serve K-line + institutional in ~1s without paying the major-net
         per-day fan-out (~24s under 15 req/s).
         """
-        end = date.today()
+        end = clock.today()
         start = end - timedelta(days=days)
         s, e = start.isoformat(), end.isoformat()
 
@@ -455,7 +470,7 @@ class FinMindClient:
             full_cached = self._read_cache(full_key)
             if full_cached is not None:
                 last = full_cached.get("last_date", "")
-                if last >= date.today().isoformat() and not self._is_stale(
+                if last >= clock.today().isoformat() and not self._is_stale(
                     full_cached,
                     max_age_minutes=15,
                 ):
@@ -463,7 +478,7 @@ class FinMindClient:
             cached = self._read_cache(base_key)
             if cached is not None:
                 last = cached.get("last_date", "")
-                if last >= date.today().isoformat() and not self._is_stale(
+                if last >= clock.today().isoformat() and not self._is_stale(
                     cached,
                     max_age_minutes=15,
                 ):
@@ -525,7 +540,7 @@ class FinMindClient:
             full_cached = self._read_cache(full_key)
             if full_cached is not None:
                 last = full_cached.get("last_date", "")
-                if last >= date.today().isoformat() and not self._is_stale(
+                if last >= clock.today().isoformat() and not self._is_stale(
                     full_cached,
                     max_age_minutes=15,
                 ):
@@ -538,7 +553,7 @@ class FinMindClient:
             cached = self._read_cache(major_key)
             if cached is not None:
                 last = cached.get("last_date", "")
-                if last >= date.today().isoformat() and not self._is_stale(
+                if last >= clock.today().isoformat() and not self._is_stale(
                     cached,
                     max_age_minutes=15,
                 ):
@@ -567,7 +582,7 @@ class FinMindClient:
         cache_key: str,
         days: int,
     ) -> dict:
-        end = date.today()
+        end = clock.today()
         start = end - timedelta(days=days)
         s, e = start.isoformat(), end.isoformat()
 
@@ -743,7 +758,7 @@ class FinMindClient:
     def _has_fresh_subset(cached: dict, ids: list[str]) -> bool:
         """True iff cache covers every requested id AND is today-dated AND
         within the 15-min TTL — i.e. we can return without any fetch."""
-        if cached.get("last_date", "") < date.today().isoformat():
+        if cached.get("last_date", "") < clock.today().isoformat():
             return False
         if FinMindClient._is_stale(cached, max_age_minutes=15):
             return False
@@ -768,7 +783,7 @@ class FinMindClient:
         # Refetch all requested ids — caller decides freshness; we always
         # overwrite to pick up newly-traded dates. Brokers absent from `ids`
         # but present in cache stay cached (sticky across sessions).
-        end = date.today()
+        end = clock.today()
         start = end - timedelta(days=days)
         results = await asyncio.gather(
             *[
@@ -848,7 +863,7 @@ class FinMindClient:
         )
 
         end = date.fromisoformat(date_str)
-        today = date.today()
+        today = clock.today()
         # FinMind TaiwanOptionOpenInterestLargeTraders silently ignores
         # `end_date` — it only returns rows for `start_date`. A single
         # multi-day call therefore yields just one date, breaking the 20D
@@ -1089,7 +1104,7 @@ class FinMindClient:
     ) -> dict[str, list[dict]]:
         from services.finmind_options import _CACHE_VERSION_OPTIONS_CHIP
 
-        today = date.today()
+        today = clock.today()
 
         # Decide which days to re-fetch.
         # - refresh=True → invalidate parse caches + force re-fetch of trailing
@@ -1171,7 +1186,7 @@ class FinMindClient:
         if not refresh:
             cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
             if cached is not None and "by_date" in cached:
-                if end_date != date.today() or not self._is_stale(cached):
+                if end_date != clock.today() or not self._is_stale(cached):
                     return {date.fromisoformat(d): info for d, info in cached["by_date"].items()}
         start = end_date - timedelta(days=lookback_days)
         rows = await self._get(
@@ -1223,7 +1238,7 @@ class FinMindClient:
         if not refresh:
             cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS_CHIP)
             if cached is not None and "by_date" in cached:
-                if end_date != date.today() or not self._is_stale(cached):
+                if end_date != clock.today() or not self._is_stale(cached):
                     return {date.fromisoformat(d): float(v) for d, v in cached["by_date"].items()}
         start = end_date - timedelta(days=lookback_days)
         rows = await self._get(
@@ -1731,7 +1746,7 @@ class FinMindClient:
         if not trading_dates:
             return []
 
-        today = date.today().isoformat()
+        today = clock.today().isoformat()
         by_date = pre_fetched_by_date if pre_fetched_by_date is not None else {}
 
         cached_results: dict[str, dict] = {}

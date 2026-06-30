@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # R2-P2-1 fail-loud:lifespan 啟動時嚴格驗證 FAKE_FINMIND,避免 typo
+    # 'true'/'yes' 等仍走 real path 且靜默打 FinMind 燒 token / quota。
+    fake = os.getenv("FAKE_FINMIND", "")
+    if fake not in ("", "0", "1"):
+        raise RuntimeError(f"invalid FAKE_FINMIND={fake!r} — only ''/'0'/'1' allowed")
+
     from routes.symbols import load_symbols
     import services.finmind as fm_mod
 
@@ -53,6 +59,17 @@ app.include_router(chip_router)
 app.include_router(market_router, prefix="/api/market")
 app.include_router(symbols_router)
 app.include_router(options_router)
+
+
+# /api/_meta/mode — Playwright globalSetup probe target(R2-P0-3 / F6)。
+# 防 reuseExistingServer 撞到 dev server 真 backend → 整套 E2E 撞真 FinMind。
+@app.get("/api/_meta/mode")
+async def get_meta_mode() -> dict:
+    return {
+        "fake": os.getenv("FAKE_FINMIND") == "1",
+        "fake_today": os.getenv("FAKE_TODAY", ""),
+        "fixtures_dir": os.getenv("FAKE_FINMIND_FIXTURES_DIR", "<default>"),
+    }
 
 
 # Centralised error contract — every endpoint that talks to FinMind used to
