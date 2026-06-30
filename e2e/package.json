@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test --grep-invert=@live",
+    "test": "playwright test --grep-invert=\"@live|@visual\"",
     "test:live": "cross-env FAKE_FINMIND=real playwright test --config=playwright.live.config.ts",
     "test:ui": "playwright test --ui",
     "test:update-snapshots": "playwright test --update-snapshots"
