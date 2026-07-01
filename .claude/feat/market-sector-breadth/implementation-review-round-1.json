@@ -1,0 +1,8 @@
+[
+  {"id": "F1", "severity": "P2", "location": "sector_aggregation.md §3.4 T22", "problem": "T22 four-way sort not testing None-tier", "resolution": "accepted", "action": "expanded T22 to include vol_ratio=None sector"},
+  {"id": "F2", "severity": "P2", "location": "sector_aggregation.md §3.4", "problem": "brainstorm E3 vol-asymmetry not tested", "resolution": "accepted", "action": "added T28-vol-E3"},
+  {"id": "F3", "severity": "P2", "location": "sector_aggregation.md §3.4", "problem": "brainstorm E6 sector_map fallback vol side untested", "resolution": "accepted", "action": "added T29-vol-E6"},
+  {"id": "F4", "severity": "P2", "location": "sector_aggregation.md §3.3/§3.4", "problem": "brainstorm E9 weekend end_date not tested", "resolution": "accepted", "action": "added T-E9-breadth + T-E9-vol"},
+  {"id": "F5", "severity": "P2", "location": "sector_aggregation.md §3.4", "problem": "stray past_days_vols draft line", "resolution": "accepted", "action": "removed"},
+  {"id": "F6", "severity": "P2", "location": "sector_aggregation.md §3.8", "problem": "T33 file placement unclear", "resolution": "accepted", "action": "explicit placement in test_sector_aggregation.py TestConstantsLock"}
+]

@@ -1,0 +1,92 @@
+[
+  {
+    "id": "F1",
+    "severity": "P0",
+    "location": "design.md §4.1 SectorVolResult / §4.2 _aggregate_sector_volume_ratio",
+    "problem": "Sort key crashes on None vol_ratio (float|None with reverse=True).",
+    "suggested_fix": "Explicit key handling: key=lambda r: (r['vol_ratio'] is None, -(r['vol_ratio'] or 0.0), r['sector']).",
+    "rationale": "SC-5 hot/cold flag test with any None row will crash.",
+    "resolution": "accepted",
+    "action": "Update §4.1 SC-5 API doc + §4.2 sort rule to explicit tuple key."
+  },
+  {
+    "id": "F2",
+    "severity": "P1",
+    "location": "design.md §4.2 _extract_close_and_volume_by_stock + §4.4 orchestrator wiring",
+    "problem": "Two aggregation calls each recompute _extract from ~100k rows.",
+    "suggested_fix": "Hoist _extract into orchestrator; _aggregate_* accepts by_stock dict.",
+    "rationale": "Doubles O(N) cost on hot path (5s poll).",
+    "resolution": "accepted",
+    "action": "Split _aggregate_* to accept by_stock; each orchestrator builds by_stock internally. Two extractions per snapshot request (once per orchestrator) accepted as trade-off for testable separation — note in §8."
+  },
+  {
+    "id": "F3",
+    "severity": "P1",
+    "location": "design.md §4.2 _aggregate_sector_breadth / _aggregate_sector_volume_ratio",
+    "problem": "Empty prices → max() on empty sequence raises ValueError.",
+    "suggested_fix": "Explicit rule: empty prices → return [] (no sectors).",
+    "rationale": "P2 _do_fetch_prices returns [] on total failure; empty-cache pin can crash P3 for 24h.",
+    "resolution": "accepted",
+    "action": "Add explicit rule in §4.2: if by_stock is empty or has no dates → return []."
+  },
+  {
+    "id": "F4",
+    "severity": "P1",
+    "location": "design.md §4.4 cache reuse partial fetch",
+    "problem": "Shared cache_key means P3 inherits P2's partial-fetch state without signalling.",
+    "suggested_fix": "Document as inherited from P2 in §8 hidden assumptions.",
+    "rationale": "Users see partial data without warning.",
+    "resolution": "accepted",
+    "action": "Add §8 assumption 9 documenting inherited property + reference KG3."
+  },
+  {
+    "id": "F5",
+    "severity": "P1",
+    "location": "design.md §4.1 SectorVolResult vs spec.md §8",
+    "problem": "today_vol_lots typed as float but spec §8 shows integer.",
+    "suggested_fix": "Change to int with sum(volume) // 1000.",
+    "rationale": "Cross-doc contract drift.",
+    "resolution": "accepted",
+    "action": "Update TypedDict to today_vol_lots: int; use integer division in aggregation."
+  },
+  {
+    "id": "F6",
+    "severity": "P2",
+    "location": "design.md §4.4 helper try/except",
+    "problem": "ValueError in catch is copy-pasted from P2; after F3 fix, unreachable for universe_empty (gated).",
+    "suggested_fix": "Drop ValueError from catch — httpx.HTTPError only.",
+    "rationale": "Post-F3 the only path is httpx (fetcher).",
+    "resolution": "accepted",
+    "action": "Update §4.4 try/except to (httpx.HTTPError,) only + note F3+F6 relationship."
+  },
+  {
+    "id": "F7",
+    "severity": "P2",
+    "location": "design.md §4.2 _aggregate_sector_breadth today_date semantics",
+    "problem": "Global today_date silently drops stocks lacking that day's close (halt/sparse).",
+    "suggested_fix": "Document explicitly as design choice in §8.",
+    "rationale": "Silent semantic — reviewer needs to see trade-off.",
+    "resolution": "accepted",
+    "action": "Add §8 assumption 10: global today_date = max-date across universe; stocks without that day's close drop from effective_members."
+  },
+  {
+    "id": "F8",
+    "severity": "P2",
+    "location": "design.md brainstorm E7 mapping",
+    "problem": "Sparse trading day / <20 trading days case not explicit in §4.2.",
+    "suggested_fix": "Rule: window <20 trading days → sector pct/vol_ratio None cascade.",
+    "rationale": "Brainstorm E7 requires explicit design commitment.",
+    "resolution": "accepted",
+    "action": "Add §4.2 rule: MA20 None → sector effective_members counts only stocks with valid ma20; vol_ratio None if <20 days in past_window."
+  },
+  {
+    "id": "F9",
+    "severity": "P2",
+    "location": "design.md §4.2 _compute_ma20 semantics",
+    "problem": "MA20 includes vs excludes today unclear.",
+    "suggested_fix": "Document explicitly.",
+    "rationale": "Semantic choice affects consumer interpretation.",
+    "resolution": "accepted",
+    "action": "Adopt inclusive MA20 (standard TA convention: mean of last 20 closes INCLUDING today). Document in §8 assumption 11."
+  }
+]

@@ -1,0 +1,37 @@
+{
+  "round": 1,
+  "steps": [
+    {
+      "step": "pytest",
+      "command": "cd backend && python -m pytest -q",
+      "exit_code": 0,
+      "output_tail": "418 passed, 1 skipped, 1 warning in 26.29s",
+      "hypothesis": null,
+      "strategy_tried": null
+    },
+    {
+      "step": "ruff",
+      "command": "cd backend && ruff check .",
+      "exit_code": 0,
+      "output_tail": "All checks passed!",
+      "hypothesis": null,
+      "strategy_tried": null
+    },
+    {
+      "step": "npm test",
+      "command": "not run — no frontend files touched (backend-only add-only service + integration; frontend consumption deferred to spec.md Phase 5)",
+      "exit_code": null
+    },
+    {
+      "step": "npm run build",
+      "command": "not run — same reason",
+      "exit_code": null
+    },
+    {
+      "step": "e2e npm test",
+      "command": "not run — no route added, no frontend hook change; payload backward-compat (add-only). Backend contract will be exercised in Phase 6 curl verification instead",
+      "exit_code": null
+    }
+  ],
+  "verdict": "all_green"
+}
