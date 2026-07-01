@@ -559,6 +559,42 @@ class TestConstantsLock:
         assert mb._SLOW_EMA_PERIOD == 39
         assert mb._DEFAULT_LOOKBACK_DAYS == 60
 
+    async def test_T36_p2_p3_share_fetch_window(self, monkeypatch) -> None:
+        """Phase 4 review TC-1: lock cache_key reuse invariant.
+
+        If P2 refactors its pad multiplier (currently 2.0 in market_breadth.py:
+        compute_breadth), the numeric constants T35 locks stay valid but the
+        window formula drifts silently. Spy on the shared fetcher and assert
+        both orchestrators produce identical (start, end).
+        """
+        from services import market_breadth as mb
+        from unittest.mock import patch as _patch
+
+        seen_prices: list[tuple[date, date]] = []
+        seen_taiex: list[tuple[date, date]] = []
+
+        async def spy_prices(start, end, refresh=False):
+            seen_prices.append((start, end))
+            return []
+
+        async def spy_taiex(start, end, refresh=False):
+            seen_taiex.append((start, end))
+            return []
+
+        end = date(2026, 6, 30)
+        universe = {"2330"}
+        sector_map = {"2330": "半導體業"}
+
+        with _patch("services.market_breadth._fetch_daily_prices_window", side_effect=spy_prices), \
+             _patch("services.market_breadth._fetch_taiex_series", side_effect=spy_taiex):
+            await mb.compute_breadth(end, universe)
+            await sa.compute_sector_breadth(end, universe, sector_map)
+
+        assert len(seen_prices) == 2  # once by P2 breadth, once by P3 sector_breadth
+        assert seen_prices[0] == seen_prices[1], (
+            f"cache_key drift! P2 fetch: {seen_prices[0]}, P3 fetch: {seen_prices[1]}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # httpx.HTTPError propagation through orchestrator (SC-4/5 fetcher failure)
@@ -603,3 +639,94 @@ class TestOrchestratorFetcherFailure:
             sector_map={"2330": "半導體業"},
         )
         assert out == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 review — TC-2 refresh propagation
+# ---------------------------------------------------------------------------
+
+
+class TestRefreshPropagation:
+    async def test_compute_sector_breadth_forwards_refresh_true(self, monkeypatch) -> None:
+        captured: dict = {}
+
+        async def spy(start, end, refresh=False):
+            captured["refresh"] = refresh
+            return []
+
+        monkeypatch.setattr(sa, "_fetch_prices_window", spy)
+        await sa.compute_sector_breadth(
+            end_date=date(2026, 6, 25),
+            universe={"2330"},
+            sector_map={"2330": "半導體業"},
+            refresh=True,
+        )
+        assert captured["refresh"] is True
+
+    async def test_compute_sector_volume_ratio_forwards_refresh_true(self, monkeypatch) -> None:
+        captured: dict = {}
+
+        async def spy(start, end, refresh=False):
+            captured["refresh"] = refresh
+            return []
+
+        monkeypatch.setattr(sa, "_fetch_prices_window", spy)
+        await sa.compute_sector_volume_ratio(
+            end_date=date(2026, 6, 25),
+            universe={"2330"},
+            sector_map={"2330": "半導體業"},
+            refresh=True,
+        )
+        assert captured["refresh"] is True
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 review — TC-4 flag threshold boundary
+# ---------------------------------------------------------------------------
+
+
+class TestFlagThresholdBoundary:
+    def test_vol_ratio_exactly_hot_threshold_flag_none(self) -> None:
+        """vol_ratio == 1.5 exactly → flag=None (strict > semantics)."""
+        rows: list[dict] = []
+        for i in range(20):
+            d = date(2026, 6, 1) + timedelta(days=i)
+            rows.append(_row("2330", d, 100.0, 1000))
+        rows.append(_row("2330", date(2026, 6, 21), 100.0, 1500))
+        by_stock = _build_by_stock(rows, {"2330"})
+        out = sa._aggregate_sector_volume_ratio(by_stock, {"2330": "半導體業"})
+        assert out[0]["vol_ratio"] == pytest.approx(1.5)
+        assert out[0]["flag"] is None  # strict `>` — 1.5 exactly is NOT hot
+
+    def test_vol_ratio_exactly_cold_threshold_flag_none(self) -> None:
+        """vol_ratio == 0.7 exactly → flag=None (strict < semantics)."""
+        rows: list[dict] = []
+        for i in range(20):
+            d = date(2026, 6, 1) + timedelta(days=i)
+            rows.append(_row("2330", d, 100.0, 1000))
+        rows.append(_row("2330", date(2026, 6, 21), 100.0, 700))
+        by_stock = _build_by_stock(rows, {"2330"})
+        out = sa._aggregate_sector_volume_ratio(by_stock, {"2330": "半導體業"})
+        assert out[0]["vol_ratio"] == pytest.approx(0.7)
+        assert out[0]["flag"] is None  # strict `<` — 0.7 exactly is NOT cold
+
+    def test_vol_ratio_just_above_hot_threshold_is_hot(self) -> None:
+        rows: list[dict] = []
+        for i in range(20):
+            d = date(2026, 6, 1) + timedelta(days=i)
+            rows.append(_row("2330", d, 100.0, 1000))
+        # 1500 + 1 share → ratio = 1.500...001 (just above 1.5)
+        rows.append(_row("2330", date(2026, 6, 21), 100.0, 1501))
+        by_stock = _build_by_stock(rows, {"2330"})
+        out = sa._aggregate_sector_volume_ratio(by_stock, {"2330": "半導體業"})
+        assert out[0]["flag"] == "hot"
+
+    def test_vol_ratio_just_below_cold_threshold_is_cold(self) -> None:
+        rows: list[dict] = []
+        for i in range(20):
+            d = date(2026, 6, 1) + timedelta(days=i)
+            rows.append(_row("2330", d, 100.0, 1000))
+        rows.append(_row("2330", date(2026, 6, 21), 100.0, 699))
+        by_stock = _build_by_stock(rows, {"2330"})
+        out = sa._aggregate_sector_volume_ratio(by_stock, {"2330": "半導體業"})
+        assert out[0]["flag"] == "cold"
