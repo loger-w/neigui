@@ -204,22 +204,41 @@ def detect_divergence(
     window: int = _DEFAULT_DIVERGENCE_WINDOW,
 ) -> str | None:
     """近 window 天內:
-    - TAIEX close 於窗內達新高 (max) 且 mcc last 未同步新高 → 'bearish'
-    - TAIEX close 於窗內達新低 (min) 且 mcc last 未同步新低 → 'bullish'
-    - 否則 None
-    TAIEX 空 → None
+    - TAIEX 收盤於窗內達 **strict** 新高 且 mcc last 未同步新高 → 'bearish'
+    - TAIEX 收盤於窗內達 **strict** 新低 且 mcc last 未同步新低 → 'bullish'
+    - 否則 None(TAIEX 空 / mcc 空 / 資料不足)
+
+    F3 fix (review round 1):嚴格 `>` / `<` 對 flat TAIEX 情境 (all 20 values 相等)
+    不誤觸發 bearish。
+    F5 fix:mcc / taiex 先 by-date inner-join 再 slice,避免 axis mismatch
+    (mcc dates = universe 交易日 union;taiex dates = TAIEX endpoint)。
     """
     if not taiex_series or not mcclellan_series:
         return None
-    tail_taiex = [float(r["value"]) for r in taiex_series[-window:] if r.get("value") is not None]
-    tail_mcc = [float(r["value"]) for r in mcclellan_series[-window:] if r.get("value") is not None]
-    if not tail_taiex or not tail_mcc:
+    # F5: date-align — build dict for O(1) join lookup
+    tx_by_date = {r["date"]: r["value"] for r in taiex_series if r.get("value") is not None}
+    aligned: list[tuple[float, float]] = []  # (taiex, mcc) same-date pairs
+    for r in mcclellan_series:
+        mcc_val = r.get("value")
+        if mcc_val is None:
+            continue
+        tx_val = tx_by_date.get(r.get("date"))
+        if tx_val is None:
+            continue
+        aligned.append((float(tx_val), float(mcc_val)))
+    if not aligned:
         return None
-    tx_last = tail_taiex[-1]
-    mcc_last = tail_mcc[-1]
-    if tx_last >= max(tail_taiex) and mcc_last < max(tail_mcc):
+    tail = aligned[-window:]
+    if len(tail) < 2:  # F3: 嚴格新高需 window ≥ 2
+        return None
+    tx_last, mcc_last = tail[-1]
+    tx_prev = [t for t, _ in tail[:-1]]
+    mcc_prev = [m for _, m in tail[:-1]]
+    # F3: 嚴格 `>` — flat TAIEX (tx_last == max prev) 不算新高
+    # mcc non-confirming = mcc_last 沒超越 prev peak → 嚴格 `<`
+    if tx_last > max(tx_prev) and mcc_last < max(mcc_prev):
         return "bearish"
-    if tx_last <= min(tail_taiex) and mcc_last > min(tail_mcc):
+    if tx_last < min(tx_prev) and mcc_last > min(mcc_prev):
         return "bullish"
     return None
 
@@ -241,7 +260,10 @@ def _count_daily_ups_downs(
     - 無 prev_close(新上市 / 首日)→ 該日該股 skip (E2)
     - 日期軸 = 實際回傳 date 的 union (E4)
     """
-    grouped: dict[str, list[tuple[date, float]]] = {}
+    # F6 fix (review round 1):per-stock dedup by date — FinMind duplicate
+    # (stock_id, date) row 會產生首日 phantom (0, 0) 且破壞 axis。
+    # 用 dict-per-stock keep last close per date。
+    grouped: dict[str, dict[date, float]] = {}
     for row in prices:
         sid = row.get("stock_id")
         d_raw = row.get("date")
@@ -255,11 +277,13 @@ def _count_daily_ups_downs(
             c = float(c_raw)
         except (ValueError, TypeError):
             continue
-        grouped.setdefault(sid, []).append((d, c))
+        # 同 (sid, date) duplicate → 用 later value 覆蓋(FinMind 通常 later
+        # 是修正值)
+        grouped.setdefault(sid, {})[d] = c
 
     daily: dict[date, tuple[int, int]] = {}
-    for _sid, rows in grouped.items():
-        rows.sort(key=lambda x: x[0])
+    for _sid, per_date in grouped.items():
+        rows = sorted(per_date.items(), key=lambda x: x[0])
         prev_close: float | None = None
         for d, c in rows:
             if prev_close is None:
@@ -284,8 +308,13 @@ async def _fetch_daily_prices_window(
     end: date,
     refresh: bool = False,
 ) -> list[dict]:
-    """FinMind TaiwanStockPrice date-range (全 universe)."""
-    cache_key = f"breadth_prices_{end.isoformat()}"
+    """FinMind TaiwanStockPrice date-range (全 universe).
+
+    F2 fix (review round 1):cache_key + dedup_key 加 start 避免不同
+    lookback_days 同 end concurrent 撞 lambda 閉包 → 拿到第一個 caller
+    的窄 window。
+    """
+    cache_key = f"breadth_prices_{start.isoformat()}_{end.isoformat()}"
     dedup_key = f"{cache_key}_r{int(refresh)}"
     if not refresh:
         cached = _read_cache(cache_key)
@@ -319,8 +348,9 @@ async def _fetch_taiex_series(
     end: date,
     refresh: bool = False,
 ) -> list[dict]:
-    """Try TAIEX then 0001; return [] on both fail."""
-    cache_key = f"breadth_taiex_{end.isoformat()}"
+    """Try TAIEX then 0001; return [] on both empty; re-raise on all-raise."""
+    # F2 fix: cache_key + dedup_key 加 start
+    cache_key = f"breadth_taiex_{start.isoformat()}_{end.isoformat()}"
     dedup_key = f"{cache_key}_r{int(refresh)}"
     if not refresh:
         cached = _read_cache(cache_key)
@@ -333,7 +363,19 @@ async def _fetch_taiex_series(
 
 
 async def _do_fetch_taiex(start: date, end: date, cache_key: str) -> list[dict]:
+    """Try TAIEX then 0001。
+
+    F1 correctness fix (review round 1):
+    - 兩 sid 皆成功 200 但 rows=[] → cache empty 24h(FinMind 明確說「無資料」)
+    - 至少一 sid 200 且有資料 → cache 該 rows
+    - 兩 sid 全 raise httpx.HTTPError → re-raise 最後 exception
+      (caller `_fetch_breadth`/`_do_fetch_market_snapshot` 的 try/except
+      handle → breadth=None for this cycle,不動 stale,next request 會 retry)
+      避免 transient 5xx / DNS blip pin 到 24h TTL empty cache。
+    """
     client = get_finmind()
+    saw_response = False
+    last_exc: httpx.HTTPError | None = None
     for sid in ("TAIEX", "0001"):
         try:
             rows = await client._get(  # type: ignore[attr-defined]
@@ -347,7 +389,9 @@ async def _do_fetch_taiex(start: date, end: date, cache_key: str) -> list[dict]:
             )
         except httpx.HTTPError as exc:
             logger.warning("TAIEX fetch failed for sid=%s: %s", sid, exc)
+            last_exc = exc
             continue
+        saw_response = True
         if rows:
             _write_cache(
                 cache_key,
@@ -357,7 +401,15 @@ async def _do_fetch_taiex(start: date, end: date, cache_key: str) -> list[dict]:
                 },
             )
             return rows
-    logger.warning("TAIEX all candidates returned empty; divergence_dot will be None")
+    if not saw_response:
+        # F1: 兩 sid 全 raise → 不 pin cache,re-raise 讓 caller 處理
+        assert last_exc is not None
+        raise last_exc
+    logger.warning(
+        "TAIEX all candidates returned empty (200 OK, no rows); "
+        "divergence_dot will be None for %sh",
+        _BREADTH_TTL_HOURS,
+    )
     _write_cache(
         cache_key,
         {"rows": [], "fetched_at": datetime.now().isoformat(timespec="seconds")},
@@ -383,8 +435,11 @@ async def compute_breadth(
     if not universe:
         raise ValueError("universe_empty")
 
-    # F2: window derivation ensures slow EMA warmup + lookback_days valid points
-    pad_days = int((lookback_days + _SLOW_EMA_PERIOD) * 1.5)
+    # F2 (design) + F4 (review round 1 correctness):
+    # 1.5 → 2.0 multiplier — 春節連 9 天非交易日窗口,1.5 有時 collapse 到
+    # trading day 收成 < 39 + lookback。2.0 給充分 margin(V2.5 若要精準
+    # 改用 trading_calendar 反推)。
+    pad_days = int((lookback_days + _SLOW_EMA_PERIOD) * 2.0)
     start = end_date - timedelta(days=pad_days)
 
     prices = await _fetch_daily_prices_window(start, end_date, refresh=refresh)
