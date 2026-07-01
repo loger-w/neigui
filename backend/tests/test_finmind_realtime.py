@@ -807,3 +807,156 @@ async def test_snapshot_breadth_value_error_does_not_flip_stale() -> None:
 
     assert result["breadth"] is None
     assert result["stale"] is False  # F6 lock also covers ValueError arm
+
+
+# ---------------------------------------------------------------------------
+# market-monitor-v2 P3 (SC-6) — sector_breadth + sector_volume_ratio
+# Design: .claude/feat/market-sector-breadth/design.md v2 §4.4
+# ---------------------------------------------------------------------------
+
+
+_FAKE_SECTOR_BREADTH_PAYLOAD = [
+    {"sector": "半導體業", "members": 42, "above_ma20": 30, "pct": 0.714},
+    {"sector": "其他電子業", "members": 20, "above_ma20": 10, "pct": 0.5},
+]
+_FAKE_SECTOR_VOL_PAYLOAD = [
+    {"sector": "半導體業", "today_vol_lots": 12345, "vol_ratio": 1.62, "flag": "hot"},
+    {"sector": "其他電子業", "today_vol_lots": 3456, "vol_ratio": 1.02, "flag": None},
+]
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_payload_adds_sector_breadth_and_vol_ratio() -> None:
+    """T-INT-1: happy path — both P3 fields present + shape correct + P1/P2 unchanged."""
+    fake_universe = [{
+        "stock_id": "2330", "close": 2390, "change_rate": 1.92,
+        "total_amount": 36e9, "volume_ratio": 1.14,
+        "date": "2026-06-29 10:30:00.123456",
+    }]
+    fake_sector_rows = [{
+        "stock_id": "2330", "industry_category": "半導體業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+    }]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_breadth",
+               new=AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio",
+               new=AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)):
+        result = await fetch_market_snapshot(refresh=False)
+
+    # P3 new fields
+    assert result["sector_breadth"] == _FAKE_SECTOR_BREADTH_PAYLOAD
+    assert result["sector_volume_ratio"] == _FAKE_SECTOR_VOL_PAYLOAD
+    # P1/P2 unchanged
+    assert result["breadth"] == _FAKE_BREADTH_PAYLOAD
+    assert "universe_size" in result
+    assert "excluded_count" in result
+    assert {"gainers", "losers", "amount", "volume_ratio"} <= set(result["leaderboards"].keys())
+    assert result["stale"] is False
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_sector_breadth_fail_does_not_flip_stale() -> None:
+    """T-INT-2: sector_breadth raise httpx.HTTPError → sector_breadth=None + stale=False (F6 sequel)."""
+    import httpx
+
+    fake_universe = [{
+        "stock_id": "2330", "close": 2390, "change_rate": 1.92,
+        "total_amount": 36e9, "volume_ratio": 1.14,
+        "date": "2026-06-29 10:30:00.123456",
+    }]
+    fake_sector_rows = [{
+        "stock_id": "2330", "industry_category": "半導體業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+    }]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_breadth",
+               new=AsyncMock(side_effect=httpx.HTTPError("boom"))), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio",
+               new=AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)):
+        result = await fetch_market_snapshot(refresh=False)
+
+    assert result["sector_breadth"] is None
+    # sector_volume_ratio 獨立 try/except — 仍算對
+    assert result["sector_volume_ratio"] == _FAKE_SECTOR_VOL_PAYLOAD
+    assert result["stale"] is False  # F6 sequel
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_sector_vol_ratio_fail_independent_of_breadth() -> None:
+    """T-INT-3: sector_breadth ok, vol_ratio raises → independent try/except keeps breadth list."""
+    import httpx
+
+    fake_universe = [{
+        "stock_id": "2330", "close": 2390, "change_rate": 1.92,
+        "total_amount": 36e9, "volume_ratio": 1.14,
+        "date": "2026-06-29 10:30:00.123456",
+    }]
+    fake_sector_rows = [{
+        "stock_id": "2330", "industry_category": "半導體業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+    }]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_breadth",
+               new=AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio",
+               new=AsyncMock(side_effect=httpx.HTTPError("boom"))):
+        result = await fetch_market_snapshot(refresh=False)
+
+    assert result["sector_breadth"] == _FAKE_SECTOR_BREADTH_PAYLOAD  # unaffected
+    assert result["sector_volume_ratio"] is None
+    assert result["stale"] is False
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_empty_universe_both_sector_fields_none() -> None:
+    """T-INT-4: after universe filter allowed is empty → _fetch_sector_* returns None gate."""
+    # empty tick snapshot → allowed set becomes empty via primary_sector filter fallout
+    fake_universe: list[dict] = []
+    fake_sector_rows = [{
+        "stock_id": "2330", "industry_category": "半導體業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+    }]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=None)):
+        # do NOT patch _fetch_sector_breadth / _fetch_sector_volume_ratio here —
+        # they exist and their internal `if not universe: return None` gate must fire.
+        result = await fetch_market_snapshot(refresh=False)
+
+    assert result["sector_breadth"] is None
+    assert result["sector_volume_ratio"] is None
