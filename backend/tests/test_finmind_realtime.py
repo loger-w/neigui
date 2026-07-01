@@ -774,3 +774,36 @@ async def test_snapshot_breadth_fail_does_not_flip_stale() -> None:
 
     assert result["breadth"] is None
     assert result["stale"] is False  # F6 lock — breadth fail 不動 stale
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_breadth_value_error_does_not_flip_stale() -> None:
+    """TC_F1 — F6 stale-lock ValueError branch(complements the HTTPError test above)。
+
+    compute_breadth raises ValueError('universe_empty') if universe is empty
+    (e.g. degraded filter cascade). caller's `except (httpx.HTTPError, ValueError)`
+    must catch AND keep stale flag intact.
+    """
+    fake_universe = [{
+        "stock_id": "2330", "close": 2390, "change_rate": 1.92,
+        "total_amount": 36e9, "volume_ratio": 1.14,
+        "date": "2026-06-29 10:30:00.123456",
+    }]
+    fake_sector_rows = [{
+        "stock_id": "2330", "industry_category": "半導體業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+    }]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(side_effect=ValueError("universe_empty"))):
+        result = await fetch_market_snapshot(refresh=False)
+
+    assert result["breadth"] is None
+    assert result["stale"] is False  # F6 lock also covers ValueError arm
