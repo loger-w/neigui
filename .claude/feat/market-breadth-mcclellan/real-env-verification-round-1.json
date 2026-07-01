@@ -1,0 +1,48 @@
+[
+  {
+    "sc_id": "SC-6",
+    "shape": "pure-backend-api",
+    "evidence_path": ".claude/feat/market-breadth-mcclellan/evidence/SC-6_snapshot-happy-v2.json",
+    "http_code": 200,
+    "response_time_s": 257.24,
+    "hypothesis": "breadth field appended to /api/market/snapshot; old 4 panels unchanged; F6 stale-lock intact",
+    "verdict": "PASS",
+    "findings": [
+      "breadth present with 128-day ad_line_series + mcclellan_series",
+      "mcc first non-None at 2026-02-10 (39-day slow EMA warmup as expected)",
+      "centerline_cross='below', thrust_dot=None, divergence_dot=None, known_gaps=[]",
+      "universe_size=1913, excluded_count={etf:347, warrant:58, watch_list:61} (P1 filter intact)",
+      "stale=false (F6 lock verified — breadth compute succeeded so no reason to flip)",
+      "leaderboards keys {gainers, losers, amount, volume_ratio} intact (backward-compat)"
+    ]
+  },
+  {
+    "sc_id": "SC-6",
+    "shape": "pure-backend-api-cache",
+    "evidence_path": ".claude/feat/market-breadth-mcclellan/evidence/SC-6_snapshot-cached.json",
+    "http_code": 200,
+    "response_time_s": 11.19,
+    "hypothesis": "second call within 24h cache TTL should be much faster (breadth_prices + breadth_taiex cache hit)",
+    "verdict": "PASS",
+    "findings": [
+      "23x speedup (257s → 11s) confirms _read_cache + _is_fresh 24h TTL working",
+      "remaining 11s comes from other snapshot fetchers (universe 5s TTL live tick + sector/mv/watch_list synchronous cascade)"
+    ]
+  },
+  {
+    "sc_id": "SC-4",
+    "shape": "design-assumption-violation",
+    "evidence_path": ".claude/feat/market-breadth-mcclellan/evidence/SC-6_snapshot-happy.json",
+    "http_code": 200,
+    "response_time_s": 2.69,
+    "hypothesis": "design v2 §8.1 assumed FinMind TaiwanStockPrice without data_id returns full-window rows; probe was deferred to impl phase",
+    "verdict": "FIXED",
+    "findings": [
+      "First curl (before fix) returned ad_line_series=[], mcclellan_series=[] despite payload shape being correct",
+      "Root cause: FinMind TaiwanStockPrice **without data_id** ignores end_date and returns only start_date's rows (48001 rows all dated 2025-12-15 in the stale cache)",
+      "Fix: _do_fetch_prices switched to per-trading-day loop (uses services.trading_calendar.get_trading_days)",
+      "Phase 6 finding routed as (b): SC-4 covered by design but assumption invalid → Phase 1 amend + Phase 3 impl fix (SC-4.phase_1 += 1, SC-4.phase_3 += 1)",
+      "Trade-off: cold-fetch cost went from ~3s (broken but fast) to ~257s (correct but slow); mitigated by 24h cache TTL (subsequent cost ~11s)"
+    ]
+  }
+]
