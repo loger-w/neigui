@@ -39,9 +39,32 @@ docs/specs/          spec / plan(規格優先看這)
 | Frontend 測試 | `npm test` (vitest run) | `frontend/` |
 | Frontend watch | `npm run test:watch` | `frontend/` |
 | Frontend build | `npm run build` (tsc -b + vite build) | `frontend/` |
+| E2E 測試 | `npm test` (playwright,跳過 `@live` / `@visual`) | `e2e/` |
+| E2E 單檔 | `npx playwright test specs/equity.spec.ts` | `e2e/` |
+| E2E visual baseline 更新 | `npm run test:update-snapshots`(或在 GitHub 跑 `e2e-update-snapshots` workflow) | `e2e/` |
 | Lint(Python) | `ruff check .`(line-length 100,target py312) | `backend/` |
 
-完成前要過的 gate:`pytest -q` + `npm test` + `npm run build`(後者捕 TS error)。Build 過 ≠ 行為對,UI 改動還要走 chrome-devtools-mcp 真實截圖驗證。
+完成前要過的 gate(/feat /mod Phase 5 / `auto-verify` 一律套):`pytest -q`(backend)+ `npm test`(frontend vitest)+ `npm run build`(frontend,捕 TS error)+ **`npm test`(e2e,屬於下表「需要 e2e」的改動類型才必跑;不屬則可豁免並在 commit 註明)**。Build 過 ≠ 行為對,UI 改動還要走 chrome-devtools-mcp 真實截圖驗證。
+
+### E2E spec 新增 / 修改判準表
+
+`/feat` /  `/mod` 流程強制套用 — Phase 0 brainstorm 時就要決定本次改動屬哪格,寫進 `change-spec.md` / `brainstorm.md`,Phase 3 TDD 同步動 e2e spec。
+
+| 改動類型 | 對應 spec 檔 | 動作 |
+|---|---|---|
+| equity mode UI / flow(三大法人 / 主力券商 / K 線 / 搜尋 / range 切換) | `e2e/specs/equity.spec.ts`(E#) | 新功能 → 加 E# spec;改既有行為 → 改對應 E# assertion |
+| options mode UI / flow(4 cards / strike ladder / large traders / refresh) | `e2e/specs/options.spec.ts`(O#) | 同上(O#) |
+| market mode UI / flow(heatmap / leaderboard) | `e2e/specs/market.spec.ts`(M#) | 同上(M#) |
+| 跨 mode 行為(mode toggle / localStorage 持久化 / mode 切換時 unmount) | `e2e/specs/navigation.spec.ts`(N#) | 同上(N#) |
+| 無交易日 fallback(`no_trading_day` flag 行為) | `e2e/specs/no-trading-day.spec.ts`(NTD#) | 同上(NTD#) |
+| Backend route response shape / `detail.error` 字串 / 新 endpoint | `backend/tests_e2e/test_api_*.py` + 若前端會用 → `e2e/specs/live-contract.spec.ts`(L#) | contract test 必補;前端 hook 接到的話加 L# schema 驗證 |
+| 視覺(layout / typography / color token / spacing 大改) | `e2e/specs/visual.spec.ts`(V#)+ baseline PNG | 跑 `npm run test:update-snapshots` 或開 GitHub `e2e-update-snapshots` workflow,baseline diff 進 PR review |
+| 純內部 refactor(hook 內部、lib 純函式、`*-svg.tsx` 算式、測試結構) | — | **豁免**,Phase 5 不必跑 e2e(commit message 註 `[no-e2e: internal refactor]`) |
+| 純 backend service 重構(無 route 改動) | — | **豁免**(同上) |
+
+**判準爭議 → 預設「需要」**:介於 user-facing 與內部之間的 grey zone(例:hook 回傳 shape 改動但 UI 視覺不變),預設算 user-facing 補 e2e。Phase 6 真實環境驗證若發現 e2e 漏抓的 regression → 回 Phase 0 補 SC + 補對應 spec(`/feat` Phase 7 失敗類型 (3) 「實作有做但測試漏」)。
+
+**FinMind token / 即時資料相關**:e2e 預設跑 FAKE_FINMIND fixture(快、deterministic);若改動需要真打 FinMind 才能驗(例:新 dataset 接入)→ 加 `@live` tag 寫進 `e2e/specs/live-contract.spec.ts`,本機跑 `npm run test:live`,**CI 不跑 `@live`**(避免吃 token / 撞 rate limit)。
 
 `.env` 需要 `FINMIND_TOKEN`(必填,否則 `FinMindClient.__init__` raise)。Optional:`FINMIND_RATE_LIMIT_PER_SEC`(預設 5)、`FRONTEND_ORIGIN`。
 
