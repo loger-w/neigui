@@ -1,0 +1,90 @@
+[
+  {
+    "id": "F1_correctness+CONS-1",
+    "severity": "P1",
+    "location": "backend/services/market_breadth.py:_do_fetch_taiex fallthrough",
+    "problem": "兩 sid 全 raise httpx.HTTPError → 落到 terminal _write_cache({rows: []}) → 24h TTL pin transient failure。sibling _do_fetch_prices 沒 try/except 是正確 pattern。CONSISTENCY-1 lens 同一 bug 再次 confirm。",
+    "resolution": "accepted",
+    "fix": "追蹤 saw_response 旗標;全 raise → re-raise 讓 caller _fetch_breadth 的 (httpx.HTTPError, ValueError) catch 處理(breadth=None for this cycle, next request retries)。CONSISTENCY-1 merge:同一 impl fix 即滿足"
+  },
+  {
+    "id": "F2_correctness",
+    "severity": "P2",
+    "location": "backend/services/market_breadth.py:_fetch_daily_prices_window / _fetch_taiex_series dedup_key",
+    "problem": "dedup_key + cache_key 只用 end + refresh;若不同 lookback_days 同 end,concurrent 會 collide 拿第一個 caller 的窄 window",
+    "resolution": "accepted",
+    "fix": "cache_key/dedup_key 加 lookback_days 或 pad_days;兼顧 latent race + cache hit rate。實務:current caller only 用 default,latent bug 先修簡潔即可"
+  },
+  {
+    "id": "F3_correctness",
+    "severity": "P2",
+    "location": "backend/services/market_breadth.py:detect_divergence 非嚴格 >=",
+    "problem": "tx_last >= max(tail) always True 因 tx_last in tail,flat TAIEX + decaying McClellan 會誤觸發 bearish",
+    "resolution": "accepted",
+    "fix": "tx_last > max(tail[:-1]) and mcc_last < max(tail[:-1])(guard empty prefix)。symmetric for bullish"
+  },
+  {
+    "id": "F4_correctness",
+    "severity": "P2",
+    "location": "backend/services/market_breadth.py:compute_breadth pad_days=1.5x",
+    "problem": "春節 window 導致 trading day 收成 < warmup + lookback",
+    "resolution": "accepted",
+    "fix": "1.5 → 2.0(選項 a,最小改)"
+  },
+  {
+    "id": "F5_correctness",
+    "severity": "P2",
+    "location": "backend/services/market_breadth.py:detect_divergence date alignment",
+    "problem": "mcc/taiex tail 直接 slice 不 join by date,axis 錯位 → 錯 signal",
+    "resolution": "accepted",
+    "fix": "先 inner-join by date 建 aligned list,再 slice window。或 short-circuit: mcc_last date != taiex_last date → None"
+  },
+  {
+    "id": "F6_correctness",
+    "severity": "P2",
+    "location": "backend/services/market_breadth.py:_count_daily_ups_downs duplicate row",
+    "problem": "FinMind duplicate (sid, date) row 會將首日 phantom count + 破壞 axis",
+    "resolution": "accepted",
+    "fix": "per-stock loop 前 dedup dict(keep last close per date)"
+  },
+  {
+    "id": "TC_F1",
+    "severity": "P2",
+    "location": "tests/test_finmind_realtime.py test_snapshot_breadth_fail_does_not_flip_stale",
+    "problem": "F6 stale-lock 只覆 HTTPError branch,ValueError branch 無 test",
+    "resolution": "accepted",
+    "fix": "加 test_snapshot_breadth_value_error_does_not_flip_stale(side_effect=ValueError)"
+  },
+  {
+    "id": "TC_F2",
+    "severity": "P2",
+    "location": "tests/test_market_breadth.py test_compute_breadth_shape",
+    "problem": "只 shape assert 無 numerical assert;fixture net-zero → AD Line 應 ≡ 0,mcclellan 應 ≡ 0",
+    "resolution": "accepted",
+    "fix": "加 result['ad_line_value']==0.0 + mcclellan_oscillator==0.0 asserts"
+  },
+  {
+    "id": "TC_F3",
+    "severity": "P2",
+    "location": "tests/test_market_breadth.py TestFetchTaiexSeriesFallback",
+    "problem": "只覆 empty-rows branch,httpx.HTTPError branch 沒 test",
+    "resolution": "accepted",
+    "fix": "加 test_fetch_taiex_series_all_sid_raise_httpx_propagates(after F1 fix: 全 raise 會 re-raise,test 對應改 assert propagate)"
+  },
+  {
+    "id": "TC_F4",
+    "severity": "P2",
+    "location": "tests/test_market_breadth.py E5 orchestrator handoff",
+    "problem": "warmup 不足 orchestrator 端無 test 驗 mcclellan_oscillator/thrust_dot/centerline_cross 全 None",
+    "resolution": "accepted",
+    "fix": "加 test_compute_breadth_warmup_insufficient_returns_none_signals"
+  },
+  {
+    "id": "TC_F5",
+    "severity": "P2",
+    "location": "tests/test_market_breadth.py E4 sparse axis",
+    "problem": "沒 cover 兩 stock disjoint date 的 union semantic",
+    "resolution": "accepted",
+    "fix": "擴 test_count_sparse_dates_natural_axis 或加新 test 含兩 stock 不同 sparse dates"
+  }
+]

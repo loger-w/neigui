@@ -1,0 +1,58 @@
+[
+  {
+    "id": "F1",
+    "severity": "P0",
+    "location": "design.md §4.1 vs §4.4",
+    "problem": "compute_breadth public sig 缺 refresh param — CLAUDE.md §4 refresh=true 契約會斷。plan.md typed end_date: str,design.md 用 date,不一致",
+    "suggested_fix": "compute_breadth 加 refresh: bool = False;end_date 統一用 date;refresh 傳進 fetcher",
+    "rationale": "refresh 是 project-wide invariant"
+  },
+  {
+    "id": "F2",
+    "severity": "P1",
+    "location": "design.md §3 vs §4.2",
+    "problem": "fetch window hard-code 90 calendar days ≈ 62 trading days,slow EMA 39 warm-up 後只剩 ~24 valid mcclellan 點,遠低於 spec §8 '60 天序列'",
+    "suggested_fix": "start = end - timedelta(days=int((lookback_days + 39) * 1.5)) 或用 trading_calendar 拉 lookback_days + 60 個 trading day",
+    "rationale": "SC-4 shape / SC-2 hand-calc 全序列覆蓋不到"
+  },
+  {
+    "id": "F3",
+    "severity": "P1",
+    "location": "design.md §4.3",
+    "problem": "無 _run_once inflight dedup — P1 market_universe.py 已建 pattern,SSE polling + refresh 會 race fan-out",
+    "suggested_fix": "module-level _inflight dict + _run_once helper 包 fetcher(mirror market_universe.py)",
+    "rationale": "CLAUDE.md §2 明訂 FinMind wrapper 慣例"
+  },
+  {
+    "id": "F4",
+    "severity": "P1",
+    "location": "design.md §4.2 vs brainstorm.md E7",
+    "problem": "detect_divergence 用 window=20 fixed,brainstorm E7 決策是 '近 lookback_days 內 新高最後 3 個 vs mcclellan 新高最後 3 個'。design 靜默偏離",
+    "suggested_fix": "選一:(a) 實作 E7 verbatim + window=lookback_days,或 (b) 更新 brainstorm E7 + design §8.4 記錄 window=20 選擇理由(StockCharts 慣例)",
+    "rationale": "brainstorm 是 Phase 0 design of record,silent divergence 破 reflexivity audit trail"
+  },
+  {
+    "id": "F5",
+    "severity": "P1",
+    "location": "design.md §4.2 vs brainstorm.md E2/E4",
+    "problem": "只 4/8 edge case 明確 address。E2(新上市股某日無 daily row)/ E4(連假)silent。_count_daily_ups_downs 對 missing row 是 skip/flat/crash 未定",
+    "suggested_fix": "§4.2 加 subsection:_count_daily_ups_downs 只 iterate FinMind 實際回傳 (stock_id, date) pairs,missing 排除。日期軸走實際回傳 date union",
+    "rationale": "E2 每天都會遇到,Phase 3 rushed decision 會 mismatch hand-calc fixture"
+  },
+  {
+    "id": "F6",
+    "severity": "P1",
+    "location": "design.md §4.4 stale flag",
+    "problem": "breadth fail 拉 stale=True 破壞既有 semantic — stale reserved for intraday universe / sector_map cold / watch_list;breadth 是 EOD + 24h cache,失敗不算 intraday degradation。False alarm 稀釋 banner",
+    "suggested_fix": "breadth fail → 只設 breadth=None,不動 stale。若 P5 frontend 要提示,加 breadth-panel-level fallback UI 或用 breadth.known_gaps",
+    "rationale": "stale semantic 是 P1 Phase 4 review R3 三輪打磨的載重規則"
+  },
+  {
+    "id": "F7",
+    "severity": "P2",
+    "location": "design.md §2 / §4.3",
+    "problem": "沒把 _cache_path/_read_cache/_write_cache/_is_fresh 四件 helper 寫出來,TTL 單位(hours vs seconds)Phase 3 會重新決定",
+    "suggested_fix": "§4.3.5 明訂 mirror market_universe.py 四件 helper + 24h TTL(hours 單位)+ _cache_version=1 embed",
+    "rationale": "Phase 3 impl 不重新發明"
+  }
+]

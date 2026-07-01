@@ -1,0 +1,42 @@
+[
+  {
+    "id": "F1",
+    "severity": "P1",
+    "location": "implementation.md Task 8 Step 3",
+    "problem": "except (httpx.HTTPError, ValueError) 用了 httpx 但 finmind_realtime.py 沒 import httpx,green step NameError",
+    "resolution": "accepted",
+    "fix": "Task 8 Step 3 加 explicit 'add import httpx to finmind_realtime.py' sub-step + Files/Modify 段標明"
+  },
+  {
+    "id": "F2",
+    "severity": "P2",
+    "location": "implementation.md Task 6 test_compute_breadth_shape fixture",
+    "problem": "40 天 fixture 每股減去無 prev 首日 = 39 count = 剛好等於 _SLOW_EMA_PERIOD,mcclellan 只 1 non-None,razor-thin",
+    "resolution": "accepted",
+    "fix": "改為 60 天(2026-04-01 + i days),留 20+ mcclellan valid points"
+  },
+  {
+    "id": "F3",
+    "severity": "P2",
+    "location": "implementation.md IR2 / Task 6 fetcher coverage",
+    "problem": "_do_fetch_taiex 兩 sid fallback loop / empty check / cache write on double fail 全無 unit test;IR2 誤稱 有 unit test",
+    "resolution": "accepted (choice a)",
+    "fix": "Task 6 加 test_fetch_taiex_series_all_sid_fail_returns_empty:monkeypatch mb.get_finmind → fake client 兩次都回 [],assert 回 [] + cache 有寫"
+  },
+  {
+    "id": "F4",
+    "severity": "P2",
+    "location": "implementation.md Task 1-8 Step 5 (commit strategy)",
+    "problem": "Task 1 Step 5 前塊命令 stage 兩檔用 [red] tag + 🟢 emoji,矛盾;應統一 [red] 用 🔴、[green] 用 🟢",
+    "resolution": "accepted",
+    "fix": "刪 Task 1 Step 5 前塊;所有 Task 統一 [red] commit 用 🔴、[green] 用 🟢"
+  },
+  {
+    "id": "F5",
+    "severity": "P2",
+    "location": "implementation.md Task 8 test style",
+    "problem": "既有 test_finmind_realtime.py 全用 `with patch(...) + AsyncMock` 慣例,plan sample 用 `monkeypatch.setattr` 混風格",
+    "resolution": "accepted",
+    "fix": "Task 8 Step 1 改成 with patch + AsyncMock idiom"
+  }
+]

@@ -1,0 +1,35 @@
+{
+  "slug": "market-breadth-mcclellan",
+  "start_sha": "1e4cc82",
+  "branch": "feat/market-breadth-mcclellan",
+  "worktree_path": null,
+  "current_phase": 8,
+  "completed_phases": [-1, 0, 1, 2, 3, 4, 5, 6, 7],
+  "scope": "M",
+  "pending_review_rounds": {
+    "phase_1": 0,
+    "phase_2": 0,
+    "phase_4": 0
+  },
+  "blockers": [],
+  "last_updated": "2026-07-01T00:10:00+08:00",
+  "project_shape": "backend-only",
+  "last_commit_sha": null,
+  "final_merge_sha": null,
+  "sc_cycle_counts": {
+    "SC-1": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-2": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-3": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 1, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 1 },
+    "SC-4": { "phase_1": 1, "phase_2": 0, "phase_3": 1, "phase_4": 1, "phase_5": 0, "phase_6": 1, "phase_7": 0, "total": 4 },
+    "SC-5": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 1, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 1 },
+    "SC-6": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 1, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 1 },
+    "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 1, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 1 }
+  },
+  "paused": null,
+  "known_gaps": {
+    "G1": "McClellan ±100 thrust threshold calibrated for US ~3000 issues; TW ~1000 issues may need V2.5 backtest calibration",
+    "G2": "TAIEX stock_id in FinMind: probe 'TAIEX' first, fallback '0001'; if both fail, divergence_dot=null path (SC-5)",
+    "KG3": "First-fetch cost ~257s (per-trading-day loop, 100+ FinMind calls at sponsor 5-15/s). 24h cache TTL amortizes to ~11s on subsequent /api/market/snapshot calls. V2.5 mitigation options: warmer cron job, shrink default lookback, or find dataset that honours date range without data_id."
+  },
+  "context_note": "Phase 2 of market-monitor-v2 spec (spec.md §6.3 + plan.md Phase 2). P1 universe filter merged in PR #10, reuse via injection (no refactor)."
+}
