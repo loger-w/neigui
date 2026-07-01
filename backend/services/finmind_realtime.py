@@ -24,6 +24,8 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+import httpx
+
 from services.finmind import get_finmind
 from services.market_universe import fetch_disposition_stocks, filter_universe
 from services.trading_calendar import get_trading_days
@@ -365,6 +367,24 @@ async def _fetch_watch_list(refresh: bool = False) -> set[str]:
     return await fetch_disposition_stocks(refresh=refresh)
 
 
+async def _fetch_breadth(
+    end_date: date,
+    universe: set[str],
+    refresh: bool = False,
+) -> dict | None:
+    """market-monitor-v2 P2 (SC-6) — delegate to market_breadth.compute_breadth.
+
+    Empty universe → None(silent skip,不 raise)。
+    Exception path 由 caller 用 try/except (httpx.HTTPError, ValueError) 處理(F6:
+    breadth fail 不動 stale,是 EOD data ≠ intraday degradation)。
+    """
+    if not universe:
+        return None
+    from services import market_breadth as mb  # 延 import 避 potential circular
+
+    return await mb.compute_breadth(end_date, universe, refresh=refresh)
+
+
 async def _fetch_market_value_map(
     today: date | None = None,
     refresh: bool = False,
@@ -522,6 +542,15 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     # 處置股無任何提示。
     stale = isinstance(universe_res, BaseException) or sector_degraded or watch_degraded
 
+    # market-monitor-v2 P2 (SC-6) — breadth (McClellan Oscillator + AD Line)
+    # F6: breadth compute fail (EOD data) 不動 stale;stale 保留給 intraday
+    # (universe / sector_map / watch_list) 三個訊號。
+    try:
+        breadth = await _fetch_breadth(clock.today(), allowed, refresh=refresh)
+    except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("market snapshot: breadth compute failed: %s", exc)
+        breadth = None
+
     return {
         "as_of": now.isoformat(),
         "last_tick": last_tick.isoformat() if last_tick else None,
@@ -537,4 +566,6 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
             "warrant": len(excluded["warrant"]),
             "watch_list": len(excluded["watch_list"]),
         },
+        # market-monitor-v2 P2 (SC-6) — breadth field (None if compute failed)
+        "breadth": breadth,
     }
