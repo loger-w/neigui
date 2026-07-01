@@ -1,0 +1,40 @@
+{
+  "raw_count": 11,
+  "deduped_count": 11,
+  "confirmed_after_verify": 3,
+  "findings": [
+    {
+      "id": "TC-1",
+      "severity": "P1",
+      "location": "backend/tests/test_sector_aggregation.py :: TestConstantsLock",
+      "problem": "T35 locks _SLOW_EMA_PERIOD=39 + _DEFAULT_LOOKBACK_DAYS=60 individually but does NOT lock the pad multiplier 2.0. If P2 refactors compute_breadth pad formula to 2.5, cache_key drifts silently between P2 and P3.",
+      "resolution": "accepted",
+      "action": "Add T36: patch mb._fetch_daily_prices_window and mb._fetch_taiex_series; run both mb.compute_breadth and sa.compute_sector_breadth for same end_date; assert both fetcher calls see identical (start, end) tuple."
+    },
+    {
+      "id": "TC-2",
+      "severity": "P2",
+      "location": "backend/services/sector_aggregation.py :: compute_sector_breadth / compute_sector_volume_ratio",
+      "problem": "No orchestrator test verifies refresh=True propagates to _fetch_prices_window. Delegate test only covers the shim. If refresh hardcoded to False during refactor, tests pass but frontend refresh() breaks silently.",
+      "resolution": "accepted",
+      "action": "Add T-refresh spy tests for both orchestrators."
+    },
+    {
+      "id": "TC-4",
+      "severity": "P2",
+      "location": "backend/services/sector_aggregation.py :: _aggregate_sector_volume_ratio",
+      "problem": "Flag thresholds tested at 2.0/0.5 but not at exact strict-inequality boundaries 1.5 and 0.7. A > → >= inversion would slip past all existing tests.",
+      "resolution": "accepted",
+      "action": "Add T-boundary tests at exactly 1.5 (must be None) and 0.7 (must be None)."
+    }
+  ],
+  "refuted_not_actioned": [
+    {
+      "id": "SEC-AGG-01 / C1",
+      "severity": "P2",
+      "problem": "P3 catch narrower than P2 (httpx.HTTPError only vs P2's (httpx.HTTPError, ValueError))",
+      "resolution": "rejected_with_reason",
+      "reasoning": "This directly contradicts design v2 Phase 1 review F6 accepted resolution. F6 argued: after design v2 F3 (empty prices → []), universe_empty raise is dead-coded via wrapper gate; catching ValueError is defensive noise. Two adversarial verifiers refuted the finding. Keep narrower catch; if future refactor introduces ValueError source, add specific catch then. Documented in design.md §4.4 already."
+    }
+  ]
+}
