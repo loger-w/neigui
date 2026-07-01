@@ -385,6 +385,42 @@ async def _fetch_breadth(
     return await mb.compute_breadth(end_date, universe, refresh=refresh)
 
 
+async def _fetch_sector_breadth(
+    end_date: date,
+    universe: set[str],
+    sector_map: dict[str, str],
+    refresh: bool = False,
+) -> list[dict] | None:
+    """market-monitor-v2 P3 (SC-6) — delegate to sector_aggregation.compute_sector_breadth.
+
+    Empty universe → None (silent skip). F6 sequel: exceptions propagate to
+    caller's try/except httpx.HTTPError only (design v2 F3: aggregation returns
+    [] on empty prices instead of raising).
+    """
+    if not universe:
+        return None
+    from services import sector_aggregation as sa
+
+    return await sa.compute_sector_breadth(end_date, universe, sector_map, refresh=refresh)
+
+
+async def _fetch_sector_volume_ratio(
+    end_date: date,
+    universe: set[str],
+    sector_map: dict[str, str],
+    refresh: bool = False,
+) -> list[dict] | None:
+    """market-monitor-v2 P3 (SC-6) — delegate to sector_aggregation.compute_sector_volume_ratio。
+
+    Empty universe → None (silent skip)。同 _fetch_sector_breadth F6 sequel。
+    """
+    if not universe:
+        return None
+    from services import sector_aggregation as sa
+
+    return await sa.compute_sector_volume_ratio(end_date, universe, sector_map, refresh=refresh)
+
+
 async def _fetch_market_value_map(
     today: date | None = None,
     refresh: bool = False,
@@ -551,6 +587,25 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
         logger.warning("market snapshot: breadth compute failed: %s", exc)
         breadth = None
 
+    # market-monitor-v2 P3 (SC-6) — sector_breadth (F6 sequel: fail 不動 stale)
+    # F6 review: only httpx.HTTPError after design v2 F3 fix (empty prices → [] instead of ValueError)
+    try:
+        sector_breadth = await _fetch_sector_breadth(
+            clock.today(), allowed, primary_sector, refresh=refresh
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("market snapshot: sector_breadth compute failed: %s", exc)
+        sector_breadth = None
+
+    # market-monitor-v2 P3 (SC-6) — sector_volume_ratio (independent try/except from sector_breadth)
+    try:
+        sector_volume_ratio = await _fetch_sector_volume_ratio(
+            clock.today(), allowed, primary_sector, refresh=refresh
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("market snapshot: sector_volume_ratio compute failed: %s", exc)
+        sector_volume_ratio = None
+
     return {
         "as_of": now.isoformat(),
         "last_tick": last_tick.isoformat() if last_tick else None,
@@ -568,4 +623,7 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
         },
         # market-monitor-v2 P2 (SC-6) — breadth field (None if compute failed)
         "breadth": breadth,
+        # market-monitor-v2 P3 (SC-6) — sector aggregations (None if compute failed)
+        "sector_breadth": sector_breadth,
+        "sector_volume_ratio": sector_volume_ratio,
     }
