@@ -17,6 +17,7 @@ from typing import TypedDict
 
 import httpx
 
+from services.trading_calendar import get_trading_days
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
 
 logger = logging.getLogger(__name__)
@@ -327,20 +328,57 @@ async def _fetch_daily_prices_window(
 
 
 async def _do_fetch_prices(start: date, end: date, cache_key: str) -> list[dict]:
+    """Fetch TaiwanStockPrice全 universe over [start, end] window.
+
+    Phase 6 real-env finding (2026-07-01):FinMind TaiwanStockPrice **without
+    data_id** ignores `start_date`/`end_date` range and only returns rows for
+    `start_date` (single day). Design v2 §8.1 假設打紅 → 改 per-trading-day loop:
+    每個交易日 1 call,累積 rows。100 天 × 15 req/s = ~7s first-fetch,24h
+    cache 攤還後續 request 幾乎零成本。
+    """
     client = get_finmind()
-    rows = await client._get(  # type: ignore[attr-defined]
-        f"{_FINMIND_BASE}/data",
-        {
-            "dataset": "TaiwanStockPrice",
-            "start_date": start.isoformat(),
-            "end_date": end.isoformat(),
-        },
-    )
+    # 拿 [start, end] 之間的 trading days;get_trading_days(end, n) 回最近 n 天,
+    # 拿 300 天足以涵蓋 default window (200 pad) 之後 filter 到 [start, end]。
+    recent = await get_trading_days(end, 300)
+    trading_days = sorted(d for d in recent if start <= d <= end)
+    if not trading_days:
+        logger.warning(
+            "market_breadth: no trading days in window %s..%s",
+            start.isoformat(),
+            end.isoformat(),
+        )
+        _write_cache(
+            cache_key,
+            {"rows": [], "fetched_at": datetime.now().isoformat(timespec="seconds")},
+        )
+        return []
+
+    all_rows: list[dict] = []
+    for td in trading_days:
+        try:
+            rows = await client._get(  # type: ignore[attr-defined]
+                f"{_FINMIND_BASE}/data",
+                {
+                    "dataset": "TaiwanStockPrice",
+                    "start_date": td.isoformat(),
+                    "end_date": td.isoformat(),
+                },
+            )
+        except httpx.HTTPError as exc:
+            # 單日 fail 不 abort 整 window(spec §F narrow except:continue
+            # 對其他 trading day 是唯一具體處理策略,不是 swallow)
+            logger.warning(
+                "market_breadth: daily price fetch failed for %s: %s",
+                td.isoformat(),
+                exc,
+            )
+            continue
+        all_rows.extend(rows)
     _write_cache(
         cache_key,
-        {"rows": rows, "fetched_at": datetime.now().isoformat(timespec="seconds")},
+        {"rows": all_rows, "fetched_at": datetime.now().isoformat(timespec="seconds")},
     )
-    return rows
+    return all_rows
 
 
 async def _fetch_taiex_series(
