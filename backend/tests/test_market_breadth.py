@@ -311,7 +311,8 @@ class TestFetchTaiexSeriesFallback:
 
         assert result == []
         assert calls == ["TAIEX", "0001"]
-        cached = mb._read_cache(f"breadth_taiex_{end.isoformat()}")
+        # F2 fix: cache_key now encodes start too
+        cached = mb._read_cache(f"breadth_taiex_{start.isoformat()}_{end.isoformat()}")
         assert cached is not None
         assert cached["rows"] == []
 
