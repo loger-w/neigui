@@ -691,3 +691,86 @@ async def test_snapshot_watch_list_fetch_failure_does_not_block() -> None:
         "watch_list fetch fail 時 stale 必須 True,讓 frontend banner 警示"
         "處置股過濾不可用"
     )
+
+
+# ---------------------------------------------------------------------------
+# market-monitor-v2 P2 (SC-6) — breadth field integration
+# Design: .claude/feat/market-breadth-mcclellan/design.md v2 §4.4
+# ---------------------------------------------------------------------------
+
+
+_FAKE_BREADTH_PAYLOAD = {
+    "ad_line_value": 100.0,
+    "mcclellan_oscillator": 20.0,
+    "ad_line_series": [{"date": "2026-06-30", "value": 100.0}],
+    "mcclellan_series": [{"date": "2026-06-30", "value": 20.0}],
+    "thrust_dot": None,
+    "centerline_cross": None,
+    "divergence_dot": None,
+    "known_gaps": [],
+}
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_payload_adds_breadth() -> None:
+    """SC-6: snapshot payload 追加 `breadth` 欄位 + 舊 4 panel 完整 + universe_size / excluded_count 完整。"""
+    fake_universe = [{
+        "stock_id": "2330", "close": 2390, "change_rate": 1.92,
+        "total_amount": 36e9, "volume_ratio": 1.14,
+        "date": "2026-06-29 10:30:00.123456",
+    }]
+    fake_sector_rows = [{
+        "stock_id": "2330", "industry_category": "半導體業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+    }]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)):
+        result = await fetch_market_snapshot(refresh=False)
+
+    # P2 new field
+    assert result["breadth"] == _FAKE_BREADTH_PAYLOAD
+    # P1 fields 完整
+    assert "universe_size" in result
+    assert "excluded_count" in result
+    # 舊 4 panel 完整
+    assert {"gainers", "losers", "amount", "volume_ratio"} <= set(result["leaderboards"].keys())
+    # F6: breadth ok → stale 邏輯不變(此 case 都健康 → False)
+    assert result["stale"] is False
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_breadth_fail_does_not_flip_stale() -> None:
+    """F6: breadth compute fail → breadth=None,不拉 stale (EOD data ≠ intraday degradation)。"""
+    import httpx
+
+    fake_universe = [{
+        "stock_id": "2330", "close": 2390, "change_rate": 1.92,
+        "total_amount": 36e9, "volume_ratio": 1.14,
+        "date": "2026-06-29 10:30:00.123456",
+    }]
+    fake_sector_rows = [{
+        "stock_id": "2330", "industry_category": "半導體業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+    }]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(side_effect=httpx.HTTPError("simulated"))):
+        result = await fetch_market_snapshot(refresh=False)
+
+    assert result["breadth"] is None
+    assert result["stale"] is False  # F6 lock — breadth fail 不動 stale
