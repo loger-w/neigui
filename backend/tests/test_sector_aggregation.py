@@ -595,6 +595,37 @@ class TestConstantsLock:
             f"cache_key drift! P2 fetch: {seen_prices[0]}, P3 fetch: {seen_prices[1]}"
         )
 
+    async def test_T37_p4_amount_share_shares_fetch_window(self, monkeypatch) -> None:
+        """P4 (SC-5) cache_key reuse lock — compute_sector_amount_share must derive
+        the SAME (start, end) as P2 compute_breadth (CLAUDE.md §9: 常數同值 +
+        公式同構兩者都要 lock). Pattern mirrors T36; taiex also patched (design v2 F4)."""
+        from unittest.mock import patch as _patch
+
+        from services import market_breadth as mb
+
+        seen_prices: list[tuple[date, date]] = []
+
+        async def spy_prices(start, end, refresh=False):
+            seen_prices.append((start, end))
+            return []
+
+        async def spy_taiex(start, end, refresh=False):
+            return []
+
+        end = date(2026, 6, 30)
+        universe = {"2330"}
+        sector_map = {"2330": "半導體業"}
+
+        with _patch("services.market_breadth._fetch_daily_prices_window", side_effect=spy_prices), \
+             _patch("services.market_breadth._fetch_taiex_series", side_effect=spy_taiex):
+            await mb.compute_breadth(end, universe)
+            await sa.compute_sector_amount_share(end, universe, sector_map)
+
+        assert len(seen_prices) == 2  # once by P2 breadth, once by P4 amount_share
+        assert seen_prices[0] == seen_prices[1], (
+            f"cache_key drift! P2 fetch: {seen_prices[0]}, P4 fetch: {seen_prices[1]}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # httpx.HTTPError propagation through orchestrator (SC-4/5 fetcher failure)
@@ -730,3 +761,318 @@ class TestFlagThresholdBoundary:
         by_stock = _build_by_stock(rows, {"2330"})
         out = sa._aggregate_sector_volume_ratio(by_stock, {"2330": "半導體業"})
         assert out[0]["flag"] == "cold"
+
+
+# ---------------------------------------------------------------------------
+# P4 — sector amount share (market-sector-amount-share)
+# Design: .claude/feat/market-sector-amount-share/design.md v2
+# Implementation: .claude/feat/market-sector-amount-share/implementation/sector_aggregation.md
+# Phase 3 TDD [red] batch — SC-1 (A1~A5 extract), SC-2 (A6~A10 today_share),
+# SC-3 (A11~A15 share_delta), SC-4 (A16~A17 sort), SC-5 (A18~A23 orchestrator).
+# ---------------------------------------------------------------------------
+
+# P4 canonical weekday dates (2026-06-22 Mon .. 2026-06-26 Fri; 06-28 Sun)
+_D_MON = date(2026, 6, 22)
+_D_TUE = date(2026, 6, 23)
+_D_WED = date(2026, 6, 24)
+_D_THU = date(2026, 6, 25)
+_D_FRI = date(2026, 6, 26)
+_D_SUN = date(2026, 6, 28)
+
+
+def _amt_row(
+    stock_id: str,
+    d: date,
+    amount: float | None,
+    *,
+    close: float | None = 100.0,
+) -> dict:
+    """Price row with Trading_money; amount=None omits the field.
+
+    close=None omits close (A5 locks close-independence of the P4 extract).
+    """
+    row: dict = {"stock_id": stock_id, "date": d.isoformat()}
+    if close is not None:
+        row["close"] = close
+    if amount is not None:
+        row["Trading_money"] = amount
+    return row
+
+
+class TestExtractAmountByStock:
+    def test_A1_nested_dict_shape(self) -> None:
+        rows = []
+        for d in (_D_WED, _D_THU, _D_FRI):
+            rows.append(_amt_row("2330", d, 1000.0))
+            rows.append(_amt_row("2317", d, 500.0))
+            rows.append(_amt_row("2454", d, 300.0))
+        out = sa._extract_amount_by_stock(rows, {"2330", "2317", "2454"})
+        assert set(out.keys()) == {"2330", "2317", "2454"}
+        assert out["2330"][_D_WED] == 1000.0
+        assert out["2454"][_D_FRI] == 300.0
+        assert isinstance(out["2317"][_D_THU], float)
+
+    def test_A2_stock_not_in_universe_dropped(self) -> None:
+        rows = [_amt_row("2330", _D_FRI, 1000.0), _amt_row("0050", _D_FRI, 900.0)]
+        out = sa._extract_amount_by_stock(rows, {"2330"})
+        assert set(out.keys()) == {"2330"}
+
+    def test_A3_row_missing_date_or_sid_skipped(self) -> None:
+        rows = [
+            {"stock_id": "2330", "close": 100.0, "Trading_money": 1000.0},  # no date
+            {"date": _D_FRI.isoformat(), "close": 100.0, "Trading_money": 1000.0},  # no sid
+            {"stock_id": "2330", "date": "not-a-date", "Trading_money": 1000.0},
+            _amt_row("2330", _D_FRI, 500.0),
+        ]
+        out = sa._extract_amount_by_stock(rows, {"2330"})
+        assert out == {"2330": {_D_FRI: 500.0}}
+
+    def test_A4_duplicate_same_sid_date_later_wins(self) -> None:
+        rows = [_amt_row("2330", _D_FRI, 100.0), _amt_row("2330", _D_FRI, 999.0)]
+        out = sa._extract_amount_by_stock(rows, {"2330"})
+        assert out["2330"][_D_FRI] == 999.0
+
+    def test_A5_missing_trading_money_zero_and_close_independent(self) -> None:
+        rows = [
+            _amt_row("2330", _D_THU, None),  # missing Trading_money -> 0.0, row kept
+            _amt_row("2330", _D_FRI, 700.0, close=None),  # missing close -> still kept
+            {"stock_id": "2317", "date": _D_FRI.isoformat(),
+             "Trading_money": "not-a-number"},  # non-numeric -> 0.0
+        ]
+        out = sa._extract_amount_by_stock(rows, {"2330", "2317"})
+        assert out["2330"][_D_THU] == 0.0
+        assert out["2330"][_D_FRI] == 700.0
+        assert out["2317"][_D_FRI] == 0.0
+
+
+class TestAggregateSectorAmountShare:
+    _MAP3 = {"2330": "半導體業", "2317": "電子零組件業", "2603": "航運業"}
+
+    def test_A6_today_share_hand_computed(self) -> None:
+        by_stock = {
+            "2330": {_D_FRI: 400.0},
+            "2317": {_D_FRI: 300.0},
+            "2603": {_D_FRI: 300.0},
+        }
+        out = sa._aggregate_sector_amount_share(by_stock, self._MAP3)
+        # 0.4 first; 0.3 tie -> sector ASC (航運業 U+822A < 電子零組件業 U+96FB)
+        assert [r["sector"] for r in out] == ["半導體業", "航運業", "電子零組件業"]
+        assert out[0]["today_share"] == pytest.approx(0.4)
+        assert out[1]["today_share"] == pytest.approx(0.3)
+        assert sum(r["today_share"] for r in out) == pytest.approx(1.0)
+        assert all(r["share_delta_20ma"] is None for r in out)  # no history
+
+    def test_A7_sector_today_zero_absent(self) -> None:
+        by_stock = {
+            "2330": {_D_THU: 100.0, _D_FRI: 400.0},
+            "2317": {_D_THU: 900.0},  # no row today -> absent
+        }
+        out = sa._aggregate_sector_amount_share(by_stock, self._MAP3)
+        assert [r["sector"] for r in out] == ["半導體業"]
+        assert out[0]["today_share"] == pytest.approx(1.0)
+
+    def test_A8_today_total_zero_returns_empty(self) -> None:
+        # T-E2 / KG7 lock — rows exist today but all Trading_money = 0
+        by_stock = {
+            "2330": {_D_THU: 100.0, _D_FRI: 0.0},
+            "2317": {_D_THU: 900.0, _D_FRI: 0.0},
+        }
+        out = sa._aggregate_sector_amount_share(by_stock, self._MAP3)
+        assert out == []
+
+    def test_A9_sector_map_fallback_other(self) -> None:
+        by_stock = {"9999": {_D_FRI: 250.0}, "2330": {_D_FRI: 750.0}}
+        out = sa._aggregate_sector_amount_share(by_stock, {"2330": "半導體業"})
+        assert [r["sector"] for r in out] == ["半導體業", "其他"]
+        assert out[1]["today_share"] == pytest.approx(0.25)
+
+    def test_A10_empty_by_stock_returns_empty(self) -> None:
+        assert sa._aggregate_sector_amount_share({}, self._MAP3) == []
+
+    def _four_day_two_sector(self) -> dict[str, dict[date, float]]:
+        # past 3 days share_半導體 = 0.25 (250/1000); today share = 0.4 (400/1000)
+        return {
+            "2330": {_D_MON: 250.0, _D_TUE: 250.0, _D_WED: 250.0, _D_THU: 400.0},
+            "2317": {_D_MON: 750.0, _D_TUE: 750.0, _D_WED: 750.0, _D_THU: 600.0},
+        }
+
+    def test_A11_share_delta_positive_hand_computed(self) -> None:
+        out = sa._aggregate_sector_amount_share(
+            self._four_day_two_sector(), self._MAP3, avg_window=3
+        )
+        semi = next(r for r in out if r["sector"] == "半導體業")
+        assert semi["today_share"] == pytest.approx(0.4)
+        assert semi["share_delta_20ma"] == pytest.approx(0.15)  # 0.4 - mean(0.25 x3)
+
+    def test_A12_share_delta_negative(self) -> None:
+        out = sa._aggregate_sector_amount_share(
+            self._four_day_two_sector(), self._MAP3, avg_window=3
+        )
+        elec = next(r for r in out if r["sector"] == "電子零組件業")
+        assert elec["today_share"] == pytest.approx(0.6)
+        assert elec["share_delta_20ma"] == pytest.approx(-0.15)  # 0.6 - mean(0.75 x3)
+
+    def test_A13_new_sector_insufficient_history_delta_none(self) -> None:
+        # E1 — 電子零組件業 has only 2 past days (avg_window=3) -> delta None
+        by_stock = {
+            "2330": {_D_MON: 250.0, _D_TUE: 250.0, _D_WED: 250.0, _D_THU: 400.0},
+            "2317": {_D_TUE: 750.0, _D_WED: 750.0, _D_THU: 600.0},
+        }
+        out = sa._aggregate_sector_amount_share(by_stock, self._MAP3, avg_window=3)
+        elec = next(r for r in out if r["sector"] == "電子零組件業")
+        semi = next(r for r in out if r["sector"] == "半導體業")
+        assert elec["today_share"] == pytest.approx(0.6)
+        assert elec["share_delta_20ma"] is None
+        assert semi["share_delta_20ma"] is not None
+
+    def test_A14_past_day_total_zero_skipped(self) -> None:
+        # T-E3 — IF1 fixture constraints:
+        # 1) zero-total day built with rows present but Trading_money=0 (not missing rows)
+        # 2) zero day (_D_WED) inside the most recent avg_window(3) past days
+        #    (THU, WED, TUE) — a buggy impl without the total>0 filter hits 0/0 here
+        by_stock = {
+            "2330": {_D_MON: 250.0, _D_TUE: 250.0, _D_WED: 0.0, _D_THU: 250.0, _D_FRI: 400.0},
+            "2317": {_D_MON: 750.0, _D_TUE: 750.0, _D_WED: 0.0, _D_THU: 750.0, _D_FRI: 600.0},
+        }
+        out = sa._aggregate_sector_amount_share(by_stock, self._MAP3, avg_window=3)
+        semi = next(r for r in out if r["sector"] == "半導體業")
+        # valid past days = THU, TUE, MON (WED skipped) -> mean 0.25 -> delta +0.15
+        assert semi["share_delta_20ma"] == pytest.approx(0.15)
+
+        # 對照組:3 past days with 1 zero-total day -> only 2 valid < 3 -> None
+        by_stock2 = {
+            "2330": {_D_MON: 250.0, _D_TUE: 0.0, _D_WED: 250.0, _D_THU: 400.0},
+            "2317": {_D_MON: 750.0, _D_TUE: 0.0, _D_WED: 750.0, _D_THU: 600.0},
+        }
+        out2 = sa._aggregate_sector_amount_share(by_stock2, self._MAP3, avg_window=3)
+        semi2 = next(r for r in out2 if r["sector"] == "半導體業")
+        assert semi2["today_share"] == pytest.approx(0.4)
+        assert semi2["share_delta_20ma"] is None
+
+    def test_A15_window_excludes_today(self) -> None:
+        # brainstorm 抉擇 3 — including today would give mean(0.4, 0.25) = 0.325
+        # -> delta 0.075; correct (exclude today) -> 0.4 - 0.25 = 0.15
+        by_stock = {
+            "2330": {_D_TUE: 250.0, _D_WED: 250.0, _D_THU: 400.0},
+            "2317": {_D_TUE: 750.0, _D_WED: 750.0, _D_THU: 600.0},
+        }
+        out = sa._aggregate_sector_amount_share(by_stock, self._MAP3, avg_window=2)
+        semi = next(r for r in out if r["sector"] == "半導體業")
+        assert semi["share_delta_20ma"] == pytest.approx(0.15)
+
+    def test_A16_sort_today_share_desc(self) -> None:
+        by_stock = {
+            "2330": {_D_FRI: 500.0},
+            "2317": {_D_FRI: 300.0},
+            "2603": {_D_FRI: 200.0},
+        }
+        out = sa._aggregate_sector_amount_share(by_stock, self._MAP3)
+        assert [r["sector"] for r in out] == ["半導體業", "電子零組件業", "航運業"]
+
+    def test_A17_sort_tie_break_sector_asc(self) -> None:
+        by_stock = {
+            "1101": {_D_FRI: 350.0},
+            "2603": {_D_FRI: 350.0},
+            "2330": {_D_FRI: 300.0},
+        }
+        sector_map = {"1101": "水泥工業", "2603": "航運業", "2330": "半導體業"}
+        out = sa._aggregate_sector_amount_share(by_stock, sector_map)
+        # 0.35 tie -> 水泥工業 (U+6C34) < 航運業 (U+822A)
+        assert [r["sector"] for r in out] == ["水泥工業", "航運業", "半導體業"]
+
+
+class TestComputeSectorAmountShareOrchestrator:
+    _MAP2 = {"2330": "半導體業", "2317": "電子零組件業"}
+
+    async def test_A18_orchestrator_shape(self, monkeypatch) -> None:
+        rows: list[dict] = []
+        day_amts = {
+            _D_MON: (250.0, 750.0),
+            _D_TUE: (250.0, 750.0),
+            _D_WED: (250.0, 750.0),
+            _D_THU: (400.0, 600.0),
+        }
+        for d, (a_amt, b_amt) in day_amts.items():
+            rows.append(_amt_row("2330", d, a_amt))
+            rows.append(_amt_row("2317", d, b_amt))
+
+        async def stub(start, end, refresh=False):
+            return rows
+
+        monkeypatch.setattr(sa, "_fetch_prices_window", stub)
+        out = await sa.compute_sector_amount_share(
+            end_date=_D_THU,
+            universe={"2330", "2317"},
+            sector_map=self._MAP2,
+            avg_window=3,
+        )
+        assert [r["sector"] for r in out] == ["電子零組件業", "半導體業"]
+        assert set(out[0].keys()) == {"sector", "today_share", "share_delta_20ma"}
+        assert out[0]["today_share"] == pytest.approx(0.6)
+        assert out[1]["share_delta_20ma"] == pytest.approx(0.15)
+
+    async def test_A19_empty_universe_raises(self) -> None:
+        with pytest.raises(ValueError, match="universe_empty"):
+            await sa.compute_sector_amount_share(
+                end_date=_D_THU, universe=set(), sector_map=self._MAP2
+            )
+
+    async def test_A20_empty_prices_returns_empty(self, monkeypatch) -> None:
+        async def empty_fetch(start, end, refresh=False):
+            return []
+
+        monkeypatch.setattr(sa, "_fetch_prices_window", empty_fetch)
+        out = await sa.compute_sector_amount_share(
+            end_date=_D_THU, universe={"2330"}, sector_map=self._MAP2
+        )
+        assert out == []
+
+    async def test_A21_httpx_error_propagates(self, monkeypatch) -> None:
+        async def failing_fetch(start, end, refresh=False):
+            raise httpx.HTTPError("fetch failed")
+
+        monkeypatch.setattr(sa, "_fetch_prices_window", failing_fetch)
+        with pytest.raises(httpx.HTTPError):
+            await sa.compute_sector_amount_share(
+                end_date=_D_THU, universe={"2330"}, sector_map=self._MAP2
+            )
+
+    async def test_A22_refresh_forwarded(self, monkeypatch) -> None:
+        seen: list[bool] = []
+
+        async def recording_fetch(start, end, refresh=False):
+            seen.append(refresh)
+            return []
+
+        monkeypatch.setattr(sa, "_fetch_prices_window", recording_fetch)
+        await sa.compute_sector_amount_share(
+            end_date=_D_THU, universe={"2330"}, sector_map=self._MAP2, refresh=True
+        )
+        assert seen == [True]
+
+    async def test_A23_end_date_on_weekend_uses_max_date(self, monkeypatch) -> None:
+        # T-E6 — end_date Sunday, latest fixture row Friday -> today_date = Friday (F7)
+        rows: list[dict] = []
+        day_amts = {
+            _D_TUE: (100.0, 900.0),
+            _D_WED: (100.0, 900.0),
+            _D_THU: (100.0, 900.0),
+            _D_FRI: (400.0, 600.0),
+        }
+        for d, (a_amt, b_amt) in day_amts.items():
+            rows.append(_amt_row("2330", d, a_amt))
+            rows.append(_amt_row("2317", d, b_amt))
+
+        async def stub(start, end, refresh=False):
+            return rows
+
+        monkeypatch.setattr(sa, "_fetch_prices_window", stub)
+        out = await sa.compute_sector_amount_share(
+            end_date=_D_SUN,
+            universe={"2330", "2317"},
+            sector_map=self._MAP2,
+            avg_window=3,
+        )
+        semi = next(r for r in out if r["sector"] == "半導體業")
+        assert semi["today_share"] == pytest.approx(0.4)  # Friday used as today
+        assert semi["share_delta_20ma"] == pytest.approx(0.3)
