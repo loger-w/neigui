@@ -7,11 +7,12 @@ shape comes back from those handlers.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from services import clock
 from services.finmind import get_finmind
 from services.finmind_options import list_active_contracts
+from utils.cancel import run_with_disconnect
 
 router = APIRouter()
 
@@ -57,13 +58,14 @@ def _require_contract(contract: str) -> dict:
 
 @router.get("/api/options/oi_large_traders")
 async def get_oi_large_traders(
+    request: Request,
     contract: str = Query(default=""),
     date: str = Query(default=""),
     refresh: bool = Query(default=False),
 ) -> dict:
     c = _require_contract(contract)
     d = date or _today_str()
-    out = await get_finmind().fetch_oi_large_traders(c, d, refresh)
+    out = await run_with_disconnect(request, get_finmind().fetch_oi_large_traders(c, d, refresh))
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
     return out
@@ -71,11 +73,12 @@ async def get_oi_large_traders(
 
 @router.get("/api/options/spot")
 async def get_spot(
+    request: Request,
     date: str = Query(default=""),
     refresh: bool = Query(default=False),
 ) -> dict:
     d = date or _today_str()
-    out = await get_finmind().fetch_spot(d, refresh)
+    out = await run_with_disconnect(request, get_finmind().fetch_spot(d, refresh))
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
     return out
@@ -83,13 +86,14 @@ async def get_spot(
 
 @router.get("/api/options/strike_volume")
 async def get_strike_volume(
+    request: Request,
     contract: str = Query(default=""),
     date: str = Query(default=""),
     refresh: bool = Query(default=False),
 ) -> dict:
     c = _require_contract(contract)
     d = date or _today_str()
-    out = await get_finmind().fetch_strike_volume(c, d, refresh)
+    out = await run_with_disconnect(request, get_finmind().fetch_strike_volume(c, d, refresh))
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
     return out
@@ -117,6 +121,7 @@ def _validate_lookback(lookback: int, period_days: int) -> None:
 
 @router.get("/api/options/max_pain")
 async def get_max_pain(
+    request: Request,
     contract: str = Query(default=""),
     date: str = Query(default=""),
     refresh: bool = Query(default=False),
@@ -126,7 +131,9 @@ async def get_max_pain(
     c = _require_contract(contract)
     _validate_lookback(lookback, period_days=10)
     d = date or _today_str()
-    out = await get_finmind().fetch_max_pain(c, d, lookback=lookback, refresh=refresh)
+    out = await run_with_disconnect(
+        request, get_finmind().fetch_max_pain(c, d, lookback=lookback, refresh=refresh)
+    )
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
     return out
@@ -134,6 +141,7 @@ async def get_max_pain(
 
 @router.get("/api/options/oi_walls")
 async def get_oi_walls(
+    request: Request,
     contract: str = Query(default=""),
     date: str = Query(default=""),
     refresh: bool = Query(default=False),
@@ -144,12 +152,15 @@ async def get_oi_walls(
     c = _require_contract(contract)
     _validate_lookback(lookback, period_days=10)
     d = date or _today_str()
-    out = await get_finmind().fetch_oi_walls(
-        c,
-        d,
-        lookback=lookback,
-        delta_window=delta_window,
-        refresh=refresh,
+    out = await run_with_disconnect(
+        request,
+        get_finmind().fetch_oi_walls(
+            c,
+            d,
+            lookback=lookback,
+            delta_window=delta_window,
+            refresh=refresh,
+        ),
     )
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}
@@ -158,6 +169,7 @@ async def get_oi_walls(
 
 @router.get("/api/options/pcr")
 async def get_pcr(
+    request: Request,
     date: str = Query(default=""),
     refresh: bool = Query(default=False),
     scope: str = Query(default="all_months"),
@@ -191,14 +203,17 @@ async def get_pcr(
             )
 
     d = date or _today_str()
-    out = await get_finmind().fetch_pcr(
-        scope=scope,
-        contract=c,
-        date_str=d,
-        lookback=lookback,
-        high_pct=high_pct,
-        low_pct=low_pct,
-        refresh=refresh,
+    out = await run_with_disconnect(
+        request,
+        get_finmind().fetch_pcr(
+            scope=scope,
+            contract=c,
+            date_str=d,
+            lookback=lookback,
+            high_pct=high_pct,
+            low_pct=low_pct,
+            refresh=refresh,
+        ),
     )
 
     # N5: per_contract + weekly contract → emit warning (not 400).
@@ -217,6 +232,7 @@ async def get_pcr(
 
 @router.get("/api/options/institutional")
 async def get_institutional(
+    request: Request,
     date: str = Query(default=""),
     refresh: bool = Query(default=False),
     lookback: int = Query(default=60, ge=10, le=250),
@@ -224,11 +240,14 @@ async def get_institutional(
 ) -> dict:
     """SC-4 / SC-8: 三大法人 + foreign correlation."""
     d = date or _today_str()
-    out = await get_finmind().fetch_institutional(
-        d,
-        lookback=lookback,
-        corr_window=corr_window,
-        refresh=refresh,
+    out = await run_with_disconnect(
+        request,
+        get_finmind().fetch_institutional(
+            d,
+            lookback=lookback,
+            corr_window=corr_window,
+            refresh=refresh,
+        ),
     )
     if _is_stale_for_requested(out, d):
         out = {**out, "no_trading_day": True}

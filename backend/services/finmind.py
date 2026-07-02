@@ -7,6 +7,7 @@ import logging
 import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -75,7 +76,9 @@ def get_finmind_rate_limiter() -> TokenBucket:
 
 class FinMindClient:
     def __init__(self) -> None:
-        self._inflight: dict[str, asyncio.Task] = {}
+        # {key: {"task": Task, "refs": int}} — refs 追蹤 subscriber 數,支援
+        # client disconnect 時「無其他 caller 就殺底層 fan-out」語意。
+        self._inflight: dict[str, dict[str, Any]] = {}
         if os.getenv("FAKE_FINMIND") == "1":
             # E2E fake mode:skip httpx + token check;FakeFinMindClient subclass
             # overrides _get,所以這條 client 永遠不 outbound call。NoOpBucket
@@ -145,13 +148,31 @@ class FinMindClient:
             return True
 
     async def _run_once(self, inflight_key: str, coro_fn):
-        if inflight_key in self._inflight:
-            return await self._inflight[inflight_key]
-        self._inflight[inflight_key] = asyncio.ensure_future(coro_fn())
+        """Inflight dedup with subscriber refcount.
+
+        `asyncio.shield` 讓 caller cancel(client disconnect)不會直接殺底層
+        task — 因為可能有別的 caller 也在 await 同一個 shared fetch。改用
+        refcount:每個 caller +1;caller 離開(正常回或被 cancel)-1;
+        歸 0 才 cancel 底層 task。
+
+        搭配 `utils.cancel.run_with_disconnect`:route handler 被 cancel →
+        `_run_once` raise CancelledError → refs 減 → 若無其他 subscriber
+        則 cancel fan-out task → httpx / rate_limiter.acquire_async 內
+        `asyncio.sleep(wait)` 拿到 CancelledError → 停止吃 rate token slot。
+        """
+        entry = self._inflight.get(inflight_key)
+        if entry is None:
+            entry = {"task": asyncio.ensure_future(coro_fn()), "refs": 0}
+            self._inflight[inflight_key] = entry
+        entry["refs"] += 1
         try:
-            return await self._inflight[inflight_key]
+            return await asyncio.shield(entry["task"])
         finally:
-            self._inflight.pop(inflight_key, None)
+            entry["refs"] -= 1
+            if entry["refs"] == 0:
+                if not entry["task"].done():
+                    entry["task"].cancel()
+                self._inflight.pop(inflight_key, None)
 
     # -- chip summary -------------------------------------------------------
 

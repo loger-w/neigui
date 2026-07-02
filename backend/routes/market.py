@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from services.finmind_realtime import fetch_market_snapshot
+from utils.cancel import run_with_disconnect
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ router = APIRouter()
 
 @router.get("/snapshot")
 async def get_market_snapshot(
+    request: Request,
     refresh: bool = Query(default=False),
 ) -> dict:
     """Return market snapshot (sectors + leaderboards).
@@ -35,7 +37,7 @@ async def get_market_snapshot(
     # 並且只 re-raise ValueError('finmind_unreachable'),raw httpx 例外無法穿過 service
     # 邊界,catch 形同 dead code。Round-1 R5 accepted decision。
     try:
-        return await fetch_market_snapshot(refresh=refresh)
+        return await run_with_disconnect(request, fetch_market_snapshot(refresh=refresh))
     except ValueError as exc:
         msg = str(exc)
         if msg == "finmind_unreachable":
