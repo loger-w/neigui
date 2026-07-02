@@ -18,6 +18,7 @@ design.md §5
 from __future__ import annotations
 
 import asyncio
+import hashlib
 
 from services import clock
 import logging
@@ -441,6 +442,91 @@ async def _fetch_sector_amount_share(
     return await sa.compute_sector_amount_share(end_date, universe, sector_map, refresh=refresh)
 
 
+def _universe_digest(universe: set[str]) -> str:
+    """Stable short digest of universe membership — EOD result cache key 成分。"""
+    joined = ",".join(sorted(universe))
+    return hashlib.md5(joined.encode("utf-8")).hexdigest()[:12]
+
+
+async def _fetch_eod_results(
+    end_date: date,
+    allowed: set[str],
+    primary_sector: dict[str, str],
+    refresh: bool = False,
+) -> dict:
+    """perf snapshot-hot-path C1 — 4 個 EOD compute 的 result-level cache。
+
+    Profile(2026-07-02):warm request 98.4% 成本 = 4 個 compute 各自
+    re-parse 同一 1.5GB prices cache(9.1s × 4 / 37.1s)。EOD 結果在同一
+    (end_date, universe) 下已凍結(底層 prices cache 本就 24h TTL),
+    以 disk cache 消滅重算。
+
+    Invalidation 契約(test_snapshot_eod_result_cache_* 鎖):
+    - component 為 None(compute 失敗 / empty-universe skip)不寫入 →
+      下一 request 重算,不 pin 失敗
+    - universe 變動 → digest 變 → 自然重算
+    - refresh=True → bypass cache 讀,refresh 照舊傳進 compute 鏈
+    - 各 component 的 try/except 範圍與 F6 stale 語意完全比照原 inline 版
+    """
+    cache_key = f"eod_results_{end_date.isoformat()}_{_universe_digest(allowed)}"
+    results: dict = {}
+    if not refresh:
+        cached = _read_cache(cache_key)
+        if cached is not None:
+            results = cached.get("results", {})
+            if all(
+                k in results
+                for k in ("breadth", "sector_breadth", "sector_volume_ratio", "sector_amount_share")
+            ):
+                return results
+
+    # market-monitor-v2 P2 (SC-6) — breadth (F6: fail 不動 stale)
+    if "breadth" not in results:
+        try:
+            results["breadth"] = await _fetch_breadth(end_date, allowed, refresh=refresh)
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("market snapshot: breadth compute failed: %s", exc)
+            results["breadth"] = None
+
+    # market-monitor-v2 P3 (SC-6) — sector_breadth(only httpx;ValueError 穿透)
+    if "sector_breadth" not in results:
+        try:
+            results["sector_breadth"] = await _fetch_sector_breadth(
+                end_date, allowed, primary_sector, refresh=refresh
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("market snapshot: sector_breadth compute failed: %s", exc)
+            results["sector_breadth"] = None
+
+    # market-monitor-v2 P3 (SC-6) — sector_volume_ratio (independent try/except)
+    if "sector_volume_ratio" not in results:
+        try:
+            results["sector_volume_ratio"] = await _fetch_sector_volume_ratio(
+                end_date, allowed, primary_sector, refresh=refresh
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("market snapshot: sector_volume_ratio compute failed: %s", exc)
+            results["sector_volume_ratio"] = None
+
+    # market-monitor-v2 P4 (SC-6) — sector_amount_share (independent try/except)
+    if "sector_amount_share" not in results:
+        try:
+            results["sector_amount_share"] = await _fetch_sector_amount_share(
+                end_date, allowed, primary_sector, refresh=refresh
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("market snapshot: sector_amount_share compute failed: %s", exc)
+            results["sector_amount_share"] = None
+
+    to_store = {k: v for k, v in results.items() if v is not None}
+    if to_store:
+        _write_cache(cache_key, {
+            "results": to_store,
+            "fetched_at": datetime.now(tz=TPE_TZ).isoformat(timespec="seconds"),
+        })
+    return results
+
+
 async def _fetch_market_value_map(
     today: date | None = None,
     refresh: bool = False,
@@ -598,43 +684,14 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     # 處置股無任何提示。
     stale = isinstance(universe_res, BaseException) or sector_degraded or watch_degraded
 
-    # market-monitor-v2 P2 (SC-6) — breadth (McClellan Oscillator + AD Line)
-    # F6: breadth compute fail (EOD data) 不動 stale;stale 保留給 intraday
-    # (universe / sector_map / watch_list) 三個訊號。
-    try:
-        breadth = await _fetch_breadth(clock.today(), allowed, refresh=refresh)
-    except (httpx.HTTPError, ValueError) as exc:
-        logger.warning("market snapshot: breadth compute failed: %s", exc)
-        breadth = None
-
-    # market-monitor-v2 P3 (SC-6) — sector_breadth (F6 sequel: fail 不動 stale)
-    # F6 review: only httpx.HTTPError after design v2 F3 fix (empty prices → [] instead of ValueError)
-    try:
-        sector_breadth = await _fetch_sector_breadth(
-            clock.today(), allowed, primary_sector, refresh=refresh
-        )
-    except httpx.HTTPError as exc:
-        logger.warning("market snapshot: sector_breadth compute failed: %s", exc)
-        sector_breadth = None
-
-    # market-monitor-v2 P3 (SC-6) — sector_volume_ratio (independent try/except from sector_breadth)
-    try:
-        sector_volume_ratio = await _fetch_sector_volume_ratio(
-            clock.today(), allowed, primary_sector, refresh=refresh
-        )
-    except httpx.HTTPError as exc:
-        logger.warning("market snapshot: sector_volume_ratio compute failed: %s", exc)
-        sector_volume_ratio = None
-
-    # market-monitor-v2 P4 (SC-6) — sector_amount_share (F6 sequel: fail 不動 stale;
-    # independent try/except from P3 twins; 共用 cache_key → serial near-zero cost)
-    try:
-        sector_amount_share = await _fetch_sector_amount_share(
-            clock.today(), allowed, primary_sector, refresh=refresh
-        )
-    except httpx.HTTPError as exc:
-        logger.warning("market snapshot: sector_amount_share compute failed: %s", exc)
-        sector_amount_share = None
+    # market-monitor-v2 P2/P3/P4 (SC-6) — 4 個 EOD compute,perf C1 起走
+    # result-level cache(_fetch_eod_results)。F6 stale 語意 / 各 component
+    # try/except 範圍 / None 降級全部維持原 inline 版契約。
+    eod = await _fetch_eod_results(clock.today(), allowed, primary_sector, refresh=refresh)
+    breadth = eod.get("breadth")
+    sector_breadth = eod.get("sector_breadth")
+    sector_volume_ratio = eod.get("sector_volume_ratio")
+    sector_amount_share = eod.get("sector_amount_share")
 
     return {
         "as_of": now.isoformat(),
