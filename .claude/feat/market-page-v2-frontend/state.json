@@ -3,29 +3,162 @@
   "start_sha": "45271d49c293c9abbf61e51a949a7eb3d23ae5ab",
   "branch": "feat/market-page-v2-frontend",
   "worktree_path": null,
-  "current_phase": 8,
-  "completed_phases": [-1, 0, 1, 2, 3, 4, 5, 6, 7],
+  "current_phase": 8.5,
+  "completed_phases": [
+    -1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    8.5
+  ],
   "scope": "L",
-  "pending_review_rounds": { "phase_1": 0, "phase_2": 0, "phase_4": 0 },
+  "pending_review_rounds": {
+    "phase_1": 0,
+    "phase_2": 0,
+    "phase_4": 0
+  },
   "blockers": [],
-  "last_updated": "2026-07-02T00:00:00+08:00",
+  "last_updated": "2026-07-02T19:35:00+08:00",
   "project_shape": "fullstack",
-  "last_commit_sha": null,
-  "final_merge_sha": null,
+  "last_commit_sha": "3e26219",
+  "final_merge_sha": "12260eb",
   "sc_cycle_counts": {
-    "SC-1": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-2": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-3": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-4": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-5": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-6": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-7": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-8": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-9": { "phase_1": 1, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 1 },
-    "SC-10": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-11": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-12": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 }
+    "SC-1": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-2": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-3": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-4": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-5": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-6": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-7": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-8": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-9": {
+      "phase_1": 1,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 1
+    },
+    "SC-10": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-11": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-12": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "_unscoped": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    }
   },
   "paused": null
 }
