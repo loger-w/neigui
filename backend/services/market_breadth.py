@@ -118,11 +118,15 @@ def compute_ad_line(counts: list[tuple[date, int, int]]) -> list[dict]:
 
 
 def compute_rana(counts: list[tuple[date, int, int]]) -> list[dict]:
-    """RANA[t] = (up-down) / (up+down); denominator 0 → 0.0 (edge E6)."""
+    """RANA[t] = 1000 × (up-down) / (up+down); denominator 0 → 0.0 (edge E6).
+
+    ×1000 是 StockCharts Ratio-Adjusted 慣例(spec §6.3),漏乘會讓
+    McClellan ∈ ±2,±100 thrust 永不觸發(bug mcclellan-scaling)。
+    """
     out: list[dict] = []
     for d, up, down in counts:
         denom = up + down
-        val = (up - down) / denom if denom else 0.0
+        val = 1000.0 * (up - down) / denom if denom else 0.0
         out.append({"date": d.isoformat(), "value": val})
     return out
 

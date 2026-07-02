@@ -39,18 +39,35 @@ class TestComputeAdLine:
 
 class TestComputeRana:
     def test_rana_normal(self) -> None:
+        # Ratio-Adjusted (StockCharts):RANA = (up-down)/(up+down) × 1000
+        # (bug mcclellan-scaling 前舊 assertion 為 50/150,已事前標「該變」)
         counts = [
-            (date(2026, 6, 20), 100, 50),  # 50/150
+            (date(2026, 6, 20), 100, 50),  # 1000 × 50/150
             (date(2026, 6, 21), 80, 80),  # 0/160
         ]
         result = mb.compute_rana(counts)
-        assert result[0]["value"] == pytest.approx(50 / 150)
+        assert result[0]["value"] == pytest.approx(1000 * 50 / 150)
         assert result[1]["value"] == 0.0
 
     def test_rana_zero_denominator(self) -> None:
         counts = [(date(2026, 6, 20), 0, 0)]
         result = mb.compute_rana(counts)
         assert result[0]["value"] == 0.0
+
+    def test_thrust_reachable_after_ratio_adjusted_scaling(self) -> None:
+        # bug mcclellan-scaling 紅測試:漏乘 1000 時 McClellan ∈ ±2,
+        # ±100 thrust 數學上不可能觸發(real payload 2026-07-02 oscillator=-0.0029)。
+        # 手算 fixture:39 天平盤 (RANA=0) + 3 天全漲 (RANA=1000)
+        #   fast(19): seed idx18=0 → idx39=100 → idx40=190 → idx41=271
+        #   slow(39): seed idx38=0 → idx39=50 → idx40=97.5 → idx41=142.625
+        #   oscillator = 271 - 142.625 = 128.375 > 100 → thrust dot
+        base = date(2026, 1, 5)
+        counts = [(base + timedelta(days=i), 100, 100) for i in range(39)]
+        counts += [(base + timedelta(days=39 + i), 200, 0) for i in range(3)]
+        rana = mb.compute_rana(counts)
+        mcc = mb.compute_mcclellan(rana)
+        assert mcc[-1]["value"] == pytest.approx(128.375)
+        assert mb.detect_thrust_dot(mcc) == "above_plus_100"
 
 
 # ---------------------------------------------------------------------------
