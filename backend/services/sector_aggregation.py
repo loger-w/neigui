@@ -276,6 +276,10 @@ def _extract_amount_by_stock(
             amt = float(amt_raw) if amt_raw is not None else 0.0
         except (ValueError, TypeError):
             amt = 0.0
+        if amt < 0:
+            # CORR-1: 負 turnover 不存在於 domain,視同 corrupt → 0.0(對齊非數值慣例);
+            # 保護 _aggregate 的 sector_today>0 ⟹ today_total>0 除法不變量
+            amt = 0.0
         out.setdefault(sid, {})[d] = amt
     return out
 
