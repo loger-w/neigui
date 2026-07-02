@@ -155,6 +155,37 @@ def _read_prices_cache(cache_key: str) -> dict | None:
     return {"rows": rows, "fetched_at": meta.get("fetched_at", "")}
 
 
+def _cleanup_stale_window_files(start: date, end: date) -> int:
+    """perf C4 — 寫新 window 檔後清舊 window 衍生檔,cache 增長有界。
+
+    對齊 `_invalidate_chip_parse_caches` 慣例(單次 iterdir pattern 掃):
+    - `breadth_prices_*` / `breadth_taiex_*`:非當前 `<start>_<end>` window 刪
+    - `eod_results_*`:非當日(end)刪(finmind_realtime 的 result cache,
+      day-key 過期後不會再被讀)
+    其餘檔案不動。單檔刪除失敗(Windows 檔案佔用)skip 不 abort —
+    下次寫入再清。在 asyncio.to_thread 內呼叫。
+    """
+    keep_window = f"{start.isoformat()}_{end.isoformat()}"
+    keep_eod_prefix = f"eod_results_{end.isoformat()}_"
+    removed = 0
+    for p in chip_cache_dir().iterdir():
+        if p.suffix != ".json":
+            continue
+        stem = p.stem
+        stale = (
+            (stem.startswith("breadth_prices_") or stem.startswith("breadth_taiex_"))
+            and not stem.endswith(keep_window)
+        ) or (stem.startswith("eod_results_") and not stem.startswith(keep_eod_prefix))
+        if not stale:
+            continue
+        try:
+            p.unlink()
+            removed += 1
+        except OSError:
+            logger.warning("market_breadth: stale cache cleanup skipped %s", p.name)
+    return removed
+
+
 async def _run_once(key: str, coro_fn):
     if key in _inflight:
         return await _inflight[key]
@@ -453,6 +484,11 @@ async def _do_fetch_prices(start: date, end: date, cache_key: str) -> list[dict]
         all_rows,
         datetime.now().isoformat(timespec="seconds"),
     )
+    # perf C4:新 window 落地後清舊 window 檔(增長有界,每日 steady state
+    # = 當日一組檔)
+    removed = await asyncio.to_thread(_cleanup_stale_window_files, start, end)
+    if removed:
+        logger.info("market_breadth: removed %d stale window cache files", removed)
     return all_rows
 
 

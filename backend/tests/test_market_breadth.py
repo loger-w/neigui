@@ -447,6 +447,57 @@ class TestPricesCacheChunkedFormat:
 
 
 # ---------------------------------------------------------------------------
+# perf snapshot-hot-path C4 — 舊 window cache 檔清理(增長有界)
+# 痛點:breadth_prices_* 每日 +1.5GB 零清理(實測 2 檔 3.06GB)。
+# ---------------------------------------------------------------------------
+
+
+class TestStaleWindowCleanup:
+    async def test_new_window_write_removes_stale_files(self, monkeypatch) -> None:
+        from utils.cache import atomic_write_json, chip_cache_dir
+
+        end = date(2026, 7, 2)
+        start = end - timedelta(days=7)
+        # 舊 window 檔(前一日 key)+ 舊 eod_results + 無關檔
+        mb._write_prices_cache("breadth_prices_2025-12-15_2026-07-01", [], "x")
+        atomic_write_json(mb._cache_path("breadth_taiex_2025-12-15_2026-07-01"), {"rows": []})
+        atomic_write_json(mb._cache_path("eod_results_2026-07-01_abcdef123456"), {"results": {}})
+        # 當前 window 的 taiex + 當日 eod_results + 非 breadth 檔 → 必須保留
+        atomic_write_json(
+            mb._cache_path(f"breadth_taiex_{start.isoformat()}_{end.isoformat()}"),
+            {"rows": []},
+        )
+        atomic_write_json(
+            mb._cache_path(f"eod_results_{end.isoformat()}_abcdef123456"),
+            {"results": {}},
+        )
+        atomic_write_json(mb._cache_path("realtime_sector_map"), {"rows": []})
+
+        class FakeClient:
+            async def _get(self, url, params):
+                return [{"stock_id": "2330", "date": params["start_date"], "close": 1.0}]
+
+        async def fake_trading_days(end_d, n):
+            return [end]
+
+        monkeypatch.setattr(mb, "get_finmind", lambda: FakeClient())
+        monkeypatch.setattr(mb, "get_trading_days", fake_trading_days)
+
+        await mb._fetch_daily_prices_window(start, end, refresh=True)
+
+        names = {p.stem for p in chip_cache_dir().iterdir()}
+        # 舊 window / 舊日 eod_results 清掉
+        assert "breadth_prices_2025-12-15_2026-07-01" not in names
+        assert "breadth_taiex_2025-12-15_2026-07-01" not in names
+        assert "eod_results_2026-07-01_abcdef123456" not in names
+        # 當前 window / 當日 / 無關檔保留
+        assert f"breadth_prices_{start.isoformat()}_{end.isoformat()}" in names
+        assert f"breadth_taiex_{start.isoformat()}_{end.isoformat()}" in names
+        assert f"eod_results_{end.isoformat()}_abcdef123456" in names
+        assert "realtime_sector_map" in names
+
+
+# ---------------------------------------------------------------------------
 # Batch B — SC-5 edge cases
 # ---------------------------------------------------------------------------
 
