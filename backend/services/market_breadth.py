@@ -31,6 +31,9 @@ _CACHE_VERSION_BREADTH = 2
 # event loop stall 上界(單一 1.5GB 文件的 C parse 持 GIL ~6-8s,to_thread 救不了)
 _PRICES_CHUNK_ROWS = 100_000
 _PRICES_FORMAT = "prices_jsonl_v1"
+# perf C5:FinMind row 10 keys 只有這 5 個被 breadth / sector 家族消費,
+# 寫入前裁欄(實測 0.578x;讀路徑容忍多餘 key,不需 version bump)
+_PRICES_KEEP_KEYS = ("stock_id", "date", "close", "Trading_Volume", "Trading_money")
 _BREADTH_TTL_HOURS = 24
 _SLOW_EMA_PERIOD = 39
 _FAST_EMA_PERIOD = 19
@@ -476,7 +479,8 @@ async def _do_fetch_prices(start: date, end: date, cache_key: str) -> list[dict]
                 exc,
             )
             continue
-        all_rows.extend(rows)
+        # perf C5:寫入前裁欄(per-day ~45k rows ~16ms,fetch loop 本就逐日 yield)
+        all_rows.extend({k: r[k] for k in _PRICES_KEEP_KEYS if k in r} for r in rows)
     # perf C3a:chunked 寫(單一 json.dump 1.5GB 同樣持 GIL 數秒)
     await asyncio.to_thread(
         _write_prices_cache,

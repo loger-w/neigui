@@ -447,6 +447,55 @@ class TestPricesCacheChunkedFormat:
 
 
 # ---------------------------------------------------------------------------
+# perf snapshot-hot-path C5 — 寫入前裁欄
+# FinMind row 10 keys 只有 5 個被 breadth 家族消費;實測裁後 0.578x
+# (audit「~10x」高估)。讀路徑容忍多餘 key,不需 version bump。
+# ---------------------------------------------------------------------------
+
+
+class TestPricesColumnTrim:
+    async def test_written_rows_only_keep_consumed_columns(self, monkeypatch) -> None:
+        full_row = {
+            "stock_id": "2330",
+            "date": "2026-06-30",
+            "close": 1085.0,
+            "Trading_Volume": 33456789,
+            "Trading_money": 36299000000,
+            "Trading_turnover": 12345,
+            "open": 1080.0,
+            "max": 1090.0,
+            "min": 1075.0,
+            "spread": 5.0,
+        }
+
+        class FakeClient:
+            async def _get(self, url, params):
+                return [dict(full_row, date=params["start_date"])]
+
+        end = date(2026, 6, 30)
+        start = end - timedelta(days=7)
+
+        async def fake_trading_days(end_d, n):
+            return [end]
+
+        monkeypatch.setattr(mb, "get_finmind", lambda: FakeClient())
+        monkeypatch.setattr(mb, "get_trading_days", fake_trading_days)
+
+        rows = await mb._fetch_daily_prices_window(start, end, refresh=True)
+        expected = {
+            "stock_id": "2330",
+            "date": end.isoformat(),
+            "close": 1085.0,
+            "Trading_Volume": 33456789,
+            "Trading_money": 36299000000,
+        }
+        assert rows == [expected]
+        cached = mb._read_prices_cache(f"breadth_prices_{start.isoformat()}_{end.isoformat()}")
+        assert cached is not None
+        assert cached["rows"] == [expected]
+
+
+# ---------------------------------------------------------------------------
 # perf snapshot-hot-path C4 — 舊 window cache 檔清理(增長有界)
 # 痛點:breadth_prices_* 每日 +1.5GB 零清理(實測 2 檔 3.06GB)。
 # ---------------------------------------------------------------------------
