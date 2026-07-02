@@ -46,6 +46,24 @@ describe("MarketSectorAmountShare", () => {
     expect(zero.className.includes("text-ink-muted")).toBe(true);
   });
 
+  it("Δ 顯示與顏色同源 rounding 邊界 — ±0.00003 顯示 \"0.00\" 且皆 text-ink-muted (SC-6 / CR1-13)", () => {
+    const rows: SectorAmountShareRow[] = [
+      { sector: "微負", today_share: 0.2, share_delta_20ma: -0.00003 },
+      { sector: "微正", today_share: 0.2, share_delta_20ma: 0.00003 },
+    ];
+    render(<MarketSectorAmountShare rows={rows} eodAsOf="2026-06-29" loaded={true} />);
+
+    const tinyNeg = screen.getByTestId("sas-row-微負").querySelector("td:last-child")!;
+    expect(tinyNeg.textContent).toBe("0.00");
+    expect(tinyNeg.className.includes("text-accent")).toBe(false);
+    expect(tinyNeg.className.includes("text-ink-muted")).toBe(true);
+
+    const tinyPos = screen.getByTestId("sas-row-微正").querySelector("td:last-child")!;
+    expect(tinyPos.textContent).toBe("0.00");
+    expect(tinyPos.className.includes("text-accent")).toBe(false);
+    expect(tinyPos.className.includes("text-ink-muted")).toBe(true);
+  });
+
   it("today_share 0.40561 → \"40.6%\" (R1-2 換算)", () => {
     const rows: SectorAmountShareRow[] = [
       { sector: "換算", today_share: 0.40561, share_delta_20ma: null },
