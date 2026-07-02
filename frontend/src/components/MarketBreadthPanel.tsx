@@ -38,16 +38,21 @@ export function MarketBreadthPanel({ breadth, eodAsOf, loaded }: Props): ReactEl
   const { width, height } = useContainerSize(containerRef);
   const halfH = height / 2;
 
-  let body: ReactElement;
+  // CR1-10 修復:containerRef 掛在恆存的 chart-area wrapper(chartArea 三態
+  // 都會 render 到這個 div),不再只在資料態分支才出現 — 否則 loading 態首次
+  // mount 時 ref.current 是 null,useContainerSize 的 effect 提早 return,
+  // deps [ref, measure] 皆穩定,資料到位後也不會重跑,圖表永遠量到 0×0。
+  let chartArea: ReactElement;
+  let signalRow: ReactElement | null = null;
   if (!loaded) {
-    body = (
+    chartArea = (
       <div data-state="loading" className="flex flex-col gap-2">
         <div className="h-24 animate-pulse bg-bg-deep" />
         <div className="h-24 animate-pulse bg-bg-deep" />
       </div>
     );
   } else if (breadth === null) {
-    body = (
+    chartArea = (
       <div data-state="unavailable" className="text-ink-dim text-xs">
         資料暫缺
       </div>
@@ -61,101 +66,102 @@ export function MarketBreadthPanel({ breadth, eodAsOf, loaded }: Props): ReactEl
 
     const taiexUnavailable = breadth.known_gaps.includes("taiex_unavailable");
 
-    body = (
+    chartArea = (
       <>
-        <div ref={containerRef} className="h-64 lg:h-full lg:flex-1 min-h-0 relative flex flex-col">
-          <div className="flex-1 min-h-0 relative">
-            <svg width={width} height={halfH}>
-              {mcZeroY !== null && (
-                <line
-                  x1={0}
-                  x2={width}
-                  y1={mcZeroY}
-                  y2={mcZeroY}
-                  stroke="var(--color-line-strong)"
-                  strokeDasharray="4 3"
+        <div className="flex-1 min-h-0 relative">
+          <svg width={width} height={halfH}>
+            {mcZeroY !== null && (
+              <line
+                x1={0}
+                x2={width}
+                y1={mcZeroY}
+                y2={mcZeroY}
+                stroke="var(--color-line-strong)"
+                strokeDasharray="4 3"
+              />
+            )}
+            {mcSegments.map((seg, i) =>
+              seg.pts.length === 1 ? (
+                <circle
+                  key={i}
+                  cx={seg.pts[0]!.x}
+                  cy={seg.pts[0]!.y}
+                  r={1.5}
+                  fill="var(--color-ink)"
                 />
-              )}
-              {mcSegments.map((seg, i) =>
-                seg.pts.length === 1 ? (
-                  <circle
-                    key={i}
-                    cx={seg.pts[0]!.x}
-                    cy={seg.pts[0]!.y}
-                    r={1.5}
-                    fill="var(--color-ink)"
-                  />
-                ) : (
-                  <polyline
-                    key={i}
-                    points={polylinePoints(seg)}
-                    fill="none"
-                    stroke="var(--color-ink)"
-                    strokeWidth={1.2}
-                  />
-                ),
-              )}
-            </svg>
-            <span className="absolute top-0 left-0 text-ink-dim text-[10px]">
-              McClellan {breadth.mcclellan_oscillator?.toFixed(1) ?? "—"}
-            </span>
-          </div>
-          <div className="flex-1 min-h-0 relative">
-            <svg width={width} height={halfH}>
-              {adSegments.map((seg, i) =>
-                seg.pts.length === 1 ? (
-                  <circle
-                    key={i}
-                    cx={seg.pts[0]!.x}
-                    cy={seg.pts[0]!.y}
-                    r={1.5}
-                    fill="var(--color-ink-dim)"
-                  />
-                ) : (
-                  <polyline
-                    key={i}
-                    points={polylinePoints(seg)}
-                    fill="none"
-                    stroke="var(--color-ink-dim)"
-                    strokeWidth={1.2}
-                  />
-                ),
-              )}
-            </svg>
-            <span className="absolute top-0 left-0 text-ink-dim text-[10px]">窗口相對累計</span>
-          </div>
+              ) : (
+                <polyline
+                  key={i}
+                  points={polylinePoints(seg)}
+                  fill="none"
+                  stroke="var(--color-ink)"
+                  strokeWidth={1.2}
+                />
+              ),
+            )}
+          </svg>
+          <span className="absolute top-0 left-0 text-ink-dim text-[10px]">
+            McClellan {breadth.mcclellan_oscillator?.toFixed(1) ?? "—"}
+          </span>
         </div>
-        <div className="flex gap-4 text-xs mt-2">
-          <SignalSlot
-            label="±100"
-            active={breadth.thrust_dot !== null}
-            testid="breadth-thrust-dot"
-            value={breadth.thrust_dot}
-            tone="bg-accent"
-          />
-          <SignalSlot
-            label="0 線"
-            active={breadth.centerline_cross !== null}
-            testid="breadth-centerline-dot"
-            value={breadth.centerline_cross}
-            tone="bg-ink"
-          />
-          {taiexUnavailable ? (
-            <div className="flex items-center gap-1">
-              <span className="text-ink-dim">背離</span>
-              <span className="text-ink-dim">TAIEX 資料缺</span>
-            </div>
-          ) : (
-            <SignalSlot
-              label="背離"
-              active={breadth.divergence_dot !== null}
-              testid="breadth-divergence-dot"
-              value={breadth.divergence_dot}
-              tone="bg-ink-muted"
-            />
-          )}
+        <div className="flex-1 min-h-0 relative">
+          <svg width={width} height={halfH}>
+            {adSegments.map((seg, i) =>
+              seg.pts.length === 1 ? (
+                <circle
+                  key={i}
+                  cx={seg.pts[0]!.x}
+                  cy={seg.pts[0]!.y}
+                  r={1.5}
+                  fill="var(--color-ink-dim)"
+                />
+              ) : (
+                <polyline
+                  key={i}
+                  points={polylinePoints(seg)}
+                  fill="none"
+                  stroke="var(--color-ink-dim)"
+                  strokeWidth={1.2}
+                />
+              ),
+            )}
+          </svg>
+          <span className="absolute top-0 left-0 text-ink-dim text-[10px]">窗口相對累計</span>
         </div>
       </>
+    );
+
+    signalRow = (
+      <div className="flex gap-4 text-xs mt-2">
+        <SignalSlot
+          label="±100"
+          active={breadth.thrust_dot !== null}
+          testid="breadth-thrust-dot"
+          value={breadth.thrust_dot}
+          tone="bg-accent"
+        />
+        <SignalSlot
+          label="0 線"
+          active={breadth.centerline_cross !== null}
+          testid="breadth-centerline-dot"
+          value={breadth.centerline_cross}
+          tone="bg-ink"
+        />
+        {taiexUnavailable ? (
+          <div className="flex items-center gap-1">
+            <span className="text-ink-dim">背離</span>
+            <span className="text-ink-dim">TAIEX 資料缺</span>
+          </div>
+        ) : (
+          <SignalSlot
+            label="背離"
+            active={breadth.divergence_dot !== null}
+            testid="breadth-divergence-dot"
+            value={breadth.divergence_dot}
+            tone="bg-ink-muted"
+          />
+        )}
+      </div>
     );
   }
 
@@ -168,7 +174,10 @@ export function MarketBreadthPanel({ breadth, eodAsOf, loaded }: Props): ReactEl
         <h3 className="text-ink text-sm">市場廣度</h3>
         <span className="text-ink-dim text-xs">{eodLabel(eodAsOf)}</span>
       </div>
-      {body}
+      <div ref={containerRef} className="h-64 lg:h-full lg:flex-1 min-h-0 relative flex flex-col">
+        {chartArea}
+      </div>
+      {signalRow}
     </section>
   );
 }

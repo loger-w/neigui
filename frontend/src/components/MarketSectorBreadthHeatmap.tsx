@@ -35,6 +35,8 @@ export function MarketSectorBreadthHeatmap({
     [rows, width, height],
   );
 
+  // CR1-11 修復:containerRef 掛在恆存的 wrapper(三態都會 render 到這個
+  // div),不再只在資料態分支才出現 — 理由同 MarketBreadthPanel CR1-10。
   let body: ReactElement;
   if (!loaded) {
     body = (
@@ -58,7 +60,7 @@ export function MarketSectorBreadthHeatmap({
     );
   } else {
     body = (
-      <div ref={containerRef} className="relative h-64 lg:h-full lg:flex-1 min-h-0">
+      <>
         {cells.map((c) => (
           <button
             type="button"
@@ -76,7 +78,7 @@ export function MarketSectorBreadthHeatmap({
             <span className="block text-[10px]">{pctText(c.pct, 0)}</span>
           </button>
         ))}
-      </div>
+      </>
     );
   }
 
@@ -87,7 +89,9 @@ export function MarketSectorBreadthHeatmap({
         <span className="text-ink-dim text-xs">{eodLabel(eodAsOf)}</span>
       </div>
       <span className="text-ink-dim text-[10px]">站上 20 日均線比例</span>
-      {body}
+      <div ref={containerRef} className="relative h-64 lg:h-full lg:flex-1 min-h-0">
+        {body}
+      </div>
     </section>
   );
 }
