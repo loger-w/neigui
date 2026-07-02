@@ -27,17 +27,25 @@ interface Props {
 const MAX_TRADE_ROWS = Number.POSITIVE_INFINITY;
 
 export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints }: Props) {
-  const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
-  // F2: independent sort state per side. Header click toggles dir when the
-  // same key is re-clicked; switching key resets dir to "desc" (matches the
-  //台股 看盤 default of "biggest first").
+  // C1 🔵: selection state 存 broker_id(FinMind securities_trader_id),
+  // 對齊 App.tsx selectedBrokerIds 契約,方便 A2 一鍵跳籌碼總覽。
+  // 下游元件(BrokerSearch / BubbleChartSvg / buildTradeRows / TradeList)
+  // 仍接 name string,靠 selectedBrokerName derived 回傳。
+  const [selectedBrokerId, setSelectedBrokerId] = useState<string | null>(null);
   const [buySort, setBuySort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
   const [sellSort, setSellSort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
 
   // Reset selection ONLY on symbol change (NOT on date / bubbleData change)
   useEffect(() => {
-    setSelectedBroker(null);
+    setSelectedBrokerId(null);
   }, [symbol]);
+
+  const selectedBrokerName = useMemo(
+    () =>
+      bubbleData?.trades.find((t) => t.broker_id === selectedBrokerId)?.broker ??
+      null,
+    [bubbleData, selectedBrokerId],
+  );
 
   const handleBuySortChange = useCallback((key: TradeSortKey) => {
     setBuySort((prev) =>
@@ -87,13 +95,20 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
     [],
   );
 
-  const handleBubbleClick = useCallback((broker: string | null) => {
-    if (broker === null) {
-      setSelectedBroker(null);
-    } else {
-      setSelectedBroker((prev) => (prev === broker ? null : broker));
-    }
-  }, []);
+  // C1 🔵: svg / TradeList 回傳 broker name;此 handler 轉 id set state。
+  const handleBubbleClick = useCallback(
+    (broker: string | null) => {
+      if (broker === null) {
+        setSelectedBrokerId(null);
+        return;
+      }
+      const id =
+        bubbleData?.trades.find((t) => t.broker === broker)?.broker_id ?? null;
+      if (id === null) return;
+      setSelectedBrokerId((prev) => (prev === id ? null : id));
+    },
+    [bubbleData],
+  );
 
   const allPriceAggs = useMemo(() => {
     if (!bubbleData) return [];
@@ -101,8 +116,8 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
   }, [bubbleData]);
 
   const priceAggs = useMemo(() => {
-    if (!bubbleData || !selectedBroker) return allPriceAggs;
-    const filtered = bubbleData.trades.filter((t) => t.broker === selectedBroker);
+    if (!bubbleData || !selectedBrokerName) return allPriceAggs;
+    const filtered = bubbleData.trades.filter((t) => t.broker === selectedBrokerName);
     if (filtered.length === 0) return allPriceAggs;
     const filteredAggs = aggregateByPrice(filtered);
     const filteredPrices = new Set(filteredAggs.map((a) => a.price));
@@ -111,7 +126,7 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
         ? filteredAggs.find((f) => f.price === a.price)!
         : { price: a.price, buy: 0, sell: 0 },
     );
-  }, [bubbleData, selectedBroker, allPriceAggs]);
+  }, [bubbleData, selectedBrokerName, allPriceAggs]);
 
   // Bug fix: filter must precede the top-N slice. Building the rows then
   // slicing drops every row that fell behind the global top-200 cap, which
@@ -119,9 +134,23 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
   const { buyRows: filteredBuyRows, sellRows: filteredSellRows } = useMemo(() => {
     if (!bubbleData) return { buyRows: [] as TradeRow[], sellRows: [] as TradeRow[] };
     return buildTradeRows(
-      bubbleData.trades, selectedBroker, MAX_TRADE_ROWS, buySort, sellSort,
+      bubbleData.trades, selectedBrokerName, MAX_TRADE_ROWS, buySort, sellSort,
     );
-  }, [bubbleData, selectedBroker, buySort, sellSort]);
+  }, [bubbleData, selectedBrokerName, buySort, sellSort]);
+
+  // C1 🔵: BrokerSearch onChange 回傳 name;此 wrapper 轉 id set state。
+  const handleBrokerSearchChange = useCallback(
+    (name: string | null) => {
+      if (name === null) {
+        setSelectedBrokerId(null);
+        return;
+      }
+      const id =
+        bubbleData?.trades.find((t) => t.broker === name)?.broker_id ?? null;
+      setSelectedBrokerId(id);
+    },
+    [bubbleData],
+  );
 
   return (
     <div className="h-full grid grid-cols-[1fr_400px] gap-0 overflow-hidden">
@@ -130,11 +159,11 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
         <div className="shrink-0 h-10 px-3 border-b border-line bg-bg-deep/30 flex items-center gap-3">
           <BrokerSearch
             trades={bubbleData?.trades ?? []}
-            value={selectedBroker}
-            onChange={setSelectedBroker}
+            value={selectedBrokerName}
+            onChange={handleBrokerSearchChange}
           />
           <span className="text-xs text-ink-dim">
-            {selectedBroker ? (
+            {selectedBrokerName ? (
               <>已篩選 <span className="text-[#f0b429] font-medium">1</span> 個分點</>
             ) : (
               <>今日共 <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點</>
@@ -152,7 +181,7 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
               width={bubbleSize.width}
               height={bubbleSize.height}
               closePrice={closePrice}
-              selectedBroker={selectedBroker}
+              selectedBroker={selectedBrokerName}
               onBubbleHover={handleBubbleHover}
               onBubbleClick={handleBubbleClick}
               intradayPoints={intradayPoints}
@@ -175,7 +204,7 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
           <TradeList
             rows={filteredBuyRows}
             side="buy"
-            selectedBroker={selectedBroker}
+            selectedBroker={selectedBrokerName}
             onSelect={handleBubbleClick}
             sortSpec={buySort}
             onSortChange={handleBuySortChange}
@@ -183,7 +212,7 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
           <TradeList
             rows={filteredSellRows}
             side="sell"
-            selectedBroker={selectedBroker}
+            selectedBroker={selectedBrokerName}
             onSelect={handleBubbleClick}
             sortSpec={sellSort}
             onSortChange={handleSellSortChange}

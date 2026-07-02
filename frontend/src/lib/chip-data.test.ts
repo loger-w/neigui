@@ -277,4 +277,21 @@ describe("buildTradeRows", () => {
       expect(buyRows.map((r) => r.broker)).toEqual(["A", "B", "C"]);
     });
   });
+
+  // C1 R3: locks name-based filter behavior when the same broker_name appears
+  // across multiple broker_id (edge case: FinMind securities_trader_id is
+  // typically 1:1 with securities_trader, but this test ensures ChipBubbleView
+  // A4 refactor didn't accidentally shift filter semantics).
+  describe("R3 — same broker_name across different broker_id", () => {
+    it("filter is name-based: includes all rows matching the name regardless of broker_id", () => {
+      const trades: BrokerTrade[] = [
+        { broker: "凱基-台北", broker_id: "9800", price: 100, buy: 50, sell: 0 },
+        { broker: "凱基-台北", broker_id: "9801", price: 101, buy: 30, sell: 0 },
+        { broker: "永豐-台北", broker_id: "9200", price: 100, buy: 20, sell: 0 },
+      ];
+      const { buyRows } = buildTradeRows(trades, "凱基-台北", 10);
+      expect(buyRows).toHaveLength(2);
+      expect(buyRows.map((r) => r.volume).sort((a, b) => b - a)).toEqual([50, 30]);
+    });
+  });
 });
