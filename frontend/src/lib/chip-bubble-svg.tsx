@@ -782,8 +782,9 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
 
       {/* Invisible overlay for mouse interaction (bubble hit test + click empty
           area). C7 A1: 從 x=PADDING.left 起,不佔 Y 軸 brush 區域,兩個 overlay
-          幾何分離,無事件衝突。 */}
+          幾何分離,無事件衝突。data-testid 供 SC-A1c blank-click 測試觸發。 */}
       <rect
+        data-testid="bubble-main-overlay"
         x={PADDING.left}
         y={0}
         width={width - PADDING.left}

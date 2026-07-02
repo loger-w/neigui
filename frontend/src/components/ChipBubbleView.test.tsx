@@ -438,6 +438,33 @@ describe("ChipBubbleView — A1 Y-axis brush integration (C7 🟢)", () => {
     });
   });
 
+  it("點空白處(main overlay click)→ summary + selection 一起消失(SC-A1c)", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    // 先建立 brush + selection 兩個狀態
+    await selectBrokerViaSearch("Alpha");
+    await triggerBrush(container);
+    await waitFor(() => {
+      if (!container.querySelector('[data-testid="brush-summary"]')) {
+        throw new Error("summary not visible pre-blank-click");
+      }
+    });
+    // 點空白處觸發 handleBubbleClick(null) — hitTest 在 jsdom 找不到 bubble
+    // 回 null,handleClick 呼叫 onBubbleClick(null),ChipBubbleView 清 selection
+    // 與 brush。
+    const mainOverlay = container.querySelector('[data-testid="bubble-main-overlay"]') as SVGRectElement | null;
+    expect(mainOverlay).toBeTruthy();
+    fireEvent.click(mainOverlay!);
+    await waitFor(() => {
+      if (container.querySelector('[data-testid="brush-summary"]')) {
+        throw new Error("summary still visible after blank click");
+      }
+    });
+    // Selection 也一起清:jump-to-overview button 應消失(未選狀態下沒有)
+    expect(container.querySelector('[data-testid="bubble-jump-to-overview"]')).toBeNull();
+  });
+
   it("symbol 變更 → brush range 一併清空", async () => {
     const { container, rerender } = render(
       <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
