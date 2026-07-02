@@ -24,10 +24,14 @@ function SignalSlot({ label, active, testid, value, tone }: SignalSlotProps): Re
         <span
           data-testid={testid}
           data-value={value}
+          aria-label={`${label} 訊號觸發`}
           className={`inline-block w-2 h-2 rounded-full ${tone}`}
         />
       ) : (
-        <span className="inline-block w-2 h-2 rounded-full border border-line" />
+        <span
+          aria-hidden="true"
+          className="inline-block w-2 h-2 rounded-full border border-line"
+        />
       )}
     </div>
   );
@@ -46,7 +50,12 @@ export function MarketBreadthPanel({ breadth, eodAsOf, loaded }: Props): ReactEl
   let signalRow: ReactElement | null = null;
   if (!loaded) {
     chartArea = (
-      <div data-state="loading" className="flex flex-col gap-2">
+      <div
+        data-state="loading"
+        role="status"
+        aria-label="載入中"
+        className="flex flex-col gap-2"
+      >
         <div className="h-24 animate-pulse bg-bg-deep" />
         <div className="h-24 animate-pulse bg-bg-deep" />
       </div>

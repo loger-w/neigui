@@ -40,7 +40,12 @@ export function MarketSectorBreadthHeatmap({
   let body: ReactElement;
   if (!loaded) {
     body = (
-      <div data-state="loading" className="grid grid-cols-4 gap-1">
+      <div
+        data-state="loading"
+        role="status"
+        aria-label="載入中"
+        className="grid grid-cols-4 gap-1"
+      >
         {Array.from({ length: 8 }, (_, i) => (
           <div key={i} className="h-12 animate-pulse bg-bg-deep" />
         ))}

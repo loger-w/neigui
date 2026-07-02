@@ -9,7 +9,12 @@ export function MarketSectorVolRatio({ rows, eodAsOf, loaded }: Props): ReactEle
   let body: ReactElement;
   if (!loaded) {
     body = (
-      <div data-state="loading" className="flex flex-col gap-1">
+      <div
+        data-state="loading"
+        role="status"
+        aria-label="載入中"
+        className="flex flex-col gap-1"
+      >
         {Array.from({ length: 6 }, (_, i) => (
           <div key={i} className="h-4 animate-pulse bg-bg-deep" />
         ))}
