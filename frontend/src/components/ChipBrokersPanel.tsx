@@ -2,6 +2,7 @@ import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "rea
 import type { ChipSummary, TopBroker, TopVolumeBroker } from "../lib/chip-data";
 import { splitBrokers, fmtVol, topByVolume } from "../lib/chip-data";
 import { Checkbox } from "./ui/checkbox";
+import { BrokerFilterPopover } from "./BrokerFilterPopover";
 
 interface Props {
   summary: ChipSummary | null;
@@ -336,41 +337,52 @@ export function ChipBrokersPanel({
         </button>
       </div>
 
-      {/* Selected-broker chips — B2 (C3): 容器常駐,避免選前後 CLS。
-          未選時顯 placeholder;選了才 render chip tags。min-h 鎖高度。 */}
+      {/* Selected-broker chips — C10 (🔴): 固定 h-9 單行,超出橫向 scroll,
+          避免點分點後高度撐開(舊 min-h-[36px] pill 22-24px + py 16 破 36 →
+          點擊有 4-6px 位移)。多分點情境 popover 是主要入口,pill 只做「已選
+          顯示」不再是唯一選擇 UI。 */}
       <div
         data-testid="chip-selected-bar"
-        className="px-3 py-2 border-b border-line bg-bg-deep/40 flex flex-wrap gap-1.5 items-center min-h-[36px]"
+        className="px-3 border-b border-line bg-bg-deep/40 flex items-center gap-1.5 h-9"
       >
-        {N === 0 ? (
-          <span className="text-xs text-ink-dim italic">未選擇分點</span>
-        ) : (
-          <>
-            {Array.from(selectedBrokerIds).map((bid) => {
+        <BrokerFilterPopover
+          brokers={allBrokers}
+          selectedBrokerIds={selectedBrokerIds}
+          onToggleBroker={onToggleBroker}
+          onClearAllBrokers={onClearAllBrokers}
+        />
+        <div
+          data-testid="chip-selected-scroller"
+          className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto scroll-editorial"
+        >
+          {N === 0 ? (
+            <span className="text-xs text-ink-dim italic shrink-0">未選擇分點</span>
+          ) : (
+            Array.from(selectedBrokerIds).map((bid) => {
               const name = idToName.get(bid) ?? bid;
               return (
                 <span
                   key={bid}
-                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-[#b794f4]/15 border border-[#b794f4]/40 text-[#b794f4]"
+                  className="shrink-0 inline-flex items-center gap-1 text-2xs leading-none px-1.5 py-1 rounded-full bg-[#b794f4]/15 border border-[#b794f4]/40 text-[#b794f4] whitespace-nowrap"
                 >
                   {name}
                   <button
                     type="button"
                     onClick={() => onToggleBroker(bid)}
                     aria-label={`移除 ${name}`}
-                    className="hover:text-bear cursor-pointer"
+                    className="hover:text-bear cursor-pointer leading-none"
                   >×</button>
                 </span>
               );
-            })}
-            {N > 1 && (
-              <button
-                type="button"
-                onClick={onClearAllBrokers}
-                className="ml-auto text-xs text-ink-dim hover:text-bear cursor-pointer"
-              >全部清除</button>
-            )}
-          </>
+            })
+          )}
+        </div>
+        {N > 1 && (
+          <button
+            type="button"
+            onClick={onClearAllBrokers}
+            className="shrink-0 text-xs text-ink-dim hover:text-bear cursor-pointer"
+          >全部清除</button>
         )}
       </div>
 
