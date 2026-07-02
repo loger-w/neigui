@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { splitBrokers, aggregateByPrice, aggregateByBroker, fmtVol, topByVolume, buildTradeRows } from "./chip-data";
+import {
+  splitBrokers,
+  aggregateByPrice,
+  aggregateByBroker,
+  fmtVol,
+  topByVolume,
+  buildTradeRows,
+  computeBrokerTotals,
+  fmtAmount,
+} from "./chip-data";
 import type { TopBroker, BrokerTrade } from "./chip-data";
 
 function mkBroker(name: string, buy: number, sell: number): TopBroker {
@@ -277,6 +286,89 @@ describe("buildTradeRows", () => {
       expect(buyRows.map((r) => r.broker)).toEqual(["A", "B", "C"]);
     });
   });
+
+  // C6 A3 (🟢): 分點總買/賣張/金額 pure helper。
+});
+
+describe("computeBrokerTotals (C6 🟢)", () => {
+  const mk = (broker_id: string, price: number, buy: number, sell: number): BrokerTrade =>
+    ({ broker: broker_id, broker_id, price, buy, sell });
+
+  it("brokerId=null: returns all zeros", () => {
+    const r = computeBrokerTotals([mk("A", 100, 10, 0)], null);
+    expect(r).toEqual({ buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 });
+  });
+
+  it("brokerId not in trades: returns all zeros", () => {
+    const r = computeBrokerTotals([mk("A", 100, 10, 0)], "Z");
+    expect(r).toEqual({ buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 });
+  });
+
+  it("single-price single broker: exact amount = buy × 1000 × price", () => {
+    const r = computeBrokerTotals([mk("A", 100, 5, 0)], "A");
+    expect(r.buyLots).toBe(5);
+    expect(r.sellLots).toBe(0);
+    expect(r.buyAmount).toBe(500_000); // 5 × 1000 × 100
+    expect(r.sellAmount).toBe(0);
+  });
+
+  it("multi-price single broker: sums buyLots + buyAmount across prices", () => {
+    const trades: BrokerTrade[] = [
+      mk("A", 100, 5, 0),   // 500,000
+      mk("A", 102, 3, 0),   // 306,000
+      mk("A", 101, 0, 4),   // 404,000 (sell)
+    ];
+    const r = computeBrokerTotals(trades, "A");
+    expect(r.buyLots).toBe(8);
+    expect(r.sellLots).toBe(4);
+    expect(r.buyAmount).toBe(806_000);
+    expect(r.sellAmount).toBe(404_000);
+  });
+
+  it("filters by broker_id: does NOT sum other brokers even at same price", () => {
+    const trades: BrokerTrade[] = [
+      mk("A", 100, 10, 0),
+      mk("B", 100, 999, 999),
+    ];
+    const r = computeBrokerTotals(trades, "A");
+    expect(r.buyLots).toBe(10);
+    expect(r.buyAmount).toBe(1_000_000);
+    expect(r.sellLots).toBe(0);
+  });
+
+  it("empty trades: returns all zeros", () => {
+    expect(computeBrokerTotals([], "A")).toEqual({
+      buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0,
+    });
+  });
+});
+
+describe("fmtAmount (C6 🟢)", () => {
+  it("< 10,000: renders as `X,XXX 元`", () => {
+    expect(fmtAmount(1234)).toBe("1,234 元");
+    expect(fmtAmount(999)).toBe("999 元");
+    expect(fmtAmount(0)).toBe("0 元");
+  });
+
+  it("10,000 ~ 100,000,000: renders as `X,XXX 萬` (integer 萬)", () => {
+    expect(fmtAmount(10_000)).toBe("1 萬");
+    expect(fmtAmount(50_000)).toBe("5 萬");
+    expect(fmtAmount(10_000_000)).toBe("1,000 萬");
+    expect(fmtAmount(99_999_999)).toBe("9,999 萬"); // < 億 cutoff (floor 9999.99…)
+  });
+
+  it(">= 100,000,000: renders as `X.XX 億` (2-decimal for tabular-nums alignment)", () => {
+    expect(fmtAmount(100_000_000)).toBe("1.00 億");
+    expect(fmtAmount(120_000_000)).toBe("1.20 億");
+    expect(fmtAmount(105_000_000)).toBe("1.05 億");
+    expect(fmtAmount(1_234_500_000)).toBe("12.35 億"); // rounded 2dp
+  });
+});
+
+describe("buildTradeRows — legacy tests continue", () => {
+  function mkTrade(broker: string, price: number, buy: number, sell: number): BrokerTrade {
+    return { broker, broker_id: broker, price, buy, sell };
+  }
 
   // C1 R3: locks name-based filter behavior when the same broker_name appears
   // across multiple broker_id (edge case: FinMind securities_trader_id is

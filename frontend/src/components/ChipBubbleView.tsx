@@ -4,7 +4,8 @@ import type {
   ChipBubbleData, IntradayPoint, SortDir, SortSpec, TradeRow, TradeSortKey,
 } from "../lib/chip-data";
 import {
-  DEFAULT_TRADE_SORT, aggregateByPrice, buildTradeRows, fmtVol,
+  DEFAULT_TRADE_SORT, aggregateByPrice, buildTradeRows, computeBrokerTotals,
+  fmtAmount, fmtVol,
 } from "../lib/chip-data";
 import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg";
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
@@ -80,6 +81,12 @@ export function ChipBubbleView({
   const uniqueBrokerCount = useMemo(
     () => new Set(bubbleData?.trades.map((t) => t.broker) ?? []).size,
     [bubbleData],
+  );
+
+  // C6 A3: 選中分點的總買/賣張 + 精確成交金額。
+  const brokerTotals = useMemo(
+    () => computeBrokerTotals(bubbleData?.trades ?? [], selectedBrokerId),
+    [bubbleData, selectedBrokerId],
   );
 
   const bubbleRef = useRef<HTMLDivElement | null>(null);
@@ -196,6 +203,25 @@ export function ChipBubbleView({
             <span className="text-xs text-ink-dim">
               今日共 <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
             </span>
+          )}
+          {selectedBrokerId && (
+            <div
+              data-testid="bubble-broker-totals"
+              className="flex items-center gap-3 text-xs text-ink-dim"
+            >
+              <span>
+                買 <span className="text-accent tabular-nums">{fmtVol(brokerTotals.buyLots)}</span> 張
+              </span>
+              <span>
+                賣 <span className="text-bear tabular-nums">{fmtVol(brokerTotals.sellLots)}</span> 張
+              </span>
+              <span>
+                買額 <span className="text-accent tabular-nums">{fmtAmount(brokerTotals.buyAmount)}</span>
+              </span>
+              <span>
+                賣額 <span className="text-bear tabular-nums">{fmtAmount(brokerTotals.sellAmount)}</span>
+              </span>
+            </div>
           )}
         </div>
         <div ref={bubbleRef} className="flex-1 min-h-0 overflow-hidden relative">

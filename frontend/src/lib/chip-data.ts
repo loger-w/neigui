@@ -191,6 +191,55 @@ export function fmtVol(n: number): string {
   return n.toLocaleString();
 }
 
+// C6 A3 (🟢): 分點總買/賣 pure helpers。
+export interface BrokerTotals {
+  buyLots: number;
+  sellLots: number;
+  /** 元 — 精確金額(row 已由 FinMind 按 (broker, price) pre-aggregate,
+   *  乘 1000 (股/張) × price 即為成交金額,非估算)。 */
+  buyAmount: number;
+  sellAmount: number;
+}
+
+/**
+ * Sum a single broker's total buy/sell lots + monetary amount across all
+ * price levels. Returns zeros when brokerId is null or not found in trades.
+ */
+export function computeBrokerTotals(
+  trades: BrokerTrade[],
+  brokerId: string | null,
+): BrokerTotals {
+  if (!brokerId) return { buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 };
+  let buyLots = 0;
+  let sellLots = 0;
+  let buyAmount = 0;
+  let sellAmount = 0;
+  for (const t of trades) {
+    if (t.broker_id !== brokerId) continue;
+    buyLots += t.buy;
+    sellLots += t.sell;
+    buyAmount += t.buy * 1000 * t.price;
+    sellAmount += t.sell * 1000 * t.price;
+  }
+  return { buyLots, sellLots, buyAmount, sellAmount };
+}
+
+/**
+ * Format 金額(元)into human string with tabular-nums-friendly widths:
+ *  < 10,000        → `X,XXX 元`
+ *  10,000 ~ 億      → `X,XXX 萬`(integer 萬)
+ *  ≥ 100,000,000   → `X.XX 億`(2 decimals for alignment)
+ */
+export function fmtAmount(amount: number): string {
+  if (amount >= 100_000_000) {
+    return `${(amount / 100_000_000).toFixed(2)} 億`;
+  }
+  if (amount >= 10_000) {
+    return `${Math.floor(amount / 10_000).toLocaleString()} 萬`;
+  }
+  return `${Math.round(amount).toLocaleString()} 元`;
+}
+
 export function aggregateByPrice(trades: BrokerTrade[]): PriceAgg[] {
   const map = new Map<number, { buy: number; sell: number }>();
   for (const t of trades) {

@@ -301,3 +301,33 @@ describe("ChipBubbleView — A5 loading badge (C5 🟢)", () => {
     expect((container.textContent ?? "").includes("請搜尋股票代號")).toBe(false);
   });
 });
+
+// A3 (C6 🟢): 選單一分點時顯示總買/賣張/金額。
+describe("ChipBubbleView — A3 分點總買/賣張/金額 (C6 🟢)", () => {
+  it("未選 broker:不顯示 totals 區塊", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    expect(container.querySelector('[data-testid="bubble-broker-totals"]')).toBeNull();
+  });
+
+  it("選中 broker:顯示買張/賣張/買額/賣額,金額用 fmtAmount 格式", async () => {
+    // Alpha: buy=10 sell=30 price=100 → buyLots=10 sellLots=30
+    //        buyAmount=10*1000*100=1,000,000 → "100 萬"
+    //        sellAmount=30*1000*100=3,000,000 → "300 萬"
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => {
+      const totals = container.querySelector('[data-testid="bubble-broker-totals"]');
+      if (!totals) throw new Error("totals not rendered yet");
+    });
+    const totals = container.querySelector('[data-testid="bubble-broker-totals"]') as HTMLElement;
+    const text = totals.textContent ?? "";
+    expect(text.includes("10")).toBe(true);       // buy lots
+    expect(text.includes("30")).toBe(true);       // sell lots
+    expect(text.includes("100 萬")).toBe(true);    // buyAmount
+    expect(text.includes("300 萬")).toBe(true);    // sellAmount
+  });
+});
