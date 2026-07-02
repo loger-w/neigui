@@ -38,7 +38,9 @@ export function MarketPage({ isActive, onSymbolPick }: Props): ReactElement {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    // flex-1(非 h-full):App root 是 flex-col(mode nav shrink-0 + page),
+    // flex item 的 h-full = 100% 容器高,會下溢 nav 高度被 overflow-hidden 裁切
+    <div className="flex flex-col flex-1 min-h-0">
       <MarketHeader
         lastUpdated={lastUpdated}
         isStale={isStale}
