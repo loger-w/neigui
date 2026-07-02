@@ -40,6 +40,16 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.18.2",
+    date: "2026-07-02",
+    highlights: "大盤掃描大幅加速",
+    changes: [
+      { kind: "fix", scope: "global", text: "大盤掃描開啟大幅加速" },
+      { kind: "fix", scope: "global", text: "大盤掃描重新整理大幅加速" },
+      { kind: "fix", scope: "global", text: "大盤資料更新時其他頁面不再卡頓" },
+    ],
+  },
+  {
     version: "0.18.1",
     date: "2026-06-29",
     highlights: "進股票 / 選擇權的載入更穩、重新整理大幅加速",
