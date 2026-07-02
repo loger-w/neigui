@@ -39,12 +39,10 @@ export function MarketSectorAmountShare({ rows, eodAsOf, loaded }: Props): React
           </thead>
           <tbody>
             {rows.map((r) => {
-              const deltaClass =
-                r.share_delta_20ma == null
-                  ? "text-ink-dim"
-                  : r.share_delta_20ma > 0
-                    ? "text-accent"
-                    : "text-ink-muted";
+              // CR1-13:顏色改用與 signedPctPoints 顯示同源的四捨五入值,避免
+              // ±0.00003 這類 rounding 邊界值顯示 "0.00" 卻仍上色。
+              const pts = r.share_delta_20ma == null ? null : Number((r.share_delta_20ma * 100).toFixed(2));
+              const deltaClass = pts === null ? "text-ink-dim" : pts > 0 ? "text-accent" : "text-ink-muted";
               return (
                 <tr key={r.sector} data-testid={`sas-row-${r.sector}`}>
                   <td className="text-ink">{r.sector}</td>
