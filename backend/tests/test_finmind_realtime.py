@@ -67,6 +67,51 @@ def test_dedup_override_table_wins() -> None:
     assert _PRIMARY_INDUSTRY_OVERRIDE["2330"] == "半導體業"
 
 
+# bug sector-override-phantom — override value 必須是 TaiwanStockInfo 真實
+# industry_category 字串,否則 override 股自成幽靈 sector(2026-07-02 real
+# payload:「金融保險業」2 檔 vs 真實「金融保險」30 檔並存)。
+# 真實集合 snapshot:2026-07-02 FinMind TaiwanStockInfo probe(type ∈ twse/tpex,
+# 56 distinct)。FinMind 改名時本 fixture 隨 §9 fixture rotation 政策更新。
+_REAL_INDUSTRY_CATEGORIES_2026_07_02 = frozenset({
+    "ETF", "ETN", "Index", "上櫃ETF", "上櫃指數股票型基金(ETF)", "光電業",
+    "其他", "其他電子業", "其他電子類", "創新板股票", "創新版股票", "化學工業",
+    "化學生技醫療", "半導體業", "受益證券", "塑膠工業", "大盤", "存託憑證",
+    "居家生活", "居家生活類", "建材營造", "所有證券", "指數投資證券(ETN)",
+    "數位雲端", "數位雲端類", "文化創意業", "橡膠工業", "水泥工業", "汽車工業",
+    "油電燃氣業", "玻璃陶瓷", "生技醫療業", "紡織纖維", "綠能環保", "綠能環保類",
+    "航運業", "觀光事業", "觀光餐旅", "貿易百貨", "資訊服務業", "農業科技業",
+    "通信網路業", "造紙工業", "運動休閒", "運動休閒類", "金融保險", "金融業",
+    "鋼鐵工業", "電器電纜", "電子商務業", "電子工業", "電子通路業", "電子零組件業",
+    "電機機械", "電腦及週邊設備業", "食品工業",
+})
+
+
+def test_override_values_are_real_finmind_categories() -> None:
+    """bug sector-override-phantom drift-lock:每個 override value 必須存在於
+    真實 industry_category 集合,防手編字串 / FinMind 改名 silent drift。"""
+    for sid, category in _PRIMARY_INDUSTRY_OVERRIDE.items():
+        assert category in _REAL_INDUSTRY_CATEGORIES_2026_07_02, (
+            f"override[{sid}] = {category!r} 不是真實 TaiwanStockInfo "
+            f"industry_category,會自成幽靈 sector"
+        )
+
+
+def test_dedup_override_financial_stocks_join_real_sector() -> None:
+    """bug sector-override-phantom 重現:override 股 (2882) 與非 override
+    金融股 (2881) 必須落在同一個「金融保險」sector,不得分桶。"""
+    rows = [
+        {"stock_id": "2881", "industry_category": "金融保險",
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "2882", "industry_category": "金融保險",
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "2891", "industry_category": "金融保險",
+         "type": "twse", "date": "2026-06-26"},
+    ]
+    out = _dedup_sector_map(rows)
+    assert out["2882"] == out["2881"] == "金融保險"
+    assert out["2891"] == "金融保險"
+
+
 def test_dedup_filters_non_twse_tpex_keeps_both() -> None:
     """v3 B4: type='index'/'other' 過濾;type='twse' AND 'tpex' 皆保留(對稱)。"""
     rows = [

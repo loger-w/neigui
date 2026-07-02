@@ -49,8 +49,10 @@ _PRIMARY_INDUSTRY_OVERRIDE: dict[str, str] = {
     "2308": "電子零組件業",
     "2382": "電子工業",
     "2412": "通信網路業",
-    "2882": "金融保險業",
-    "2891": "金融保險業",
+    # bug sector-override-phantom:value 必須是 TaiwanStockInfo 真實
+    # industry_category 字串(「金融保險」無「業」尾),否則自成幽靈 sector
+    "2882": "金融保險",
+    "2891": "金融保險",
     "1216": "食品工業",
     "1101": "水泥工業",
 }
