@@ -40,6 +40,18 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.19.0",
+    date: "2026-07-02",
+    highlights: "大盤掃描全面改版:市場廣度、族群參與度、資金流向",
+    changes: [
+      { kind: "feature", scope: "global", text: "大盤掃描新增市場廣度指標與訊號標記" },
+      { kind: "feature", scope: "global", text: "大盤掃描新增族群參與度分布圖,可看各族群強弱" },
+      { kind: "feature", scope: "global", text: "大盤掃描新增族群資金流向與量能對照表" },
+      { kind: "feature", scope: "global", text: "大盤掃描標示已過濾 ETF / 權證 / 處置股" },
+      { kind: "feature", scope: "global", text: "原有大盤畫面保留於「經典檢視」區塊" },
+    ],
+  },
+  {
     version: "0.18.2",
     date: "2026-07-02",
     highlights: "大盤掃描大幅加速",
