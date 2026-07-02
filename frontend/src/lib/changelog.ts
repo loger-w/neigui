@@ -40,6 +40,19 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.20.0",
+    date: "2026-07-02",
+    highlights: "籌碼分點與泡泡圖操作改良:全分點篩選、區間過濾、手動輸入、使用說明",
+    changes: [
+      { kind: "feature", scope: "equity", text: "分點篩選加開「篩選」彈出視窗,可看當日全部分點清單並勾選、搜尋、按淨買賣或名稱排序" },
+      { kind: "feature", scope: "equity", text: "泡泡圖拖曳 Y 軸選價位區間後,只顯示區間內的成交泡泡" },
+      { kind: "feature", scope: "equity", text: "泡泡圖新增「輸入區間」可手動輸入買賣價位下限與上限" },
+      { kind: "feature", scope: "equity", text: "泡泡圖右上角新增「?」操作說明,首次使用者可看操作指引" },
+      { kind: "feature", scope: "equity", text: "泡泡圖框選價位區間後點選分點,會顯示該分點今日所有價位的成交,原本的區間仍保留作為視覺參考" },
+      { kind: "fix", scope: "equity", text: "籌碼買賣超上方的「已選分點」列固定高度,勾選分點後不再產生小幅位移" },
+    ],
+  },
+  {
     version: "0.19.0",
     date: "2026-07-02",
     highlights: "大盤掃描全面改版:市場廣度、族群參與度、資金流向",

@@ -307,3 +307,85 @@ describe("ChipKlineChart — zoom HUD + wheel handler", () => {
     expect(queryByText(/請搜尋股票代號/)).toBeNull();
   });
 });
+
+// B3 (C4 🔴): 選 broker 前後 K 線下 6 個 subchart 幾何完全一致(anti-CLS)。
+// 未選時 broker row 容器保留,顯 placeholder「未選擇分點」+ 隱藏「清除」button;
+// 已選時 broker row 顯 BrokerAggBarSvg + 「分點 (N)」label + 「清除」button。
+describe("ChipKlineChart — B3 broker row 容器常駐 (C4 🔴)", () => {
+  const historyForB3 = mkHistory(120);
+
+  it("未選 → data-testid=chip-broker-row 存在 + 顯示「未選擇分點」placeholder + 無「清除」button", () => {
+    const { container } = render(
+      <ChipKlineChart
+        history={historyForB3}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={vi.fn()}
+        onClearAllBrokers={vi.fn()}
+      />,
+    );
+    const row = container.querySelector("[data-testid=chip-broker-row]");
+    expect(row).toBeTruthy();
+    expect((row!.textContent ?? "").includes("未選擇分點")).toBe(true);
+    // 清除 button 只有在選了 broker 時出現
+    const clearBtn = Array.from(row!.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").trim() === "清除",
+    );
+    expect(clearBtn).toBeUndefined();
+  });
+
+  it("已選 1 broker → data-testid=chip-broker-row 存在 + 有「清除」button + 無 placeholder", () => {
+    const onClearAll = vi.fn();
+    const { container } = render(
+      <ChipKlineChart
+        history={historyForB3}
+        selectedDate=""
+        selectedBrokerIds={new Set(["B0"])}
+        brokerSeries={new Map()}
+        onPickDate={vi.fn()}
+        onClearAllBrokers={onClearAll}
+      />,
+    );
+    const row = container.querySelector("[data-testid=chip-broker-row]");
+    expect(row).toBeTruthy();
+    expect((row!.textContent ?? "").includes("未選擇分點")).toBe(false);
+    const clearBtn = Array.from(row!.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").trim() === "清除",
+    );
+    expect(clearBtn).toBeTruthy();
+    // click clear button → onClearAllBrokers called
+    // (fireEvent.click imported? — use imperative click via dispatchEvent)
+    clearBtn!.click();
+    expect(onClearAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("未選 vs 已選:chip-broker-row 容器都存在(anti-CLS 檢查)", () => {
+    const { container: c1 } = render(
+      <ChipKlineChart
+        history={historyForB3}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={vi.fn()}
+        onClearAllBrokers={vi.fn()}
+      />,
+    );
+    const rowUnselected = c1.querySelector("[data-testid=chip-broker-row]");
+    expect(rowUnselected).toBeTruthy();
+    cleanup();
+
+    const { container: c2 } = render(
+      <ChipKlineChart
+        history={historyForB3}
+        selectedDate=""
+        selectedBrokerIds={new Set(["B0"])}
+        brokerSeries={new Map()}
+        onPickDate={vi.fn()}
+        onClearAllBrokers={vi.fn()}
+      />,
+    );
+    const rowSelected = c2.querySelector("[data-testid=chip-broker-row]");
+    expect(rowSelected).toBeTruthy();
+  });
+});

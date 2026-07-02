@@ -4,12 +4,15 @@ import type {
   ChipBubbleData, IntradayPoint, SortDir, SortSpec, TradeRow, TradeSortKey,
 } from "../lib/chip-data";
 import {
-  DEFAULT_TRADE_SORT, aggregateByPrice, buildTradeRows, fmtVol,
+  DEFAULT_TRADE_SORT, aggregateByPrice, buildTradeRows, computeBrokerTotals,
+  fmtAmount, fmtVol, summarizeTradesByPriceRange,
 } from "../lib/chip-data";
 import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg";
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
 import { BrokerSearch } from "./BrokerSearch";
+import { BubbleHelpButton } from "./BubbleHelpButton";
+import { LoadingSpinner } from "./ui/loading-spinner";
 
 interface Props {
   bubbleData: ChipBubbleData | null;
@@ -18,6 +21,14 @@ interface Props {
   /** Optional 當日分時走勢線 (背景). 透傳給 BubbleChartSvg.
    *  Hook mount 在 App.tsx,對齊既有 useChipBubble 樣板。 */
   intradayPoints?: IntradayPoint[] | null;
+  /** C2 A2: 跳到籌碼總覽並帶入 broker(s)。App.tsx 掛 handler 切 tab +
+   *  setSelectedBrokerIds。signature 一次寫對 string | string[] 讓 C7
+   *  brush 篩多 broker 情境不需要再擴充,C7 可獨立 revert。未提供時,
+   *  header 顯 fallback 文字「已篩選 1 個分點」。 */
+  onJumpToOverview?: (brokerIdOrIds: string | string[]) => void;
+  /** C5 A5: symbol 已選但 bubble fetch 未回時顯 badge。對齊
+   *  ChipKlineChart 的 loading badge pattern(L338-370)。 */
+  loading?: boolean;
 }
 
 // F12: surface every broker who traded today, including 1-張 ones. The
@@ -26,18 +37,40 @@ interface Props {
 // the long tail visible there.
 const MAX_TRADE_ROWS = Number.POSITIVE_INFINITY;
 
-export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints }: Props) {
-  const [selectedBroker, setSelectedBroker] = useState<string | null>(null);
-  // F2: independent sort state per side. Header click toggles dir when the
-  // same key is re-clicked; switching key resets dir to "desc" (matches the
-  //台股 看盤 default of "biggest first").
+export function ChipBubbleView({
+  bubbleData,
+  closePrice,
+  symbol,
+  intradayPoints,
+  onJumpToOverview,
+  loading,
+}: Props) {
+  // C1 🔵: selection state 存 broker_id(FinMind securities_trader_id),
+  // 對齊 App.tsx selectedBrokerIds 契約,方便 A2 一鍵跳籌碼總覽。
+  // 下游元件(BrokerSearch / BubbleChartSvg / buildTradeRows / TradeList)
+  // 仍接 name string,靠 selectedBrokerName derived 回傳。
+  const [selectedBrokerId, setSelectedBrokerId] = useState<string | null>(null);
   const [buySort, setBuySort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
   const [sellSort, setSellSort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
+  // C7 A1: Y 軸 brush 選價位 range。null = 無 brush;svg drag end 後 setBrushRange。
+  const [brushRange, setBrushRange] = useState<{ min: number; max: number } | null>(null);
+  // C10 (🟢 Item 4): 手動輸入區間開啟狀態。true = 顯示輸入面板(可能有初值 = brushRange)。
+  const [manualInputOpen, setManualInputOpen] = useState<boolean>(false);
 
-  // Reset selection ONLY on symbol change (NOT on date / bubbleData change)
+  // Reset selection ONLY on symbol change (NOT on date / bubbleData change).
+  // C7 A1: brush 也一起清 —— 避免換股後舊 range 殘留誤導。
   useEffect(() => {
-    setSelectedBroker(null);
+    setSelectedBrokerId(null);
+    setBrushRange(null);
+    setManualInputOpen(false);
   }, [symbol]);
+
+  const selectedBrokerName = useMemo(
+    () =>
+      bubbleData?.trades.find((t) => t.broker_id === selectedBrokerId)?.broker ??
+      null,
+    [bubbleData, selectedBrokerId],
+  );
 
   const handleBuySortChange = useCallback((key: TradeSortKey) => {
     setBuySort((prev) =>
@@ -54,9 +87,30 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
     );
   }, []);
 
+  // C10 (🔴 Item 3 擴充):brushRange 設定後,右側 trade list / price bar /
+  // broker totals / 分點計數統一 filter。
+  // C11 (🔴):分點選擇時 range 退為視覺參考 — 若使用者已選 broker,即使有
+  //   brushRange 也不預過濾(範圍框仍畫,但資料回全 broker)。目的是解「先框
+  //   價區、後點分點想看全價位」的 UX,不需要清 range。selectedBrokerId 為 null
+  //   時走原 range 過濾邏輯。brushSummary 仍用原始 trades 算 summary。
+  const rangeActiveForFilter = brushRange !== null && !selectedBrokerId;
+  const rangeTrades = useMemo(() => {
+    if (!bubbleData) return [];
+    if (!rangeActiveForFilter || !brushRange) return bubbleData.trades;
+    return bubbleData.trades.filter(
+      (t) => t.price >= brushRange.min && t.price <= brushRange.max,
+    );
+  }, [bubbleData, brushRange, rangeActiveForFilter]);
+
   const uniqueBrokerCount = useMemo(
-    () => new Set(bubbleData?.trades.map((t) => t.broker) ?? []).size,
-    [bubbleData],
+    () => new Set(rangeTrades.map((t) => t.broker)).size,
+    [rangeTrades],
+  );
+
+  // C6 A3: 選中分點的總買/賣張 + 精確成交金額。brushRange 有效時只算區間內。
+  const brokerTotals = useMemo(
+    () => computeBrokerTotals(rangeTrades, selectedBrokerId),
+    [rangeTrades, selectedBrokerId],
   );
 
   const bubbleRef = useRef<HTMLDivElement | null>(null);
@@ -87,22 +141,62 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
     [],
   );
 
-  const handleBubbleClick = useCallback((broker: string | null) => {
-    if (broker === null) {
-      setSelectedBroker(null);
-    } else {
-      setSelectedBroker((prev) => (prev === broker ? null : broker));
-    }
+  // C1 🔵: svg / TradeList 回傳 broker name;此 handler 轉 id set state。
+  // C7 A1: 點空白處(broker=null)同時清 brush,對齊 SC-A1c。
+  const handleBubbleClick = useCallback(
+    (broker: string | null) => {
+      if (broker === null) {
+        setSelectedBrokerId(null);
+        setBrushRange(null);
+        setManualInputOpen(false);
+        return;
+      }
+      const id =
+        bubbleData?.trades.find((t) => t.broker === broker)?.broker_id ?? null;
+      if (id === null) return;
+      setSelectedBrokerId((prev) => (prev === id ? null : id));
+    },
+    [bubbleData],
+  );
+
+  // C7 A1: brush drag end callback。存 range → 顯示 summary panel。
+  // C10 (🟢 Item 4): drag brush 完成時關閉手動輸入(避免兩個面板 confusion)。
+  const handleYBrush = useCallback((priceMin: number, priceMax: number) => {
+    setBrushRange({ min: priceMin, max: priceMax });
+    setManualInputOpen(false);
   }, []);
 
-  const allPriceAggs = useMemo(() => {
-    if (!bubbleData) return [];
-    return aggregateByPrice(bubbleData.trades);
-  }, [bubbleData]);
+  // C7 A1: ESC 鍵清 brush + 手動輸入面板(對齊 SC-A1c)。
+  useEffect(() => {
+    if (!brushRange && !manualInputOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setBrushRange(null);
+        setManualInputOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [brushRange, manualInputOpen]);
+
+  const handleManualApply = useCallback((minStr: string, maxStr: string) => {
+    const min = parseFloat(minStr);
+    const max = parseFloat(maxStr);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) return;
+    setBrushRange({ min, max });
+    setManualInputOpen(false);
+  }, []);
+
+  const brushSummary = useMemo(() => {
+    if (!brushRange || !bubbleData) return null;
+    return summarizeTradesByPriceRange(bubbleData.trades, brushRange.min, brushRange.max);
+  }, [brushRange, bubbleData]);
+
+  const allPriceAggs = useMemo(() => aggregateByPrice(rangeTrades), [rangeTrades]);
 
   const priceAggs = useMemo(() => {
-    if (!bubbleData || !selectedBroker) return allPriceAggs;
-    const filtered = bubbleData.trades.filter((t) => t.broker === selectedBroker);
+    if (!selectedBrokerName) return allPriceAggs;
+    const filtered = rangeTrades.filter((t) => t.broker === selectedBrokerName);
     if (filtered.length === 0) return allPriceAggs;
     const filteredAggs = aggregateByPrice(filtered);
     const filteredPrices = new Set(filteredAggs.map((a) => a.price));
@@ -111,17 +205,29 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
         ? filteredAggs.find((f) => f.price === a.price)!
         : { price: a.price, buy: 0, sell: 0 },
     );
-  }, [bubbleData, selectedBroker, allPriceAggs]);
+  }, [rangeTrades, selectedBrokerName, allPriceAggs]);
 
   // Bug fix: filter must precede the top-N slice. Building the rows then
   // slicing drops every row that fell behind the global top-200 cap, which
   // was hiding most of a small-volume broker's price levels after filter.
-  const { buyRows: filteredBuyRows, sellRows: filteredSellRows } = useMemo(() => {
-    if (!bubbleData) return { buyRows: [] as TradeRow[], sellRows: [] as TradeRow[] };
-    return buildTradeRows(
-      bubbleData.trades, selectedBroker, MAX_TRADE_ROWS, buySort, sellSort,
-    );
-  }, [bubbleData, selectedBroker, buySort, sellSort]);
+  const { buyRows: filteredBuyRows, sellRows: filteredSellRows } = useMemo(
+    () => buildTradeRows(rangeTrades, selectedBrokerName, MAX_TRADE_ROWS, buySort, sellSort),
+    [rangeTrades, selectedBrokerName, buySort, sellSort],
+  );
+
+  // C1 🔵: BrokerSearch onChange 回傳 name;此 wrapper 轉 id set state。
+  const handleBrokerSearchChange = useCallback(
+    (name: string | null) => {
+      if (name === null) {
+        setSelectedBrokerId(null);
+        return;
+      }
+      const id =
+        bubbleData?.trades.find((t) => t.broker === name)?.broker_id ?? null;
+      setSelectedBrokerId(id);
+    },
+    [bubbleData],
+  );
 
   return (
     <div className="h-full grid grid-cols-[1fr_400px] gap-0 overflow-hidden">
@@ -130,34 +236,157 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
         <div className="shrink-0 h-10 px-3 border-b border-line bg-bg-deep/30 flex items-center gap-3">
           <BrokerSearch
             trades={bubbleData?.trades ?? []}
-            value={selectedBroker}
-            onChange={setSelectedBroker}
+            value={selectedBrokerName}
+            onChange={handleBrokerSearchChange}
           />
-          <span className="text-xs text-ink-dim">
-            {selectedBroker ? (
-              <>已篩選 <span className="text-[#f0b429] font-medium">1</span> 個分點</>
+          {selectedBrokerId && selectedBrokerName ? (
+            onJumpToOverview ? (
+              <button
+                type="button"
+                data-testid="bubble-jump-to-overview"
+                onClick={() => onJumpToOverview(selectedBrokerId)}
+                className="text-xs text-accent hover:text-ink underline underline-offset-2 cursor-pointer"
+              >
+                查看 <span className="text-[#f0b429] font-medium">{selectedBrokerName}</span> 於籌碼總覽 →
+              </button>
             ) : (
-              <>今日共 <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點</>
+              <span className="text-xs text-ink-dim">
+                已篩選 <span className="text-[#f0b429] font-medium">1</span> 個分點
+              </span>
+            )
+          ) : (
+            <span className="text-xs text-ink-dim">
+              {brushRange ? "此區間" : "今日共"} <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
+            </span>
+          )}
+          {selectedBrokerId && (
+            <div
+              data-testid="bubble-broker-totals"
+              className="flex items-center gap-3 text-xs text-ink-dim"
+            >
+              <span>
+                買 <span className="text-accent tabular-nums">{fmtVol(brokerTotals.buyLots)}</span> 張
+              </span>
+              <span>
+                賣 <span className="text-bear tabular-nums">{fmtVol(brokerTotals.sellLots)}</span> 張
+              </span>
+              <span>
+                買額 <span className="text-accent tabular-nums">{fmtAmount(brokerTotals.buyAmount)}</span>
+              </span>
+              <span>
+                賣額 <span className="text-bear tabular-nums">{fmtAmount(brokerTotals.sellAmount)}</span>
+              </span>
+            </div>
+          )}
+          {/* C10 (🟢 Item 4 + 5):手動輸入區間 trigger + Help '?' icon 靠右 */}
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            {bubbleData && (
+              <button
+                type="button"
+                data-testid="bubble-manual-range-trigger"
+                onClick={() => setManualInputOpen(true)}
+                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer"
+              >
+                輸入區間
+              </button>
             )}
-          </span>
+            <BubbleHelpButton />
+          </div>
         </div>
-        <div ref={bubbleRef} className="flex-1 min-h-0 overflow-hidden">
-          {!bubbleData ? (
+        <div ref={bubbleRef} className="flex-1 min-h-0 overflow-hidden relative">
+          {!bubbleData && !loading ? (
             <div className="h-full flex items-center justify-center text-ink-dim font-serif italic text-sm">
               請搜尋股票代號以載入泡泡圖
             </div>
-          ) : bubbleSize.width > 0 && bubbleSize.height > 0 ? (
+          ) : bubbleData && bubbleSize.width > 0 && bubbleSize.height > 0 ? (
             <BubbleChartSvg
               trades={bubbleData.trades}
               width={bubbleSize.width}
               height={bubbleSize.height}
               closePrice={closePrice}
-              selectedBroker={selectedBroker}
+              selectedBroker={selectedBrokerName}
               onBubbleHover={handleBubbleHover}
               onBubbleClick={handleBubbleClick}
               intradayPoints={intradayPoints}
+              onYBrush={handleYBrush}
+              brushRange={brushRange}
+              priceRange={rangeActiveForFilter ? brushRange : null}
             />
           ) : null}
+          {loading && symbol && (
+            <div
+              data-testid="bubble-loading-badge"
+              className="absolute top-2 left-1/2 -translate-x-1/2 z-30 text-xs text-ink bg-bg-deep/90 px-3 py-1 border border-accent rounded shadow pointer-events-none flex items-center gap-2"
+              aria-live="polite"
+            >
+              <LoadingSpinner size="3.5" />
+              載入 {symbol} 泡泡圖中…
+            </div>
+          )}
+          {brushRange && brushSummary && !manualInputOpen && (
+            <div
+              data-testid="brush-summary"
+              className="absolute right-4 top-4 z-40 bg-bg-deep/95 border border-accent px-3 py-2 rounded shadow-lg text-xs"
+            >
+              <div className="text-ink font-medium mb-1 tabular-nums">
+                {brushRange.min.toFixed(2)} – {brushRange.max.toFixed(2)}
+                <span className="text-ink-dim ml-2">
+                  ({brushSummary.priceLevelCount} 檔價位)
+                </span>
+              </div>
+              <div className="text-ink-muted">
+                涵蓋 {brushSummary.brokerIds.length} 個分點
+              </div>
+              <div className="text-ink-muted tabular-nums">
+                買 {fmtVol(brushSummary.buyLots)} / 賣 {fmtVol(brushSummary.sellLots)} 張
+              </div>
+              {selectedBrokerId && (
+                <div
+                  data-testid="brush-range-parked"
+                  className="mt-1 text-2xs text-ink-dim italic"
+                >
+                  分點選擇中,區間僅作參考(右側資料顯示全部價位)
+                </div>
+              )}
+              <div className="flex gap-3 mt-2">
+                {onJumpToOverview && brushSummary.brokerIds.length > 0 && (
+                  <button
+                    type="button"
+                    data-testid="brush-apply-filter"
+                    onClick={() => onJumpToOverview(brushSummary.brokerIds)}
+                    className="text-accent hover:text-ink underline underline-offset-2 cursor-pointer"
+                  >
+                    篩選這 {brushSummary.brokerIds.length} 個分點 →
+                  </button>
+                )}
+                <button
+                  type="button"
+                  data-testid="brush-edit"
+                  onClick={() => setManualInputOpen(true)}
+                  className="text-ink-muted hover:text-accent cursor-pointer"
+                >
+                  編輯
+                </button>
+                <button
+                  type="button"
+                  data-testid="brush-clear"
+                  onClick={() => setBrushRange(null)}
+                  className="text-ink-dim hover:text-bear cursor-pointer"
+                >
+                  清除
+                </button>
+              </div>
+            </div>
+          )}
+          {manualInputOpen && (
+            <PriceRangeInputPanel
+              initialMin={brushRange?.min ?? null}
+              initialMax={brushRange?.max ?? null}
+              closePrice={closePrice}
+              onApply={handleManualApply}
+              onCancel={() => setManualInputOpen(false)}
+            />
+          )}
         </div>
       </div>
 
@@ -175,7 +404,7 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
           <TradeList
             rows={filteredBuyRows}
             side="buy"
-            selectedBroker={selectedBroker}
+            selectedBroker={selectedBrokerName}
             onSelect={handleBubbleClick}
             sortSpec={buySort}
             onSortChange={handleBuySortChange}
@@ -183,7 +412,7 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
           <TradeList
             rows={filteredSellRows}
             side="sell"
-            selectedBroker={selectedBroker}
+            selectedBroker={selectedBrokerName}
             onSelect={handleBubbleClick}
             sortSpec={sellSort}
             onSortChange={handleSellSortChange}
@@ -223,6 +452,98 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
 // line-height ≈ 22px). Used by the virtualizer to compute scroll bounds.
 // If the row styling changes (padding/font-size/line-height), update this.
 const ROW_HEIGHT_PX = 22;
+
+// C10 (🟢 Item 4): 手動輸入價位區間 mini form。onApply 只在兩個值 finite +
+// min < max 時觸發(在 parent handleManualApply 檢查)。空值 / NaN 由 parent
+// 靜默 reject,不彈錯誤(輸入中間態很常見)。
+function PriceRangeInputPanel({
+  initialMin,
+  initialMax,
+  closePrice,
+  onApply,
+  onCancel,
+}: {
+  initialMin: number | null;
+  initialMax: number | null;
+  closePrice?: number;
+  onApply: (minStr: string, maxStr: string) => void;
+  onCancel: () => void;
+}) {
+  const [minStr, setMinStr] = useState<string>(
+    initialMin !== null ? initialMin.toFixed(2) : "",
+  );
+  const [maxStr, setMaxStr] = useState<string>(
+    initialMax !== null ? initialMax.toFixed(2) : "",
+  );
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onApply(minStr, maxStr);
+  };
+
+  const min = parseFloat(minStr);
+  const max = parseFloat(maxStr);
+  const valid = Number.isFinite(min) && Number.isFinite(max) && min < max;
+
+  return (
+    <form
+      data-testid="manual-range-panel"
+      onSubmit={handleSubmit}
+      className="absolute right-4 top-4 z-40 bg-bg-deep/95 border border-accent px-3 py-2 rounded shadow-lg text-xs w-[240px]"
+    >
+      <div className="text-ink font-medium mb-2">輸入價位區間</div>
+      <div className="flex items-center gap-1.5 mb-2">
+        <input
+          type="number"
+          step="0.05"
+          inputMode="decimal"
+          value={minStr}
+          onChange={(e) => setMinStr(e.target.value)}
+          placeholder="下限"
+          aria-label="價位下限"
+          data-testid="manual-range-min"
+          className="w-20 h-7 px-1.5 tabular-nums bg-bg border border-line rounded text-ink placeholder:text-ink-dim focus:outline-none focus:border-accent"
+          autoFocus
+        />
+        <span className="text-ink-dim">～</span>
+        <input
+          type="number"
+          step="0.05"
+          inputMode="decimal"
+          value={maxStr}
+          onChange={(e) => setMaxStr(e.target.value)}
+          placeholder="上限"
+          aria-label="價位上限"
+          data-testid="manual-range-max"
+          className="w-20 h-7 px-1.5 tabular-nums bg-bg border border-line rounded text-ink placeholder:text-ink-dim focus:outline-none focus:border-accent"
+        />
+      </div>
+      {closePrice !== undefined && (
+        <div className="text-2xs text-ink-dim mb-2 tabular-nums">
+          參考收盤 {closePrice.toFixed(2)}
+        </div>
+      )}
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          data-testid="manual-range-apply"
+          disabled={!valid}
+          className="text-accent hover:text-ink underline underline-offset-2 cursor-pointer disabled:text-ink-dim disabled:cursor-not-allowed disabled:no-underline"
+        >
+          套用
+        </button>
+        <button
+          type="button"
+          data-testid="manual-range-cancel"
+          onClick={onCancel}
+          className="text-ink-dim hover:text-bear cursor-pointer"
+        >
+          取消
+        </button>
+      </div>
+    </form>
+  );
+}
 
 function SortHeader({
   label, sortKey, spec, side, onChange,

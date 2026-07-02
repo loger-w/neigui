@@ -9,6 +9,7 @@ import { InstBarSvg, MarginLineSvg } from "../lib/chip-inst-bar-svg";
 import { BrokerAggBarSvg } from "../lib/chip-broker-agg-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
 import { computeRangeBand } from "../lib/chip-range-band";
+import { LoadingSpinner } from "./ui/loading-spinner";
 
 interface Props {
   history: ChipHistory | null;
@@ -314,13 +315,14 @@ export function ChipKlineChart({
   const w = width || 600;
   const totalH = height || 500;
 
-  const showBrokerRow = selectedBrokerIds.size > 0;
+  // B3 (C4 🔴): grid 幾何固定 6 subchart(即使未選 broker 也保留 broker row
+  // 容器),讓選 / 未選狀態下所有 subchart 高度完全一致,徹底消除 CLS。
+  // 未選狀態下 K 線本身高度從 41.2% 縮至 36.8%(見 change-spec.md §C4 白名單)。
+  const showBrokerData = selectedBrokerIds.size > 0;
   const gap = 6;
-  // K-line takes 3.5 parts; remainder split across sub-charts.
-  // Total = 3.5 + 5 (or 6 if broker row visible).
-  const totalParts = 3.5 + (showBrokerRow ? 6 : 5);
+  const totalParts = 3.5 + 6; // K 線 + 6 subchart 常數
   const klineH = Math.round((totalH - gap) * (3.5 / totalParts));
-  const subCount = showBrokerRow ? 6 : 5;
+  const subCount = 6;
   const subH = Math.floor((totalH - gap - klineH) / subCount);
   const lastSubH = totalH - gap - klineH - subH * (subCount - 1);
 
@@ -358,13 +360,7 @@ export function ChipKlineChart({
           className="absolute top-2 left-1/2 -translate-x-1/2 z-30 text-xs text-ink bg-bg-deep/90 px-3 py-1 border border-accent rounded shadow pointer-events-none flex items-center gap-2"
           aria-live="polite"
         >
-          <svg
-            viewBox="0 0 24 24" fill="none" aria-hidden="true"
-            className="size-3.5 animate-spin text-accent motion-reduce:animate-none"
-          >
-            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
-            <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-          </svg>
+          <LoadingSpinner size="3.5" />
           載入 {loadingSymbol} 中…
         </div>
       )}
@@ -420,13 +416,7 @@ export function ChipKlineChart({
             aria-live="polite"
           >
             <span className="text-xs text-ink-dim bg-bg-deep/85 px-2 py-0.5 border border-line flex items-center gap-1.5">
-              <svg
-                viewBox="0 0 24 24" fill="none" aria-hidden="true"
-                className="size-3 animate-spin text-accent motion-reduce:animate-none"
-              >
-                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
-                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-              </svg>
+              <LoadingSpinner size="3" />
               主力資料載入中…
             </span>
           </div>
@@ -461,44 +451,53 @@ export function ChipKlineChart({
       </div>
       <div
         className="border-t border-line/50"
-        style={{ height: showBrokerRow ? subH : lastSubH, minHeight: 0 }}
+        style={{ height: subH, minHeight: 0 }}
       >
-        {(showBrokerRow ? subH : lastSubH) > 0 && (
+        {subH > 0 && (
           <MarginLineSvg
             marginData={marginChange}
             shortData={shortChange}
             marginBalanceData={marginBalance}
             shortBalanceData={shortBalance}
             width={w}
-            height={showBrokerRow ? subH : lastSubH}
+            height={subH}
             label="融資融券"
             hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
           />
         )}
       </div>
-      {showBrokerRow && (
-        <div
-          className="border-t border-line/50 relative"
-          style={{ height: lastSubH, minHeight: 0 }}
-        >
-          {lastSubH > 0 && (
-            <BrokerAggBarSvg
-              data={brokerAggSeries}
-              width={w}
-              height={lastSubH}
-              label={`分點 (${selectedBrokerIds.size})`}
-              hoverIndex={hoverIndex}
-              selectedIndex={selectedIndex}
-            />
-          )}
+      {/* Broker row — B3 (C4 🔴): 容器常駐,避免選 broker 前後 CLS。
+          有資料時 render BrokerAggBarSvg + 「清除」button;
+          無資料且高度足夠時 render 「未選擇分點」placeholder。 */}
+      <div
+        data-testid="chip-broker-row"
+        className="border-t border-line/50 relative"
+        style={{ height: lastSubH, minHeight: 0 }}
+      >
+        {lastSubH > 0 && showBrokerData && (
+          <BrokerAggBarSvg
+            data={brokerAggSeries}
+            width={w}
+            height={lastSubH}
+            label={`分點 (${selectedBrokerIds.size})`}
+            hoverIndex={hoverIndex}
+            selectedIndex={selectedIndex}
+          />
+        )}
+        {lastSubH >= 24 && !showBrokerData && (
+          <div className="h-full flex items-center justify-center text-xs text-ink-dim italic">
+            未選擇分點
+          </div>
+        )}
+        {showBrokerData && (
           <button
             type="button"
             onClick={onClearAllBrokers}
             className="absolute right-2 top-1 text-xs text-ink-dim hover:text-bear cursor-pointer"
           >清除</button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

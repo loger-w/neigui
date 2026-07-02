@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ChipSummary, TopBroker, TopVolumeBroker } from "../lib/chip-data";
 import { splitBrokers, fmtVol, topByVolume } from "../lib/chip-data";
 import { Checkbox } from "./ui/checkbox";
+import { BrokerFilterPopover } from "./BrokerFilterPopover";
 
 interface Props {
   summary: ChipSummary | null;
@@ -73,13 +74,34 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
     ? "grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]"
     : "grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
 
+  // C8 B1 (🟢): 整 row 可點,擴大 hit area。checkbox 保留但用 span wrapper
+  // 攔 click bubble 避免 double-toggle。keyboard Enter/Space 也觸發。
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onToggle();
+    }
+  };
+
   return (
-    <div className={`grid ${cls} items-center text-sm py-2 px-2 border-b border-line/40 hover:bg-bg-deep/50 ${selected ? "bg-[#b794f4]/[0.06]" : ""}`}>
-      <Checkbox
-        checked={selected}
-        onCheckedChange={onToggle}
-        aria-label={`勾選 ${broker.name}`}
-      />
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      onClick={onToggle}
+      onKeyDown={handleKeyDown}
+      className={`grid ${cls} items-center text-sm py-2 px-2 border-b border-line/40 cursor-pointer hover:bg-bg-deep/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${selected ? "bg-[#b794f4]/[0.06]" : ""}`}
+    >
+      <span
+        onClick={(e) => e.stopPropagation()}
+        className="inline-flex"
+      >
+        <Checkbox
+          checked={selected}
+          onCheckedChange={onToggle}
+          aria-label={`勾選 ${broker.name}`}
+        />
+      </span>
       <span className="text-ink-dim tabular-nums">{rank}</span>
       <span
         className="relative flex items-center gap-1.5 text-ink-muted min-w-0 group/name"
@@ -315,36 +337,54 @@ export function ChipBrokersPanel({
         </button>
       </div>
 
-      {/* Selected-broker chips */}
-      {N > 0 && (
-        <div className="px-3 py-2 border-b border-line bg-bg-deep/40 flex flex-wrap gap-1.5 items-center">
-          <span className="text-xs text-ink-dim">已選 {N} 個分點:</span>
-          {Array.from(selectedBrokerIds).map((bid) => {
-            const name = idToName.get(bid) ?? bid;
-            return (
-              <span
-                key={bid}
-                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-[#b794f4]/15 border border-[#b794f4]/40 text-[#b794f4]"
-              >
-                {name}
-                <button
-                  type="button"
-                  onClick={() => onToggleBroker(bid)}
-                  aria-label={`移除 ${name}`}
-                  className="hover:text-bear cursor-pointer"
-                >×</button>
-              </span>
-            );
-          })}
-          {N > 1 && (
-            <button
-              type="button"
-              onClick={onClearAllBrokers}
-              className="ml-auto text-xs text-ink-dim hover:text-bear cursor-pointer"
-            >全部清除</button>
+      {/* Selected-broker chips — C10 (🔴): 固定 h-9 單行,超出橫向 scroll,
+          避免點分點後高度撐開(舊 min-h-[36px] pill 22-24px + py 16 破 36 →
+          點擊有 4-6px 位移)。多分點情境 popover 是主要入口,pill 只做「已選
+          顯示」不再是唯一選擇 UI。 */}
+      <div
+        data-testid="chip-selected-bar"
+        className="px-3 border-b border-line bg-bg-deep/40 flex items-center gap-1.5 h-9"
+      >
+        <BrokerFilterPopover
+          brokers={allBrokers}
+          selectedBrokerIds={selectedBrokerIds}
+          onToggleBroker={onToggleBroker}
+          onClearAllBrokers={onClearAllBrokers}
+        />
+        <div
+          data-testid="chip-selected-scroller"
+          className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto scroll-editorial"
+        >
+          {N === 0 ? (
+            <span className="text-xs text-ink-dim italic shrink-0">未選擇分點</span>
+          ) : (
+            Array.from(selectedBrokerIds).map((bid) => {
+              const name = idToName.get(bid) ?? bid;
+              return (
+                <span
+                  key={bid}
+                  className="shrink-0 inline-flex items-center gap-1 text-2xs leading-none px-1.5 py-1 rounded-full bg-[#b794f4]/15 border border-[#b794f4]/40 text-[#b794f4] whitespace-nowrap"
+                >
+                  {name}
+                  <button
+                    type="button"
+                    onClick={() => onToggleBroker(bid)}
+                    aria-label={`移除 ${name}`}
+                    className="hover:text-bear cursor-pointer leading-none"
+                  >×</button>
+                </span>
+              );
+            })
           )}
         </div>
-      )}
+        {N > 1 && (
+          <button
+            type="button"
+            onClick={onClearAllBrokers}
+            className="shrink-0 text-xs text-ink-dim hover:text-bear cursor-pointer"
+          >全部清除</button>
+        )}
+      </div>
 
       {/* Broker list — F5: net mode splits into two half-height scroll halves */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">

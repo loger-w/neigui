@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { splitBrokers, aggregateByPrice, aggregateByBroker, fmtVol, topByVolume, buildTradeRows } from "./chip-data";
+import {
+  splitBrokers,
+  aggregateByPrice,
+  aggregateByBroker,
+  fmtVol,
+  topByVolume,
+  buildTradeRows,
+  computeBrokerTotals,
+  fmtAmount,
+  summarizeTradesByPriceRange,
+} from "./chip-data";
 import type { TopBroker, BrokerTrade } from "./chip-data";
 
 function mkBroker(name: string, buy: number, sell: number): TopBroker {
@@ -275,6 +285,149 @@ describe("buildTradeRows", () => {
         { key: "volume", dir: "desc" },
       );
       expect(buyRows.map((r) => r.broker)).toEqual(["A", "B", "C"]);
+    });
+  });
+
+  // C6 A3 (🟢): 分點總買/賣張/金額 pure helper。
+});
+
+describe("computeBrokerTotals (C6 🟢)", () => {
+  const mk = (broker_id: string, price: number, buy: number, sell: number): BrokerTrade =>
+    ({ broker: broker_id, broker_id, price, buy, sell });
+
+  it("brokerId=null: returns all zeros", () => {
+    const r = computeBrokerTotals([mk("A", 100, 10, 0)], null);
+    expect(r).toEqual({ buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 });
+  });
+
+  it("brokerId not in trades: returns all zeros", () => {
+    const r = computeBrokerTotals([mk("A", 100, 10, 0)], "Z");
+    expect(r).toEqual({ buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 });
+  });
+
+  it("single-price single broker: exact amount = buy × 1000 × price", () => {
+    const r = computeBrokerTotals([mk("A", 100, 5, 0)], "A");
+    expect(r.buyLots).toBe(5);
+    expect(r.sellLots).toBe(0);
+    expect(r.buyAmount).toBe(500_000); // 5 × 1000 × 100
+    expect(r.sellAmount).toBe(0);
+  });
+
+  it("multi-price single broker: sums buyLots + buyAmount across prices", () => {
+    const trades: BrokerTrade[] = [
+      mk("A", 100, 5, 0),   // 500,000
+      mk("A", 102, 3, 0),   // 306,000
+      mk("A", 101, 0, 4),   // 404,000 (sell)
+    ];
+    const r = computeBrokerTotals(trades, "A");
+    expect(r.buyLots).toBe(8);
+    expect(r.sellLots).toBe(4);
+    expect(r.buyAmount).toBe(806_000);
+    expect(r.sellAmount).toBe(404_000);
+  });
+
+  it("filters by broker_id: does NOT sum other brokers even at same price", () => {
+    const trades: BrokerTrade[] = [
+      mk("A", 100, 10, 0),
+      mk("B", 100, 999, 999),
+    ];
+    const r = computeBrokerTotals(trades, "A");
+    expect(r.buyLots).toBe(10);
+    expect(r.buyAmount).toBe(1_000_000);
+    expect(r.sellLots).toBe(0);
+  });
+
+  it("empty trades: returns all zeros", () => {
+    expect(computeBrokerTotals([], "A")).toEqual({
+      buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0,
+    });
+  });
+});
+
+describe("fmtAmount (C6 🟢)", () => {
+  it("< 10,000: renders as `X,XXX 元`", () => {
+    expect(fmtAmount(1234)).toBe("1,234 元");
+    expect(fmtAmount(999)).toBe("999 元");
+    expect(fmtAmount(0)).toBe("0 元");
+  });
+
+  it("10,000 ~ 100,000,000: renders as `X,XXX 萬` (integer 萬)", () => {
+    expect(fmtAmount(10_000)).toBe("1 萬");
+    expect(fmtAmount(50_000)).toBe("5 萬");
+    expect(fmtAmount(10_000_000)).toBe("1,000 萬");
+    expect(fmtAmount(99_999_999)).toBe("9,999 萬"); // < 億 cutoff (floor 9999.99…)
+  });
+
+  it(">= 100,000,000: renders as `X.XX 億` (2-decimal for tabular-nums alignment)", () => {
+    expect(fmtAmount(100_000_000)).toBe("1.00 億");
+    expect(fmtAmount(120_000_000)).toBe("1.20 億");
+    expect(fmtAmount(105_000_000)).toBe("1.05 億");
+    expect(fmtAmount(1_234_500_000)).toBe("12.35 億"); // rounded 2dp
+  });
+});
+
+describe("summarizeTradesByPriceRange (C7 🟢)", () => {
+  const mk = (broker_id: string, price: number, buy: number, sell: number): BrokerTrade =>
+    ({ broker: broker_id, broker_id, price, buy, sell });
+
+  it("empty trades: zeros + empty brokerIds", () => {
+    const r = summarizeTradesByPriceRange([], 100, 105);
+    expect(r).toEqual({
+      priceMin: 100, priceMax: 105,
+      priceLevelCount: 0, brokerIds: [], buyLots: 0, sellLots: 0,
+    });
+  });
+
+  it("range covers 3 prices × 2 brokers: distinct count + sum", () => {
+    const trades: BrokerTrade[] = [
+      mk("A", 100, 10, 0),
+      mk("A", 101, 5, 0),
+      mk("B", 101, 0, 8),
+      mk("B", 102, 3, 0),
+      mk("C", 110, 999, 999), // outside range
+    ];
+    const r = summarizeTradesByPriceRange(trades, 100, 102);
+    expect(r.priceLevelCount).toBe(3);       // 100, 101, 102
+    expect(r.brokerIds.sort()).toEqual(["A", "B"]);
+    expect(r.buyLots).toBe(18);              // 10+5+0+3
+    expect(r.sellLots).toBe(8);
+  });
+
+  it("range fully below or above all trades: empty summary", () => {
+    const trades: BrokerTrade[] = [mk("A", 100, 10, 0)];
+    const rBelow = summarizeTradesByPriceRange(trades, 50, 60);
+    expect(rBelow.priceLevelCount).toBe(0);
+    expect(rBelow.brokerIds).toEqual([]);
+    const rAbove = summarizeTradesByPriceRange(trades, 200, 300);
+    expect(rAbove.priceLevelCount).toBe(0);
+  });
+
+  it("range inclusive on both ends", () => {
+    const trades: BrokerTrade[] = [
+      mk("A", 100, 1, 0),
+      mk("B", 105, 2, 0),
+    ];
+    const r = summarizeTradesByPriceRange(trades, 100, 105);
+    expect(r.brokerIds.sort()).toEqual(["A", "B"]);
+    expect(r.buyLots).toBe(3);
+  });
+});
+
+describe("buildTradeRows — legacy tests continue", () => {
+  // C1 R3: locks name-based filter behavior when the same broker_name appears
+  // across multiple broker_id (edge case: FinMind securities_trader_id is
+  // typically 1:1 with securities_trader, but this test ensures ChipBubbleView
+  // A4 refactor didn't accidentally shift filter semantics).
+  describe("R3 — same broker_name across different broker_id", () => {
+    it("filter is name-based: includes all rows matching the name regardless of broker_id", () => {
+      const trades: BrokerTrade[] = [
+        { broker: "凱基-台北", broker_id: "9800", price: 100, buy: 50, sell: 0 },
+        { broker: "凱基-台北", broker_id: "9801", price: 101, buy: 30, sell: 0 },
+        { broker: "永豐-台北", broker_id: "9200", price: 100, buy: 20, sell: 0 },
+      ];
+      const { buyRows } = buildTradeRows(trades, "凱基-台北", 10);
+      expect(buyRows).toHaveLength(2);
+      expect(buyRows.map((r) => r.volume).sort((a, b) => b - a)).toEqual([50, 30]);
     });
   });
 });
