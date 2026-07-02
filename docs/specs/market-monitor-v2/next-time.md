@@ -36,3 +36,15 @@
 - 同類結構掃描結果:repo 內無其他「ratio 進 EMA」的指標鏈(sector vol_ratio / amount_share
   是直接比值無 EMA 縮放慣例),無同型潛在 bug。
 - KG 維持:±100 thrust 閾值台股 ~1000 issues 未校準(spec §9 known gap,V2.5 backtest 校準)。
+
+## From /feat market-page-v2-frontend(2026-07-02,P5)
+
+- **populated e2e fixture(D-3 遞延)**:FAKE_FINMIND 缺全市場 TaiwanStockPrice window
+  + TAIEX fixture,四個 EOD 欄位在 e2e 下必 null。M4 只鎖「空狀態不 crash」;要鎖
+  populated 渲染需補 MANIFEST 條目 + (TaiwanStockPrice,"") 全市場 window fixture(量大),
+  順便解 M2/M3 既有 skip。
+- **量能欄名「今日量(萬張)」vs eod_as_of null「最近交易日」語意張力**(review CR1-F2,
+  spec §6.5 明定欄名故 rejected):eod null 時同 panel 一邊寫「最近交易日」一邊寫「今日量」。
+  eod null 屬罕見降級態;若要解,欄名改「當日量(萬張)」之類中性詞,動 spec §6.5 一起改。
+- **spec §7 layout 圖 + §6.2 色票文字未更新**:實作以 design.md v3 為準(signal strip
+  取代圖上錨點 dot / ink-accent token 不存在改 accent 系)。下次動 spec 時同步。
