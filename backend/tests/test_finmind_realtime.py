@@ -960,3 +960,123 @@ async def test_snapshot_empty_universe_both_sector_fields_none() -> None:
 
     assert result["sector_breadth"] is None
     assert result["sector_volume_ratio"] is None
+
+
+# ---------------------------------------------------------------------------
+# market-monitor-v2 P4 (SC-6) — sector_amount_share
+# Design: .claude/feat/market-sector-amount-share/design.md v2 §4.4
+# (docstring 編號帶 P4 前綴,避免與上方 P3 T-INT-1/2/3/4 撞名 — IG2)
+# ---------------------------------------------------------------------------
+
+
+_FAKE_SECTOR_AMOUNT_PAYLOAD = [
+    {"sector": "半導體業", "today_share": 0.412, "share_delta_20ma": 0.034},
+    {"sector": "其他電子業", "today_share": 0.126, "share_delta_20ma": None},
+]
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_payload_adds_sector_amount_share() -> None:
+    """P4 T-INT-1: happy path — sector_amount_share present + P1/P2/P3 intact."""
+    fake_universe = [{
+        "stock_id": "2330", "close": 2390, "change_rate": 1.92,
+        "total_amount": 36e9, "volume_ratio": 1.14,
+        "date": "2026-06-29 10:30:00.123456",
+    }]
+    fake_sector_rows = [{
+        "stock_id": "2330", "industry_category": "半導體業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+    }]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_breadth",
+               new=AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio",
+               new=AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_amount_share",
+               new=AsyncMock(return_value=_FAKE_SECTOR_AMOUNT_PAYLOAD)):
+        result = await fetch_market_snapshot(refresh=False)
+
+    # P4 new field
+    assert result["sector_amount_share"] == _FAKE_SECTOR_AMOUNT_PAYLOAD
+    # P1/P2/P3 unchanged
+    assert result["breadth"] == _FAKE_BREADTH_PAYLOAD
+    assert result["sector_breadth"] == _FAKE_SECTOR_BREADTH_PAYLOAD
+    assert result["sector_volume_ratio"] == _FAKE_SECTOR_VOL_PAYLOAD
+    assert "universe_size" in result
+    assert "excluded_count" in result
+    assert {"gainers", "losers", "amount", "volume_ratio"} <= set(result["leaderboards"].keys())
+    assert result["stale"] is False
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_sector_amount_share_fail_does_not_flip_stale() -> None:
+    """P4 T-INT-2: amount_share raise httpx.HTTPError → field None + stale=False
+    + P3 twins intact (independent try/except; F6 sequel)."""
+    import httpx
+
+    fake_universe = [{
+        "stock_id": "2330", "close": 2390, "change_rate": 1.92,
+        "total_amount": 36e9, "volume_ratio": 1.14,
+        "date": "2026-06-29 10:30:00.123456",
+    }]
+    fake_sector_rows = [{
+        "stock_id": "2330", "industry_category": "半導體業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+    }]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_breadth",
+               new=AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio",
+               new=AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_amount_share",
+               new=AsyncMock(side_effect=httpx.HTTPError("boom"))):
+        result = await fetch_market_snapshot(refresh=False)
+
+    assert result["sector_amount_share"] is None
+    # P3 兩欄獨立 try/except — 不受影響
+    assert result["sector_breadth"] == _FAKE_SECTOR_BREADTH_PAYLOAD
+    assert result["sector_volume_ratio"] == _FAKE_SECTOR_VOL_PAYLOAD
+    assert result["stale"] is False  # F6 sequel
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_empty_universe_sector_amount_share_none() -> None:
+    """P4 T-INT-3: allowed 收斂為空 → helper 的 empty-universe gate → None。"""
+    fake_universe: list[dict] = []
+    fake_sector_rows = [{
+        "stock_id": "2330", "industry_category": "半導體業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+    }]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=None)):
+        # 不 patch _fetch_sector_amount_share — 讓 `if not universe: return None`
+        # gate 真實觸發(同上方 P3 T-INT-4 慣例)
+        result = await fetch_market_snapshot(refresh=False)
+
+    assert result["sector_amount_share"] is None
