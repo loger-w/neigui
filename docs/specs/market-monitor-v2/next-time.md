@@ -1,5 +1,20 @@
 # market-monitor-v2 — Next-time backlog
 
+## From /perf snapshot-hot-path(2026-07-02)
+
+- **增量 fetch 消滅每日 240s 冷啟動**:目前日期翻頁 → `breadth_prices_<start>_<end>`
+  key 變 → 全 window 128 次 FinMind 重抓。真正新資料只有 1 個交易日 — 可重用
+  昨日 window 檔補缺日(需重新設計 cache key / 與 C4 清理互動)。做之前先評估:
+  冷啟動只有每日第一個 request 付,且已不卡其他 endpoint。
+- **recompute 期間單 component aggregation 殘餘 ~0.9s loop stall**(每日一次,
+  探針 max 897ms):5.75M rows 純 Python pass 在 loop 上跑。若要進一步壓,
+  把 extract/aggregate 純函式 to_thread(純 Python 在 thread 會每 5ms 讓 GIL,
+  與 C json parse 不同)。CP 值低,先擱置。
+- **orjson**:若未來 parse 還要更快(4.2s → ~1s),加依賴換 `orjson.loads`
+  per chunk。目前 C5 裁欄後 4.2s 每日一次,不值得加 dep。
+- `_read_cache`/`_write_cache`(單文件版)仍服務小檔(taiex / eod_results /
+  realtime_*)— 若未來有小檔長成大檔,套 chunked 樣板。
+
 ## From /bug sector-override-phantom(2026-07-02)
 
 - **`tests_e2e/fixtures/TaiwanStockInfo.json` 也散播同一錯誤假設**:含不存在的

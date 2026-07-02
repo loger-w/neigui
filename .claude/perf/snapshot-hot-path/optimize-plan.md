@@ -67,3 +67,20 @@ TOTAL                           37.06        universe=1917
 
 每 commit 後:warm curl;C2 後加 refresh curl;C3 後加並發 latency;C4/C5 後 cache dir du。
 最終跑 Phase 1 全表 + 不退化檢查(`/api/symbols` 或 chip endpoint 抽一個量 baseline)。
+
+## Phase 7 結果(2026-07-02 收尾,全部同 Phase 1 量測方式)
+
+| Metric | Before | After | 目標 | 達標 |
+|---|---|---|---|---|
+| warm snapshot | 37.3s | **0.04-0.53s**(universe 5s TTL 內 0.04s) | < 3s | ✅ C1 |
+| refresh=true | ~278s + 128 FinMind calls | **0.27-0.65s**(僅 bust intraday) | < 10s | ✅ C2 |
+| recompute 期間並發探針(/api/symbols) | max 8981ms | **max 897ms / avg 120ms** | 不被 EOD parse 卡 | ✅ C3a+C3b |
+| recompute wall(當日 result-cache miss) | 37.3s(4 次 parse) | **11.7s**(1 次 parse) | — | C3b 附帶 |
+| cache 增長 | 每日 +1.5GB 無上界(2 檔 3.06GB) | **steady state 每日一組**;檔 1.52→1.06(C3a)→0.61GB(C5 起) | 有界 | ✅ C4+C5 |
+| 每日首請求(冷,fetch loop) | 277.8s | ~237s(unchanged — 增量 fetch 留 next-time) | 不在 gate | — |
+
+不退化抽樣:`/api/chip/2330?days=30` 0.09s / `/api/symbols` 0.00s /
+backend 470 passed + ruff / frontend 424 passed + build ✓ / tests_e2e 3 passed。
+
+Commits:C1 0d47091 / C2 469d00b / C3a 05c4f72 / C3b 67f1544 / C4 ac86fe2 /
+C5 c532407 / C6 e1cf19e / changelog 7598bdb。
