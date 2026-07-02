@@ -1,0 +1,114 @@
+[
+ {
+  "id": "CR1-0",
+  "severity": "P2",
+  "location": "frontend/src/components/MarketBreadthPanel.tsx:22",
+  "problem": "訊號槽的 active/inactive 狀態只靠顏色圓點表達(bg-accent / bg-ink / bg-ink-muted vs 空心邊框),span 無 aria-label 也無 sr-only 文字;螢幕閱讀器只聽到「±100 / 0 線 / 背離」標籤,完全無法得知訊號是否觸發、也無法得知 data-value(above/below、bearish/bullish)。同時違反 WCAG 1.4.1(僅以顏色傳達資訊)。",
+  "suggested_fix": "active dot 加 aria-label(繁中,如 aria-label=\"±100 訊號觸發:上穿\"),或槽位加 sr-only 文字「已觸發 / 未觸發」;inactive 空心 dot 加 aria-hidden=\"true\"。方向詞用「上穿 / 下穿」等閾值描述,不用做多做空字眼。",
+  "resolution": "accepted(impl 漏 → Phase 3 紅先行修復)"
+ },
+ {
+  "id": "CR1-1",
+  "severity": "P2",
+  "location": "frontend/src/components/MarketSectorVolRatio.tsx:41",
+  "problem": "hot/cold flag 只以顏色圓點區分(bg-accent vs bg-ink-dim),span 無 accessible name,螢幕閱讀器讀不到「量能放大 / 縮量」狀態;且 hot 與 cold 兩色對色弱使用者可能難以區分(WCAG 1.4.1 color-only)。",
+  "suggested_fix": "flag dot 加繁中 aria-label(如 r.flag === \"hot\" ? \"量能放大\" : \"量能萎縮\"),或以形狀/文字輔助(▲/▼ 之外的中性符號亦可)。",
+  "resolution": "rejected_with_reason — 2-vote 1:1,refute 票:表內已有量比數值文字,非 color-only(WCAG 1.4.1 redundant cue)"
+ },
+ {
+  "id": "CR1-2",
+  "severity": "P2",
+  "location": "frontend/src/components/MarketSectorVolRatio.tsx:37",
+  "problem": "表頭固定寫「今日量(萬張)」,但 eod_as_of 為 null 時 eodLabel 已刻意改稱「最近交易日」(SC-10b 不寫「今日」);同一 panel 內一邊說最近交易日、一邊宣稱今日,日期語意不一致(雖 design.md §168 原文即寫「今日量」,屬 spec 層矛盾)。",
+  "suggested_fix": "表頭改中性「成交量(萬張)」,或在 eod_as_of null 時改「最近量(萬張)」;至少在 design.md 補註此不一致為已知取捨。",
+  "resolution": "rejected_with_reason — refute 票:design §168 + impl spec 明定「今日量(萬張)」欄名;spec 層語意張力記 next-time"
+ },
+ {
+  "id": "CR1-3",
+  "severity": "P2",
+  "location": "frontend/src/components/MarketBreadthPanel.tsx:48",
+  "problem": "載入中骨架(data-state=\"loading\" 的 animate-pulse div)無任何 accessible 狀態,螢幕閱讀器使用者不知面板在載入(專案慣例 UI 文字含載入狀態一律繁中提示);五個新 panel 的 loading 狀態皆同。",
+  "suggested_fix": "loading 容器加 aria-busy=\"true\" 與 aria-label=\"載入中\"(或 sr-only「載入中」文字),四個 panel 同步套用。",
+  "resolution": "accepted(impl 漏 → Phase 3 紅先行修復)"
+ },
+ {
+  "id": "CR1-4",
+  "severity": "P1",
+  "location": "frontend/src/lib/breadth-svg.test.ts:15",
+  "problem": "SC-3 null-gap x-position (full-series index) is NOT locked. The [null,5,7,null,3] test asserts only segments.length and pts.length, never any x value; the only x assertions elsewhere use no-null series (len===1 midpoint) . Mutation that slips through: rewrite buildSegments to compute x from a segment-local index (i.e. each segment restarts at x=pad, so the trailing point after the gap draws at the left edge instead of index 4/4 position) — all current tests stay green while the chart visually collapses gapped segments to the left.",
+  "suggested_fix": "In the [null,5,7,null,3] case add x assertions using full-series indices: segments[0].pts[0].x === pad + 1*(w-2*pad)/4, segments[0].pts[1].x === pad + 2*(w-2*pad)/4, segments[1].pts[0].x === pad + 4*(w-2*pad)/4 (= w-pad).",
+  "resolution": "accepted(test 漏 → Phase 3 補測試(mutation-verified))"
+ },
+ {
+  "id": "CR1-5",
+  "severity": "P2",
+  "location": "frontend/src/components/MarketSectorVolRatio.test.tsx:78",
+  "problem": "SC-6/契約事實10 props-order test for MarketSectorVolRatio uses rows whose numeric fields are all identical (today_vol_lots=100000, vol_ratio=1). Mutation that slips through: adding `rows.sort((a,b)=>b.vol_ratio-a.vol_ratio)` or sort by today_vol_lots inside the component — stable sort of equal keys preserves B,A order and the test passes. Only a lexicographic sector sort is discriminated. (MarketSectorAmountShare's order test is fine: 0.1 vs 0.4 differ.)",
+  "suggested_fix": "Make the two rows differ on every sortable numeric field with the smaller value first (e.g. B族群 vol_ratio 0.5 / lots 50000, A族群 vol_ratio 2 / lots 900000) so any value-based re-sort flips the asserted order.",
+  "resolution": "accepted(test 漏 → Phase 3 補測試(mutation-verified))"
+ },
+ {
+  "id": "CR1-6",
+  "severity": "P2",
+  "location": "frontend/src/components/MarketPage.test.tsx:135",
+  "problem": "SC-9 DOM-order test locks header→banner→grid but never asserts market-v2-grid precedes the classic 折疊區 (market-classic-toggle / market-heatmap). Mutation that slips through: moving the <section> with the classic toggle ABOVE market-v2-grid in MarketPage.tsx — all order, collapse, and visibility tests still pass, yet the layout violates SC-9's mandated order (新 5 panel 主視圖 → 經典檢視折疊區 last).",
+  "suggested_fix": "Add `expect(grid.compareDocumentPosition(screen.getByTestId(\"market-classic-toggle\")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()` to the DOM-order test.",
+  "resolution": "accepted(test 漏 → Phase 3 補測試(mutation-verified))"
+ },
+ {
+  "id": "CR1-7",
+  "severity": "P2",
+  "location": "e2e/specs/live-contract.spec.ts:60",
+  "problem": "SC-11c enum drift is only weakly caught. The @live L# check asserts key presence and that known_gaps/mcclellan_series are arrays, but never validates enum 值域 (thrust_dot / centerline_cross / divergence_dot / flag). The static-fixture contract test (market-types.test.ts) does check enums but against a frozen evidence JSON, so a live backend renaming e.g. flag \"hot\"→\"high\" or centerline \"above\"→\"positive\" passes both suites; frontend would silently render no dot/wrong tone.",
+  "suggested_fix": "In the @live spec, when the four EOD fields are non-null, assert enum membership: `expect([null,\"hot\",\"cold\"]).toContain(row.flag)` for sector_volume_ratio rows and the three breadth signal enums, mirroring market-types.test.ts.",
+  "resolution": "rejected_with_reason — 2/2 refute:enum 是自家 backend 常數,backend 單元測試已鎖,@live 不需重鎖"
+ },
+ {
+  "id": "CR1-8",
+  "severity": "P2",
+  "location": "frontend/src/components/MarketBreadthPanel.tsx:140",
+  "problem": "SC-3's 「最後 bar signal dot 定位」and edge case 9 (「dot 只畫在序列最後一點」) have NO test and appear unimplemented: signal dots are rendered as a legend row (SignalSlot flex row) below the charts, not positioned at the last bar of the series, and breadth-svg exports no last-point helper. If the design rounds legitimately changed this to a legend-slot presentation, the SC/brainstorm was not amended; either way no test locks the dot's relationship to the final series point.",
+  "suggested_fix": "Either amend brainstorm/design to record the legend-slot decision, or implement last-point dot positioning in breadth-svg (e.g. lastPoint(series) helper) with a unit test asserting the dot coordinate equals the final non-null point's (x,y).",
+  "resolution": "rejected_with_reason — 2/2 refute:signal strip 是 R1-5 已記錄設計決策,非 drift"
+ },
+ {
+  "id": "CR1-9",
+  "severity": "P2",
+  "location": "e2e/specs/market.spec.ts:1",
+  "problem": "SC-11d (visual.spec.ts V3 baseline 更新) has nothing in the branch diff — no visual.spec.ts change and no baseline PNG. The V2 layout is a major layout change per the CLAUDE.md e2e 判準表 (視覺 layout 大改 → V# + baseline), so the existing V3 baseline will either fail against the new layout or the visual gate silently isn't exercising the new panels.",
+  "suggested_fix": "Run e2e `npm run test:update-snapshots` (or the GitHub e2e-update-snapshots workflow) and commit the updated V3 baseline before merge, per SC-11d.",
+  "resolution": "rejected_with_reason — 2/2 refute:repo 內無既存 V3 baseline PNG(update-snapshots workflow 生成),前提錯誤;Phase 5 仍會跑 baseline 更新"
+ },
+ {
+  "id": "CR1-10",
+  "severity": "P0",
+  "location": "frontend/src/components/MarketBreadthPanel.tsx:36",
+  "problem": "containerRef is attached only in the data branch (breadth !== null && loaded), but on first mount the component renders the loading skeleton, so useContainerSize's single useEffect runs with ref.current === null and returns before attaching the ResizeObserver. Its deps [ref, measure] are both referentially stable, so the effect never re-runs when data arrives and the ref div finally mounts. width/height stay {0,0} forever on the cold-load path: both SVGs render with width=0/height=0 and the McClellan + AD Line charts are permanently blank. Contrast with MarketHeatmap.tsx:25, which attaches the ref to the always-mounted root div — the hook was designed for unconditional ref attachment. jsdom tests can't catch this (getBoundingClientRect is 0 there anyway).",
+  "suggested_fix": "Attach containerRef to an element that is mounted in all states (e.g. the section root or a wrapper div that exists during loading/unavailable/data), matching the MarketHeatmap pattern; alternatively make useContainerSize use a callback ref so late-mounted elements get observed.",
+  "resolution": "accepted(impl 漏 → Phase 3 紅先行修復)"
+ },
+ {
+  "id": "CR1-11",
+  "severity": "P0",
+  "location": "frontend/src/components/MarketSectorBreadthHeatmap.tsx:62",
+  "problem": "Same conditional-ref bug as MarketBreadthPanel: ref={containerRef} lives only in the else (data) branch, which is not mounted on first render (loading skeleton shows first because data is initially null in MarketPage). useContainerSize never attaches its ResizeObserver, width/height stay 0, layoutCells(rows, 0, 0) returns [] (w <= 0 guard), so the sector breadth heatmap renders zero cells after load — only the header and sub-label are visible.",
+  "suggested_fix": "Move ref={containerRef} to an always-mounted wrapper (or the section root), or fix useContainerSize to use a callback ref that (re)observes when the element mounts.",
+  "resolution": "accepted(impl 漏 → Phase 3 紅先行修復)"
+ },
+ {
+  "id": "CR1-12",
+  "severity": "P2",
+  "location": "frontend/src/lib/sector-breadth-svg.tsx:38",
+  "problem": "layoutCells can produce negative cellW/cellH when (cols-1)*gap > w (or analogously for h) — e.g. a very wide, very short container (w=100, h=1, n=30 gives cols≈55, cellW≈-0.1). Negative inline width/height in CellRect flows into the button style; browsers ignore invalid negative width so buttons fall back to auto size and overlap. Degenerate but reachable during flex layout thrash (min-h-0 collapse).",
+  "suggested_fix": "Clamp: const cellW = Math.max(0, (w - (cols - 1) * gap) / cols); same for cellH; or cap cols at a value where (cols-1)*gap < w.",
+  "resolution": "rejected_with_reason — 2/2 refute:負 cellW 條件在實際 caller(h-64 容器 + w<=0 guard)不可達"
+ },
+ {
+  "id": "CR1-13",
+  "severity": "P2",
+  "location": "frontend/src/components/MarketSectorAmountShare.tsx:41",
+  "problem": "deltaClass colors by the raw value (r.share_delta_20ma > 0) while signedPctPoints rounds to 2 decimals and normalizes -0 to \"0.00\": a tiny negative delta like -0.00003 displays as \"0.00\" but in the negative (text-ink-muted) color, and +0.00003 displays as \"0.00\" (no + sign since Number(\"0.00\") is not > 0) in text-ink-muted as well despite being positive — displayed sign and color can disagree at the rounding boundary.",
+  "suggested_fix": "Derive the color from the same rounded value used for display (e.g. const pts = Number((v*100).toFixed(2)) shared between formatter and class selection), treating pts === 0 as neutral.",
+  "resolution": "accepted(impl 漏 → Phase 3 紅先行修復)"
+ }
+]

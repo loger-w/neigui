@@ -18,6 +18,7 @@ design.md §5
 from __future__ import annotations
 
 import asyncio
+import hashlib
 
 from services import clock
 import logging
@@ -49,8 +50,10 @@ _PRIMARY_INDUSTRY_OVERRIDE: dict[str, str] = {
     "2308": "電子零組件業",
     "2382": "電子工業",
     "2412": "通信網路業",
-    "2882": "金融保險業",
-    "2891": "金融保險業",
+    # bug sector-override-phantom:value 必須是 TaiwanStockInfo 真實
+    # industry_category 字串(「金融保險」無「業」尾),否則自成幽靈 sector
+    "2882": "金融保險",
+    "2891": "金融保險",
     "1216": "食品工業",
     "1101": "水泥工業",
 }
@@ -371,6 +374,7 @@ async def _fetch_breadth(
     end_date: date,
     universe: set[str],
     refresh: bool = False,
+    prices: list[dict] | None = None,
 ) -> dict | None:
     """market-monitor-v2 P2 (SC-6) — delegate to market_breadth.compute_breadth.
 
@@ -382,7 +386,7 @@ async def _fetch_breadth(
         return None
     from services import market_breadth as mb  # 延 import 避 potential circular
 
-    return await mb.compute_breadth(end_date, universe, refresh=refresh)
+    return await mb.compute_breadth(end_date, universe, refresh=refresh, prices=prices)
 
 
 async def _fetch_sector_breadth(
@@ -390,6 +394,7 @@ async def _fetch_sector_breadth(
     universe: set[str],
     sector_map: dict[str, str],
     refresh: bool = False,
+    prices: list[dict] | None = None,
 ) -> list[dict] | None:
     """market-monitor-v2 P3 (SC-6) — delegate to sector_aggregation.compute_sector_breadth.
 
@@ -401,7 +406,9 @@ async def _fetch_sector_breadth(
         return None
     from services import sector_aggregation as sa
 
-    return await sa.compute_sector_breadth(end_date, universe, sector_map, refresh=refresh)
+    return await sa.compute_sector_breadth(
+        end_date, universe, sector_map, refresh=refresh, prices=prices
+    )
 
 
 async def _fetch_sector_volume_ratio(
@@ -409,6 +416,7 @@ async def _fetch_sector_volume_ratio(
     universe: set[str],
     sector_map: dict[str, str],
     refresh: bool = False,
+    prices: list[dict] | None = None,
 ) -> list[dict] | None:
     """market-monitor-v2 P3 (SC-6) — delegate to sector_aggregation.compute_sector_volume_ratio。
 
@@ -418,7 +426,9 @@ async def _fetch_sector_volume_ratio(
         return None
     from services import sector_aggregation as sa
 
-    return await sa.compute_sector_volume_ratio(end_date, universe, sector_map, refresh=refresh)
+    return await sa.compute_sector_volume_ratio(
+        end_date, universe, sector_map, refresh=refresh, prices=prices
+    )
 
 
 async def _fetch_sector_amount_share(
@@ -426,6 +436,7 @@ async def _fetch_sector_amount_share(
     universe: set[str],
     sector_map: dict[str, str],
     refresh: bool = False,
+    prices: list[dict] | None = None,
 ) -> list[dict] | None:
     """market-monitor-v2 P4 (SC-6) — delegate to sector_aggregation.compute_sector_amount_share.
 
@@ -436,7 +447,134 @@ async def _fetch_sector_amount_share(
         return None
     from services import sector_aggregation as sa
 
-    return await sa.compute_sector_amount_share(end_date, universe, sector_map, refresh=refresh)
+    return await sa.compute_sector_amount_share(
+        end_date, universe, sector_map, refresh=refresh, prices=prices
+    )
+
+
+def _universe_digest(universe: set[str]) -> str:
+    """Stable short digest of universe membership — EOD result cache key 成分。"""
+    joined = ",".join(sorted(universe))
+    return hashlib.md5(joined.encode("utf-8")).hexdigest()[:12]
+
+
+async def _fetch_eod_results(
+    end_date: date,
+    allowed: set[str],
+    primary_sector: dict[str, str],
+    refresh: bool = False,
+) -> dict:
+    """perf snapshot-hot-path C1 — 4 個 EOD compute 的 result-level cache。
+
+    Profile(2026-07-02):warm request 98.4% 成本 = 4 個 compute 各自
+    re-parse 同一 1.5GB prices cache(9.1s × 4 / 37.1s)。EOD 結果在同一
+    (end_date, universe) 下已凍結(底層 prices cache 本就 24h TTL),
+    以 disk cache 消滅重算。
+
+    Invalidation 契約(test_snapshot_eod_result_cache_* 鎖):
+    - component 為 None(compute 失敗 / empty-universe skip)不寫入 →
+      下一 request 重算,不 pin 失敗
+    - universe 變動 → digest 變 → 自然重算
+    - refresh=True → bypass cache 讀 + 傳進 compute 鏈(C2 後 snapshot 端
+      一律傳 False;此參數保留當手動強制重抓 EOD 的後門)
+    - 各 component 的 try/except 範圍與 F6 stale 語意完全比照原 inline 版
+    """
+    cache_key = f"eod_results_{end_date.isoformat()}_{_universe_digest(allowed)}"
+    results: dict = {}
+    if not refresh:
+        cached = _read_cache(cache_key)
+        if cached is not None:
+            results = cached.get("results", {})
+            if all(
+                k in results
+                for k in ("breadth", "sector_breadth", "sector_volume_ratio", "sector_amount_share")
+            ):
+                return results
+
+    # perf C3b:4 個 compute 共用同一 prices window(T35/T36 鎖常數同值 +
+    # 公式同構)→ 預抓一次注入,recompute 只付 1 次 parse(原 4 次)。
+    # 預抓失敗 → prices=None,各 compute 退回自抓,per-component try/except
+    # 降級語意與原版一致(同一 fetcher 會再失敗 → 該 component None)。
+    prices: list[dict] | None = None
+    if allowed:
+        from services import market_breadth as mb
+        from services import sector_aggregation as sa
+
+        win_start, win_end = sa._derive_window(end_date, mb._DEFAULT_LOOKBACK_DAYS)
+        try:
+            prices = await mb._fetch_daily_prices_window(win_start, win_end, refresh=refresh)
+        except httpx.HTTPError as exc:
+            logger.warning("market snapshot: shared prices prefetch failed: %s", exc)
+            prices = None
+
+    # perf C6 (🟢):eod_as_of = 四個 EOD compute 實際用的 max price date
+    # (盤中全是 T-1;P5 前端標「資料至 YYYY-MM-DD」直接用,不從 series 反推)。
+    # prices 不可得(prefetch 失敗 / 全 cache 命中前的舊 cache)→ 維持 absent
+    # → payload null。
+    if "eod_as_of" not in results and prices:
+        price_dates = [str(r["date"]) for r in prices if r.get("date")]
+        if price_dates:
+            results["eod_as_of"] = max(price_dates)
+
+    # market-monitor-v2 P2 (SC-6) — breadth (F6: fail 不動 stale)
+    if "breadth" not in results:
+        try:
+            results["breadth"] = await _fetch_breadth(
+                end_date, allowed, refresh=refresh, prices=prices
+            )
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("market snapshot: breadth compute failed: %s", exc)
+            results["breadth"] = None
+
+    # C3b:prices 注入後 compute 內部無 await,連續 component 的純 Python
+    # aggregation 會連成一塊 ~3s 不讓出 loop(real-env 探針 max 2947ms)。
+    # 注意必須 sleep(>0) 不能 sleep(0):sleep(0) 只把本 task 重排進 ready
+    # queue「最前面」,剛到期的 timer / IO callback 排在後面,等於沒讓 —
+    # 實驗:sleep(0) max gap 1898ms(3 component 連塊)/ sleep(0.005) 888ms
+    # (單 component 上界)。
+    await asyncio.sleep(0.005)
+
+    # market-monitor-v2 P3 (SC-6) — sector_breadth(only httpx;ValueError 穿透)
+    if "sector_breadth" not in results:
+        try:
+            results["sector_breadth"] = await _fetch_sector_breadth(
+                end_date, allowed, primary_sector, refresh=refresh, prices=prices
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("market snapshot: sector_breadth compute failed: %s", exc)
+            results["sector_breadth"] = None
+
+    await asyncio.sleep(0.005)  # C3b yield(同上,必須 >0)
+
+    # market-monitor-v2 P3 (SC-6) — sector_volume_ratio (independent try/except)
+    if "sector_volume_ratio" not in results:
+        try:
+            results["sector_volume_ratio"] = await _fetch_sector_volume_ratio(
+                end_date, allowed, primary_sector, refresh=refresh, prices=prices
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("market snapshot: sector_volume_ratio compute failed: %s", exc)
+            results["sector_volume_ratio"] = None
+
+    await asyncio.sleep(0.005)  # C3b yield(同上,必須 >0)
+
+    # market-monitor-v2 P4 (SC-6) — sector_amount_share (independent try/except)
+    if "sector_amount_share" not in results:
+        try:
+            results["sector_amount_share"] = await _fetch_sector_amount_share(
+                end_date, allowed, primary_sector, refresh=refresh, prices=prices
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("market snapshot: sector_amount_share compute failed: %s", exc)
+            results["sector_amount_share"] = None
+
+    to_store = {k: v for k, v in results.items() if v is not None}
+    if to_store:
+        _write_cache(cache_key, {
+            "results": to_store,
+            "fetched_at": datetime.now(tz=TPE_TZ).isoformat(timespec="seconds"),
+        })
+    return results
 
 
 async def _fetch_market_value_map(
@@ -596,43 +734,18 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     # 處置股無任何提示。
     stale = isinstance(universe_res, BaseException) or sector_degraded or watch_degraded
 
-    # market-monitor-v2 P2 (SC-6) — breadth (McClellan Oscillator + AD Line)
-    # F6: breadth compute fail (EOD data) 不動 stale;stale 保留給 intraday
-    # (universe / sector_map / watch_list) 三個訊號。
-    try:
-        breadth = await _fetch_breadth(clock.today(), allowed, refresh=refresh)
-    except (httpx.HTTPError, ValueError) as exc:
-        logger.warning("market snapshot: breadth compute failed: %s", exc)
-        breadth = None
-
-    # market-monitor-v2 P3 (SC-6) — sector_breadth (F6 sequel: fail 不動 stale)
-    # F6 review: only httpx.HTTPError after design v2 F3 fix (empty prices → [] instead of ValueError)
-    try:
-        sector_breadth = await _fetch_sector_breadth(
-            clock.today(), allowed, primary_sector, refresh=refresh
-        )
-    except httpx.HTTPError as exc:
-        logger.warning("market snapshot: sector_breadth compute failed: %s", exc)
-        sector_breadth = None
-
-    # market-monitor-v2 P3 (SC-6) — sector_volume_ratio (independent try/except from sector_breadth)
-    try:
-        sector_volume_ratio = await _fetch_sector_volume_ratio(
-            clock.today(), allowed, primary_sector, refresh=refresh
-        )
-    except httpx.HTTPError as exc:
-        logger.warning("market snapshot: sector_volume_ratio compute failed: %s", exc)
-        sector_volume_ratio = None
-
-    # market-monitor-v2 P4 (SC-6) — sector_amount_share (F6 sequel: fail 不動 stale;
-    # independent try/except from P3 twins; 共用 cache_key → serial near-zero cost)
-    try:
-        sector_amount_share = await _fetch_sector_amount_share(
-            clock.today(), allowed, primary_sector, refresh=refresh
-        )
-    except httpx.HTTPError as exc:
-        logger.warning("market snapshot: sector_amount_share compute failed: %s", exc)
-        sector_amount_share = None
+    # market-monitor-v2 P2/P3/P4 (SC-6) — 4 個 EOD compute,perf C1 起走
+    # result-level cache(_fetch_eod_results)。F6 stale 語意 / 各 component
+    # try/except 範圍 / None 降級全部維持原 inline 版契約。
+    # perf C2 (🔴):refresh 不進 EOD — 「重新整理 = 看最新盤中」,EOD 是
+    # T-1 資料,end_date 前進自然失效;修正前 refresh=true 穿進 EOD fetcher
+    # = ~278s + 128 次 FinMind 呼叫。強制重抓後門 = 手動呼叫
+    # _fetch_eod_results(refresh=True) 或 bump _CACHE_VERSION_*。
+    eod = await _fetch_eod_results(clock.today(), allowed, primary_sector, refresh=False)
+    breadth = eod.get("breadth")
+    sector_breadth = eod.get("sector_breadth")
+    sector_volume_ratio = eod.get("sector_volume_ratio")
+    sector_amount_share = eod.get("sector_amount_share")
 
     return {
         "as_of": now.isoformat(),
@@ -649,6 +762,9 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
             "warrant": len(excluded["warrant"]),
             "watch_list": len(excluded["watch_list"]),
         },
+        # perf C6 (🟢) — 四個 EOD compute 實際用的 max price date(null =
+        # prices 不可得)
+        "eod_as_of": eod.get("eod_as_of"),
         # market-monitor-v2 P2 (SC-6) — breadth field (None if compute failed)
         "breadth": breadth,
         # market-monitor-v2 P3 (SC-6) — sector aggregations (None if compute failed)

@@ -1,0 +1,3 @@
+[
+  {"id": "I4-1", "severity": "P2", "location": {"file": "design.md", "section": "§16"}, "problem": "I1-3 amend 後 §16 仍寫 market-format(3)", "suggested_fix": "改 4,總數 +1", "rationale": "檔內測試盤點同步", "resolution": "accepted — 就地修正"}
+]

@@ -15,6 +15,8 @@ async def test_market_snapshot_payload_shape(client):
     body = r.json()
     for k in ("as_of", "sectors", "leaderboards", "stale", "is_trading_session"):
         assert k in body, f"market snapshot missing key {k}: {list(body.keys())}"
+    # perf C6:eod_as_of 存在性(允許 null — FAKE fixture 無全市場 window)
+    assert "eod_as_of" in body, f"market snapshot missing eod_as_of: {list(body.keys())}"
 
 
 async def test_market_snapshot_leaderboards_4_tabs(client):
@@ -39,3 +41,21 @@ async def test_market_snapshot_sectors_exclude_index_rows(client):
             sid = stock.get("stock_id", "")
             # index 慣例:00XX / TXX,不會以 2/3/6/8/9 開頭(個股 typical pattern)
             assert not sid.startswith("00"), f"sector leaked index row {sid} — universe filter 漏掉"
+
+
+async def test_market_snapshot_v2_keys(client):
+    """痛點:P5 前端 4 個新 panel 依賴 4 個 EOD 欄位 + universe meta;後端 drop
+    任一 key 前端 panel 全滅。FAKE fixture 無全市場 window → 值允許 null,
+    只鎖存在性(值 shape 由 frontend market-types.test.ts contract lock)。"""
+    r = await client.get("/api/market/snapshot")
+    assert r.status_code == 200
+    body = r.json()
+    for k in (
+        "universe_size",
+        "excluded_count",
+        "breadth",
+        "sector_breadth",
+        "sector_volume_ratio",
+        "sector_amount_share",
+    ):
+        assert k in body, f"market snapshot missing v2 key {k}: {list(body.keys())}"

@@ -1,0 +1,216 @@
+{
+ "raw_findings": [
+  {
+   "severity": "P2",
+   "file": "frontend/src/components/MarketBreadthPanel.tsx",
+   "line": 22,
+   "problem": "訊號槽的 active/inactive 狀態只靠顏色圓點表達(bg-accent / bg-ink / bg-ink-muted vs 空心邊框),span 無 aria-label 也無 sr-only 文字;螢幕閱讀器只聽到「±100 / 0 線 / 背離」標籤,完全無法得知訊號是否觸發、也無法得知 data-value(above/below、bearish/bullish)。同時違反 WCAG 1.4.1(僅以顏色傳達資訊)。",
+   "suggested_fix": "active dot 加 aria-label(繁中,如 aria-label=\"±100 訊號觸發:上穿\"),或槽位加 sr-only 文字「已觸發 / 未觸發」;inactive 空心 dot 加 aria-hidden=\"true\"。方向詞用「上穿 / 下穿」等閾值描述,不用做多做空字眼。"
+  },
+  {
+   "severity": "P2",
+   "file": "frontend/src/components/MarketSectorVolRatio.tsx",
+   "line": 41,
+   "problem": "hot/cold flag 只以顏色圓點區分(bg-accent vs bg-ink-dim),span 無 accessible name,螢幕閱讀器讀不到「量能放大 / 縮量」狀態;且 hot 與 cold 兩色對色弱使用者可能難以區分(WCAG 1.4.1 color-only)。",
+   "suggested_fix": "flag dot 加繁中 aria-label(如 r.flag === \"hot\" ? \"量能放大\" : \"量能萎縮\"),或以形狀/文字輔助(▲/▼ 之外的中性符號亦可)。"
+  },
+  {
+   "severity": "P2",
+   "file": "frontend/src/components/MarketSectorVolRatio.tsx",
+   "line": 37,
+   "problem": "表頭固定寫「今日量(萬張)」,但 eod_as_of 為 null 時 eodLabel 已刻意改稱「最近交易日」(SC-10b 不寫「今日」);同一 panel 內一邊說最近交易日、一邊宣稱今日,日期語意不一致(雖 design.md §168 原文即寫「今日量」,屬 spec 層矛盾)。",
+   "suggested_fix": "表頭改中性「成交量(萬張)」,或在 eod_as_of null 時改「最近量(萬張)」;至少在 design.md 補註此不一致為已知取捨。"
+  },
+  {
+   "severity": "P2",
+   "file": "frontend/src/components/MarketBreadthPanel.tsx",
+   "line": 48,
+   "problem": "載入中骨架(data-state=\"loading\" 的 animate-pulse div)無任何 accessible 狀態,螢幕閱讀器使用者不知面板在載入(專案慣例 UI 文字含載入狀態一律繁中提示);五個新 panel 的 loading 狀態皆同。",
+   "suggested_fix": "loading 容器加 aria-busy=\"true\" 與 aria-label=\"載入中\"(或 sr-only「載入中」文字),四個 panel 同步套用。"
+  },
+  {
+   "severity": "P1",
+   "file": "frontend/src/lib/breadth-svg.test.ts",
+   "line": 15,
+   "problem": "SC-3 null-gap x-position (full-series index) is NOT locked. The [null,5,7,null,3] test asserts only segments.length and pts.length, never any x value; the only x assertions elsewhere use no-null series (len===1 midpoint) . Mutation that slips through: rewrite buildSegments to compute x from a segment-local index (i.e. each segment restarts at x=pad, so the trailing point after the gap draws at the left edge instead of index 4/4 position) — all current tests stay green while the chart visually collapses gapped segments to the left.",
+   "suggested_fix": "In the [null,5,7,null,3] case add x assertions using full-series indices: segments[0].pts[0].x === pad + 1*(w-2*pad)/4, segments[0].pts[1].x === pad + 2*(w-2*pad)/4, segments[1].pts[0].x === pad + 4*(w-2*pad)/4 (= w-pad)."
+  },
+  {
+   "severity": "P2",
+   "file": "frontend/src/components/MarketSectorVolRatio.test.tsx",
+   "line": 78,
+   "problem": "SC-6/契約事實10 props-order test for MarketSectorVolRatio uses rows whose numeric fields are all identical (today_vol_lots=100000, vol_ratio=1). Mutation that slips through: adding `rows.sort((a,b)=>b.vol_ratio-a.vol_ratio)` or sort by today_vol_lots inside the component — stable sort of equal keys preserves B,A order and the test passes. Only a lexicographic sector sort is discriminated. (MarketSectorAmountShare's order test is fine: 0.1 vs 0.4 differ.)",
+   "suggested_fix": "Make the two rows differ on every sortable numeric field with the smaller value first (e.g. B族群 vol_ratio 0.5 / lots 50000, A族群 vol_ratio 2 / lots 900000) so any value-based re-sort flips the asserted order."
+  },
+  {
+   "severity": "P2",
+   "file": "frontend/src/components/MarketPage.test.tsx",
+   "line": 135,
+   "problem": "SC-9 DOM-order test locks header→banner→grid but never asserts market-v2-grid precedes the classic 折疊區 (market-classic-toggle / market-heatmap). Mutation that slips through: moving the <section> with the classic toggle ABOVE market-v2-grid in MarketPage.tsx — all order, collapse, and visibility tests still pass, yet the layout violates SC-9's mandated order (新 5 panel 主視圖 → 經典檢視折疊區 last).",
+   "suggested_fix": "Add `expect(grid.compareDocumentPosition(screen.getByTestId(\"market-classic-toggle\")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()` to the DOM-order test."
+  },
+  {
+   "severity": "P2",
+   "file": "e2e/specs/live-contract.spec.ts",
+   "line": 60,
+   "problem": "SC-11c enum drift is only weakly caught. The @live L# check asserts key presence and that known_gaps/mcclellan_series are arrays, but never validates enum 值域 (thrust_dot / centerline_cross / divergence_dot / flag). The static-fixture contract test (market-types.test.ts) does check enums but against a frozen evidence JSON, so a live backend renaming e.g. flag \"hot\"→\"high\" or centerline \"above\"→\"positive\" passes both suites; frontend would silently render no dot/wrong tone.",
+   "suggested_fix": "In the @live spec, when the four EOD fields are non-null, assert enum membership: `expect([null,\"hot\",\"cold\"]).toContain(row.flag)` for sector_volume_ratio rows and the three breadth signal enums, mirroring market-types.test.ts."
+  },
+  {
+   "severity": "P2",
+   "file": "frontend/src/components/MarketBreadthPanel.tsx",
+   "line": 140,
+   "problem": "SC-3's 「最後 bar signal dot 定位」and edge case 9 (「dot 只畫在序列最後一點」) have NO test and appear unimplemented: signal dots are rendered as a legend row (SignalSlot flex row) below the charts, not positioned at the last bar of the series, and breadth-svg exports no last-point helper. If the design rounds legitimately changed this to a legend-slot presentation, the SC/brainstorm was not amended; either way no test locks the dot's relationship to the final series point.",
+   "suggested_fix": "Either amend brainstorm/design to record the legend-slot decision, or implement last-point dot positioning in breadth-svg (e.g. lastPoint(series) helper) with a unit test asserting the dot coordinate equals the final non-null point's (x,y)."
+  },
+  {
+   "severity": "P2",
+   "file": "e2e/specs/market.spec.ts",
+   "line": 1,
+   "problem": "SC-11d (visual.spec.ts V3 baseline 更新) has nothing in the branch diff — no visual.spec.ts change and no baseline PNG. The V2 layout is a major layout change per the CLAUDE.md e2e 判準表 (視覺 layout 大改 → V# + baseline), so the existing V3 baseline will either fail against the new layout or the visual gate silently isn't exercising the new panels.",
+   "suggested_fix": "Run e2e `npm run test:update-snapshots` (or the GitHub e2e-update-snapshots workflow) and commit the updated V3 baseline before merge, per SC-11d."
+  },
+  {
+   "severity": "P0",
+   "file": "frontend/src/components/MarketBreadthPanel.tsx",
+   "line": 36,
+   "problem": "containerRef is attached only in the data branch (breadth !== null && loaded), but on first mount the component renders the loading skeleton, so useContainerSize's single useEffect runs with ref.current === null and returns before attaching the ResizeObserver. Its deps [ref, measure] are both referentially stable, so the effect never re-runs when data arrives and the ref div finally mounts. width/height stay {0,0} forever on the cold-load path: both SVGs render with width=0/height=0 and the McClellan + AD Line charts are permanently blank. Contrast with MarketHeatmap.tsx:25, which attaches the ref to the always-mounted root div — the hook was designed for unconditional ref attachment. jsdom tests can't catch this (getBoundingClientRect is 0 there anyway).",
+   "suggested_fix": "Attach containerRef to an element that is mounted in all states (e.g. the section root or a wrapper div that exists during loading/unavailable/data), matching the MarketHeatmap pattern; alternatively make useContainerSize use a callback ref so late-mounted elements get observed."
+  },
+  {
+   "severity": "P0",
+   "file": "frontend/src/components/MarketSectorBreadthHeatmap.tsx",
+   "line": 62,
+   "problem": "Same conditional-ref bug as MarketBreadthPanel: ref={containerRef} lives only in the else (data) branch, which is not mounted on first render (loading skeleton shows first because data is initially null in MarketPage). useContainerSize never attaches its ResizeObserver, width/height stay 0, layoutCells(rows, 0, 0) returns [] (w <= 0 guard), so the sector breadth heatmap renders zero cells after load — only the header and sub-label are visible.",
+   "suggested_fix": "Move ref={containerRef} to an always-mounted wrapper (or the section root), or fix useContainerSize to use a callback ref that (re)observes when the element mounts."
+  },
+  {
+   "severity": "P2",
+   "file": "frontend/src/lib/sector-breadth-svg.tsx",
+   "line": 38,
+   "problem": "layoutCells can produce negative cellW/cellH when (cols-1)*gap > w (or analogously for h) — e.g. a very wide, very short container (w=100, h=1, n=30 gives cols≈55, cellW≈-0.1). Negative inline width/height in CellRect flows into the button style; browsers ignore invalid negative width so buttons fall back to auto size and overlap. Degenerate but reachable during flex layout thrash (min-h-0 collapse).",
+   "suggested_fix": "Clamp: const cellW = Math.max(0, (w - (cols - 1) * gap) / cols); same for cellH; or cap cols at a value where (cols-1)*gap < w."
+  },
+  {
+   "severity": "P2",
+   "file": "frontend/src/components/MarketSectorAmountShare.tsx",
+   "line": 41,
+   "problem": "deltaClass colors by the raw value (r.share_delta_20ma > 0) while signedPctPoints rounds to 2 decimals and normalizes -0 to \"0.00\": a tiny negative delta like -0.00003 displays as \"0.00\" but in the negative (text-ink-muted) color, and +0.00003 displays as \"0.00\" (no + sign since Number(\"0.00\") is not > 0) in text-ink-muted as well despite being positive — displayed sign and color can disagree at the rounding boundary.",
+   "suggested_fix": "Derive the color from the same rounded value used for display (e.g. const pts = Number((v*100).toFixed(2)) shared between formatter and class selection), treating pts === 0 as neutral."
+  }
+ ],
+ "votes": [
+  {
+   "confirmed": true,
+   "reason": "Verified in current code: MarketBreadthPanel.tsx:44-47 loading skeleton is bare divs (data-state=\"loading\" + animate-pulse) with no aria-busy, no role=\"status\", no 「載入中」 text (visible or sr-only). Same pattern in MarketSectorBreadthHeatmap.tsx:43, MarketSectorAmountShare.tsx:13, MarketSectorVolRatio.tsx:14 — grep across all five new market components finds zero occurrences of aria-busy or 載入中. No test locks any accessible loading state. Screen-reader users get no loading indication, contrary to the project convention of Traditional Chinese loading text (e.g. 「載入中」 used elsewhere). Finding is real, though appropriately scoped as P2 (a11y polish, not functional breakage)."
+  },
+  {
+   "confirmed": true,
+   "reason": "Confirmed. frontend/src/components/MarketBreadthPanel.tsx:19-32 (SignalSlot) renders active state solely as a filled colored dot (`bg-accent` / `bg-ink` / `bg-ink-muted`) vs an inactive hollow-border dot; the spans carry only data-testid/data-value, with no aria-label, aria-hidden, role, or sr-only text anywhere in the file (grep for \"aria|sr-only\" in MarketBreadthPanel.tsx returns nothing). Accessible output for a screen reader is only the labels 「±100 / 0 線 / 背離」, so triggered/untriggered state and direction (above/below, bearish/bullish in data-value) are conveyed exclusively by color/fill — a genuine WCAG 1.4.1 gap inside the diff. No test locks any accessible-name behavior for these slots. Minor caveat on the claim text: the visual encoding is filled-vs-hollow (not purely hue), but that distinction is still invisible to assistive tech, so the material point stands. Suggested fix (aria-label in Traditional Chinese with threshold wording like 上穿/下穿, aria-hidden on inactive dots) aligns with project conventions (繁中 aria-label, no directional 做多/做空 wording)."
+  },
+  {
+   "confirmed": true,
+   "reason": "Confirmed. MarketSectorVolRatio.tsx:37 hard-codes table header 「今日量(萬張)」 while the same panel's date label (line 70) uses eodLabel(eodAsOf), which per frontend/src/lib/market-format.ts:4-5 renders 「最近交易日」 when eodAsOf is null. SC-10b (brainstorm.md:40, design.md:134, implementation/lib-market-format.md:8) explicitly states the presentation discipline: when eod_as_of is null, copy must say 「最近交易日」 and NOT 「今日」. The header thus violates SC-10b in the null case, and no test locks the header wording (tests only check eodLabel). design.md:168 does spell 「今日量(萬張)」, so the code follows the spec text — but the spec contradicts its own SC-10b cross-cutting rule (design.md §12 applies to 全元件), so this is a real, material P2 inconsistency inside the diff, not a misread. Suggested neutral header 「成交量(萬張)」 resolves it."
+  },
+  {
+   "confirmed": false,
+   "reason": "Refuted on two grounds. (1) Not color-only in the WCAG 1.4.1 sense: the flag is a redundant visual cue for a value already presented as text in the same row — MarketSectorVolRatio.tsx:57 renders the numeric 量比 column (`r.vol_ratio?.toFixed(2)`), and flag is deterministically derived from that ratio (backend >1.5 hot / <0.7 cold; design.md:169 states 前端不重算 1.5/0.7). Screen-reader and color-blind users get the underlying information (e.g. \"2.00\") from the table text; the dot conveys no information not otherwise available as text, so WCAG 1.4.1 (color not the SOLE means) is satisfied. (2) The implementation exactly matches the authoritative spec: .claude/feat/market-page-v2-frontend/design.md:169 explicitly prescribes `\"hot\" → accent dot、\"cold\" → ink-dim dot、null → 無 dot(data-flag attr 供測試)` — the diff implements the contract as designed, not a deviation. Adding an aria-label would be a reasonable polish enhancement, but as a finding it is neither a contract violation nor a material accessibility failure, so it does not survive as a P2 defect in this diff."
+  },
+  {
+   "confirmed": false,
+   "reason": "Code matches the authoritative spec exactly (design.md §168 and implementation/components-market-sector-vol-ratio.md:16 both mandate the「今日量(萬張)」column header). SC-10b (brainstorm.md:40) only constrains the eod_as_of-derived date label, not column headers; the backend field is named today_vol_lots so「今日量」is its canonical UI label. The mismatch only appears in the eod_as_of=null fallback and is at most a spec-level wording nit — not a material defect inside the diff, and the reviewer themselves labels it a spec contradiction. Style/wording nits are out of scope."
+  },
+  {
+   "confirmed": true,
+   "reason": "Verified in frontend/src/components/MarketSectorVolRatio.test.tsx:79-90 — the props-order test's two rows have identical today_vol_lots (100000) and vol_ratio (1). Since JS sort is stable, a component mutation that re-sorts by vol_ratio or today_vol_lots preserves B,A order and the test still passes; only a sector-name lexicographic sort would be caught. The test only partially locks the \"render in props order\" contract; the suggested fix (distinct numeric values, smaller first) would make any value-based re-sort flip the asserted order."
+  },
+  {
+   "confirmed": true,
+   "reason": "Verified in frontend/src/components/MarketSectorVolRatio.test.tsx:80-83 — the props-order test's two rows have identical today_vol_lots (100000) and vol_ratio (1), differing only in sector name. Because JS sort is stable, a mutation sorting by vol_ratio or today_vol_lots inside the component would preserve the B,A order and pass the line-89 assertion; the test only discriminates a sector-name sort. The finding's facts and suggested fix are accurate. P2 severity (test-hardening, no runtime bug) is appropriate."
+  },
+  {
+   "confirmed": true,
+   "reason": "CONFIRMED test gap. The implementation is correct — breadth-svg.tsx:49-50 mapX(i) uses the full-series index i from the loop at line 58, so nulls occupy x positions per the documented contract (line 36 「x = index 線性映射(null 佔 x 位)」). But no test locks this. Evidence: breadth-svg.test.ts:24-27 ([null,5,7,null,3]) asserts only segments.length and pts.length, never any x; the only x assertions are line 64 (len===1 → w/2, where segment-local and full-series index coincide trivially) — no other test touches .x. The proposed mutation (x from a segment-local counter that resets per segment) keeps every current assertion green: gap test checks lengths only, warm-up test (lines 35-44) has a single all-non-null segment after slice so local==global, y-mapping tests (46-59) assert only .y, len===1 unaffected, polylinePoints takes literal pts. Visually the post-gap segment ([3] at index 4) would render at x=pad (left edge) instead of w-pad, collapsing gapped series left. The suggested fix assertions (segments[0].pts[0].x === pad + 1*(w-2*pad)/4, pts[1].x === pad + 2*(w-2*pad)/4, segments[1].pts[0].x === w-pad) match the current implementation exactly (pad=4, w=100: 28, 52, 96) and would catch the mutation. Real, material, unrefuted — though it is a missing lock test on correct code, not a live bug."
+  },
+  {
+   "confirmed": true,
+   "reason": "Verified in diff: MarketSectorVolRatio.tsx flag span (lines ~41-49) has only data-flag + color classes (bg-accent/bg-ink-dim), no aria-label/title/hidden text, so the hot/cold state is invisible to screen readers; test only locks data-flag attr, spec is silent on a11y. Severity correctly modest (P2): the vol_ratio number is shown in the same row, so only the threshold categorization (not the underlying data) is color-only, partially mitigating the WCAG 1.4.1 angle. Suggested fix (繁中 aria-label per project convention) is appropriate and low-risk."
+  },
+  {
+   "confirmed": false,
+   "reason": "The design WAS amended: design.md:97 records round decision R1-5 (\"原 lastPointPos 移除 — signal dot 改 signal strip 固定槽位,不錨圖上點,YAGNI\"), and design.md:269 explicitly maps edge case 9 (\"scalar dot 最後 bar\") to the §6 signal-strip fixed-slot presentation. The backend contract (design.md:46) already delivers divergence_dot/thrust_dot as last-bar scalars, so no last-point SVG helper is required. MarketBreadthPanel.tsx implements exactly this (SignalSlot at line 19, comment at line 18 citing R1-5, testids breadth-thrust-dot/centerline-dot/divergence-dot with active semantics), covered by component tests in the branch. The finding's premise (unrecorded design change / unimplemented SC) misreads the authoritative spec."
+  },
+  {
+   "confirmed": true,
+   "reason": "核心指控屬實:MarketBreadthPanel.tsx:19-34 的 SignalSlot,active dot 只有 data-testid/data-value + 色彩 class(bg-accent/bg-ink/bg-ink-muted),inactive 是空 span;整個元件與 MarketBreadthPanel.test.tsx 皆無任何 aria-label / sr-only / role(grep 零命中),螢幕閱讀器確實只能聽到「±100 / 0 線 / 背離」標籤文字,無從得知是否觸發與方向 — 此 gap 真實存在且無測試鎖定。design.md §6「只標不寫方向字(SC-10a)」是 reflexivity hedge(禁做多/做空文案),不禁止「上穿/下穿」等閾值描述的 aria-label,故不能以 spec 為由豁免;且 design.md R1-6 對 heatmap 明示「a11y focus 優先」,同頁其他元件有走 a11y。兩點修正:(1) WCAG 1.4.1 子指控偏弱 — active 實心 vs inactive 空心 border(design.md:138 明定)是填色/形狀差異,非純色彩,視覺上可分辨;(2) 各 slot 的 tone 固定於槽位、不隨 data-value 變,方向資訊對明眼人也僅在 DOM attribute,這是 spec 刻意設計。故裁定:a11y 文字替代缺失部分 CONFIRMED(P2 合理),1.4.1 條文引用部分不成立。"
+  },
+  {
+   "confirmed": true,
+   "reason": "Confirmed. The DOM-order test (frontend/src/components/MarketPage.test.tsx:138-152) only asserts header→banner→grid via compareDocumentPosition; no assertion anywhere relates market-v2-grid to market-classic-toggle. The classic-view tests (lines 167-193) only check aria-expanded, visibility, and mounted-while-hidden — all position-independent. e2e/specs/market.spec.ts contains no references to market-classic-toggle or market-v2-grid order. The design spec (.claude/feat/market-page-v2-frontend/design.md §11) explicitly mandates the classic section is \"主視圖下方,fold 之下\", so moving the <section> at MarketPage.tsx:93 above the grid (line 66) violates SC-9 yet every existing test stays green. The mutation slips through; the suggested compareDocumentPosition assertion would lock it."
+  },
+  {
+   "confirmed": true,
+   "reason": "Confirmed. The SC-9 DOM-order test (frontend/src/components/MarketPage.test.tsx:138-152) asserts only header→banner→grid via compareDocumentPosition; there is no assertion anywhere that market-v2-grid precedes market-classic-toggle. Grep across the test file shows classic-toggle is only used for existence (line 173/183) and collapse-behavior (line 179+) tests, none of which are order-sensitive. E2E specs (e2e/specs/market.spec.ts and others) contain zero references to classic-toggle/v2-grid ordering or compareDocumentPosition. The spec is explicit that this order is mandated: design.md §11 SC-9 layout puts the <section> with market-classic-toggle after the v2 grid with the comment 「經典檢視:主視圖下方,fold 之下」, and the no-scroll measurement semantics (R1-3) depend on the classic view being below the fold. MarketPage.tsx currently has v2-grid at line 66 and classic-toggle at line 96 (correct order), but the proposed mutation — moving the classic <section> above the grid — would pass all existing unit and e2e tests while violating SC-9. Real, material test gap; P2 severity appropriate."
+  },
+  {
+   "confirmed": true,
+   "reason": "Verified: implementation (breadth-svg.tsx:49-51) is correct (full-series index), but no test locks x for a gapped series. In breadth-svg.test.ts the [null,5,7,null,3] case asserts only segment/pts lengths; the sole x assertions are the len===1 midpoint (index-independent) and the warm-up test's single segment starts at index 0 (segment-local == full-series). MarketBreadthPanel.test.tsx only checks polyline existence. The proposed mutation (segment-local x indexing) passes all existing tests while breaking the documented \"null 佔 x 位\" contract, so the finding is a real, material test gap."
+  },
+  {
+   "confirmed": false,
+   "reason": "Refuted. The finding's failure scenario (\"live backend renaming flag hot→high or centerline above→positive passes both suites\") is not real in this repo, because the enum literals are backend-generated constants (not FinMind upstream values) and are hard-locked by backend unit tests that run in the standard gate: backend/tests/test_sector_aggregation.py:258 (`assert out[0][\"flag\"] == \"hot\"`), :324 (`== \"cold\"`), :505-507, :720-732 (boundary tests asserting exact \"hot\"/\"cold\"/None), and backend/tests/test_market_breadth.py:70/116/120 (`detect_thrust_dot == \"above_plus_100\"/\"below_minus_100\"`), :132/136 (`detect_centerline_cross == \"above\"/\"below\"`), plus divergence_dot tests. Any rename of these enum values fails `pytest -q` immediately — it cannot silently reach the frontend. The @live L3 spec (e2e/specs/live-contract.spec.ts:48-65) is explicitly scoped to upstream FinMind schema drift (see file header and per-test 痛點 comments), and FinMind cannot alter these backend-computed enum strings; adding enum membership asserts there would be redundant with the backend suite. The frontend side is additionally locked by market-types.test.ts:37-39,64 enum membership checks. The only unguarded path is backend rename + simultaneous backend-test rewrite + stale evidence JSON, which is a deliberate contract change, not silent drift. Finding is not material."
+  },
+  {
+   "confirmed": true,
+   "reason": "Finding is factually accurate: all five new panels' loading skeletons are bare animate-pulse divs with no accessible state — MarketBreadthPanel.tsx:44-47, MarketSectorBreadthHeatmap.tsx:43, MarketSectorAmountShare.tsx:13, MarketSectorVolRatio.tsx:14 (grep for aria-busy/載入中/role=status in these files returns nothing), and MarketPage.tsx/MarketHeader.tsx add no aria-busy either. The project does have an established, test-locked convention for this: ChipBrokersPanel.tsx:182 sets aria-busy={loading || undefined} and ChipBrokersPanel.test.tsx:328 asserts it; App.tsx:311-312 uses aria-busy + aria-label=\"資料載入中\"; OptionsPCRCard/OptionsInstitutionalCard/OptionsStrikeLadder show 載入中… text. Mitigating context that keeps this at P2 (not higher): (1) MarketHeader shows visible text 尚未載入 when lastUpdated is null, so a screen-reader user reading the page top does get one textual cue; (2) there is one pre-existing counter-precedent — OptionsLargeTradersStrip.tsx:45-46 skeleton also lacks aria-busy — so 「一律」 in the claim is slightly overstated. Still, the dominant, test-locked convention (ChipBrokersPanel) supports the finding, the omission is uniform across all new panels in the diff, and the suggested fix (aria-busy + 繁中 label on the data-state=\"loading\" containers) is correct and low-cost. Real, minor-severity a11y gap: confirmed at P2."
+  },
+  {
+   "confirmed": false,
+   "reason": "Refuted. The legend-slot presentation is a recorded, reviewed design decision, not an unamended drift. The authoritative spec .claude/feat/market-page-v2-frontend/design.md explicitly documents it: header line 5 \"v2 2026-07-02 — review round 1 全 7 條 accepted 落地 ... signal strip 槽位取代同錨 dot(R1-5)\"; line 97 \"(R1-5:原 `lastPointPos` 移除 — signal dot 改 signal strip 固定槽位,不錨圖上點,YAGNI。)\"; line 137-138 specifies the signal strip slots with data-testid; and the edge-case resolution table line 269 maps edge case 9 (\"scalar dot 最後 bar\") to \"§6 signal strip 固定槽位(scalar 即最新 bar 狀態,不錨圖上座標)\". So the claim \"breadth-svg exports no last-point helper\" is by design (helper deliberately removed as YAGNI). Tests DO lock the behavior: frontend/src/components/MarketBreadthPanel.test.tsx:74 \"三 signal 全 active:三 dot testid 各自存在 + data-value 正確 (edge 9)\" plus null-state (line 92-94) and taiex_unavailable (line 62) cases assert the slot's active/inactive contract tied to the scalar signal fields, which per the amended design ARE the last-bar state (backend-computed scalars). Only brainstorm.md retains the older \"最後一點\" wording, but the finding's own suggested fix accepts \"amend brainstorm/design\" as sufficient — design.md, the document the task designates as authoritative, was amended through a formal review round (design-review-round-1.json R1-5 accepted). No material defect in the diff."
+  },
+  {
+   "confirmed": true,
+   "reason": "Verified in code: useContainerSize.ts:32-49 attaches ResizeObserver in a single effect with stable deps [ref, measure] and bails when ref.current is null; MarketBreadthPanel.tsx attaches containerRef only in the data branch, while MarketPage.tsx:69-73 always mounts the panel with loaded={!!data}, so cold load renders the skeleton first, the effect runs with a null ref, and never re-runs when the data div mounts. width/height stay 0 forever, rendering both breadth SVGs at 0x0. MarketHeatmap avoids this by attaching the ref to an always-mounted root. No window-resize fallback and no test covers it (jsdom rects are 0 regardless)."
+  },
+  {
+   "confirmed": false,
+   "reason": "Refuted on materiality. The factual observation is true (e2e/specs/live-contract.spec.ts:60-63 only asserts key presence and array-ness, no enum membership), but the claimed drift scenario is not real: (1) These enums (thrust_dot/centerline_cross/divergence_dot/flag) are computed by our own backend from thresholds — they never pass through FinMind, so the @live suite's purpose (upstream FinMind schema drift, per spec header comment) cannot cause enum drift. (2) A backend rename in this mono-repo is already locked red by backend unit tests: backend/tests/test_market_breadth.py:70,116,132,146 assert literal \"above_plus_100\"/\"above\"/\"bearish\", and backend/tests/test_sector_aggregation.py:258,505,753 assert flag == \"hot\" — renaming \"hot\"→\"high\" or \"above\"→\"positive\" fails pytest before it could ship. There is no deployment model where a live backend runs a version the backend tests didn't gate. (3) The failure scenario is also overstated for breadth: MarketBreadthPanel.tsx:131-155 uses fixed tone per slot and only `value !== null` for active — a renamed non-null enum still renders the same dot/tone (only data-value changes); only MarketSectorVolRatio.tsx:50 tone would differ. Adding enum asserts to L3 is a nice-to-have hardening, not a material gap."
+  },
+  {
+   "confirmed": true,
+   "reason": "Confirmed. MarketBreadthPanel.tsx attaches containerRef only in the data branch (line 66); loading skeleton (lines 42-48) renders without it. useContainerSize.ts:32-49 has a single useEffect with stable deps [ref, measure] that early-returns when ref.current is null and never re-runs, so no ResizeObserver is ever attached on the cold-load path. MarketPage.tsx:69-73 mounts the panel unconditionally with loaded={!!data}, guaranteeing first mount is the skeleton. Result: width/height stay {0,0}, both SVGs (lines 68, 104) render at 0x0 and McClellan/AD charts are permanently blank until remount. MarketHeatmap attaches the ref to the always-mounted root, confirming the hook's intended contract. No jsdom test can catch it (getBoundingClientRect is 0 there anyway)."
+  },
+  {
+   "confirmed": true,
+   "reason": "Confirmed. MarketSectorAmountShare.tsx:42-47 colors by raw share_delta_20ma while signedPctPoints (market-format.ts:19-24) rounds to 2 decimals and Number((v*100).toFixed(2)) normalizes -0, so tiny deltas like ±0.00003 render as \"0.00\" yet get directional coloring (negative → text-ink-muted, positive → text-accent), making displayed sign and color disagree at the rounding boundary. Minor correction to the finding: the positive tiny case renders in text-accent, not text-ink-muted — which still exhibits the same display/color mismatch. No test locks deltaClass behavior at this boundary. Severity P2 is appropriate (only |delta| < 0.005 pct-points affected)."
+  },
+  {
+   "confirmed": true,
+   "reason": "Verified: ref={containerRef} only exists in the data branch (MarketSectorBreadthHeatmap.tsx:61) which is not mounted on first render (MarketPage.tsx:77 passes loaded={!!data}, data initially null). useContainerSize.ts:32-49 attaches ResizeObserver in a useEffect with stable deps [ref, measure] that runs once, early-returns on null ref.current, and never re-runs when the data branch mounts — no callback ref. Size stays {0,0}, and sector-breadth-svg.tsx:34 guard (w <= 0 || h <= 0 → []) makes layoutCells return zero cells, so the heatmap renders empty after load. No test locks this (jsdom lacks real ResizeObserver/layout). Finding is real and material."
+  },
+  {
+   "confirmed": true,
+   "reason": "Core defect verified by executable repro. `signedPctPoints` (frontend/src/lib/market-format.ts:19-24) rounds to 2 decimals: for v=-0.00003, points=Number(\"-0.00\")=-0, sign=\"\" (-0>0 false), (-0).toFixed(2)=\"0.00\" — displays neutral \"0.00\". Meanwhile deltaClass (MarketSectorAmountShare.tsx:41-46) uses raw r.share_delta_20ma, so -0.00003 gets text-ink-muted (bear color) and +0.00003 gets text-accent (bull color), both while displaying \"0.00\". Displayed value and color disagree at the rounding boundary — confirmed real. One detail of the claim is inaccurate: +0.00003 renders in text-accent (raw > 0 is true), not text-ink-muted as the claim states; but that makes the mismatch worse (green-colored \"0.00\"), not better. Tests (MarketSectorAmountShare.test.tsx:25-28) only cover values well away from the boundary (0.0016, -0.0059, 0, null), nothing locks the boundary behavior. Severity appropriately P2 (cosmetic edge case, magnitude <0.005 pct-points); suggested fix (derive class from the same rounded value, 0 → neutral) is sound."
+  },
+  {
+   "confirmed": true,
+   "reason": "Confirmed. ref={containerRef} only exists in the data branch (MarketSectorBreadthHeatmap.tsx:61) which is not mounted on first render (loaded=false, data null in MarketPage.tsx:72-77). useContainerSize.ts:32-49 effect has stable deps [ref, measure], runs once at mount, returns early at `if (!el) return` (line 35), and never re-runs when the ref element later mounts — no ResizeObserver attached, width/height stay 0. sector-breadth-svg.tsx:34 guard `w <= 0 || h <= 0` then makes layoutCells return [], so zero cells render after load. Working template MarketHeatmap.tsx:25 puts the ref on the always-mounted root, confirming the deviation. No test locks the populated path (e2e M4 only checks null-state visibility; jsdom returns 0 sizes so unit tests can't catch it)."
+  },
+  {
+   "confirmed": false,
+   "reason": "The finding's factual premise is wrong. (1) No V3 baseline PNG exists anywhere in the repo — `git ls-tree -r 45271d4` and `git ls-files \"e2e/**/*.png\"` return zero e2e baseline files at both the base commit and HEAD, so there is no \"existing V3 baseline\" that can fail against the new layout. (2) The visual gate is not silently skipping the new panels — it is skipped by design: e2e/package.json:7 runs `playwright test --grep-invert=\"@live|@visual\"`, and e2e/specs/visual.spec.ts:10 documents that @visual only runs in the e2e-update-snapshots workflow. (3) That workflow (.github/workflows/e2e-update-snapshots.yml) regenerates baselines from scratch and opens a PR (`add-paths: e2e/specs/**/*.png`); with no committed baseline, the first run after merge produces a fresh baseline of the V2 layout with no mismatch — V3's spec itself (visual.spec.ts:39-45, waits for marketHeatmap testid, still rendered per M5 經典檢視預設展開) needs no change, matching design.md:232 \"V3 spec 本體不動\". What remains is at most an unexecuted process step (design.md SC-11d says run update-snapshots at Phase 5), not a defect inside the diff, and CLAUDE.md's \"baseline diff 進 PR review\" cannot apply when no prior baseline was ever committed. Not a material code issue in the branch diff."
+  },
+  {
+   "confirmed": false,
+   "reason": "Math is correct in isolation (no clamp at sector-breadth-svg.tsx:37-38), but the degenerate condition is unreachable via the only caller. Negative cellW needs h < 4n/w (~w<120px AND h=1-2px for n≈30). MarketSectorBreadthHeatmap.tsx:60 sizes the container with \"h-64 lg:h-full lg:flex-1 min-h-0\": below lg, height is fixed 256px so the condition needs w<0.5px (guarded by w<=0 → []); at lg, panel width is hundreds of px so the condition needs h<0.15px, which Math.round in useContainerSize.ts:15 makes 0 (guarded by h<=0 → []). useContainerSize.ts:24-26 also holds last-good size on 0x0 collapse. Worst hypothetical is a one-frame visual glitch (browsers ignore negative width) that self-heals on the next ResizeObserver tick — not material."
+  },
+  {
+   "confirmed": false,
+   "reason": "Refuted — the finding misreads how visual baselines work in this repo. Evidence: (1) No visual baseline PNG exists anywhere in the repo — `git ls-files` shows zero PNGs under e2e/ and `git log --all -- \"*.png\"` finds only docs screenshots, so there is no \"existing V3 baseline\" that could fail against the new layout; the failure scenario is factually impossible. (2) The visual gate is deliberately not exercised in the merge gate: `e2e/package.json:7` runs `playwright test --grep-invert=\"@live|@visual\"`, and `.github/workflows/e2e.yml:47` runs that same `npm test` — @visual never runs in PR CI. `e2e/specs/visual.spec.ts:10-13` documents this: \"@visual tag — 平時 npm test grep-invert 排除;只 e2e-update-snapshots workflow 跑 update + 生 baseline。第一次 baseline auto-PR merge 後可考慮 npm test 拿掉 grep-invert\". (3) Baselines cannot be produced on this branch locally anyway: `e2e/helpers/visual.ts` `skipOnWin32()` skips all visual tests on Windows (\"baseline 只在 Linux CI 生成 + commit\"), and the only generation path is the on-demand `.github/workflows/e2e-update-snapshots.yml`, which opens its own auto-PR on branch `e2e/refresh-visual-baselines` — the baseline is a post-merge CI artifact, not something that can appear in this feature-branch diff. (4) V3 spec body correctly needs no change: implementation/e2e-and-contract.md §5 says \"V3 spec 本體不動(仍截 market mode top-of-page)\", and V3's wait target `TESTIDS.marketHeatmap` still renders by default in the V2 layout (經典檢視預設展開, components-market-page.md:79). At most this is a post-merge follow-up reminder to trigger the e2e-update-snapshots workflow, not a defect inside the diff."
+  },
+  {
+   "confirmed": false,
+   "reason": "The arithmetic gap exists in isolation (no clamp in layoutCells, frontend/src/lib/sector-breadth-svg.tsx:38-40), but the claimed failure is not reachable in the code as shipped, so it is not a real/material defect. Deriving the condition: cellW < 0 requires (cols-1)*gap > w with cols ≈ sqrt(n·w/h) and gap=2, which reduces to h < ~4n/w. With the actual sector count (n ≈ 30-32), that means the container must be narrower than ~128px while simultaneously 1-2px tall. Neither rendering path allows this: (1) the container is `className=\"relative h-64 lg:h-full lg:flex-1 min-h-0\"` (MarketSectorBreadthHeatmap.tsx:63) — below the lg breakpoint height is fixed at 256px (h-64), and at h=256 negative cellW needs w<0.5px, which layoutCells already guards (w<=0 → [] at sector-breadth-svg.tsx:35, and useContainerSize rounds to integers); (2) at lg, where min-h-0 flex collapse could give h≈1, the grid column width is hundreds of px (>128px), where h<4n/w forces h<1, i.e. h=0 → early return []. The reviewer's example (w=100, h=1) combines a sub-lg width with the lg-only collapsed height — a combination the responsive classes make mutually exclusive. Additionally, initial mount is {0,0} → early return, and useContainerSize holds last-good size on 0×0 collapse (useContainerSize.ts:24-26), so the display-none thrash path never feeds degenerate dims either. The suggested Math.max(0, ...) clamp would be harmless hardening, but the finding's failure scenario (overlapping auto-sized buttons visible to users) cannot occur under the actual layout constraints."
+  }
+ ]
+}

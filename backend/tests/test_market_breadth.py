@@ -39,18 +39,35 @@ class TestComputeAdLine:
 
 class TestComputeRana:
     def test_rana_normal(self) -> None:
+        # Ratio-Adjusted (StockCharts):RANA = (up-down)/(up+down) × 1000
+        # (bug mcclellan-scaling 前舊 assertion 為 50/150,已事前標「該變」)
         counts = [
-            (date(2026, 6, 20), 100, 50),  # 50/150
+            (date(2026, 6, 20), 100, 50),  # 1000 × 50/150
             (date(2026, 6, 21), 80, 80),  # 0/160
         ]
         result = mb.compute_rana(counts)
-        assert result[0]["value"] == pytest.approx(50 / 150)
+        assert result[0]["value"] == pytest.approx(1000 * 50 / 150)
         assert result[1]["value"] == 0.0
 
     def test_rana_zero_denominator(self) -> None:
         counts = [(date(2026, 6, 20), 0, 0)]
         result = mb.compute_rana(counts)
         assert result[0]["value"] == 0.0
+
+    def test_thrust_reachable_after_ratio_adjusted_scaling(self) -> None:
+        # bug mcclellan-scaling 紅測試:漏乘 1000 時 McClellan ∈ ±2,
+        # ±100 thrust 數學上不可能觸發(real payload 2026-07-02 oscillator=-0.0029)。
+        # 手算 fixture:39 天平盤 (RANA=0) + 3 天全漲 (RANA=1000)
+        #   fast(19): seed idx18=0 → idx39=100 → idx40=190 → idx41=271
+        #   slow(39): seed idx38=0 → idx39=50 → idx40=97.5 → idx41=142.625
+        #   oscillator = 271 - 142.625 = 128.375 > 100 → thrust dot
+        base = date(2026, 1, 5)
+        counts = [(base + timedelta(days=i), 100, 100) for i in range(39)]
+        counts += [(base + timedelta(days=39 + i), 200, 0) for i in range(3)]
+        rana = mb.compute_rana(counts)
+        mcc = mb.compute_mcclellan(rana)
+        assert mcc[-1]["value"] == pytest.approx(128.375)
+        assert mb.detect_thrust_dot(mcc) == "above_plus_100"
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +369,181 @@ class TestFetchTaiexSeriesFallback:
             await mb._fetch_taiex_series(start, end, refresh=True)
         # cache 不該被寫入(避免 pin transient failure 到 24h)
         assert mb._read_cache(f"breadth_taiex_{end.isoformat()}") is None
+
+
+# ---------------------------------------------------------------------------
+# perf snapshot-hot-path C3a — breadth_prices chunked JSONL cache
+# 痛點:單一 json.load/dump 是一個 C call,整份 1.5GB parse 持 GIL ~6-8s,
+# asyncio.to_thread 也救不了(2026-07-02 實驗:to_thread 下 ticker max gap
+# 6.35s;chunked 版 97ms)。sleep-mock 測不到 GIL(會釋放),此處只鎖
+# 格式結構 + roundtrip 行為;stall 上界由 real-env 探針量測把關。
+# ---------------------------------------------------------------------------
+
+
+class TestPricesCacheChunkedFormat:
+    def test_roundtrip(self) -> None:
+        rows = [
+            {"stock_id": "2330", "date": "2026-06-30", "close": 1.0},
+            {"stock_id": "2317", "date": "2026-06-30", "close": 2.0},
+        ]
+        mb._write_prices_cache("breadth_prices_rt", rows, "2026-06-30T10:00:00")
+        cached = mb._read_prices_cache("breadth_prices_rt")
+        assert cached is not None
+        assert cached["rows"] == rows
+        assert cached["fetched_at"] == "2026-06-30T10:00:00"
+
+    def test_rows_split_into_chunk_lines(self, monkeypatch) -> None:
+        """鎖 chunking 結構:GIL stall 上界 = 單 chunk parse 時間的前提是
+        rows 真的被切行,不是整包一行。"""
+        monkeypatch.setattr(mb, "_PRICES_CHUNK_ROWS", 2)
+        rows = [{"stock_id": str(i), "date": "2026-06-30", "close": float(i)} for i in range(5)]
+        mb._write_prices_cache("breadth_prices_chunk", rows, "2026-06-30T10:00:00")
+        text = mb._cache_path("breadth_prices_chunk").read_text(encoding="utf-8")
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        assert len(lines) == 1 + 3  # meta + ceil(5/2) chunks
+        cached = mb._read_prices_cache("breadth_prices_chunk")
+        assert cached is not None and cached["rows"] == rows
+
+    def test_version_mismatch_invalidates(self, monkeypatch) -> None:
+        mb._write_prices_cache("breadth_prices_ver", [], "2026-06-30T10:00:00")
+        monkeypatch.setattr(mb, "_CACHE_VERSION_BREADTH", mb._CACHE_VERSION_BREADTH + 1)
+        assert mb._read_prices_cache("breadth_prices_ver") is None
+
+    def test_legacy_single_doc_file_invalidates_cheaply(self) -> None:
+        """v1 legacy(atomic_write_json indent=2 單一文件)→ None,
+        不付整份 parse 成本(首行 `{` loads 立紅)。"""
+        from utils.cache import atomic_write_json as real_write
+
+        real_write(
+            mb._cache_path("breadth_prices_legacy"),
+            {"rows": [{"stock_id": "2330"}], "_cache_version": 1, "fetched_at": "x"},
+        )
+        assert mb._read_prices_cache("breadth_prices_legacy") is None
+
+    def test_missing_file_returns_none(self) -> None:
+        assert mb._read_prices_cache("breadth_prices_nope") is None
+
+    async def test_fetch_window_roundtrip_through_new_format(self, monkeypatch) -> None:
+        """整合:_do_fetch_prices 寫 → _fetch_daily_prices_window 讀,行為不變。"""
+
+        class FakeClient:
+            async def _get(self, url, params):
+                return [{"stock_id": "2330", "date": params["start_date"], "close": 1.0}]
+
+        end = date(2026, 6, 30)
+        start = end - timedelta(days=7)
+
+        async def fake_trading_days(end_d, n):
+            return [end]
+
+        monkeypatch.setattr(mb, "get_finmind", lambda: FakeClient())
+        monkeypatch.setattr(mb, "get_trading_days", fake_trading_days)
+
+        fetched = await mb._fetch_daily_prices_window(start, end, refresh=True)
+        assert fetched == [{"stock_id": "2330", "date": end.isoformat(), "close": 1.0}]
+        # 第二次(refresh=False)走 cache 讀,拿到同樣 rows
+        cached = await mb._fetch_daily_prices_window(start, end)
+        assert cached == fetched
+
+
+# ---------------------------------------------------------------------------
+# perf snapshot-hot-path C5 — 寫入前裁欄
+# FinMind row 10 keys 只有 5 個被 breadth 家族消費;實測裁後 0.578x
+# (audit「~10x」高估)。讀路徑容忍多餘 key,不需 version bump。
+# ---------------------------------------------------------------------------
+
+
+class TestPricesColumnTrim:
+    async def test_written_rows_only_keep_consumed_columns(self, monkeypatch) -> None:
+        full_row = {
+            "stock_id": "2330",
+            "date": "2026-06-30",
+            "close": 1085.0,
+            "Trading_Volume": 33456789,
+            "Trading_money": 36299000000,
+            "Trading_turnover": 12345,
+            "open": 1080.0,
+            "max": 1090.0,
+            "min": 1075.0,
+            "spread": 5.0,
+        }
+
+        class FakeClient:
+            async def _get(self, url, params):
+                return [dict(full_row, date=params["start_date"])]
+
+        end = date(2026, 6, 30)
+        start = end - timedelta(days=7)
+
+        async def fake_trading_days(end_d, n):
+            return [end]
+
+        monkeypatch.setattr(mb, "get_finmind", lambda: FakeClient())
+        monkeypatch.setattr(mb, "get_trading_days", fake_trading_days)
+
+        rows = await mb._fetch_daily_prices_window(start, end, refresh=True)
+        expected = {
+            "stock_id": "2330",
+            "date": end.isoformat(),
+            "close": 1085.0,
+            "Trading_Volume": 33456789,
+            "Trading_money": 36299000000,
+        }
+        assert rows == [expected]
+        cached = mb._read_prices_cache(f"breadth_prices_{start.isoformat()}_{end.isoformat()}")
+        assert cached is not None
+        assert cached["rows"] == [expected]
+
+
+# ---------------------------------------------------------------------------
+# perf snapshot-hot-path C4 — 舊 window cache 檔清理(增長有界)
+# 痛點:breadth_prices_* 每日 +1.5GB 零清理(實測 2 檔 3.06GB)。
+# ---------------------------------------------------------------------------
+
+
+class TestStaleWindowCleanup:
+    async def test_new_window_write_removes_stale_files(self, monkeypatch) -> None:
+        from utils.cache import atomic_write_json, chip_cache_dir
+
+        end = date(2026, 7, 2)
+        start = end - timedelta(days=7)
+        # 舊 window 檔(前一日 key)+ 舊 eod_results + 無關檔
+        mb._write_prices_cache("breadth_prices_2025-12-15_2026-07-01", [], "x")
+        atomic_write_json(mb._cache_path("breadth_taiex_2025-12-15_2026-07-01"), {"rows": []})
+        atomic_write_json(mb._cache_path("eod_results_2026-07-01_abcdef123456"), {"results": {}})
+        # 當前 window 的 taiex + 當日 eod_results + 非 breadth 檔 → 必須保留
+        atomic_write_json(
+            mb._cache_path(f"breadth_taiex_{start.isoformat()}_{end.isoformat()}"),
+            {"rows": []},
+        )
+        atomic_write_json(
+            mb._cache_path(f"eod_results_{end.isoformat()}_abcdef123456"),
+            {"results": {}},
+        )
+        atomic_write_json(mb._cache_path("realtime_sector_map"), {"rows": []})
+
+        class FakeClient:
+            async def _get(self, url, params):
+                return [{"stock_id": "2330", "date": params["start_date"], "close": 1.0}]
+
+        async def fake_trading_days(end_d, n):
+            return [end]
+
+        monkeypatch.setattr(mb, "get_finmind", lambda: FakeClient())
+        monkeypatch.setattr(mb, "get_trading_days", fake_trading_days)
+
+        await mb._fetch_daily_prices_window(start, end, refresh=True)
+
+        names = {p.stem for p in chip_cache_dir().iterdir()}
+        # 舊 window / 舊日 eod_results 清掉
+        assert "breadth_prices_2025-12-15_2026-07-01" not in names
+        assert "breadth_taiex_2025-12-15_2026-07-01" not in names
+        assert "eod_results_2026-07-01_abcdef123456" not in names
+        # 當前 window / 當日 / 無關檔保留
+        assert f"breadth_prices_{start.isoformat()}_{end.isoformat()}" in names
+        assert f"breadth_taiex_{start.isoformat()}_{end.isoformat()}" in names
+        assert f"eod_results_{end.isoformat()}_abcdef123456" in names
+        assert "realtime_sector_map" in names
 
 
 # ---------------------------------------------------------------------------

@@ -10,7 +10,9 @@ Design: .claude/feat/market-breadth-mcclellan/design.md v2
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TypedDict
@@ -23,7 +25,15 @@ from utils.cache import atomic_write_json, chip_cache_dir, read_json
 logger = logging.getLogger(__name__)
 
 _FINMIND_BASE = "https://api.finmindtrade.com/api/v4"
-_CACHE_VERSION_BREADTH = 1
+# v2 (perf C3a):breadth_prices 改 chunked JSONL 格式(舊單一 JSON 文件全數作廢)
+_CACHE_VERSION_BREADTH = 2
+# 每 chunk 的 row 數:單 chunk json.loads/dumps 的 GIL hold ~65-100ms =
+# event loop stall 上界(單一 1.5GB 文件的 C parse 持 GIL ~6-8s,to_thread 救不了)
+_PRICES_CHUNK_ROWS = 100_000
+_PRICES_FORMAT = "prices_jsonl_v1"
+# perf C5:FinMind row 10 keys 只有這 5 個被 breadth / sector 家族消費,
+# 寫入前裁欄(實測 0.578x;讀路徑容忍多餘 key,不需 version bump)
+_PRICES_KEEP_KEYS = ("stock_id", "date", "close", "Trading_Volume", "Trading_money")
 _BREADTH_TTL_HOURS = 24
 _SLOW_EMA_PERIOD = 39
 _FAST_EMA_PERIOD = 19
@@ -92,6 +102,93 @@ def _is_fresh(cached: dict, ttl_hours: float) -> bool:
     return datetime.now() - dt < timedelta(hours=ttl_hours)
 
 
+def _write_prices_cache(cache_key: str, rows: list[dict], fetched_at: str) -> None:
+    """perf C3a — breadth_prices 專用 chunked JSONL 原子寫入。
+
+    格式:line 1 = meta(version / format / fetched_at),line 2+ = 每
+    _PRICES_CHUNK_ROWS rows 一個 JSON array。逐 chunk dumps 讓 GIL 有
+    切換點(單一 json.dump 1.5GB 持 GIL ~數秒,event loop 全凍)。
+    在 asyncio.to_thread 內呼叫。
+    """
+    path = _cache_path(cache_key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    meta = {
+        "_cache_version": _CACHE_VERSION_BREADTH,
+        "format": _PRICES_FORMAT,
+        "fetched_at": fetched_at,
+    }
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(json.dumps(meta, ensure_ascii=False) + "\n")
+            for i in range(0, len(rows), _PRICES_CHUNK_ROWS):
+                f.write(json.dumps(rows[i : i + _PRICES_CHUNK_ROWS], ensure_ascii=False) + "\n")
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _read_prices_cache(cache_key: str) -> dict | None:
+    """perf C3a — 讀 chunked JSONL prices cache;非本格式 / 版本不符 → None。
+
+    Legacy 單一 JSON 文件(v1,indent=2)第一行是 `{` → loads 立紅 → None,
+    不付整份 parse 成本(cheap invalidate)。逐 chunk loads 讓 GIL 有切換點。
+    在 asyncio.to_thread 內呼叫。
+    """
+    path = _cache_path(cache_key)
+    if not path.exists():
+        return None
+    rows: list[dict] = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            # cap 1MB:合法 meta 行 <300B;超大單行(legacy 壓縮格式)截斷後
+            # loads 必失敗 → cheap invalidate
+            meta_line = f.readline(1_000_000)
+            meta = json.loads(meta_line)
+            if not isinstance(meta, dict) or meta.get("format") != _PRICES_FORMAT:
+                return None
+            if meta.get("_cache_version") != _CACHE_VERSION_BREADTH:
+                return None
+            for line in f:
+                if line.strip():
+                    rows.extend(json.loads(line))
+    except (json.JSONDecodeError, OSError, ValueError):
+        return None
+    return {"rows": rows, "fetched_at": meta.get("fetched_at", "")}
+
+
+def _cleanup_stale_window_files(start: date, end: date) -> int:
+    """perf C4 — 寫新 window 檔後清舊 window 衍生檔,cache 增長有界。
+
+    對齊 `_invalidate_chip_parse_caches` 慣例(單次 iterdir pattern 掃):
+    - `breadth_prices_*` / `breadth_taiex_*`:非當前 `<start>_<end>` window 刪
+    - `eod_results_*`:非當日(end)刪(finmind_realtime 的 result cache,
+      day-key 過期後不會再被讀)
+    其餘檔案不動。單檔刪除失敗(Windows 檔案佔用)skip 不 abort —
+    下次寫入再清。在 asyncio.to_thread 內呼叫。
+    """
+    keep_window = f"{start.isoformat()}_{end.isoformat()}"
+    keep_eod_prefix = f"eod_results_{end.isoformat()}_"
+    removed = 0
+    for p in chip_cache_dir().iterdir():
+        if p.suffix != ".json":
+            continue
+        stem = p.stem
+        stale = (
+            (stem.startswith("breadth_prices_") or stem.startswith("breadth_taiex_"))
+            and not stem.endswith(keep_window)
+        ) or (stem.startswith("eod_results_") and not stem.startswith(keep_eod_prefix))
+        if not stale:
+            continue
+        try:
+            p.unlink()
+            removed += 1
+        except OSError:
+            logger.warning("market_breadth: stale cache cleanup skipped %s", p.name)
+    return removed
+
+
 async def _run_once(key: str, coro_fn):
     if key in _inflight:
         return await _inflight[key]
@@ -118,11 +215,15 @@ def compute_ad_line(counts: list[tuple[date, int, int]]) -> list[dict]:
 
 
 def compute_rana(counts: list[tuple[date, int, int]]) -> list[dict]:
-    """RANA[t] = (up-down) / (up+down); denominator 0 → 0.0 (edge E6)."""
+    """RANA[t] = 1000 × (up-down) / (up+down); denominator 0 → 0.0 (edge E6).
+
+    ×1000 是 StockCharts Ratio-Adjusted 慣例(spec §6.3),漏乘會讓
+    McClellan ∈ ±2,±100 thrust 永不觸發(bug mcclellan-scaling)。
+    """
     out: list[dict] = []
     for d, up, down in counts:
         denom = up + down
-        val = (up - down) / denom if denom else 0.0
+        val = 1000.0 * (up - down) / denom if denom else 0.0
         out.append({"date": d.isoformat(), "value": val})
     return out
 
@@ -318,7 +419,10 @@ async def _fetch_daily_prices_window(
     cache_key = f"breadth_prices_{start.isoformat()}_{end.isoformat()}"
     dedup_key = f"{cache_key}_r{int(refresh)}"
     if not refresh:
-        cached = _read_cache(cache_key)
+        # perf C3a:chunked JSONL + to_thread — 單一 json.load 是一個 C call
+        # 持 GIL 整份 parse(1.5GB ~6-8s,to_thread 也凍 loop);chunked 讀
+        # 讓 stall 上界縮到單 chunk ~100ms
+        cached = await asyncio.to_thread(_read_prices_cache, cache_key)
         if cached is not None and _is_fresh(cached, _BREADTH_TTL_HOURS):
             return cached.get("rows", [])
     return await _run_once(
@@ -347,9 +451,11 @@ async def _do_fetch_prices(start: date, end: date, cache_key: str) -> list[dict]
             start.isoformat(),
             end.isoformat(),
         )
-        _write_cache(
+        await asyncio.to_thread(
+            _write_prices_cache,
             cache_key,
-            {"rows": [], "fetched_at": datetime.now().isoformat(timespec="seconds")},
+            [],
+            datetime.now().isoformat(timespec="seconds"),
         )
         return []
 
@@ -373,11 +479,20 @@ async def _do_fetch_prices(start: date, end: date, cache_key: str) -> list[dict]
                 exc,
             )
             continue
-        all_rows.extend(rows)
-    _write_cache(
+        # perf C5:寫入前裁欄(per-day ~45k rows ~16ms,fetch loop 本就逐日 yield)
+        all_rows.extend({k: r[k] for k in _PRICES_KEEP_KEYS if k in r} for r in rows)
+    # perf C3a:chunked 寫(單一 json.dump 1.5GB 同樣持 GIL 數秒)
+    await asyncio.to_thread(
+        _write_prices_cache,
         cache_key,
-        {"rows": all_rows, "fetched_at": datetime.now().isoformat(timespec="seconds")},
+        all_rows,
+        datetime.now().isoformat(timespec="seconds"),
     )
+    # perf C4:新 window 落地後清舊 window 檔(增長有界,每日 steady state
+    # = 當日一組檔)
+    removed = await asyncio.to_thread(_cleanup_stale_window_files, start, end)
+    if removed:
+        logger.info("market_breadth: removed %d stale window cache files", removed)
     return all_rows
 
 
@@ -465,10 +580,14 @@ async def compute_breadth(
     universe: set[str],
     lookback_days: int = _DEFAULT_LOOKBACK_DAYS,
     refresh: bool = False,
+    *,
+    prices: list[dict] | None = None,
 ) -> BreadthResult:
     """Compute breadth (AD Line + McClellan + signals) for universe over lookback.
 
     設計:.claude/feat/market-breadth-mcclellan/design.md v2 §4.1
+    perf C3b:`prices` 注入時跳過自抓(caller 負責 rows 覆蓋本函式推導的
+    window — `_fetch_eod_results` 用 sa._derive_window 同構公式,T36 慣例鎖)。
     """
     if not universe:
         raise ValueError("universe_empty")
@@ -480,7 +599,8 @@ async def compute_breadth(
     pad_days = int((lookback_days + _SLOW_EMA_PERIOD) * 2.0)
     start = end_date - timedelta(days=pad_days)
 
-    prices = await _fetch_daily_prices_window(start, end_date, refresh=refresh)
+    if prices is None:
+        prices = await _fetch_daily_prices_window(start, end_date, refresh=refresh)
     taiex_raw = await _fetch_taiex_series(start, end_date, refresh=refresh)
 
     counts = _count_daily_ups_downs(prices, universe)

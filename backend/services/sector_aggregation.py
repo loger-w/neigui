@@ -395,17 +395,21 @@ async def compute_sector_breadth(
     sector_map: dict[str, str],
     lookback_days: int = _DEFAULT_LOOKBACK_DAYS,
     refresh: bool = False,
+    *,
+    prices: list[dict] | None = None,
 ) -> list[SectorBreadthResult]:
     """Aggregate per-sector breadth (% close > MA20).
 
     Empty universe → raises ValueError("universe_empty").
     Empty prices from fetcher (F3) → returns [].
     Sorted by pct DESC, tie-break sector name ASC.
+    perf C3b:`prices` 注入時跳過自抓(caller 負責 window 覆蓋)。
     """
     if not universe:
         raise ValueError("universe_empty")
-    start, end = _derive_window(end_date, lookback_days)
-    prices = await _fetch_prices_window(start, end, refresh=refresh)
+    if prices is None:
+        start, end = _derive_window(end_date, lookback_days)
+        prices = await _fetch_prices_window(start, end, refresh=refresh)
     by_stock = _extract_close_and_volume_by_stock(prices, universe)
     return _aggregate_sector_breadth(by_stock, sector_map)
 
@@ -417,17 +421,21 @@ async def compute_sector_volume_ratio(
     lookback_days: int = _DEFAULT_LOOKBACK_DAYS,
     avg_window: int = _VOL_AVG_WINDOW,
     refresh: bool = False,
+    *,
+    prices: list[dict] | None = None,
 ) -> list[SectorVolResult]:
     """Aggregate per-sector today volume ratio vs past N-day average.
 
     Empty universe → raises ValueError("universe_empty").
     Empty prices from fetcher (F3) → returns [].
     Sort: non-None vol_ratio DESC first, None last, tie-break sector ASC.
+    perf C3b:`prices` 注入時跳過自抓(caller 負責 window 覆蓋)。
     """
     if not universe:
         raise ValueError("universe_empty")
-    start, end = _derive_window(end_date, lookback_days)
-    prices = await _fetch_prices_window(start, end, refresh=refresh)
+    if prices is None:
+        start, end = _derive_window(end_date, lookback_days)
+        prices = await _fetch_prices_window(start, end, refresh=refresh)
     by_stock = _extract_close_and_volume_by_stock(prices, universe)
     return _aggregate_sector_volume_ratio(by_stock, sector_map, avg_window=avg_window)
 
@@ -439,6 +447,8 @@ async def compute_sector_amount_share(
     lookback_days: int = _DEFAULT_LOOKBACK_DAYS,
     avg_window: int = _AMOUNT_AVG_WINDOW,
     refresh: bool = False,
+    *,
+    prices: list[dict] | None = None,
 ) -> list[SectorAmountResult]:
     """Aggregate per-sector today turnover share + Δ vs past N-day mean share (P4).
 
@@ -446,10 +456,12 @@ async def compute_sector_amount_share(
     Empty prices from fetcher → returns [].
     Sorted by today_share DESC, tie-break sector name ASC.
     Window derivation reuses P3 _derive_window → SAME cache_key as P2/P3 (KG3).
+    perf C3b:`prices` 注入時跳過自抓(caller 負責 window 覆蓋)。
     """
     if not universe:
         raise ValueError("universe_empty")
-    start, end = _derive_window(end_date, lookback_days)
-    prices = await _fetch_prices_window(start, end, refresh=refresh)
+    if prices is None:
+        start, end = _derive_window(end_date, lookback_days)
+        prices = await _fetch_prices_window(start, end, refresh=refresh)
     by_stock = _extract_amount_by_stock(prices, universe)
     return _aggregate_sector_amount_share(by_stock, sector_map, avg_window=avg_window)

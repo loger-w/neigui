@@ -7,7 +7,7 @@
     "test": "playwright test --grep-invert=\"@live|@visual\"",
     "test:live": "cross-env FAKE_FINMIND=real playwright test --config=playwright.live.config.ts",
     "test:ui": "playwright test --ui",
-    "test:update-snapshots": "playwright test --update-snapshots"
+    "test:update-snapshots": "playwright test --update-snapshots --grep-invert=\"@live\""
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

@@ -67,6 +67,51 @@ def test_dedup_override_table_wins() -> None:
     assert _PRIMARY_INDUSTRY_OVERRIDE["2330"] == "半導體業"
 
 
+# bug sector-override-phantom — override value 必須是 TaiwanStockInfo 真實
+# industry_category 字串,否則 override 股自成幽靈 sector(2026-07-02 real
+# payload:「金融保險業」2 檔 vs 真實「金融保險」30 檔並存)。
+# 真實集合 snapshot:2026-07-02 FinMind TaiwanStockInfo probe(type ∈ twse/tpex,
+# 56 distinct)。FinMind 改名時本 fixture 隨 §9 fixture rotation 政策更新。
+_REAL_INDUSTRY_CATEGORIES_2026_07_02 = frozenset({
+    "ETF", "ETN", "Index", "上櫃ETF", "上櫃指數股票型基金(ETF)", "光電業",
+    "其他", "其他電子業", "其他電子類", "創新板股票", "創新版股票", "化學工業",
+    "化學生技醫療", "半導體業", "受益證券", "塑膠工業", "大盤", "存託憑證",
+    "居家生活", "居家生活類", "建材營造", "所有證券", "指數投資證券(ETN)",
+    "數位雲端", "數位雲端類", "文化創意業", "橡膠工業", "水泥工業", "汽車工業",
+    "油電燃氣業", "玻璃陶瓷", "生技醫療業", "紡織纖維", "綠能環保", "綠能環保類",
+    "航運業", "觀光事業", "觀光餐旅", "貿易百貨", "資訊服務業", "農業科技業",
+    "通信網路業", "造紙工業", "運動休閒", "運動休閒類", "金融保險", "金融業",
+    "鋼鐵工業", "電器電纜", "電子商務業", "電子工業", "電子通路業", "電子零組件業",
+    "電機機械", "電腦及週邊設備業", "食品工業",
+})
+
+
+def test_override_values_are_real_finmind_categories() -> None:
+    """bug sector-override-phantom drift-lock:每個 override value 必須存在於
+    真實 industry_category 集合,防手編字串 / FinMind 改名 silent drift。"""
+    for sid, category in _PRIMARY_INDUSTRY_OVERRIDE.items():
+        assert category in _REAL_INDUSTRY_CATEGORIES_2026_07_02, (
+            f"override[{sid}] = {category!r} 不是真實 TaiwanStockInfo "
+            f"industry_category,會自成幽靈 sector"
+        )
+
+
+def test_dedup_override_financial_stocks_join_real_sector() -> None:
+    """bug sector-override-phantom 重現:override 股 (2882) 與非 override
+    金融股 (2881) 必須落在同一個「金融保險」sector,不得分桶。"""
+    rows = [
+        {"stock_id": "2881", "industry_category": "金融保險",
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "2882", "industry_category": "金融保險",
+         "type": "twse", "date": "2026-06-26"},
+        {"stock_id": "2891", "industry_category": "金融保險",
+         "type": "twse", "date": "2026-06-26"},
+    ]
+    out = _dedup_sector_map(rows)
+    assert out["2882"] == out["2881"] == "金融保險"
+    assert out["2891"] == "金融保險"
+
+
 def test_dedup_filters_non_twse_tpex_keeps_both() -> None:
     """v3 B4: type='index'/'other' 過濾;type='twse' AND 'tpex' 皆保留(對稱)。"""
     rows = [
@@ -1133,7 +1178,346 @@ async def test_snapshot_amount_share_delegate_args() -> None:
     assert result["sector_amount_share"] == sentinel
     spy.assert_awaited_once()
     assert spy.await_args.args == (clock.today(), {"2330"}, {"2330": "半導體業"})
-    assert spy.await_args.kwargs == {"refresh": True}
+    # perf C2 該變 assertion(原鎖 refresh=True 傳達):C2 後 snapshot 的
+    # refresh 不進 EOD compute,一律 False;C3b 起 kwargs 另含 prices 注入
+    assert spy.await_args.kwargs["refresh"] is False
+    assert "prices" in spy.await_args.kwargs
+
+
+# ---------------------------------------------------------------------------
+# perf snapshot-hot-path C1 — EOD result-level cache
+# Plan: .claude/perf/snapshot-hot-path/optimize-plan.md
+# Profile 2026-07-02:4 EOD compute = 37.1s 中 36.5s(98.4%),各含一次
+# 7.9s re-parse 1.5GB prices cache → 結果以 (end_date, universe digest) 快取
+# ---------------------------------------------------------------------------
+
+_FAKE_AMOUNT_SHARE_PAYLOAD = [
+    {"sector": "半導體業", "today_share": 55.0, "share_delta_20ma": 1.2},
+]
+
+_C1_FAKE_UNIVERSE = [{
+    "stock_id": "2330", "close": 2390, "change_rate": 1.92,
+    "total_amount": 36e9, "volume_ratio": 1.14,
+    "date": "2026-06-29 10:30:00.123456",
+}]
+_C1_FAKE_SECTOR_ROWS = [{
+    "stock_id": "2330", "industry_category": "半導體業",
+    "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+}]
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_eod_result_cache_skips_recompute() -> None:
+    """C1: 同 (end_date, universe) 第二次 snapshot 不重呼叫 4 個 EOD compute。"""
+    breadth_mock = AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)
+    sb_mock = AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)
+    vr_mock = AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)
+    amt_mock = AsyncMock(return_value=_FAKE_AMOUNT_SHARE_PAYLOAD)
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=_C1_FAKE_UNIVERSE)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=_C1_FAKE_SECTOR_ROWS)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth", new=breadth_mock), \
+         patch("services.finmind_realtime._fetch_sector_breadth", new=sb_mock), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio", new=vr_mock), \
+         patch("services.finmind_realtime._fetch_sector_amount_share", new=amt_mock):
+        r1 = await fetch_market_snapshot(refresh=False)
+        r2 = await fetch_market_snapshot(refresh=False)
+
+    # payload 完全一致(cache hit 不改變契約)
+    assert r1["breadth"] == r2["breadth"] == _FAKE_BREADTH_PAYLOAD
+    assert r2["sector_breadth"] == _FAKE_SECTOR_BREADTH_PAYLOAD
+    assert r2["sector_volume_ratio"] == _FAKE_SECTOR_VOL_PAYLOAD
+    assert r2["sector_amount_share"] == _FAKE_AMOUNT_SHARE_PAYLOAD
+    # 4 個 compute 各只跑一次
+    assert breadth_mock.await_count == 1
+    assert sb_mock.await_count == 1
+    assert vr_mock.await_count == 1
+    assert amt_mock.await_count == 1
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_eod_result_cache_failure_not_pinned() -> None:
+    """C1 invalidation:component compute 失敗(None)不得寫入 cache —
+    下一 request 必須重算,不能 pin 失敗一整天;其餘成功 component 照常 cache。"""
+    import httpx
+
+    breadth_mock = AsyncMock(
+        side_effect=[httpx.HTTPError("transient"), _FAKE_BREADTH_PAYLOAD]
+    )
+    sb_mock = AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)
+    vr_mock = AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)
+    amt_mock = AsyncMock(return_value=_FAKE_AMOUNT_SHARE_PAYLOAD)
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=_C1_FAKE_UNIVERSE)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=_C1_FAKE_SECTOR_ROWS)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth", new=breadth_mock), \
+         patch("services.finmind_realtime._fetch_sector_breadth", new=sb_mock), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio", new=vr_mock), \
+         patch("services.finmind_realtime._fetch_sector_amount_share", new=amt_mock):
+        r1 = await fetch_market_snapshot(refresh=False)
+        r2 = await fetch_market_snapshot(refresh=False)
+
+    assert r1["breadth"] is None  # 第一次失敗 → None(F6 降級不變)
+    assert r2["breadth"] == _FAKE_BREADTH_PAYLOAD  # 第二次重算成功,沒被 pin
+    assert breadth_mock.await_count == 2
+    assert sb_mock.await_count == 1  # 成功 component 照常 cache
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_eod_result_cache_universe_change_recomputes() -> None:
+    """C1 invalidation guard:universe 變動(盤中 tick 覆蓋擴大)→ digest 變
+    → 必須重算,不得拿舊 universe 的結果。(C1 前天然綠 — 鎖 over-caching)"""
+    universe_2 = _C1_FAKE_UNIVERSE + [{
+        "stock_id": "2317", "close": 100, "change_rate": 0.5,
+        "total_amount": 1e9, "volume_ratio": 1.0,
+        "date": "2026-06-29 10:31:00.000000",
+    }]
+    sector_rows = _C1_FAKE_SECTOR_ROWS + [{
+        "stock_id": "2317", "industry_category": "其他電子業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "鴻海",
+    }]
+    breadth_mock = AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)
+    sb_mock = AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)
+    vr_mock = AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)
+    amt_mock = AsyncMock(return_value=_FAKE_AMOUNT_SHARE_PAYLOAD)
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(side_effect=[_C1_FAKE_UNIVERSE, universe_2])), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth", new=breadth_mock), \
+         patch("services.finmind_realtime._fetch_sector_breadth", new=sb_mock), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio", new=vr_mock), \
+         patch("services.finmind_realtime._fetch_sector_amount_share", new=amt_mock):
+        await fetch_market_snapshot(refresh=False)
+        await fetch_market_snapshot(refresh=False)
+
+    assert breadth_mock.await_count == 2
+    # 第二次收到擴大後的 universe
+    assert breadth_mock.await_args.args[1] == {"2330", "2317"}
+
+
+# ---------------------------------------------------------------------------
+# perf snapshot-hot-path C3b — recompute 共用一次 prices fetch
+# 4 個 EOD compute 各自 _fetch_prices_window → 同一 window 4 次 parse;
+# _fetch_eod_results 預抓一次注入,recompute 只付 1 次 parse。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_eod_results_single_prices_fetch(monkeypatch) -> None:
+    """C3b:_fetch_eod_results 對 prices window 只 fetch/parse 一次,
+    且 window 與 P2 compute_breadth 自算的 (start, end) 完全相同(T36 慣例)。"""
+    from datetime import date, timedelta as _td
+
+    from services import finmind_realtime as fr
+    from services import market_breadth as mb
+
+    calls: list[tuple] = []
+    base = date(2026, 4, 1)
+    prices = []
+    for i in range(60):
+        d = (base + _td(days=i)).isoformat()
+        prices.append({
+            "stock_id": "2330", "date": d, "close": 100.0 + i,
+            "Trading_Volume": 1000, "Trading_money": 100000.0,
+        })
+
+    async def fake_prices(start, end, refresh=False):
+        calls.append((start, end))
+        return prices
+
+    async def fake_taiex(*a, **kw):
+        return []
+
+    monkeypatch.setattr(mb, "_fetch_daily_prices_window", fake_prices)
+    monkeypatch.setattr(mb, "_fetch_taiex_series", fake_taiex)
+
+    end_date = date(2026, 7, 2)
+    result = await fr._fetch_eod_results(
+        end_date, {"2330"}, {"2330": "半導體業"}, refresh=False
+    )
+
+    # 4 個 component 都有算出來(非 None)
+    assert result["breadth"] is not None
+    assert result["sector_breadth"] is not None
+    assert result["sector_volume_ratio"] is not None
+    assert result["sector_amount_share"] is not None
+    # 關鍵:prices window 只 fetch 一次(修正前 = 4 次)
+    assert len(calls) == 1, f"prices window fetched {len(calls)} times, expected 1"
+    # window 對齊 P2 公式:pad = (lookback + slow_ema) * 2
+    expected_pad = int((mb._DEFAULT_LOOKBACK_DAYS + mb._SLOW_EMA_PERIOD) * 2.0)
+    assert calls[0] == (end_date - _td(days=expected_pad), end_date)
+
+
+# ---------------------------------------------------------------------------
+# perf snapshot-hot-path C6 (🟢) — top-level eod_as_of
+# P5 前端要標「資料至 YYYY-MM-DD」;盤中四個 EOD panel 全是 T-1,
+# 從 payload 直接給,不用前端從 series 反推(breadth null 時 series 不可得)。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_eod_results_carries_eod_as_of(monkeypatch) -> None:
+    """C6:eod_as_of = 四個 EOD compute 實際用的 prices window max date。"""
+    from datetime import date, timedelta as _td
+
+    from services import finmind_realtime as fr
+    from services import market_breadth as mb
+
+    base = date(2026, 4, 1)
+    prices = []
+    for i in range(60):
+        d = (base + _td(days=i)).isoformat()
+        prices.append({
+            "stock_id": "2330", "date": d, "close": 100.0 + i,
+            "Trading_Volume": 1000, "Trading_money": 100000.0,
+        })
+
+    async def fake_prices(start, end, refresh=False):
+        return prices
+
+    async def fake_taiex(*a, **kw):
+        return []
+
+    monkeypatch.setattr(mb, "_fetch_daily_prices_window", fake_prices)
+    monkeypatch.setattr(mb, "_fetch_taiex_series", fake_taiex)
+
+    result = await fr._fetch_eod_results(
+        date(2026, 7, 2), {"2330"}, {"2330": "半導體業"}, refresh=False
+    )
+    assert result["eod_as_of"] == (base + _td(days=59)).isoformat()
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_payload_has_eod_as_of_key(monkeypatch) -> None:
+    """C6:payload 一定有 eod_as_of key(值可 null — prices 不可得時)。"""
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=_C1_FAKE_UNIVERSE)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=_C1_FAKE_SECTOR_ROWS)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_breadth",
+               new=AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio",
+               new=AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_amount_share",
+               new=AsyncMock(return_value=_FAKE_AMOUNT_SHARE_PAYLOAD)):
+        result = await fetch_market_snapshot(refresh=False)
+
+    assert "eod_as_of" in result
+
+
+# ---------------------------------------------------------------------------
+# perf snapshot-hot-path C2 (🔴) — refresh 語意:只 bust intraday,不進 EOD
+# 「重新整理 = 看最新盤中」;EOD 是 T-1 資料,end_date 前進自然失效。
+# 修正前 refresh=true 一路穿進 EOD fetcher = ~278s + 128 次 FinMind 呼叫。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_refresh_hits_eod_result_cache() -> None:
+    """C2: refresh=True 不 bypass EOD result cache — 已有當日結果就直接用。"""
+    breadth_mock = AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)
+    sb_mock = AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)
+    vr_mock = AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)
+    amt_mock = AsyncMock(return_value=_FAKE_AMOUNT_SHARE_PAYLOAD)
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=_C1_FAKE_UNIVERSE)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=_C1_FAKE_SECTOR_ROWS)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth", new=breadth_mock), \
+         patch("services.finmind_realtime._fetch_sector_breadth", new=sb_mock), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio", new=vr_mock), \
+         patch("services.finmind_realtime._fetch_sector_amount_share", new=amt_mock):
+        r1 = await fetch_market_snapshot(refresh=False)  # 建 result cache
+        r2 = await fetch_market_snapshot(refresh=True)  # refresh 不得重算 EOD
+
+    assert r1["breadth"] == r2["breadth"] == _FAKE_BREADTH_PAYLOAD
+    assert breadth_mock.await_count == 1
+    assert sb_mock.await_count == 1
+    assert vr_mock.await_count == 1
+    assert amt_mock.await_count == 1
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_refresh_not_forwarded_to_eod_compute() -> None:
+    """C2: result cache miss 時(當日首個 request 就是 refresh),EOD compute
+    收到的 refresh 必須是 False — 不觸發 128 次 FinMind window 重抓。"""
+    breadth_mock = AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)
+    sb_mock = AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)
+    vr_mock = AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)
+    amt_mock = AsyncMock(return_value=_FAKE_AMOUNT_SHARE_PAYLOAD)
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=_C1_FAKE_UNIVERSE)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=_C1_FAKE_SECTOR_ROWS)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth", new=breadth_mock), \
+         patch("services.finmind_realtime._fetch_sector_breadth", new=sb_mock), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio", new=vr_mock), \
+         patch("services.finmind_realtime._fetch_sector_amount_share", new=amt_mock):
+        await fetch_market_snapshot(refresh=True)
+
+    assert breadth_mock.await_count == 1  # cache miss → 照算(用 EOD 自己的 24h cache)
+    # C3b 該變:kwargs 多了 prices 注入,鎖 refresh=False 即可
+    assert breadth_mock.await_args.kwargs["refresh"] is False
+    assert sb_mock.await_args.kwargs["refresh"] is False
+    assert vr_mock.await_args.kwargs["refresh"] is False
+    assert amt_mock.await_args.kwargs["refresh"] is False
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_refresh_still_busts_intraday() -> None:
+    """C2 guard:refresh=True 對 intraday 4 fetcher 照舊傳 refresh=True
+    (「重新整理 = 看最新盤中」的正面路徑,防 C2 改過頭)。"""
+    universe_mock = AsyncMock(return_value=_C1_FAKE_UNIVERSE)
+    sector_mock = AsyncMock(return_value=_C1_FAKE_SECTOR_ROWS)
+    mv_mock = AsyncMock(return_value={"2330": 6e13})
+    watch_mock = AsyncMock(return_value=set())
+    with patch("services.finmind_realtime._fetch_universe", new=universe_mock), \
+         patch("services.finmind_realtime._fetch_sector_map", new=sector_mock), \
+         patch("services.finmind_realtime._fetch_market_value_map", new=mv_mock), \
+         patch("services.finmind_realtime._fetch_watch_list", new=watch_mock), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_breadth",
+               new=AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio",
+               new=AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_amount_share",
+               new=AsyncMock(return_value=_FAKE_AMOUNT_SHARE_PAYLOAD)):
+        await fetch_market_snapshot(refresh=True)
+
+    assert universe_mock.await_args.args == (True,)
+    assert sector_mock.await_args.kwargs == {"refresh": True}
+    assert mv_mock.await_args.kwargs == {"refresh": True}
+    assert watch_mock.await_args.kwargs == {"refresh": True}
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
