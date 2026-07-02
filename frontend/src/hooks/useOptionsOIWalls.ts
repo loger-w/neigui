@@ -8,10 +8,10 @@ export function useOptionsOIWalls(contract: string, date: string) {
 
   const { data, isFetching, error, refetch } = useQuery<OptionsOIWalls, Error>({
     queryKey: ["options-oi-walls", contract, date],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = forceRefreshRef.current;
       forceRefreshRef.current = false;
-      return optionsApi.oiWalls(contract, date, force ? true : undefined);
+      return optionsApi.oiWalls(contract, date, force ? true : undefined, undefined, undefined, { signal });
     },
     enabled: contract !== "",
   });

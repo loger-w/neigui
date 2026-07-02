@@ -19,10 +19,10 @@ export function useMarketSnapshot(enabled: boolean): UseMarketSnapshot {
 
   const { data, isFetching, error, refetch } = useQuery<MarketSnapshot, Error>({
     queryKey: ["market", "snapshot"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = forceRefreshRef.current;
       forceRefreshRef.current = false;
-      return fetchMarketSnapshot(force);
+      return fetchMarketSnapshot(force, { signal });
     },
     enabled,
     refetchInterval: (query) => {

@@ -33,10 +33,10 @@ export function useChipData(symbol: string, date: string) {
 
   const summaryQ = useQuery<ChipSummary, Error>({
     queryKey: ["chip-summary", symbol, date],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = summaryForceRef.current;
       summaryForceRef.current = false;
-      return api.chip(symbol, date, force);
+      return api.chip(symbol, date, force, { signal });
     },
     enabled: symbol !== "",
     placeholderData: (prev) => (prev?.symbol === symbol ? prev : undefined),
@@ -46,20 +46,20 @@ export function useChipData(symbol: string, date: string) {
   // slice 沒有 round-trip;gzipped payload ≈ 25-35KB,initial load 仍合理。
   const historyBaseQ = useQuery<ChipHistory, Error>({
     queryKey: ["chip-history", symbol, "base"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = historyForceRef.current;
-      return api.chipHistoryBase(symbol, 540, force);
+      return api.chipHistoryBase(symbol, 540, force, { signal });
     },
     enabled: symbol !== "",
   });
 
   const historyMajorQ = useQuery({
     queryKey: ["chip-history", symbol, "major"],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = historyForceRef.current;
       // base may clear the force flag first; major reads via fresh ref each
       // call, so refresh() flips both before they fire in parallel.
-      return api.chipHistoryMajor(symbol, 540, force);
+      return api.chipHistoryMajor(symbol, 540, force, { signal });
     },
     enabled: symbol !== "",
   });

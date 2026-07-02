@@ -8,10 +8,10 @@ export function useMaxPain(contract: string, date: string) {
 
   const { data, isFetching, error, refetch } = useQuery<OptionsMaxPain, Error>({
     queryKey: ["options-max-pain", contract, date],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = forceRefreshRef.current;
       forceRefreshRef.current = false;
-      return optionsApi.maxPain(contract, date, force ? true : undefined);
+      return optionsApi.maxPain(contract, date, force ? true : undefined, undefined, { signal });
     },
     enabled: contract !== "",
   });

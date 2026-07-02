@@ -8,10 +8,10 @@ export function useChipIntraday(symbol: string, date: string) {
 
   const { data, isFetching, error, refetch } = useQuery<ChipIntraday, Error>({
     queryKey: ["chip-intraday", symbol, date],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = forceRefreshRef.current;
       forceRefreshRef.current = false;
-      return api.chipIntraday(symbol, date, force);
+      return api.chipIntraday(symbol, date, force, { signal });
     },
     enabled: symbol !== "",
   });

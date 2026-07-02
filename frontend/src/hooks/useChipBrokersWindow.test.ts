@@ -62,7 +62,7 @@ describe("useChipBrokersWindow", () => {
       { wrapper: makeQueryWrapper() },
     );
     await waitFor(() => expect(result.current.data?.symbol).toBe("2330"));
-    expect(spy).toHaveBeenCalledWith("2330", "2026-06-19", 30, false);
+    expect(spy).toHaveBeenCalledWith("2330", "2026-06-19", 30, false, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("windowDays change triggers refetch on new queryKey", async () => {

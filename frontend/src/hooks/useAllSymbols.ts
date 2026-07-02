@@ -6,7 +6,7 @@ type Sym = { symbol: string; name: string };
 export function useAllSymbols() {
   const { data, isLoading, error } = useQuery<Sym[], Error>({
     queryKey: ["symbols-all"],
-    queryFn: () => api.symbolsAll(),
+    queryFn: ({ signal }) => api.symbolsAll({ signal }),
     // Symbol list rarely changes within a session; the production
     // QueryClient already pins staleTime=5m. Keeping the explicit Infinity
     // here matches the previous module-level cache (cached for the page's

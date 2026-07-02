@@ -8,10 +8,10 @@ export function useOptionsStrikeVolume(contract: string, date: string) {
 
   const { data, isFetching, error, refetch } = useQuery<OptionsStrikeVolume, Error>({
     queryKey: ["options-strike-volume", contract, date],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = forceRefreshRef.current;
       forceRefreshRef.current = false;
-      return optionsApi.strikeVolume(contract, date, force ? true : undefined);
+      return optionsApi.strikeVolume(contract, date, force ? true : undefined, { signal });
     },
     enabled: contract !== "",
   });

@@ -12,7 +12,7 @@ export function useOptionsPCR(
 
   const { data, isFetching, error, refetch } = useQuery<OptionsPCR, Error>({
     queryKey: ["options-pcr", scope, contract ?? "", date],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = forceRefreshRef.current;
       forceRefreshRef.current = false;
       return optionsApi.pcr({
@@ -20,7 +20,7 @@ export function useOptionsPCR(
         scope,
         contract: scope === "per_contract" ? contract : undefined,
         refresh: force ? true : undefined,
-      });
+      }, { signal });
     },
     // PCR all_months works without a contract; per_contract needs one.
     enabled: scope === "all_months" || (scope === "per_contract" && !!contract),

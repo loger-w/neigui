@@ -34,7 +34,7 @@ describe("useChipBubble", () => {
       wrapper: makeQueryWrapper(),
     });
     await waitFor(() => expect(result.current.data?.symbol).toBe("2330"));
-    expect(spy).toHaveBeenCalledWith("2330", "2026-06-22", false);
+    expect(spy).toHaveBeenCalledWith("2330", "2026-06-22", false, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("refresh() re-fetches with refresh=true", async () => {

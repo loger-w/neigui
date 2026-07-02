@@ -35,7 +35,7 @@ describe("useMarketSnapshot", () => {
       wrapper: makeQueryWrapper(),
     });
     await waitFor(() => expect(result.current.data).toEqual(mockSnapshot));
-    expect(spy).toHaveBeenCalledWith(false);
+    expect(spy).toHaveBeenCalledWith(false, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("does NOT fetch when enabled=false (F4 — mode 切走)", async () => {
@@ -67,7 +67,7 @@ describe("useMarketSnapshot", () => {
     await waitFor(() => expect(result.current.data).not.toBeNull());
     spy.mockClear();
     result.current.refresh();
-    await waitFor(() => expect(spy).toHaveBeenCalledWith(true));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith(true, expect.objectContaining({ signal: expect.any(AbortSignal) })));
   });
 
   it("exposes error.message when fetch rejects", async () => {

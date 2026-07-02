@@ -23,7 +23,7 @@ describe("useOptionsSpot", () => {
       wrapper: makeQueryWrapper(),
     });
     await waitFor(() => expect(result.current.data).toEqual(mockSpot));
-    expect(spy).toHaveBeenCalledWith("2026-06-23", undefined);
+    expect(spy).toHaveBeenCalledWith("2026-06-23", undefined, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("sets error on rejection", async () => {

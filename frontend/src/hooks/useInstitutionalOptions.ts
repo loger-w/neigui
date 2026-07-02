@@ -8,10 +8,10 @@ export function useInstitutionalOptions(date: string) {
 
   const { data, isFetching, error, refetch } = useQuery<OptionsInstitutional, Error>({
     queryKey: ["options-institutional", date],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = forceRefreshRef.current;
       forceRefreshRef.current = false;
-      return optionsApi.institutional(date, force ? true : undefined);
+      return optionsApi.institutional(date, force ? true : undefined, undefined, undefined, { signal });
     },
   });
 

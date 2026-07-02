@@ -8,10 +8,10 @@ export function useOptionsLargeTraders(contract: string, date: string) {
 
   const { data, isFetching, error, refetch } = useQuery<OptionsLargeTraders, Error>({
     queryKey: ["options-large-traders", contract, date],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = forceRefreshRef.current;
       forceRefreshRef.current = false;
-      return optionsApi.largeTraders(contract, date, force ? true : undefined);
+      return optionsApi.largeTraders(contract, date, force ? true : undefined, { signal });
     },
     enabled: contract !== "",
   });

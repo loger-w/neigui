@@ -8,10 +8,10 @@ export function useChipBubble(symbol: string, date: string) {
 
   const { data, isFetching, error, refetch } = useQuery<ChipBubbleData, Error>({
     queryKey: ["chip-bubble", symbol, date],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = forceRefreshRef.current;
       forceRefreshRef.current = false;
-      return api.chipBubble(symbol, date, force);
+      return api.chipBubble(symbol, date, force, { signal });
     },
     enabled: symbol !== "",
   });

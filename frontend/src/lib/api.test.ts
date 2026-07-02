@@ -216,4 +216,44 @@ describe("api cache", () => {
     clearApiCache();
     expect(__testCache.size).toBe(0);
   });
+
+  // Signal forwarding — S1 perf gate。TanStack Query queryFn({ signal }) 傳導
+  // 到 fetch,切股票/切 mode 時舊 request 立刻 abort;否則舊 24s cold
+  // history/major 會跑完佔 rate slot 阻塞新 symbol。
+  it("forwards options.signal to fetch", async () => {
+    const fetchMock = mockFetch(MOCK_HISTORY);
+    vi.stubGlobal("fetch", fetchMock);
+
+    const controller = new AbortController();
+    await api.chipHistoryMajor("2330", 540, false, { signal: controller.signal });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const initArg = fetchMock.mock.calls[0]![1];
+    expect(initArg).toEqual(expect.objectContaining({ signal: controller.signal }));
+  });
+
+  it("aborted signal rejects with AbortError before response", async () => {
+    // fetch 收到 aborted signal 應 throw DOMException("AbortError"),不寫 cache。
+    // 用 mock 模擬 fetch 對 abort signal 的反應。
+    const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
+      return new Promise((_resolve, reject) => {
+        if (init?.signal?.aborted) {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+          return;
+        }
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        });
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const controller = new AbortController();
+    const promise = api.chipHistoryMajor("2330", 540, false, { signal: controller.signal });
+    controller.abort();
+
+    await expect(promise).rejects.toThrow(/aborted/i);
+    // Cache 不應被 aborted response 汙染
+    expect(__testCache.size).toBe(0);
+  });
 });

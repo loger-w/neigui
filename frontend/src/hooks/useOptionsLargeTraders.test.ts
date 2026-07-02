@@ -28,7 +28,7 @@ describe("useOptionsLargeTraders", () => {
       { wrapper: makeQueryWrapper() },
     );
     await waitFor(() => expect(result.current.data).toEqual(mockData));
-    expect(spy).toHaveBeenCalledWith("TXO202607", "2026-06-23", undefined);
+    expect(spy).toHaveBeenCalledWith("TXO202607", "2026-06-23", undefined, expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("sets error on rejection", async () => {

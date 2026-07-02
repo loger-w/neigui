@@ -12,10 +12,10 @@ export function useOptionsSpot(date: string) {
 
   const { data, isFetching, error, refetch } = useQuery<OptionsSpot, Error>({
     queryKey: ["options-spot", date],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = forceRefreshRef.current;
       forceRefreshRef.current = false;
-      return optionsApi.spot(date, force ? true : undefined);
+      return optionsApi.spot(date, force ? true : undefined, { signal });
     },
     // TX spot is the freshest data point on the dashboard — pair the 1-min
     // backend cache TTL with a 1-min frontend poll so the visible price

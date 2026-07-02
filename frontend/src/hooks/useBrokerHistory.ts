@@ -37,6 +37,9 @@ export function useBrokerHistory(
 } {
   const queryClient = useQueryClient();
   const forceRefreshRef = useRef(false);
+  // Mutation 沒有 TanStack Query queryFn 的內建 signal;symbol 切換時手動
+  // abort 前一次 in-flight batch,避免 24s 冷 broker_history 佔 rate slot。
+  const abortRef = useRef<AbortController | null>(null);
   const idsKey = stableKey(brokerIds);
   const requestedIds = useMemo(
     () => Array.from(brokerIds).sort(),
@@ -52,7 +55,10 @@ export function useBrokerHistory(
     mutationFn: async ({ ids }) => {
       const force = forceRefreshRef.current;
       forceRefreshRef.current = false;
-      return api.chipBrokerHistory(symbol, ids, force);
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      return api.chipBrokerHistory(symbol, ids, force, { signal: controller.signal });
     },
     onSuccess: (result, { ids }) => {
       for (const id of ids) {
@@ -63,6 +69,16 @@ export function useBrokerHistory(
       }
     },
   });
+
+  // Symbol 切換 / unmount 時 abort 前一 batch。placeholderData:mutation 沒有,
+  // 依賴 setQueryData 進 cache 才 render;abort 後不會 setQueryData,不會
+  // 汙染新 symbol 的 slot。
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+  }, [symbol]);
 
   // Subscribe to per-broker cache slots so `series` updates when
   // setQueryData lands new data. Queries are permanently disabled — they

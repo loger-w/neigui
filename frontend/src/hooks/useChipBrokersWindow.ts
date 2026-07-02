@@ -23,10 +23,10 @@ export function useChipBrokersWindow(
 
   const q = useQuery<ChipBrokersWindow, Error>({
     queryKey: ["chip-brokers-window", symbol, date, windowDays],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const force = forceRef.current;
       forceRef.current = false;
-      return api.chipBrokersWindow(symbol, date, windowDays, force);
+      return api.chipBrokersWindow(symbol, date, windowDays, force, { signal });
     },
     enabled: symbol !== "" && date !== "",
     placeholderData: (prev) => (prev?.symbol === symbol ? prev : undefined),
