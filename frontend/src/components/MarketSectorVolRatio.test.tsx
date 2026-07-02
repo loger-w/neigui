@@ -84,10 +84,13 @@ describe("MarketSectorVolRatio", () => {
     expect(loadingEl.getAttribute("aria-label")).toBe("載入中");
   });
 
-  it("照 props 序渲染 (契約事實 10)", () => {
+  it("照 props 序渲染,不因數值大小重排 (契約事實 10 / CR1-5)", () => {
+    // B/A 的 vol_ratio、today_vol_lots 皆刻意不同(且 B < A),任何值排序的
+    // mutation(例如加 .sort((a,b)=>b.vol_ratio-a.vol_ratio))都會把順序反過來,
+    // 讓這個測試能真正鎖住「不重排」的行為。
     const rows: SectorVolumeRatioRow[] = [
-      { sector: "B族群", today_vol_lots: 100000, vol_ratio: 1, flag: null },
-      { sector: "A族群", today_vol_lots: 100000, vol_ratio: 1, flag: null },
+      { sector: "B族群", today_vol_lots: 50000, vol_ratio: 0.5, flag: null },
+      { sector: "A族群", today_vol_lots: 200000, vol_ratio: 2.0, flag: null },
     ];
     render(<MarketSectorVolRatio rows={rows} eodAsOf="2026-06-29" loaded={true} />);
     const root = screen.getByTestId("market-sector-vol-ratio");

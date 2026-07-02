@@ -13,7 +13,7 @@ function point(date: string, value: number | null): BreadthPoint {
 }
 
 describe("buildSegments", () => {
-  it("null 斷線分 2 段 — [null,5,7,null,3] → 2 segments,長度 [2,1]", () => {
+  it("null 斷線分 2 段 — [null,5,7,null,3] → 2 segments,長度 [2,1],x 用全序列 index(CR1-4)", () => {
     const series: BreadthPoint[] = [
       point("d0", null),
       point("d1", 5),
@@ -25,6 +25,12 @@ describe("buildSegments", () => {
     expect(segments.length).toBe(2);
     expect(segments[0]!.pts.length).toBe(2);
     expect(segments[1]!.pts.length).toBe(1);
+    // pad=4(預設),w=100,len=5 → step=(100-2*4)/4=23。x 必須用「全序列 index」
+    // 映射(d1→i=1、d2→i=2、d4→i=4),不能斷線後每段從 x=pad 重新計數,
+    // 否則斷線後的段會視覺塌縮到左邊。
+    expect(segments[0]!.pts[0]!.x).toBe(4 + 1 * 23); // d1, i=1 → 27
+    expect(segments[0]!.pts[1]!.x).toBe(4 + 2 * 23); // d2, i=2 → 50
+    expect(segments[1]!.pts[0]!.x).toBe(4 + 4 * 23); // d4, i=4 → 96 (= w-pad)
   });
 
   it("全 null → []", () => {

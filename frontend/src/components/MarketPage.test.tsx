@@ -135,7 +135,7 @@ describe("MarketPage", () => {
     ],
   };
 
-  it("DOM 順序:universe banner 在 header 後、market-v2-grid 前 (SC-9)", async () => {
+  it("DOM 順序:universe banner 在 header 後、market-v2-grid 前、grid 在經典檢視折疊區前 (SC-9 / CR1-6)", async () => {
     vi.spyOn(marketApi, "fetchMarketSnapshot").mockResolvedValue(richSnapshot);
     render(wrap(<MarketPage isActive={true} onSymbolPick={() => {}} />));
     await waitFor(() => {
@@ -144,11 +144,16 @@ describe("MarketPage", () => {
     const header = screen.getByText("大盤掃描");
     const banner = screen.getByTestId("market-universe-banner");
     const grid = screen.getByTestId("market-v2-grid");
+    const classicToggle = screen.getByTestId("market-classic-toggle");
     expect(
       header.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
       banner.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // SC-9:新 5 panel 主視圖必須排在經典檢視折疊區之前(不能被移到後面)
+    expect(
+      grid.compareDocumentPosition(classicToggle) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
