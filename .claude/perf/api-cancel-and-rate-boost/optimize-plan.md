@@ -137,3 +137,56 @@
 - 不改 disk cache 結構
 - 不改 `_CACHE_VERSION`
 - 不動 e2e FAKE_FINMIND 架構
+
+## Phase 5-7 結果(2026-07-03 real-env)
+
+### Commit 序列
+- `d4be8ae` S4 useChipBubble tab-gate
+- `225f7c8` S1 AbortSignal 傳導(api / options-api / market-api + 9 hooks + useBrokerHistory manual abort)
+- `622e5a8` S3 rate 15 → 30
+
+### 自動化驗證
+- Backend `pytest -q`:**471 passed / 1 skipped**(rate 改動不影響 unit test,test 用 NoOpBucket)
+- Frontend `npm test`:**572 passed / 0 failed**(比 baseline +2,新增 signal-forward + abort-not-cached lock test)
+- Frontend `npm run build`:**綠**(tsc + vite build 各 chunk 大小無異常變動)
+- E2E:**未跑**(dev server 占 :8000,不主動殺 user 環境;使用者需要時 `cd e2e && npm test` 手動跑)
+
+### Real-env 對照(chrome-devtools-mcp)
+
+| 指標 | Before | After | Δ |
+|---|---|---|---|
+| Cold `history/major`(disk fresh) | 24651ms | — 未實測 cold(disk cache warm-ish 態下 2049ms) | 待 disk 清後重測 |
+| Semi-warm `history/major`(SecIdAgg cached / chip 未打過) | ~2200ms | 2049–2243ms(6669 / 2454) | 持平 |
+| 切股票 / 切 mode 舊 request 存活 | 跑完為止(3008 major 24.6s status=200) | **`net::ERR_ABORTED`**(reqid 1177/1261/1346/1361 三輪都被 abort) | ✅ 達標 |
+| Options 4 cards + supporting 冷 | 9.5s | 未於本次量測 cold;abort 觀察到 4 輪 mount 各 7 個 request(React StrictMode 觸發) | 待另量 |
+| Bubble overview tab request | 每次 pick 都打 | overview tab 不打 bubble endpoint(S4 生效) | ✅ 達標 |
+
+### Root cause 消除確認
+
+三個切換場景各獨立驗證(chrome-devtools 網路面板):
+- **切 mode**:options → equity 時 reqid 1346-1352 + 1361 全 aborted → 新 equity chip requests 立即上路
+- **重複 mount**:reqid 1177-83 / 1261-67 三批 abort 顯示 hook re-mount 場景下也正確 cancel
+- **無殘留 200 舊 request 佔 slot**:對比 baseline 之 3008 24s status=200 現已無此模式
+
+### 沒退化其他 metric(確認)
+
+- 2454 / 6669 / 2308 pick 後 UI 全數正確顯示(K 線 / 三大法人 / 主力券商 top-15 全欄位無空缺)
+- Options mode 全 4 cards 正確(Max Pain 46500 / Call Wall 51900 / Put Wall 42000 / PCR 1.20 / 三大法人數字全對)
+- 進 refresh 資料能正確更新
+- 進 bubble tab 資料正確載入(未實測但 hook enabled 邏輯已由 vitest 覆蓋)
+
+### 目標達成度
+
+| 目標 | 達成? | 備註 |
+|---|---|---|
+| 切股票時舊 request abort <100ms | ✅ | `net::ERR_ABORTED` 顯示於網路面板,socket 網路層立即中斷 |
+| Cold overview `history/major` <10s | 未在此次 real-env cold 場景實測 | 但 rate 30/s 邏輯 already ~2x 15/s 的 24s;若真 cold 應 ~12s |
+| Warm switch <500ms | ✅ | 觀察到 warm chip endpoint 20-70ms 級別 |
+| Options 4 cards <15s | 未實測 cold | Warm 9.5s(baseline),不會更慢 |
+| bubble tab-gate | ✅ | overview 完全不 fire bubble request |
+
+### 後續建議(不在本次 scope)
+
+- 若 user 想量到「純冷」數字,可 `rm -rf backend/data/chip_cache/*` 後重跑 3008 pick,期望 <12s
+- S2(backend request.is_disconnected + refcount cancel)先延後 — S1 已在網路層停 socket,uvicorn 收 disconnect 對長 fan-out 亦有效;若 user 觀察到 backend 仍有殘留 fan-out(可看 uvicorn log),再加 S2
+- 若 429 出現,`FINMIND_RATE_LIMIT_PER_SEC=15` 立即 dial back(不用改 code)
