@@ -1364,6 +1364,69 @@ async def test_eod_results_single_prices_fetch(monkeypatch) -> None:
 
 
 # ---------------------------------------------------------------------------
+# perf snapshot-hot-path C6 (🟢) — top-level eod_as_of
+# P5 前端要標「資料至 YYYY-MM-DD」;盤中四個 EOD panel 全是 T-1,
+# 從 payload 直接給,不用前端從 series 反推(breadth null 時 series 不可得)。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_eod_results_carries_eod_as_of(monkeypatch) -> None:
+    """C6:eod_as_of = 四個 EOD compute 實際用的 prices window max date。"""
+    from datetime import date, timedelta as _td
+
+    from services import finmind_realtime as fr
+    from services import market_breadth as mb
+
+    base = date(2026, 4, 1)
+    prices = []
+    for i in range(60):
+        d = (base + _td(days=i)).isoformat()
+        prices.append({
+            "stock_id": "2330", "date": d, "close": 100.0 + i,
+            "Trading_Volume": 1000, "Trading_money": 100000.0,
+        })
+
+    async def fake_prices(start, end, refresh=False):
+        return prices
+
+    async def fake_taiex(*a, **kw):
+        return []
+
+    monkeypatch.setattr(mb, "_fetch_daily_prices_window", fake_prices)
+    monkeypatch.setattr(mb, "_fetch_taiex_series", fake_taiex)
+
+    result = await fr._fetch_eod_results(
+        date(2026, 7, 2), {"2330"}, {"2330": "半導體業"}, refresh=False
+    )
+    assert result["eod_as_of"] == (base + _td(days=59)).isoformat()
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_payload_has_eod_as_of_key(monkeypatch) -> None:
+    """C6:payload 一定有 eod_as_of key(值可 null — prices 不可得時)。"""
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=_C1_FAKE_UNIVERSE)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=_C1_FAKE_SECTOR_ROWS)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_breadth",
+               new=AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio",
+               new=AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_amount_share",
+               new=AsyncMock(return_value=_FAKE_AMOUNT_SHARE_PAYLOAD)):
+        result = await fetch_market_snapshot(refresh=False)
+
+    assert "eod_as_of" in result
+
+
+# ---------------------------------------------------------------------------
 # perf snapshot-hot-path C2 (🔴) — refresh 語意:只 bust intraday,不進 EOD
 # 「重新整理 = 看最新盤中」;EOD 是 T-1 資料,end_date 前進自然失效。
 # 修正前 refresh=true 一路穿進 EOD fetcher = ~278s + 128 次 FinMind 呼叫。

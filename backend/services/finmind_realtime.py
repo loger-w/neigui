@@ -507,6 +507,15 @@ async def _fetch_eod_results(
             logger.warning("market snapshot: shared prices prefetch failed: %s", exc)
             prices = None
 
+    # perf C6 (🟢):eod_as_of = 四個 EOD compute 實際用的 max price date
+    # (盤中全是 T-1;P5 前端標「資料至 YYYY-MM-DD」直接用,不從 series 反推)。
+    # prices 不可得(prefetch 失敗 / 全 cache 命中前的舊 cache)→ 維持 absent
+    # → payload null。
+    if "eod_as_of" not in results and prices:
+        price_dates = [str(r["date"]) for r in prices if r.get("date")]
+        if price_dates:
+            results["eod_as_of"] = max(price_dates)
+
     # market-monitor-v2 P2 (SC-6) — breadth (F6: fail 不動 stale)
     if "breadth" not in results:
         try:
@@ -753,6 +762,9 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
             "warrant": len(excluded["warrant"]),
             "watch_list": len(excluded["watch_list"]),
         },
+        # perf C6 (🟢) — 四個 EOD compute 實際用的 max price date(null =
+        # prices 不可得)
+        "eod_as_of": eod.get("eod_as_of"),
         # market-monitor-v2 P2 (SC-6) — breadth field (None if compute failed)
         "breadth": breadth,
         # market-monitor-v2 P3 (SC-6) — sector aggregations (None if compute failed)

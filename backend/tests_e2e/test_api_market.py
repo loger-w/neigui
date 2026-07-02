@@ -15,6 +15,8 @@ async def test_market_snapshot_payload_shape(client):
     body = r.json()
     for k in ("as_of", "sectors", "leaderboards", "stale", "is_trading_session"):
         assert k in body, f"market snapshot missing key {k}: {list(body.keys())}"
+    # perf C6:eod_as_of 存在性(允許 null — FAKE fixture 無全市場 window)
+    assert "eod_as_of" in body, f"market snapshot missing eod_as_of: {list(body.keys())}"
 
 
 async def test_market_snapshot_leaderboards_4_tabs(client):
