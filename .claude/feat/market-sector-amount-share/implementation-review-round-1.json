@@ -1,0 +1,38 @@
+[
+  {
+    "id": "IF1",
+    "severity": "P2",
+    "location": {"file": "sector_aggregation.md", "section": "§3.2 A14"},
+    "problem": "A14 fixture 約束不足:zero-total 日若為最舊日或用缺 row 方式建構,漏 total>0 filter 的 buggy 實作也綠(reviewer 模擬驗證)",
+    "suggested_fix": "補兩約束:zero 日必須 row 在但 Trading_money=0;且落在最近 avg_window 個過去日內",
+    "rationale": "T-E3 是 design v2 F1 明訂 edge lock,fixture 無鑑別力 = lock 虛設",
+    "resolution": "accepted — spec A14 補兩個 fixture 約束 + 理由註記"
+  },
+  {
+    "id": "IF2",
+    "severity": "P2",
+    "location": {"file": "sector_aggregation.md", "section": "§3.2 A6"},
+    "problem": "A6 Σ=1.0 浮點斷言未註明 pytest.approx,與 A11 慣例不一致",
+    "suggested_fix": "改為 pytest.approx(1.0)",
+    "rationale": "浮點加總精確等式是已知 flaky 模式",
+    "resolution": "accepted — spec A6 補 approx 註記"
+  },
+  {
+    "id": "IG1",
+    "severity": "P2",
+    "location": {"file": "finmind_realtime_integration.md", "section": "§3"},
+    "problem": "未明示三個新測試需掛 @pytest.mark.usefixtures(\"bypass_finmind_rate_limiter\")(該區塊固定樣板)",
+    "suggested_fix": "§3 樣板句補註",
+    "rationale": "spec 是 Phase 3 red 施工依據,不明示留下慣例漂移空間",
+    "resolution": "accepted — spec §3 補 decorator 註記"
+  },
+  {
+    "id": "IG2",
+    "severity": "P2",
+    "location": {"file": "finmind_realtime_integration.md", "section": "§3/§4"},
+    "problem": "T-INT-1/2/3 編號與 P3 既有 docstring 撞名,SC 追溯混淆",
+    "suggested_fix": "docstring 帶 P4 前綴 + 區塊 header 註明 design 出處",
+    "rationale": "同檔兩組同名編號,grep 對到錯的 SC 契約",
+    "resolution": "accepted — spec §3 改為 P4 T-INT-N 標籤 + header 出處註記"
+  }
+]

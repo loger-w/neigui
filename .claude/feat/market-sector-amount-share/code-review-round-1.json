@@ -1,0 +1,44 @@
+[
+  {
+    "id": "CORR-1", "severity": "P2", "lens": "correctness", "verdict": "PLAUSIBLE (1/2 refuted)",
+    "location": "backend/services/sector_aggregation.py:325",
+    "problem": "負 Trading_money → sector_today>0 但 today_total=0 → ZeroDivisionError 穿透(只 catch httpx)→ 整 snapshot 500",
+    "resolution": "accepted (fix a only) — extractor 把負值視同 corrupt → 0.0(對齊 E4 非數值慣例)+ 紅測試 A26;rejected fix (b):加 today_total<=0 特殊分支違反 KG7 自然解設計決策(refuter #2 論證成立)"
+  },
+  {
+    "id": "CONS-1", "severity": "P2", "lens": "consistency", "verdict": "PLAUSIBLE (1/2 refuted)",
+    "location": "backend/services/sector_aggregation.py:360",
+    "problem": "module docstring 說 4 consumers,_fetch_prices_window docstring 仍說 3 — 檔內自相矛盾(本 diff 引入)",
+    "resolution": "accepted — comment-only 修 _fetch_prices_window docstring,獨立 🔵 docs commit 標明 behavior-free"
+  },
+  {
+    "id": "TS-1", "severity": "P1", "lens": "test_coverage", "verdict": "CONFIRMED (2/2)",
+    "location": "backend/tests/test_sector_aggregation.py",
+    "problem": "past window recency 未鎖 — reverse=False mutation 全 suite 綠",
+    "resolution": "accepted — 加 A24(valid past days > avg_window,recent-N vs oldest-N 鑑別 fixture)+ mutation 抽驗"
+  },
+  {
+    "id": "TS-2", "severity": "P1", "lens": "test_coverage", "verdict": "CONFIRMED (2/2)",
+    "location": "backend/tests/test_finmind_realtime.py",
+    "problem": "_fetch_sector_amount_share 非空 delegate 路徑零執行;call-site args (allowed/primary_sector/refresh) 未 assert",
+    "resolution": "accepted — 加 P4 T-INT-5:helper 不 patch,spy sa.compute_sector_amount_share,assert await args + refresh=True"
+  },
+  {
+    "id": "TS-3", "severity": "P2", "lens": "test_coverage", "verdict": "CONFIRMED (2/2)",
+    "location": "backend/tests/test_sector_aggregation.py A14",
+    "problem": "sector amt=0 但 total>0 的 valid share-0.0 日未覆蓋 — 過濾過寬 mutation 存活",
+    "resolution": "accepted — 加 A25(2317 在 TUE 補 1000,delta = 0.4 − 1/6)"
+  },
+  {
+    "id": "TS-4", "severity": "P2", "lens": "test_coverage", "verdict": "CONFIRMED (2/2)",
+    "location": "backend/tests/test_finmind_realtime.py",
+    "problem": "except 寬度未鎖 — except Exception mutation 全 suite 綠",
+    "resolution": "accepted — 加 P4 T-INT-4:side_effect=ValueError → pytest.raises(ValueError) + mutation 抽驗"
+  },
+  {
+    "id": "TS-5", "severity": "P2", "lens": "test_coverage", "verdict": "CONFIRMED (2/2)",
+    "location": "backend/tests/test_finmind_realtime.py T-INT-1",
+    "problem": "payload key 位置(append after sector_volume_ratio)未 assert",
+    "resolution": "accepted — T-INT-1 補 key-order assertions(keys[-1] + index 相鄰)"
+  }
+]

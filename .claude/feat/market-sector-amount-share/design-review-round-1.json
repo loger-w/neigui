@@ -1,0 +1,47 @@
+[
+  {
+    "id": "F1",
+    "severity": "P1",
+    "location": "design.md §6 Testability",
+    "problem": "E2(today total=0)/E3(過去日 total=0)/E6(週末 end_date)三個 brainstorm edge case 沒有對應 test 條目",
+    "suggested_fix": "§6 明列 T-E2 / T-E3 / T-E6 三條測試",
+    "rationale": "E2 KG7 自然解無特殊分支,唯一防 regression 手段是 test lock;brainstorm 明文要求",
+    "resolution": "accepted — design.md v2 §6 補三條 test 條目,Phase 2 test 清單同步涵蓋"
+  },
+  {
+    "id": "F2",
+    "severity": "P2",
+    "location": "design.md §4.2 / §8",
+    "problem": "sector_today==0 缺席 ⟹ 流出訊號不呈現的語意代價未文件化",
+    "suggested_fix": "§8 加隱性假設條 + R4 real-env 檢查項",
+    "rationale": "行為 goal 鎖定非 bug,但 P5 前端接入需 context",
+    "resolution": "accepted — design.md v2 §8.9 新增 + R4 擴充"
+  },
+  {
+    "id": "F3",
+    "severity": "P2",
+    "location": "design.md §8.6",
+    "problem": "sparse sector 的 past window 取樣偏離 spec §6.4 字面「past 20 trading days」語意,未標 deviation",
+    "suggested_fix": "§8.6 補 deviation 說明",
+    "rationale": "spec 是權威文件,偏離要顯性標註",
+    "resolution": "accepted — design.md v2 §8.6 補註"
+  },
+  {
+    "id": "F4",
+    "severity": "P2",
+    "location": "design.md §6 T37",
+    "problem": "T37 未明示需同時 patch market_breadth._fetch_taiex_series(T36 實際有 patch)",
+    "suggested_fix": "T37 條目補註",
+    "rationale": "漏 patch 會讓 T37 打真實 fetch 路徑 → flaky / fail",
+    "resolution": "accepted — design.md v2 §6 T37 補註"
+  },
+  {
+    "id": "F5",
+    "severity": "P2",
+    "location": "design.md §4.2 / §8.4",
+    "problem": "P4 today_date 由 amount-extract 導出,date 集合可能寬於 P3 close-extract → 跨 panel as-of 日理論分歧",
+    "suggested_fix": "§8.4 補註 + Phase 6 real-env 檢查兩 panel as-of 一致",
+    "rationale": "理論邊界,顯性文件化 + real-env 驗證一次",
+    "resolution": "accepted — design.md v2 §8.4 補註,Phase 6 checklist 加項"
+  }
+]

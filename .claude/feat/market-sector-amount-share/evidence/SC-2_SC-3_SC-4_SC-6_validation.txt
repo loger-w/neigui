@@ -1,0 +1,39 @@
+== SC-6: field presence & shape ==
+key present: True
+type: list | entries: 45
+last key: sector_amount_share
+after sector_volume_ratio: sector_amount_share
+all entries have exactly 3 keys: True
+
+== SC-2: today_share ==
+sum(today_share) = 1.000000 (expect ~1.0)
+
+== SC-4: sort DESC + tie sector ASC ==
+sorted DESC: True
+
+== SC-3: share_delta mix ==
+delta None: 0, positive: 12, negative: 33
+
+== top 5 / bottom 2 ==
+  半導體業: share=0.3994, delta=-0.0041
+  電子工業: share=0.2540, delta=+0.0151
+  光電業: share=0.0814, delta=+0.0067
+  電子零組件業: share=0.0557, delta=-0.0074
+  其他電子業: share=0.0466, delta=-0.0001
+  運動休閒類: share=0.0000, delta=+0.0000
+  農業科技業: share=0.0000, delta=-0.0000
+
+== F5 check: as-of consistency vs sector_breadth ==
+sector_breadth sectors: 45, amount_share sectors: 45
+overlap: 45, only-in-amount: [], only-in-breadth: []
+
+== R4 check: 其他 sector ==
+其他 present: True | share: 0.0078
+
+== Regression sampling: P1/P2/P3 fields intact ==
+universe_size: 1917
+excluded_count: {'etf': 347, 'warrant': 67, 'watch_list': 57}
+breadth: non-null = True | mcclellan = -0.0029045522381320604
+sector_breadth entries: 45
+sector_volume_ratio entries: 45
+stale: False

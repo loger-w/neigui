@@ -1,0 +1,36 @@
+[
+  {
+    "step": "backend pytest full suite",
+    "command": "cd backend && python -m pytest -q",
+    "exit_code": 0,
+    "stderr_tail": "",
+    "result": "450 passed, 1 skipped, 1 warning in 29.32s(skip/warning 為 pre-existing — 本 diff 兩檔單獨跑 120 passed 無 skip)",
+    "hypothesis": null,
+    "strategy_tried": null
+  },
+  {
+    "step": "backend ruff lint",
+    "command": "cd backend && ruff check .",
+    "exit_code": 0,
+    "stderr_tail": "",
+    "result": "All checks passed!",
+    "hypothesis": null,
+    "strategy_tried": null
+  },
+  {
+    "step": "frontend gates",
+    "command": null,
+    "exit_code": null,
+    "result": "SKIPPED — prompt 指定 backend-only,diff 零 frontend 檔案(git diff 848db55..HEAD 只含 backend/)",
+    "hypothesis": null,
+    "strategy_tried": null
+  },
+  {
+    "step": "e2e",
+    "command": null,
+    "exit_code": null,
+    "result": "EXEMPT — 判準表「Backend route response shape 但前端本輪不接」;commit 已註 [no-e2e: backend add-only field, frontend lands P5];L# schema 驗證留待 P5 前端 hook 接入",
+    "hypothesis": null,
+    "strategy_tried": null
+  }
+]
