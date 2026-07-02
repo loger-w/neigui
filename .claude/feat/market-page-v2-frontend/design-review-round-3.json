@@ -1,0 +1,3 @@
+[
+  {"id": "R3-1", "severity": "P2", "location": "design.md §11 註解 vs §8/§9", "problem": "R2-1 落地時 §11 註解「<lg 各 panel 自帶固定高度」過度概括 — h-64 只適用兩個量測型 panel,表格 panel 無 <lg 高度規格", "suggested_fix": "§11 精確措辭:量測型 h-64、表格自然高度", "rationale": "章節間矛盾", "resolution": "accepted — v3 就地修正 §11 註解(表格 panel <lg 取自然高度交頁容器捲動)"}
+]

@@ -1,0 +1,6 @@
+[
+  {"id": "R2-1", "severity": "P1", "location": "design.md §11 + §6/§7", "problem": "lg:h-full 後 <lg 量測型 panel(useContainerSize)無 intrinsic height → 0 高空白", "suggested_fix": "量測容器 h-64 lg:h-full", "rationale": "R1-7 fix 引入的新 gap", "resolution": "accepted — design v3 §6/§7 量測容器加 h-64 lg:h-full,§11 註解改「<lg 各 panel 自帶固定高度」"},
+  {"id": "R2-2", "severity": "P2", "location": "design.md §2", "problem": "share_delta_20ma 是有號差值非 0-1,照字面寫 range assert 對 fixture 立紅", "suggested_fix": "pct/today_share ∈ [0,1];share_delta 只 assert number|null", "rationale": "與 §8 自相矛盾", "resolution": "accepted — v3 修正值域註記(evidence 27/44 筆為負屬實)"},
+  {"id": "R2-3", "severity": "P2", "location": "design.md §2 known_gaps 註解", "problem": "「現值 taiex_unavailable」與 post-fixes evidence(現值 [])矛盾", "suggested_fix": "改「可含 taiex_unavailable;evidence 現值 []」;taiex 降級測試手造 props", "rationale": "單源 fixture 下互斥現值", "resolution": "accepted — v3 修正;edge 4 改由 component test 手造 props 覆蓋"},
+  {"id": "R2-4", "severity": "P2", "location": "design.md §15 row 9", "problem": "引用已被 R1-5 刪除的 lastPointPos", "suggested_fix": "改引 §6 signal strip", "rationale": "round-1 fix 漏更新交叉引用", "resolution": "accepted — v3 修正"}
+]

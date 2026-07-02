@@ -1,0 +1,8 @@
+[
+  {"step": "backend pytest", "command": "cd backend && python -m pytest -q", "exit_code": 0, "stderr_tail": "", "result": "471 passed, 1 skipped in 40.07s"},
+  {"step": "frontend vitest", "command": "cd frontend && npm test", "exit_code": 0, "stderr_tail": "", "result": "505 passed (505), 54 files"},
+  {"step": "frontend build", "command": "cd frontend && npm run build", "exit_code": 0, "stderr_tail": "", "result": "tsc -b + vite ✓ built in 1.28s"},
+  {"step": "ruff", "command": "cd backend && ruff check .", "exit_code": 0, "stderr_tail": "", "result": "All checks passed!"},
+  {"step": "e2e playwright", "command": "cd e2e && npm test", "exit_code": 0, "stderr_tail": "", "result": "18 passed, 2 skipped(M2/M3 既有 fixture 欠帳,非本輪);M4/M5/M6 新 spec 全綠"},
+  {"step": "visual baseline (V3)", "command": "cd e2e && npm run test:update-snapshots", "exit_code": 0, "stderr_tail": "", "result": "V1-V3 skipOnWin32() by design(Linux CI only);repo 無既存 baseline,生成走 GitHub e2e-update-snapshots workflow(判準表載明),Phase 8 PR 後執行", "hypothesis": "非失敗 — 平台性設計跳過", "strategy_tried": "檢查 package.json script + visual.spec.ts:15 skipOnWin32 確認為設計"}
+]
