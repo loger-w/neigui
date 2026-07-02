@@ -61,4 +61,35 @@ test.describe("market mode", () => {
     await page.getByTestId(TESTIDS.marketClassicToggle).click();
     await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeVisible();
   });
+
+});
+
+test.describe("market mode @1440x900", () => {
+  // viewport 用 test.use 在導航前固定 — setViewportSize 後量測會撞 resize
+  // relayout race(曾假綠:量到 1280x720 的舊幾何)。
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test.beforeEach(async ({ page }) => {
+    await installFixtureClock(page);
+    await page.addInitScript(() => localStorage.setItem("mode", "market"));
+    await page.goto("/");
+  });
+
+  test("M7: 1440x900 新主視圖無 scroll — grid bottom ≤ viewport(SC-9)", async ({ page }) => {
+    // 痛點:App root 是 flex-col(nav shrink-0 + page),MarketPage root 若用
+    // h-full 會拿 100% 容器高(900)而非扣掉 nav 的剩餘空間 → 主視圖下溢
+    // nav 高度(39px)被 App overflow-hidden 裁切。Phase 6 real-env 實測
+    // grid bottom 939 > 900 抓到;量測語意照 design §11(R1-3):只量
+    // market-v2-grid 元素本身,不量頁 scroll 容器。
+    const grid = page.getByTestId("market-v2-grid");
+    await expect(grid).toBeVisible();
+    const box = await grid.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y + box!.height).toBeLessThanOrEqual(900);
+    const internal = await grid.evaluate((el) => ({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    expect(internal.scrollHeight).toBeLessThanOrEqual(internal.clientHeight);
+  });
 });
