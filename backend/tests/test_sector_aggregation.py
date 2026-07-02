@@ -832,6 +832,17 @@ class TestExtractAmountByStock:
         out = sa._extract_amount_by_stock(rows, {"2330"})
         assert out["2330"][_D_FRI] == 999.0
 
+    def test_A26_negative_trading_money_treated_as_corrupt_zero(self) -> None:
+        # CORR-1 (Phase 4 review) — 負 turnover 不存在於 domain,視同 corrupt → 0.0
+        # (對齊 E4 非數值慣例)。防 sector_today>0 但 today_total=0 的 ZeroDivisionError。
+        rows = [
+            _amt_row("2330", _D_FRI, -500.0),
+            _amt_row("2317", _D_FRI, 500.0),
+        ]
+        out = sa._extract_amount_by_stock(rows, {"2330", "2317"})
+        assert out["2330"][_D_FRI] == 0.0
+        assert out["2317"][_D_FRI] == 500.0
+
     def test_A5_missing_trading_money_zero_and_close_independent(self) -> None:
         rows = [
             _amt_row("2330", _D_THU, None),  # missing Trading_money -> 0.0, row kept
