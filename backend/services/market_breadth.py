@@ -540,10 +540,14 @@ async def compute_breadth(
     universe: set[str],
     lookback_days: int = _DEFAULT_LOOKBACK_DAYS,
     refresh: bool = False,
+    *,
+    prices: list[dict] | None = None,
 ) -> BreadthResult:
     """Compute breadth (AD Line + McClellan + signals) for universe over lookback.
 
     設計:.claude/feat/market-breadth-mcclellan/design.md v2 §4.1
+    perf C3b:`prices` 注入時跳過自抓(caller 負責 rows 覆蓋本函式推導的
+    window — `_fetch_eod_results` 用 sa._derive_window 同構公式,T36 慣例鎖)。
     """
     if not universe:
         raise ValueError("universe_empty")
@@ -555,7 +559,8 @@ async def compute_breadth(
     pad_days = int((lookback_days + _SLOW_EMA_PERIOD) * 2.0)
     start = end_date - timedelta(days=pad_days)
 
-    prices = await _fetch_daily_prices_window(start, end_date, refresh=refresh)
+    if prices is None:
+        prices = await _fetch_daily_prices_window(start, end_date, refresh=refresh)
     taiex_raw = await _fetch_taiex_series(start, end_date, refresh=refresh)
 
     counts = _count_daily_ups_downs(prices, universe)

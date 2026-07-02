@@ -1179,8 +1179,9 @@ async def test_snapshot_amount_share_delegate_args() -> None:
     spy.assert_awaited_once()
     assert spy.await_args.args == (clock.today(), {"2330"}, {"2330": "半導體業"})
     # perf C2 該變 assertion(原鎖 refresh=True 傳達):C2 後 snapshot 的
-    # refresh 不進 EOD compute,一律 False
-    assert spy.await_args.kwargs == {"refresh": False}
+    # refresh 不進 EOD compute,一律 False;C3b 起 kwargs 另含 prices 注入
+    assert spy.await_args.kwargs["refresh"] is False
+    assert "prices" in spy.await_args.kwargs
 
 
 # ---------------------------------------------------------------------------
@@ -1310,6 +1311,59 @@ async def test_snapshot_eod_result_cache_universe_change_recomputes() -> None:
 
 
 # ---------------------------------------------------------------------------
+# perf snapshot-hot-path C3b — recompute 共用一次 prices fetch
+# 4 個 EOD compute 各自 _fetch_prices_window → 同一 window 4 次 parse;
+# _fetch_eod_results 預抓一次注入,recompute 只付 1 次 parse。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_eod_results_single_prices_fetch(monkeypatch) -> None:
+    """C3b:_fetch_eod_results 對 prices window 只 fetch/parse 一次,
+    且 window 與 P2 compute_breadth 自算的 (start, end) 完全相同(T36 慣例)。"""
+    from datetime import date, timedelta as _td
+
+    from services import finmind_realtime as fr
+    from services import market_breadth as mb
+
+    calls: list[tuple] = []
+    base = date(2026, 4, 1)
+    prices = []
+    for i in range(60):
+        d = (base + _td(days=i)).isoformat()
+        prices.append({
+            "stock_id": "2330", "date": d, "close": 100.0 + i,
+            "Trading_Volume": 1000, "Trading_money": 100000.0,
+        })
+
+    async def fake_prices(start, end, refresh=False):
+        calls.append((start, end))
+        return prices
+
+    async def fake_taiex(*a, **kw):
+        return []
+
+    monkeypatch.setattr(mb, "_fetch_daily_prices_window", fake_prices)
+    monkeypatch.setattr(mb, "_fetch_taiex_series", fake_taiex)
+
+    end_date = date(2026, 7, 2)
+    result = await fr._fetch_eod_results(
+        end_date, {"2330"}, {"2330": "半導體業"}, refresh=False
+    )
+
+    # 4 個 component 都有算出來(非 None)
+    assert result["breadth"] is not None
+    assert result["sector_breadth"] is not None
+    assert result["sector_volume_ratio"] is not None
+    assert result["sector_amount_share"] is not None
+    # 關鍵:prices window 只 fetch 一次(修正前 = 4 次)
+    assert len(calls) == 1, f"prices window fetched {len(calls)} times, expected 1"
+    # window 對齊 P2 公式:pad = (lookback + slow_ema) * 2
+    expected_pad = int((mb._DEFAULT_LOOKBACK_DAYS + mb._SLOW_EMA_PERIOD) * 2.0)
+    assert calls[0] == (end_date - _td(days=expected_pad), end_date)
+
+
+# ---------------------------------------------------------------------------
 # perf snapshot-hot-path C2 (🔴) — refresh 語意:只 bust intraday,不進 EOD
 # 「重新整理 = 看最新盤中」;EOD 是 T-1 資料,end_date 前進自然失效。
 # 修正前 refresh=true 一路穿進 EOD fetcher = ~278s + 128 次 FinMind 呼叫。
@@ -1368,10 +1422,11 @@ async def test_snapshot_refresh_not_forwarded_to_eod_compute() -> None:
         await fetch_market_snapshot(refresh=True)
 
     assert breadth_mock.await_count == 1  # cache miss → 照算(用 EOD 自己的 24h cache)
-    assert breadth_mock.await_args.kwargs == {"refresh": False}
-    assert sb_mock.await_args.kwargs == {"refresh": False}
-    assert vr_mock.await_args.kwargs == {"refresh": False}
-    assert amt_mock.await_args.kwargs == {"refresh": False}
+    # C3b 該變:kwargs 多了 prices 注入,鎖 refresh=False 即可
+    assert breadth_mock.await_args.kwargs["refresh"] is False
+    assert sb_mock.await_args.kwargs["refresh"] is False
+    assert vr_mock.await_args.kwargs["refresh"] is False
+    assert amt_mock.await_args.kwargs["refresh"] is False
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")

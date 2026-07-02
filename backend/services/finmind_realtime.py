@@ -374,6 +374,7 @@ async def _fetch_breadth(
     end_date: date,
     universe: set[str],
     refresh: bool = False,
+    prices: list[dict] | None = None,
 ) -> dict | None:
     """market-monitor-v2 P2 (SC-6) — delegate to market_breadth.compute_breadth.
 
@@ -385,7 +386,7 @@ async def _fetch_breadth(
         return None
     from services import market_breadth as mb  # 延 import 避 potential circular
 
-    return await mb.compute_breadth(end_date, universe, refresh=refresh)
+    return await mb.compute_breadth(end_date, universe, refresh=refresh, prices=prices)
 
 
 async def _fetch_sector_breadth(
@@ -393,6 +394,7 @@ async def _fetch_sector_breadth(
     universe: set[str],
     sector_map: dict[str, str],
     refresh: bool = False,
+    prices: list[dict] | None = None,
 ) -> list[dict] | None:
     """market-monitor-v2 P3 (SC-6) — delegate to sector_aggregation.compute_sector_breadth.
 
@@ -404,7 +406,9 @@ async def _fetch_sector_breadth(
         return None
     from services import sector_aggregation as sa
 
-    return await sa.compute_sector_breadth(end_date, universe, sector_map, refresh=refresh)
+    return await sa.compute_sector_breadth(
+        end_date, universe, sector_map, refresh=refresh, prices=prices
+    )
 
 
 async def _fetch_sector_volume_ratio(
@@ -412,6 +416,7 @@ async def _fetch_sector_volume_ratio(
     universe: set[str],
     sector_map: dict[str, str],
     refresh: bool = False,
+    prices: list[dict] | None = None,
 ) -> list[dict] | None:
     """market-monitor-v2 P3 (SC-6) — delegate to sector_aggregation.compute_sector_volume_ratio。
 
@@ -421,7 +426,9 @@ async def _fetch_sector_volume_ratio(
         return None
     from services import sector_aggregation as sa
 
-    return await sa.compute_sector_volume_ratio(end_date, universe, sector_map, refresh=refresh)
+    return await sa.compute_sector_volume_ratio(
+        end_date, universe, sector_map, refresh=refresh, prices=prices
+    )
 
 
 async def _fetch_sector_amount_share(
@@ -429,6 +436,7 @@ async def _fetch_sector_amount_share(
     universe: set[str],
     sector_map: dict[str, str],
     refresh: bool = False,
+    prices: list[dict] | None = None,
 ) -> list[dict] | None:
     """market-monitor-v2 P4 (SC-6) — delegate to sector_aggregation.compute_sector_amount_share.
 
@@ -439,7 +447,9 @@ async def _fetch_sector_amount_share(
         return None
     from services import sector_aggregation as sa
 
-    return await sa.compute_sector_amount_share(end_date, universe, sector_map, refresh=refresh)
+    return await sa.compute_sector_amount_share(
+        end_date, universe, sector_map, refresh=refresh, prices=prices
+    )
 
 
 def _universe_digest(universe: set[str]) -> str:
@@ -481,39 +491,69 @@ async def _fetch_eod_results(
             ):
                 return results
 
+    # perf C3b:4 個 compute 共用同一 prices window(T35/T36 鎖常數同值 +
+    # 公式同構)→ 預抓一次注入,recompute 只付 1 次 parse(原 4 次)。
+    # 預抓失敗 → prices=None,各 compute 退回自抓,per-component try/except
+    # 降級語意與原版一致(同一 fetcher 會再失敗 → 該 component None)。
+    prices: list[dict] | None = None
+    if allowed:
+        from services import market_breadth as mb
+        from services import sector_aggregation as sa
+
+        win_start, win_end = sa._derive_window(end_date, mb._DEFAULT_LOOKBACK_DAYS)
+        try:
+            prices = await mb._fetch_daily_prices_window(win_start, win_end, refresh=refresh)
+        except httpx.HTTPError as exc:
+            logger.warning("market snapshot: shared prices prefetch failed: %s", exc)
+            prices = None
+
     # market-monitor-v2 P2 (SC-6) — breadth (F6: fail 不動 stale)
     if "breadth" not in results:
         try:
-            results["breadth"] = await _fetch_breadth(end_date, allowed, refresh=refresh)
+            results["breadth"] = await _fetch_breadth(
+                end_date, allowed, refresh=refresh, prices=prices
+            )
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("market snapshot: breadth compute failed: %s", exc)
             results["breadth"] = None
+
+    # C3b:prices 注入後 compute 內部無 await,連續 component 的純 Python
+    # aggregation 會連成一塊 ~3s 不讓出 loop(real-env 探針 max 2947ms)。
+    # 注意必須 sleep(>0) 不能 sleep(0):sleep(0) 只把本 task 重排進 ready
+    # queue「最前面」,剛到期的 timer / IO callback 排在後面,等於沒讓 —
+    # 實驗:sleep(0) max gap 1898ms(3 component 連塊)/ sleep(0.005) 888ms
+    # (單 component 上界)。
+    await asyncio.sleep(0.005)
 
     # market-monitor-v2 P3 (SC-6) — sector_breadth(only httpx;ValueError 穿透)
     if "sector_breadth" not in results:
         try:
             results["sector_breadth"] = await _fetch_sector_breadth(
-                end_date, allowed, primary_sector, refresh=refresh
+                end_date, allowed, primary_sector, refresh=refresh, prices=prices
             )
         except httpx.HTTPError as exc:
             logger.warning("market snapshot: sector_breadth compute failed: %s", exc)
             results["sector_breadth"] = None
 
+    await asyncio.sleep(0.005)  # C3b yield(同上,必須 >0)
+
     # market-monitor-v2 P3 (SC-6) — sector_volume_ratio (independent try/except)
     if "sector_volume_ratio" not in results:
         try:
             results["sector_volume_ratio"] = await _fetch_sector_volume_ratio(
-                end_date, allowed, primary_sector, refresh=refresh
+                end_date, allowed, primary_sector, refresh=refresh, prices=prices
             )
         except httpx.HTTPError as exc:
             logger.warning("market snapshot: sector_volume_ratio compute failed: %s", exc)
             results["sector_volume_ratio"] = None
 
+    await asyncio.sleep(0.005)  # C3b yield(同上,必須 >0)
+
     # market-monitor-v2 P4 (SC-6) — sector_amount_share (independent try/except)
     if "sector_amount_share" not in results:
         try:
             results["sector_amount_share"] = await _fetch_sector_amount_share(
-                end_date, allowed, primary_sector, refresh=refresh
+                end_date, allowed, primary_sector, refresh=refresh, prices=prices
             )
         except httpx.HTTPError as exc:
             logger.warning("market snapshot: sector_amount_share compute failed: %s", exc)
