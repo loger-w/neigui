@@ -56,14 +56,15 @@ _fm_limiter: TokenBucket | None = None
 def get_finmind_rate_limiter() -> TokenBucket:
     global _fm_limiter
     if _fm_limiter is None:
-        # Sponsor tier supports significantly higher throughput than the Free
-        # tier; 5/s was the original conservative default but bottlenecks the
-        # ~360-day cold history fan-out (per-day TradingDailyReport):
-        #   5/s → 72s, 10/s → 36s, 15/s → 24s, 30/s → 12s
-        # 30/s 是 sponsor-friendly 中位選,配合 P0 frontend AbortSignal 傳導
-        # (切股票立即釋放 slot)避免多 client 疊加撞 429。若 429 surface,
-        # 用 FINMIND_RATE_LIMIT_PER_SEC env dial back(不用改 code)。
-        rate = float(os.getenv("FINMIND_RATE_LIMIT_PER_SEC", "30"))
+        # 2026-07-03 真實瓶頸是 Sponsor「每小時 6000 requests」配額,不是
+        # per-second rate(user_info 實測 user_count 5750/6000 → 之後全 502/503)。
+        # 一檔冷 major fan-out ~360 req = 每小時只能冷載入 ~16 檔。rate 拉高只
+        # 會燒配額更快、cancel 更來不及止血:
+        #   8/s → 冷 45s、abort 1.5s 內只燒 ~12 req
+        #   30/s → 冷 12s、abort 前已燒 ~45 req、連切幾檔就爆配額
+        # 8/s 是「單檔可忍受 + 配額止血優先」的折衷。真正的解是砍每檔 request
+        # 數(range dataset / 降 days),不是調 rate。
+        rate = float(os.getenv("FINMIND_RATE_LIMIT_PER_SEC", "8"))
         _fm_limiter = TokenBucket(rate=rate)
         logger.info("FinMind rate limiter: %.1f req/s", rate)
     return _fm_limiter
