@@ -1,15 +1,18 @@
-"""Phase 3 — sector aggregation service (breadth + volume ratio).
+"""Phase 3/4 — sector aggregation service (breadth + volume ratio + amount share).
 
-Spec: docs/specs/market-monitor-v2/spec.md §6.2 / §6.5.
-Design: .claude/feat/market-sector-breadth/design.md v2
+Spec: docs/specs/market-monitor-v2/spec.md §6.2 / §6.4 / §6.5.
+Design: .claude/feat/market-sector-breadth/design.md v2 (P3)
+        .claude/feat/market-sector-amount-share/design.md v2 (P4)
 
-Two public entry points:
+Three public entry points:
 - compute_sector_breadth: % close > MA20 per sector
 - compute_sector_volume_ratio: today vol / mean 20-day sector vol
+- compute_sector_amount_share: today turnover share + Δ vs mean 20-day share
 
-Both delegate to services.market_breadth._fetch_daily_prices_window
+All delegate to services.market_breadth._fetch_daily_prices_window
 for a SHARED cache_key (`breadth_prices_<start>_<end>`) → cold fetch runs
-once for all three consumers (P2 breadth + P3 breadth + P3 vol_ratio).
+once for all four consumers (P2 breadth + P3 breadth + P3 vol_ratio +
+P4 amount_share).
 """
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ _MA_WINDOW = 20  # SC-1 MA20
 _VOL_AVG_WINDOW = 20  # SC-3 default avg_window
 _VOL_HOT_THRESHOLD = 1.5
 _VOL_COLD_THRESHOLD = 0.7
+_AMOUNT_AVG_WINDOW = 20  # P4 SC-3 default avg_window(獨立於 _VOL_AVG_WINDOW,語意不同)
 _OTHER_SECTOR = "其他"
 
 
@@ -45,6 +49,12 @@ class SectorVolResult(TypedDict):
     today_vol_lots: int
     vol_ratio: float | None
     flag: str | None
+
+
+class SectorAmountResult(TypedDict):
+    sector: str
+    today_share: float
+    share_delta_20ma: float | None
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +245,106 @@ def _aggregate_sector_volume_ratio(
 
 
 # ---------------------------------------------------------------------------
+# P4 §3.1 _extract_amount_by_stock — pure
+# ---------------------------------------------------------------------------
+
+
+def _extract_amount_by_stock(
+    prices: list[dict],
+    universe: set[str],
+) -> dict[str, dict[date, float]]:
+    """Build stock_id → { date → turnover_value (TWD, Trading_money) }.
+
+    P4 amount-dedicated extract — deliberately independent of close
+    (row with missing close is kept; amount share only needs Trading_money).
+    Same (sid, date) duplicate → later value wins (F6-echo).
+    """
+    out: dict[str, dict[date, float]] = {}
+    for row in prices:
+        sid = row.get("stock_id")
+        if sid is None or sid not in universe:
+            continue
+        d_raw = row.get("date")
+        if d_raw is None:
+            continue
+        try:
+            d = date.fromisoformat(str(d_raw))
+        except (ValueError, TypeError):
+            continue
+        amt_raw = row.get("Trading_money", 0)
+        try:
+            amt = float(amt_raw) if amt_raw is not None else 0.0
+        except (ValueError, TypeError):
+            amt = 0.0
+        out.setdefault(sid, {})[d] = amt
+    return out
+
+
+# ---------------------------------------------------------------------------
+# P4 §3.2 _aggregate_sector_amount_share — pure
+# ---------------------------------------------------------------------------
+
+
+def _aggregate_sector_amount_share(
+    by_stock: dict[str, dict[date, float]],
+    sector_map: dict[str, str],
+    avg_window: int = _AMOUNT_AVG_WINDOW,
+    today_date: date | None = None,
+) -> list[SectorAmountResult]:
+    """Per-sector: today turnover share of universe total + Δ vs mean(past N-day share).
+
+    today total == 0 → all sectors absent → [] (KG7 natural).
+    Past window: only days present in the sector's own day dict AND with
+    universe total > 0 that day (design v2 §8.6 — sparse-sector deviation
+    documented; 缺日不補 0,對齊 P3 vol_ratio).
+    """
+    if not by_stock:
+        return []
+    if today_date is None:
+        dates = [d for per_date in by_stock.values() for d in per_date]
+        if not dates:
+            return []
+        today_date = max(dates)
+
+    # sector → date → Σamt;同 loop 建 total → date → Σamt
+    sector_day_amt: dict[str, dict[date, float]] = {}
+    total_day_amt: dict[date, float] = {}
+    for sid, per_date in by_stock.items():
+        sector = sector_map.get(sid, _OTHER_SECTOR)
+        bucket = sector_day_amt.setdefault(sector, {})
+        for d, amt in per_date.items():
+            bucket[d] = bucket.get(d, 0.0) + amt
+            total_day_amt[d] = total_day_amt.get(d, 0.0) + amt
+
+    today_total = total_day_amt.get(today_date, 0.0)
+    results: list[SectorAmountResult] = []
+    for sector, day_amt in sector_day_amt.items():
+        sector_today = day_amt.get(today_date, 0.0)
+        if sector_today == 0:
+            continue  # 缺席(today_total==0 ⟹ 全缺席 → [];KG7 natural)
+        today_share = sector_today / today_total  # sector_today>0 ⟹ today_total>0
+        past_days = sorted(
+            (d for d in day_amt if d < today_date and total_day_amt.get(d, 0.0) > 0),
+            reverse=True,
+        )[:avg_window]
+        if len(past_days) < avg_window:
+            share_delta: float | None = None
+        else:
+            past_shares = [day_amt[d] / total_day_amt[d] for d in past_days]
+            share_delta = today_share - sum(past_shares) / len(past_shares)
+        results.append(
+            SectorAmountResult(
+                sector=sector,
+                today_share=today_share,
+                share_delta_20ma=share_delta,
+            )
+        )
+    # today_share DESC, tie-break sector ASC(today_share 恆非 None,不需 F1 None-safe key)
+    results.sort(key=lambda r: (-r["today_share"], r["sector"]))
+    return results
+
+
+# ---------------------------------------------------------------------------
 # §3.5 _fetch_prices_window — thin delegate to P2 for cache_key reuse
 # ---------------------------------------------------------------------------
 
@@ -315,3 +425,26 @@ async def compute_sector_volume_ratio(
     prices = await _fetch_prices_window(start, end, refresh=refresh)
     by_stock = _extract_close_and_volume_by_stock(prices, universe)
     return _aggregate_sector_volume_ratio(by_stock, sector_map, avg_window=avg_window)
+
+
+async def compute_sector_amount_share(
+    end_date: date,
+    universe: set[str],
+    sector_map: dict[str, str],
+    lookback_days: int = _DEFAULT_LOOKBACK_DAYS,
+    avg_window: int = _AMOUNT_AVG_WINDOW,
+    refresh: bool = False,
+) -> list[SectorAmountResult]:
+    """Aggregate per-sector today turnover share + Δ vs past N-day mean share (P4).
+
+    Empty universe → raises ValueError("universe_empty").
+    Empty prices from fetcher → returns [].
+    Sorted by today_share DESC, tie-break sector name ASC.
+    Window derivation reuses P3 _derive_window → SAME cache_key as P2/P3 (KG3).
+    """
+    if not universe:
+        raise ValueError("universe_empty")
+    start, end = _derive_window(end_date, lookback_days)
+    prices = await _fetch_prices_window(start, end, refresh=refresh)
+    by_stock = _extract_amount_by_stock(prices, universe)
+    return _aggregate_sector_amount_share(by_stock, sector_map, avg_window=avg_window)
