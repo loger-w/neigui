@@ -971,6 +971,32 @@ class TestAggregateSectorAmountShare:
         semi = next(r for r in out if r["sector"] == "半導體業")
         assert semi["share_delta_20ma"] == pytest.approx(0.15)
 
+    def test_A24_past_window_takes_most_recent_days(self) -> None:
+        # TS-1 (Phase 4 review) — recency lock:valid past days(3)> avg_window(2),
+        # 必須取「最近 N 日」。oldest-N mutation(reverse=False)→ mean(0.10, 0.25)
+        # = 0.175 → delta 0.225 → 立紅。
+        by_stock = {
+            "2330": {_D_MON: 100.0, _D_TUE: 250.0, _D_WED: 250.0, _D_THU: 400.0},
+            "2317": {_D_MON: 900.0, _D_TUE: 750.0, _D_WED: 750.0, _D_THU: 600.0},
+        }
+        out = sa._aggregate_sector_amount_share(by_stock, self._MAP3, avg_window=2)
+        semi = next(r for r in out if r["sector"] == "半導體業")
+        # recent 2 past days = WED, TUE → mean 0.25 → delta 0.15
+        assert semi["share_delta_20ma"] == pytest.approx(0.15)
+
+    def test_A25_past_day_sector_zero_but_total_positive_counts(self) -> None:
+        # TS-3 (Phase 4 review) — sector 該日 amt=0 但 universe total>0 = valid
+        # share-0.0 日,必須計入 window(拉低 mean)。過濾過寬 mutation
+        # (past filter 加 day_amt>0)→ 只剩 2 valid 日 → None → 立紅。
+        by_stock = {
+            "2330": {_D_MON: 250.0, _D_TUE: 0.0, _D_WED: 250.0, _D_THU: 400.0},
+            "2317": {_D_MON: 750.0, _D_TUE: 1000.0, _D_WED: 750.0, _D_THU: 600.0},
+        }
+        out = sa._aggregate_sector_amount_share(by_stock, self._MAP3, avg_window=3)
+        semi = next(r for r in out if r["sector"] == "半導體業")
+        # past shares = WED 0.25, TUE 0.0, MON 0.25 → mean 1/6 → delta = 0.4 − 1/6
+        assert semi["share_delta_20ma"] == pytest.approx(0.4 - 1.0 / 6.0)
+
     def test_A16_sort_today_share_desc(self) -> None:
         by_stock = {
             "2330": {_D_FRI: 500.0},

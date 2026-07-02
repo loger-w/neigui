@@ -1015,6 +1015,11 @@ async def test_snapshot_payload_adds_sector_amount_share() -> None:
     assert "excluded_count" in result
     assert {"gainers", "losers", "amount", "volume_ratio"} <= set(result["leaderboards"].keys())
     assert result["stale"] is False
+    # TS-5 (Phase 4 review) — key 位置鎖:append after sector_volume_ratio,
+    # 既有 key 順序不動(FastAPI JSON 序列化保留 dict insertion order)
+    keys = list(result.keys())
+    assert keys[-1] == "sector_amount_share"
+    assert keys[keys.index("sector_volume_ratio") + 1] == "sector_amount_share"
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
@@ -1055,6 +1060,80 @@ async def test_snapshot_sector_amount_share_fail_does_not_flip_stale() -> None:
     assert result["sector_breadth"] == _FAKE_SECTOR_BREADTH_PAYLOAD
     assert result["sector_volume_ratio"] == _FAKE_SECTOR_VOL_PAYLOAD
     assert result["stale"] is False  # F6 sequel
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_sector_amount_share_value_error_propagates() -> None:
+    """P4 T-INT-4 (TS-4): except 寬度鎖 — 只有 httpx.HTTPError 降級為 None,
+    其他例外(ValueError)必須 fail-loud propagate(§E narrow except)。"""
+    fake_universe = [{
+        "stock_id": "2330", "close": 2390, "change_rate": 1.92,
+        "total_amount": 36e9, "volume_ratio": 1.14,
+        "date": "2026-06-29 10:30:00.123456",
+    }]
+    fake_sector_rows = [{
+        "stock_id": "2330", "industry_category": "半導體業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+    }]
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_breadth",
+               new=AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio",
+               new=AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_amount_share",
+               new=AsyncMock(side_effect=ValueError("boom"))):
+        with pytest.raises(ValueError, match="boom"):
+            await fetch_market_snapshot(refresh=False)
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_amount_share_delegate_args() -> None:
+    """P4 T-INT-5 (TS-2): helper 不 patch — 真實 delegate 路徑執行,
+    spy compute_sector_amount_share 鎖 call-site args(allowed / primary_sector /
+    refresh 傳達)。"""
+    from services import clock
+
+    fake_universe = [{
+        "stock_id": "2330", "close": 2390, "change_rate": 1.92,
+        "total_amount": 36e9, "volume_ratio": 1.14,
+        "date": "2026-06-29 10:30:00.123456",
+    }]
+    fake_sector_rows = [{
+        "stock_id": "2330", "industry_category": "半導體業",
+        "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
+    }]
+    sentinel = [{"sector": "半導體業", "today_share": 1.0, "share_delta_20ma": None}]
+    spy = AsyncMock(return_value=sentinel)
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=fake_universe)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=fake_sector_rows)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_breadth",
+               new=AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio",
+               new=AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)), \
+         patch("services.sector_aggregation.compute_sector_amount_share", new=spy):
+        result = await fetch_market_snapshot(refresh=True)
+
+    assert result["sector_amount_share"] == sentinel
+    spy.assert_awaited_once()
+    assert spy.await_args.args == (clock.today(), {"2330"}, {"2330": "半導體業"})
+    assert spy.await_args.kwargs == {"refresh": True}
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
