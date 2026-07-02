@@ -23,6 +23,9 @@ interface Props {
    *  brush 篩多 broker 情境不需要再擴充,C7 可獨立 revert。未提供時,
    *  header 顯 fallback 文字「已篩選 1 個分點」。 */
   onJumpToOverview?: (brokerIdOrIds: string | string[]) => void;
+  /** C5 A5: symbol 已選但 bubble fetch 未回時顯 badge。對齊
+   *  ChipKlineChart 的 loading badge pattern(L338-370)。 */
+  loading?: boolean;
 }
 
 // F12: surface every broker who traded today, including 1-張 ones. The
@@ -37,6 +40,7 @@ export function ChipBubbleView({
   symbol,
   intradayPoints,
   onJumpToOverview,
+  loading,
 }: Props) {
   // C1 🔵: selection state 存 broker_id(FinMind securities_trader_id),
   // 對齊 App.tsx selectedBrokerIds 契約,方便 A2 一鍵跳籌碼總覽。
@@ -194,12 +198,12 @@ export function ChipBubbleView({
             </span>
           )}
         </div>
-        <div ref={bubbleRef} className="flex-1 min-h-0 overflow-hidden">
-          {!bubbleData ? (
+        <div ref={bubbleRef} className="flex-1 min-h-0 overflow-hidden relative">
+          {!bubbleData && !loading ? (
             <div className="h-full flex items-center justify-center text-ink-dim font-serif italic text-sm">
               請搜尋股票代號以載入泡泡圖
             </div>
-          ) : bubbleSize.width > 0 && bubbleSize.height > 0 ? (
+          ) : bubbleData && bubbleSize.width > 0 && bubbleSize.height > 0 ? (
             <BubbleChartSvg
               trades={bubbleData.trades}
               width={bubbleSize.width}
@@ -211,6 +215,22 @@ export function ChipBubbleView({
               intradayPoints={intradayPoints}
             />
           ) : null}
+          {loading && symbol && (
+            <div
+              data-testid="bubble-loading-badge"
+              className="absolute top-2 left-1/2 -translate-x-1/2 z-30 text-xs text-ink bg-bg-deep/90 px-3 py-1 border border-accent rounded shadow pointer-events-none flex items-center gap-2"
+              aria-live="polite"
+            >
+              <svg
+                viewBox="0 0 24 24" fill="none" aria-hidden="true"
+                className="size-3.5 animate-spin text-accent motion-reduce:animate-none"
+              >
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              載入 {symbol} 泡泡圖中…
+            </div>
+          )}
         </div>
       </div>
 

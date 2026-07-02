@@ -428,6 +428,7 @@ export default function App() {
               closePrice={closePrice}
               intradayPoints={intradayHook.data?.points ?? null}
               onJumpToOverview={handleJumpToOverview}
+              loading={bubbleHook.loading && !!symbol}
             />
           </Suspense>
         </div>

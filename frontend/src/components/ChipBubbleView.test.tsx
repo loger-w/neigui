@@ -262,3 +262,42 @@ describe("ChipBubbleView — A2 jump-to-overview button (C2 🔴)", () => {
     expect(container.querySelector('[data-testid="bubble-jump-to-overview"]')).toBeNull();
   });
 });
+
+// A5 (C5 🟢): 搜尋後 fetch 期間顯 loading badge,對齊 ChipKlineChart pattern。
+// 未搜尋狀態(symbol 空 + bubbleData 空)顯原有的搜尋提示;
+// 搜尋後 fetch 中(loading=true + bubbleData null)顯 badge;
+// 搜尋後 fetch 完(bubbleData 有)顯 chart(loading=true 疊 overlay)。
+describe("ChipBubbleView — A5 loading badge (C5 🟢)", () => {
+  it("loading=false + bubbleData=null:顯搜尋提示,不顯 badge", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="" bubbleData={null} />,
+    );
+    expect((container.textContent ?? "").includes("請搜尋股票代號")).toBe(true);
+    expect(container.querySelector('[data-testid="bubble-loading-badge"]')).toBeNull();
+  });
+
+  it("loading=true + bubbleData=null + symbol=2330:顯 badge '載入 2330 泡泡圖中…',不顯搜尋提示", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={null} loading={true} />,
+    );
+    const badge = container.querySelector('[data-testid="bubble-loading-badge"]');
+    expect(badge).toBeTruthy();
+    expect((badge!.textContent ?? "").includes("載入 2330")).toBe(true);
+    expect((badge!.textContent ?? "").includes("泡泡圖")).toBe(true);
+    expect((container.textContent ?? "").includes("請搜尋股票代號")).toBe(false);
+  });
+
+  it("loading=true + bubbleData 已存在:badge 疊在 chart 上", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        loading={true}
+      />,
+    );
+    const badge = container.querySelector('[data-testid="bubble-loading-badge"]');
+    expect(badge).toBeTruthy();
+    // Empty state 不該同時出現
+    expect((container.textContent ?? "").includes("請搜尋股票代號")).toBe(false);
+  });
+});
