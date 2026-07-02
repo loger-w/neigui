@@ -27,5 +27,5 @@
     "SC-12": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
     "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 }
   },
-  "paused": "Phase 8 integration decision pending user (2026-07-02): Phase 7 全綠 + artifacts committed;等 user 選 PR / 本地 merge / 續留。PR 路徑順帶跑 e2e-update-snapshots workflow 生 visual baseline"
+  "paused": null
 }
