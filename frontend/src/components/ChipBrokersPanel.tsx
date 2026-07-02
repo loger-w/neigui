@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ChipSummary, TopBroker, TopVolumeBroker } from "../lib/chip-data";
 import { splitBrokers, fmtVol, topByVolume } from "../lib/chip-data";
 import { Checkbox } from "./ui/checkbox";
@@ -73,13 +73,34 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
     ? "grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]"
     : "grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
 
+  // C8 B1 (🟢): 整 row 可點,擴大 hit area。checkbox 保留但用 span wrapper
+  // 攔 click bubble 避免 double-toggle。keyboard Enter/Space 也觸發。
+  const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onToggle();
+    }
+  };
+
   return (
-    <div className={`grid ${cls} items-center text-sm py-2 px-2 border-b border-line/40 hover:bg-bg-deep/50 ${selected ? "bg-[#b794f4]/[0.06]" : ""}`}>
-      <Checkbox
-        checked={selected}
-        onCheckedChange={onToggle}
-        aria-label={`勾選 ${broker.name}`}
-      />
+    <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      onClick={onToggle}
+      onKeyDown={handleKeyDown}
+      className={`grid ${cls} items-center text-sm py-2 px-2 border-b border-line/40 cursor-pointer hover:bg-bg-deep/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${selected ? "bg-[#b794f4]/[0.06]" : ""}`}
+    >
+      <span
+        onClick={(e) => e.stopPropagation()}
+        className="inline-flex"
+      >
+        <Checkbox
+          checked={selected}
+          onCheckedChange={onToggle}
+          aria-label={`勾選 ${broker.name}`}
+        />
+      </span>
       <span className="text-ink-dim tabular-nums">{rank}</span>
       <span
         className="relative flex items-center gap-1.5 text-ink-muted min-w-0 group/name"

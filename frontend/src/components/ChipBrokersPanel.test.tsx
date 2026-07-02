@@ -667,3 +667,89 @@ describe("ChipBrokersPanel — B2 chip bar 容器常駐 (C3 🔴)", () => {
     expect(onClearAll).toHaveBeenCalledTimes(1);
   });
 });
+
+// B1 (C8 🟢): 整 row 可點,擴大 hit area 讓 tap target 從 checkbox 16px
+// 提升到整 row 高度。同時保留 checkbox 可獨立點擊(不 double-toggle)。
+describe("ChipBrokersPanel — B1 整 row 可點 (C8 🟢)", () => {
+  // 用單一 buyer 讓 row selector 唯一
+  const single = mkBroker({ broker_id: "B0", name: "Buyer-0", buy: 100, sell: 0, net: 100 });
+
+  it("點 row 空白處(非 checkbox)→ onToggleBroker 呼叫一次 with broker_id", () => {
+    const onToggle = vi.fn();
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary([single])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={onToggle}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const row = container.querySelector('[role="button"][aria-pressed]') as HTMLElement;
+    expect(row).toBeTruthy();
+    // Click on the rank number span (not inside the checkbox <label>)
+    const rankSpan = row.querySelector(".text-ink-dim.tabular-nums") as HTMLElement;
+    expect(rankSpan).toBeTruthy();
+    fireEvent.click(rankSpan);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onToggle).toHaveBeenCalledWith("B0");
+  });
+
+  it("點 checkbox → onToggleBroker 只呼叫一次(row 不 double-toggle)", () => {
+    const onToggle = vi.fn();
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary([single])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={onToggle}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const input = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    fireEvent.click(input);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("Row focus 後按 Enter 鍵 → onToggleBroker called", () => {
+    const onToggle = vi.fn();
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary([single])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={onToggle}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const row = container.querySelector('[role="button"][aria-pressed]') as HTMLElement;
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("Row aria-pressed 反映 selected 狀態", () => {
+    const { container, rerender } = render(
+      <ChipBrokersPanel
+        summary={mkSummary([single])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    let row = container.querySelector('[role="button"][aria-pressed]') as HTMLElement;
+    expect(row.getAttribute("aria-pressed")).toBe("false");
+    rerender(
+      <ChipBrokersPanel
+        summary={mkSummary([single])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set(["B0"])}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    row = container.querySelector('[role="button"][aria-pressed]') as HTMLElement;
+    expect(row.getAttribute("aria-pressed")).toBe("true");
+  });
+});
