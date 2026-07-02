@@ -11,6 +11,7 @@ import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg"
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
 import { BrokerSearch } from "./BrokerSearch";
+import { LoadingSpinner } from "./ui/loading-spinner";
 
 interface Props {
   bubbleData: ChipBubbleData | null;
@@ -275,13 +276,7 @@ export function ChipBubbleView({
               className="absolute top-2 left-1/2 -translate-x-1/2 z-30 text-xs text-ink bg-bg-deep/90 px-3 py-1 border border-accent rounded shadow pointer-events-none flex items-center gap-2"
               aria-live="polite"
             >
-              <svg
-                viewBox="0 0 24 24" fill="none" aria-hidden="true"
-                className="size-3.5 animate-spin text-accent motion-reduce:animate-none"
-              >
-                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
-                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-              </svg>
+              <LoadingSpinner size="3.5" />
               載入 {symbol} 泡泡圖中…
             </div>
           )}

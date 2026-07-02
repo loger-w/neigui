@@ -9,6 +9,7 @@ import { InstBarSvg, MarginLineSvg } from "../lib/chip-inst-bar-svg";
 import { BrokerAggBarSvg } from "../lib/chip-broker-agg-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
 import { computeRangeBand } from "../lib/chip-range-band";
+import { LoadingSpinner } from "./ui/loading-spinner";
 
 interface Props {
   history: ChipHistory | null;
@@ -359,13 +360,7 @@ export function ChipKlineChart({
           className="absolute top-2 left-1/2 -translate-x-1/2 z-30 text-xs text-ink bg-bg-deep/90 px-3 py-1 border border-accent rounded shadow pointer-events-none flex items-center gap-2"
           aria-live="polite"
         >
-          <svg
-            viewBox="0 0 24 24" fill="none" aria-hidden="true"
-            className="size-3.5 animate-spin text-accent motion-reduce:animate-none"
-          >
-            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
-            <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-          </svg>
+          <LoadingSpinner size="3.5" />
           載入 {loadingSymbol} 中…
         </div>
       )}
@@ -421,13 +416,7 @@ export function ChipKlineChart({
             aria-live="polite"
           >
             <span className="text-xs text-ink-dim bg-bg-deep/85 px-2 py-0.5 border border-line flex items-center gap-1.5">
-              <svg
-                viewBox="0 0 24 24" fill="none" aria-hidden="true"
-                className="size-3 animate-spin text-accent motion-reduce:animate-none"
-              >
-                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
-                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-              </svg>
+              <LoadingSpinner size="3" />
               主力資料載入中…
             </span>
           </div>

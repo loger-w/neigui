@@ -365,10 +365,19 @@ describe("BubbleChartSvg intraday line overlay (additive optional prop)", () => 
 // C7 A1 (🟢): Y-axis brush overlay 交互驗證。
 describe("BubbleChartSvg — A1 Y-axis brush overlay (C7 🟢)", () => {
   // jsdom pointer-capture 方法可能未實作。用 vi.spyOn 兜住,測試前設 stub。
+  // hasPointerCapture 也 stub 讓 handleBrushUp §E-compliant guard 邏輯生效。
   function stubPointerCapture(el: Element) {
-    if (typeof (el as unknown as { setPointerCapture?: unknown }).setPointerCapture !== "function") {
-      (el as unknown as { setPointerCapture: (id: number) => void }).setPointerCapture = () => {};
-      (el as unknown as { releasePointerCapture: (id: number) => void }).releasePointerCapture = () => {};
+    const anyEl = el as unknown as {
+      setPointerCapture?: (id: number) => void;
+      releasePointerCapture?: (id: number) => void;
+      hasPointerCapture?: (id: number) => boolean;
+      _capturedPointers?: Set<number>;
+    };
+    if (typeof anyEl.setPointerCapture !== "function") {
+      anyEl._capturedPointers = new Set<number>();
+      anyEl.setPointerCapture = (id: number) => { anyEl._capturedPointers!.add(id); };
+      anyEl.releasePointerCapture = (id: number) => { anyEl._capturedPointers!.delete(id); };
+      anyEl.hasPointerCapture = (id: number) => anyEl._capturedPointers!.has(id);
     }
   }
 

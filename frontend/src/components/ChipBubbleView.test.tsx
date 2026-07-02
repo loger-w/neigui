@@ -340,10 +340,19 @@ describe("ChipBubbleView — A3 分點總買/賣張/金額 (C6 🟢)", () => {
 });
 
 // A1 (C7 🟢): Y-axis brush 端到端流程(ChipBubbleView 整合 svg + summary panel)。
+// hasPointerCapture 也 stub 對齊 handleBrushUp §E-compliant guard 邏輯。
 function stubPointerCaptureOn(el: Element) {
-  if (typeof (el as unknown as { setPointerCapture?: unknown }).setPointerCapture !== "function") {
-    (el as unknown as { setPointerCapture: (id: number) => void }).setPointerCapture = () => {};
-    (el as unknown as { releasePointerCapture: (id: number) => void }).releasePointerCapture = () => {};
+  const anyEl = el as unknown as {
+    setPointerCapture?: (id: number) => void;
+    releasePointerCapture?: (id: number) => void;
+    hasPointerCapture?: (id: number) => boolean;
+    _capturedPointers?: Set<number>;
+  };
+  if (typeof anyEl.setPointerCapture !== "function") {
+    anyEl._capturedPointers = new Set<number>();
+    anyEl.setPointerCapture = (id: number) => { anyEl._capturedPointers!.add(id); };
+    anyEl.releasePointerCapture = (id: number) => { anyEl._capturedPointers!.delete(id); };
+    anyEl.hasPointerCapture = (id: number) => anyEl._capturedPointers!.has(id);
   }
 }
 

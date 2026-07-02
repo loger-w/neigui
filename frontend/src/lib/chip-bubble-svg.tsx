@@ -366,9 +366,10 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         setDragBrush(null);
         return;
       }
-      try {
+      // 對齊 CLAUDE.md §E:先 guard 再 release,取代 try/catch 空塊。
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
         e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch { /* pointer capture may already be released */ }
+      }
       const distance = Math.abs(dragBrush.currentY - dragBrush.startY);
       if (distance < BRUSH_MIN_DRAG_PX) {
         // 抗誤觸:單擊或短拖曳不觸發

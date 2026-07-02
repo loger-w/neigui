@@ -414,10 +414,6 @@ describe("summarizeTradesByPriceRange (C7 🟢)", () => {
 });
 
 describe("buildTradeRows — legacy tests continue", () => {
-  function mkTrade(broker: string, price: number, buy: number, sell: number): BrokerTrade {
-    return { broker, broker_id: broker, price, buy, sell };
-  }
-
   // C1 R3: locks name-based filter behavior when the same broker_name appears
   // across multiple broker_id (edge case: FinMind securities_trader_id is
   // typically 1:1 with securities_trader, but this test ensures ChipBubbleView
