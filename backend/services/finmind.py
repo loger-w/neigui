@@ -57,12 +57,12 @@ def get_finmind_rate_limiter() -> TokenBucket:
     if _fm_limiter is None:
         # Sponsor tier supports significantly higher throughput than the Free
         # tier; 5/s was the original conservative default but bottlenecks the
-        # ~360-day cold history fan-out (per-day TradingDailyReport) at ~72s.
-        # Measured 1304/history?days=540 cold:
-        #   5/s → 72s, 10/s → 36s, 15/s → 24s
-        # 15/s lands as a safe middle ground without observed 429s on Sponsor;
-        # override via FINMIND_RATE_LIMIT_PER_SEC env if 429 surfaces.
-        rate = float(os.getenv("FINMIND_RATE_LIMIT_PER_SEC", "15"))
+        # ~360-day cold history fan-out (per-day TradingDailyReport):
+        #   5/s → 72s, 10/s → 36s, 15/s → 24s, 30/s → 12s
+        # 30/s 是 sponsor-friendly 中位選,配合 P0 frontend AbortSignal 傳導
+        # (切股票立即釋放 slot)避免多 client 疊加撞 429。若 429 surface,
+        # 用 FINMIND_RATE_LIMIT_PER_SEC env dial back(不用改 code)。
+        rate = float(os.getenv("FINMIND_RATE_LIMIT_PER_SEC", "30"))
         _fm_limiter = TokenBucket(rate=rate)
         logger.info("FinMind rate limiter: %.1f req/s", rate)
     return _fm_limiter
