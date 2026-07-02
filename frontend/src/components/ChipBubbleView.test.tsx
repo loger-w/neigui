@@ -4,8 +4,8 @@
  * F2: bubble-view right-side trade list — sort by 張數 / 價位 via header click;
  * independent state per side; aria-sort reflects current key+dir.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ChipBubbleView } from "./ChipBubbleView";
 import type { BrokerTrade, ChipBubbleData } from "../lib/chip-data";
 
@@ -171,5 +171,94 @@ describe("ChipBubbleView trade-list sort headers — F2", () => {
     );
     const btn = findHeaderButton(container, "張數");
     expect(btn).toBeTruthy();
+  });
+});
+
+// Select a broker via BrokerSearch input (TradeList rows are virtualized and
+// bubble SVG requires size, both no-op in jsdom). BrokerSearch input +
+// mousedown-select the dropdown item is the deterministic path.
+async function selectBrokerViaSearch(brokerName: string) {
+  const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
+  fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: brokerName } });
+  await waitFor(() => {
+    const items = screen.queryAllByTestId("broker-search-item");
+    const match = items.find((el) => (el.textContent ?? "").includes(brokerName));
+    if (!match) throw new Error(`dropdown item for ${brokerName} not visible yet`);
+  });
+  const items = screen.getAllByTestId("broker-search-item");
+  const target = items.find((el) => (el.textContent ?? "").includes(brokerName))!;
+  fireEvent.mouseDown(target);
+}
+
+// Distinct broker names — avoid single-letter substring ambiguity in BrokerSearch
+// (case-insensitive .includes() would treat "A" as substring of "Alpha").
+const namedTrades: BrokerTrade[] = [
+  { broker: "Alpha", broker_id: "AL1", price: 100, buy: 10, sell: 30 },
+  { broker: "Bravo", broker_id: "BR1", price: 102, buy: 5, sell: 50 },
+  { broker: "Charlie", broker_id: "CH1", price: 101, buy: 20, sell: 10 },
+];
+
+describe("ChipBubbleView — A2 jump-to-overview button (C2 🔴)", () => {
+  it("no selection: shows '今日共 N 個分點' text, no jump button", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        onJumpToOverview={vi.fn()}
+      />,
+    );
+    expect((container.textContent ?? "").includes("今日共")).toBe(true);
+    expect(container.querySelector('[data-testid="bubble-jump-to-overview"]')).toBeNull();
+  });
+
+  it("selected broker + onJumpToOverview: button appears with broker name", async () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        onJumpToOverview={vi.fn()}
+      />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => {
+      const btn = container.querySelector('[data-testid="bubble-jump-to-overview"]');
+      if (!btn) throw new Error("jump button not rendered yet");
+    });
+    const btn = container.querySelector('[data-testid="bubble-jump-to-overview"]') as HTMLButtonElement;
+    expect((btn.textContent ?? "").includes("Alpha")).toBe(true);
+    expect((btn.textContent ?? "").includes("籌碼總覽")).toBe(true);
+  });
+
+  it("clicking the jump button calls onJumpToOverview with broker_id (not name)", async () => {
+    const onJump = vi.fn();
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        onJumpToOverview={onJump}
+      />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => {
+      const btn = container.querySelector('[data-testid="bubble-jump-to-overview"]');
+      if (!btn) throw new Error("jump button not rendered yet");
+    });
+    const btn = container.querySelector('[data-testid="bubble-jump-to-overview"]') as HTMLButtonElement;
+    fireEvent.click(btn);
+    expect(onJump).toHaveBeenCalledWith("AL1"); // broker_id, not "Alpha"
+  });
+
+  it("selected broker + NO onJumpToOverview prop: fallback to '已篩選 1 個分點' text", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => {
+      if (!(container.textContent ?? "").includes("已篩選")) {
+        throw new Error("fallback text not shown yet");
+      }
+    });
+    expect(container.querySelector('[data-testid="bubble-jump-to-overview"]')).toBeNull();
   });
 });

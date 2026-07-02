@@ -192,6 +192,18 @@ export default function App() {
     setSelectedBrokerIds(new Set());
   }, []);
 
+  // C2 A2 (+ C7 A1 future-proof): 泡泡圖跳到籌碼總覽並帶入 broker(s)。
+  // signature 一次接 string | string[] 讓 C7 brush 批量篩選共用同一 handler,
+  // C7 可獨立 revert 而不破壞 C2 契約。
+  const handleJumpToOverview = useCallback(
+    (brokerIdOrIds: string | string[]) => {
+      const ids = Array.isArray(brokerIdOrIds) ? brokerIdOrIds : [brokerIdOrIds];
+      setTab("overview");
+      setSelectedBrokerIds(new Set(ids));
+    },
+    [],
+  );
+
   const refresh = () => {
     refreshChip();
     brokersWindow.refresh();
@@ -415,6 +427,7 @@ export default function App() {
               bubbleData={bubbleHook.data}
               closePrice={closePrice}
               intradayPoints={intradayHook.data?.points ?? null}
+              onJumpToOverview={handleJumpToOverview}
             />
           </Suspense>
         </div>

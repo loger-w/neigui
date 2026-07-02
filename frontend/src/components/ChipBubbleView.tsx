@@ -18,6 +18,11 @@ interface Props {
   /** Optional 當日分時走勢線 (背景). 透傳給 BubbleChartSvg.
    *  Hook mount 在 App.tsx,對齊既有 useChipBubble 樣板。 */
   intradayPoints?: IntradayPoint[] | null;
+  /** C2 A2: 跳到籌碼總覽並帶入 broker(s)。App.tsx 掛 handler 切 tab +
+   *  setSelectedBrokerIds。signature 一次寫對 string | string[] 讓 C7
+   *  brush 篩多 broker 情境不需要再擴充,C7 可獨立 revert。未提供時,
+   *  header 顯 fallback 文字「已篩選 1 個分點」。 */
+  onJumpToOverview?: (brokerIdOrIds: string | string[]) => void;
 }
 
 // F12: surface every broker who traded today, including 1-張 ones. The
@@ -26,7 +31,13 @@ interface Props {
 // the long tail visible there.
 const MAX_TRADE_ROWS = Number.POSITIVE_INFINITY;
 
-export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints }: Props) {
+export function ChipBubbleView({
+  bubbleData,
+  closePrice,
+  symbol,
+  intradayPoints,
+  onJumpToOverview,
+}: Props) {
   // C1 🔵: selection state 存 broker_id(FinMind securities_trader_id),
   // 對齊 App.tsx selectedBrokerIds 契約,方便 A2 一鍵跳籌碼總覽。
   // 下游元件(BrokerSearch / BubbleChartSvg / buildTradeRows / TradeList)
@@ -162,13 +173,26 @@ export function ChipBubbleView({ bubbleData, closePrice, symbol, intradayPoints 
             value={selectedBrokerName}
             onChange={handleBrokerSearchChange}
           />
-          <span className="text-xs text-ink-dim">
-            {selectedBrokerName ? (
-              <>已篩選 <span className="text-[#f0b429] font-medium">1</span> 個分點</>
+          {selectedBrokerId && selectedBrokerName ? (
+            onJumpToOverview ? (
+              <button
+                type="button"
+                data-testid="bubble-jump-to-overview"
+                onClick={() => onJumpToOverview(selectedBrokerId)}
+                className="text-xs text-accent hover:text-ink underline underline-offset-2 cursor-pointer"
+              >
+                查看 <span className="text-[#f0b429] font-medium">{selectedBrokerName}</span> 於籌碼總覽 →
+              </button>
             ) : (
-              <>今日共 <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點</>
-            )}
-          </span>
+              <span className="text-xs text-ink-dim">
+                已篩選 <span className="text-[#f0b429] font-medium">1</span> 個分點
+              </span>
+            )
+          ) : (
+            <span className="text-xs text-ink-dim">
+              今日共 <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
+            </span>
+          )}
         </div>
         <div ref={bubbleRef} className="flex-1 min-h-0 overflow-hidden">
           {!bubbleData ? (
