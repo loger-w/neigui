@@ -609,3 +609,61 @@ describe("ChipBrokersPanel — column order: 買均 賣均 買張 賣張", () =>
     expect(text.indexOf("當沖率")).toBeGreaterThan(text.indexOf("賣張"));
   });
 });
+
+// B2 (C3 🔴): 選 broker 前後 chip bar 容器高度 & 位置一致(anti-CLS)。
+// 未選時 placeholder「未選擇分點」佔位;選了才顯 chip tags。
+describe("ChipBrokersPanel — B2 chip bar 容器常駐 (C3 🔴)", () => {
+  it("未選任何 broker → chip bar 容器存在 + 顯示「未選擇分點」placeholder", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={vi.fn()}
+        onClearAllBrokers={vi.fn()}
+      />,
+    );
+    const bar = container.querySelector("[data-testid=chip-selected-bar]");
+    expect(bar).toBeTruthy();
+    expect((bar!.textContent ?? "").includes("未選擇分點")).toBe(true);
+  });
+
+  it("已選 1 個 broker → chip bar 顯示 tag,不顯 placeholder", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set(["B0"])}
+        onToggleBroker={vi.fn()}
+        onClearAllBrokers={vi.fn()}
+      />,
+    );
+    const bar = container.querySelector("[data-testid=chip-selected-bar]");
+    expect(bar).toBeTruthy();
+    expect((bar!.textContent ?? "").includes("Buyer-0")).toBe(true);
+    expect((bar!.textContent ?? "").includes("未選擇分點")).toBe(false);
+  });
+
+  it("已選 2+ → chip tags + 「全部清除」button", () => {
+    const onClearAll = vi.fn();
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set(["B0", "B1"])}
+        onToggleBroker={vi.fn()}
+        onClearAllBrokers={onClearAll}
+      />,
+    );
+    const bar = container.querySelector("[data-testid=chip-selected-bar]") as HTMLElement;
+    expect(bar).toBeTruthy();
+    expect((bar.textContent ?? "").includes("Buyer-0")).toBe(true);
+    expect((bar.textContent ?? "").includes("Buyer-1")).toBe(true);
+    const clearBtn = Array.from(bar.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").trim() === "全部清除",
+    );
+    expect(clearBtn).toBeTruthy();
+    fireEvent.click(clearBtn!);
+    expect(onClearAll).toHaveBeenCalledTimes(1);
+  });
+});

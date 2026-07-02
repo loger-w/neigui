@@ -315,36 +315,43 @@ export function ChipBrokersPanel({
         </button>
       </div>
 
-      {/* Selected-broker chips */}
-      {N > 0 && (
-        <div className="px-3 py-2 border-b border-line bg-bg-deep/40 flex flex-wrap gap-1.5 items-center">
-          <span className="text-xs text-ink-dim">已選 {N} 個分點:</span>
-          {Array.from(selectedBrokerIds).map((bid) => {
-            const name = idToName.get(bid) ?? bid;
-            return (
-              <span
-                key={bid}
-                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-[#b794f4]/15 border border-[#b794f4]/40 text-[#b794f4]"
-              >
-                {name}
-                <button
-                  type="button"
-                  onClick={() => onToggleBroker(bid)}
-                  aria-label={`移除 ${name}`}
-                  className="hover:text-bear cursor-pointer"
-                >×</button>
-              </span>
-            );
-          })}
-          {N > 1 && (
-            <button
-              type="button"
-              onClick={onClearAllBrokers}
-              className="ml-auto text-xs text-ink-dim hover:text-bear cursor-pointer"
-            >全部清除</button>
-          )}
-        </div>
-      )}
+      {/* Selected-broker chips — B2 (C3): 容器常駐,避免選前後 CLS。
+          未選時顯 placeholder;選了才 render chip tags。min-h 鎖高度。 */}
+      <div
+        data-testid="chip-selected-bar"
+        className="px-3 py-2 border-b border-line bg-bg-deep/40 flex flex-wrap gap-1.5 items-center min-h-[36px]"
+      >
+        {N === 0 ? (
+          <span className="text-xs text-ink-dim italic">未選擇分點</span>
+        ) : (
+          <>
+            {Array.from(selectedBrokerIds).map((bid) => {
+              const name = idToName.get(bid) ?? bid;
+              return (
+                <span
+                  key={bid}
+                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-[#b794f4]/15 border border-[#b794f4]/40 text-[#b794f4]"
+                >
+                  {name}
+                  <button
+                    type="button"
+                    onClick={() => onToggleBroker(bid)}
+                    aria-label={`移除 ${name}`}
+                    className="hover:text-bear cursor-pointer"
+                  >×</button>
+                </span>
+              );
+            })}
+            {N > 1 && (
+              <button
+                type="button"
+                onClick={onClearAllBrokers}
+                className="ml-auto text-xs text-ink-dim hover:text-bear cursor-pointer"
+              >全部清除</button>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Broker list — F5: net mode splits into two half-height scroll halves */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
