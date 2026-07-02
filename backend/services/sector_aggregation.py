@@ -361,7 +361,8 @@ async def _fetch_prices_window(
     """Delegate to services.market_breadth._fetch_daily_prices_window.
 
     Shares cache_key `breadth_prices_<start>_<end>` — cold fetch runs once for
-    P2 breadth + P3 sector_breadth + P3 sector_volume_ratio (KG3 mitigation).
+    P2 breadth + P3 sector_breadth + P3 sector_volume_ratio + P4 amount_share
+    (KG3 mitigation).
     Tests patch **this** module's symbol, not market_breadth's.
 
     F4: silently inherits P2 partial-fetch semantic (no known_gaps surfacing).
