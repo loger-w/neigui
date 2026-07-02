@@ -118,6 +118,10 @@ export interface BubbleChartProps {
   onYBrush?: (priceMin: number, priceMax: number) => void;
   /** C7 A1: 已提交的 brush range,persistent band 顯示。null / undefined 不畫。 */
   brushRange?: { min: number; max: number } | null;
+  /** C10 (🔴 Item 3): 過濾泡泡 — 只 render 價位在 [min, max] 內的 bubble。
+   *  軸(prices / volumes)仍用全 trades 計算,filter 後泡泡位置不變,
+   *  UX 感受為「淡出」而非「重排」。 */
+  priceRange?: { min: number; max: number } | null;
 }
 
 // C7 A1 (🟢): Y 軸 brush drag min threshold(px)。防手誤與單擊誤觸。
@@ -145,6 +149,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   intradayPoints,
   onYBrush,
   brushRange,
+  priceRange,
 }: BubbleChartProps) {
   // --- All hooks MUST be called before any conditional return ---
 
@@ -453,9 +458,17 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   // Render source: when filtering, render only the matched broker's trades
   // with threshold bypassed (sub-threshold and outside-top-100 brokers
   // still surface). Unfiltered: top-100 gated by VOLUME_THRESHOLD.
-  const renderTrades: BrokerTrade[] = selectedBroker
+  // C10 (🔴 Item 3): priceRange 疊加過濾 — 只留 price ∈ [min, max]。軸仍
+  // 用 layoutPrices/layoutVolumes,filter 後泡泡位置不變(視覺感受為淡出
+  // 而非重排),對齊 F11 axes-stable 原則。
+  const priceFilteredSource: BrokerTrade[] = selectedBroker
     ? matchedBrokerTrades!
     : layoutTrades;
+  const renderTrades: BrokerTrade[] = priceRange
+    ? priceFilteredSource.filter(
+        (t) => t.price >= priceRange.min && t.price <= priceRange.max,
+      )
+    : priceFilteredSource;
   const threshold = selectedBroker ? 0 : VOLUME_THRESHOLD;
 
   const minPrice = Math.min(...prices);
@@ -667,9 +680,9 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         />
       ))}
 
-      {/* When a broker is selected but their trades all fall below
-          VOLUME_THRESHOLD, show a hint instead of rendering an empty chart */}
-      {selectedBroker && bubbles.length === 0 && (
+      {/* Empty-state hint — 分點過濾 or price-range filter 打空時顯示。
+          C10 (🔴 Item 3): priceRange 疊加後可能 0 bubble,需 fallback 提示。 */}
+      {bubbles.length === 0 && (selectedBroker || priceRange) && (
         <text
           x={width / 2}
           y={height / 2}
@@ -677,7 +690,9 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           fill={COLOR.text}
           fontSize={13}
         >
-          {selectedBroker} 今日無顯著成交量
+          {priceRange
+            ? `此價位區間 (${priceRange.min.toFixed(2)}–${priceRange.max.toFixed(2)}) 無成交`
+            : `${selectedBroker} 今日無顯著成交量`}
         </text>
       )}
 

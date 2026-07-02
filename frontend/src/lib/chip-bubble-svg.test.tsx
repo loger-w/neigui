@@ -465,3 +465,121 @@ describe("BubbleChartSvg — A1 Y-axis brush overlay (C7 🟢)", () => {
     expect(container.querySelector("[data-testid=bubble-brush-band]")).toBeNull();
   });
 });
+
+// C10 (🔴 Item 3): priceRange 過濾 — 泡泡只 render 在 [min, max] 內,軸不變。
+// 對齊 F11 axes-invariant 契約:filter 前後同一 broker id 的泡泡 cx/cy/r 一致,
+// 只是區間外的被移除。
+describe("BubbleChartSvg — C10 priceRange 過濾泡泡 (🔴 Item 3)", () => {
+  const trades: BrokerTrade[] = [
+    mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 80, sell: 0 }),
+    mkTrade({ broker: "B", broker_id: "B1", price: 105, buy: 60, sell: 0 }),
+    mkTrade({ broker: "C", broker_id: "C1", price: 110, buy: 40, sell: 0 }),
+    mkTrade({ broker: "D", broker_id: "D1", price: 115, buy: 20, sell: 0 }),
+  ];
+
+  it("priceRange=[103,108] → 只留 price 在 [103,108] 內的 bubble", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={trades}
+        width={400}
+        height={300}
+        priceRange={{ min: 103, max: 108 }}
+      />,
+    );
+    const circles = Array.from(container.querySelectorAll("circle"));
+    // 只有 B (price=105) 在 [103,108] 內
+    expect(circles).toHaveLength(1);
+    expect(circles[0]!.getAttribute("data-broker-id")).toBe("B1");
+  });
+
+  it("priceRange 過濾後 axes 位置不變(泡泡 cx/cy/r 跟未過濾同 broker 一致)", () => {
+    const { container: unfiltered } = render(
+      <BubbleChartSvg trades={trades} width={400} height={300} />,
+    );
+    const bBubbleUnfiltered = Array.from(
+      unfiltered.querySelectorAll("circle"),
+    ).find((c) => c.getAttribute("data-broker-id") === "B1");
+    expect(bBubbleUnfiltered).toBeTruthy();
+    const posUnfiltered = [
+      bBubbleUnfiltered!.getAttribute("cx"),
+      bBubbleUnfiltered!.getAttribute("cy"),
+      bBubbleUnfiltered!.getAttribute("r"),
+    ].join(",");
+
+    cleanup();
+
+    const { container: filtered } = render(
+      <BubbleChartSvg
+        trades={trades}
+        width={400}
+        height={300}
+        priceRange={{ min: 103, max: 108 }}
+      />,
+    );
+    const bBubbleFiltered = Array.from(
+      filtered.querySelectorAll("circle"),
+    ).find((c) => c.getAttribute("data-broker-id") === "B1");
+    expect(bBubbleFiltered).toBeTruthy();
+    const posFiltered = [
+      bBubbleFiltered!.getAttribute("cx"),
+      bBubbleFiltered!.getAttribute("cy"),
+      bBubbleFiltered!.getAttribute("r"),
+    ].join(",");
+
+    // 軸不變 → 同一 broker 泡泡的 pixel 位置完全一致
+    expect(posFiltered).toBe(posUnfiltered);
+  });
+
+  it("priceRange 內完全無成交 → 顯示 fallback 提示", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={trades}
+        width={400}
+        height={300}
+        priceRange={{ min: 200, max: 300 }}
+      />,
+    );
+    expect(container.querySelectorAll("circle")).toHaveLength(0);
+    expect(container.textContent).toContain("此價位區間");
+  });
+
+  it("priceRange=null → 全 render(對齊 default)", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={trades}
+        width={400}
+        height={300}
+        priceRange={null}
+      />,
+    );
+    expect(container.querySelectorAll("circle").length).toBe(4);
+  });
+
+  // C11: 分點選擇 + brushRange 有效但 priceRange 傳 null(caller 決定停用 filter)
+  //   → broker 的所有 bubble 全 render,不受 range 限制;brushRange 仍畫 band。
+  it("selectedBroker + brushRange 有效 + priceRange=null → broker 全成交點顯示,band 保留", () => {
+    const multi: BrokerTrade[] = [
+      mkTrade({ broker: "X", broker_id: "X1", price: 100, buy: 50, sell: 0 }),
+      mkTrade({ broker: "X", broker_id: "X1", price: 105, buy: 30, sell: 0 }),
+      mkTrade({ broker: "X", broker_id: "X1", price: 110, buy: 20, sell: 0 }),
+      mkTrade({ broker: "Y", broker_id: "Y1", price: 105, buy: 40, sell: 0 }),
+    ];
+    const { container } = render(
+      <BubbleChartSvg
+        trades={multi}
+        width={400}
+        height={300}
+        selectedBroker="X"
+        brushRange={{ min: 104, max: 106 }}
+        priceRange={null}
+      />,
+    );
+    // X 的三筆(價位 100 / 105 / 110)全 render,即使 brushRange 只涵蓋 105
+    const bubbles = Array.from(container.querySelectorAll("circle")).filter(
+      (c) => c.getAttribute("data-broker-id") === "X1",
+    );
+    expect(bubbles).toHaveLength(3);
+    // brushRange band 仍在
+    expect(container.querySelector("[data-testid=bubble-brush-band]")).toBeTruthy();
+  });
+});

@@ -483,3 +483,254 @@ describe("ChipBubbleView — A1 Y-axis brush integration (C7 🟢)", () => {
     });
   });
 });
+
+// C10 (🟢 Item 4): 手動輸入價位區間 mini form。
+describe("ChipBubbleView — C10 手動輸入區間 (🟢 Item 4)", () => {
+  it("header 有「輸入區間」trigger,點擊後 panel 出現", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(trades)} />,
+    );
+    const trigger = container.querySelector(
+      "[data-testid=bubble-manual-range-trigger]",
+    ) as HTMLButtonElement | null;
+    expect(trigger).toBeTruthy();
+    fireEvent.click(trigger!);
+    expect(
+      container.querySelector("[data-testid=manual-range-panel]"),
+    ).toBeTruthy();
+  });
+
+  it("輸入合法 min/max + 套用 → brushRange 被設定(brush-summary 出現)", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(trades)} />,
+    );
+    fireEvent.click(
+      container.querySelector(
+        "[data-testid=bubble-manual-range-trigger]",
+      ) as HTMLButtonElement,
+    );
+    const minInput = container.querySelector(
+      "[data-testid=manual-range-min]",
+    ) as HTMLInputElement;
+    const maxInput = container.querySelector(
+      "[data-testid=manual-range-max]",
+    ) as HTMLInputElement;
+    fireEvent.change(minInput, { target: { value: "100" } });
+    fireEvent.change(maxInput, { target: { value: "102" } });
+    const applyBtn = container.querySelector(
+      "[data-testid=manual-range-apply]",
+    ) as HTMLButtonElement;
+    expect(applyBtn.disabled).toBe(false);
+    fireEvent.click(applyBtn);
+    await waitFor(() => {
+      if (!container.querySelector("[data-testid=brush-summary]")) {
+        throw new Error("brush-summary not shown after manual apply");
+      }
+    });
+    // input panel closed
+    expect(
+      container.querySelector("[data-testid=manual-range-panel]"),
+    ).toBeNull();
+  });
+
+  it("min >= max → 套用按鈕 disabled", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(trades)} />,
+    );
+    fireEvent.click(
+      container.querySelector(
+        "[data-testid=bubble-manual-range-trigger]",
+      ) as HTMLButtonElement,
+    );
+    fireEvent.change(
+      container.querySelector(
+        "[data-testid=manual-range-min]",
+      ) as HTMLInputElement,
+      { target: { value: "105" } },
+    );
+    fireEvent.change(
+      container.querySelector(
+        "[data-testid=manual-range-max]",
+      ) as HTMLInputElement,
+      { target: { value: "100" } },
+    );
+    const applyBtn = container.querySelector(
+      "[data-testid=manual-range-apply]",
+    ) as HTMLButtonElement;
+    expect(applyBtn.disabled).toBe(true);
+  });
+
+  it("取消 → panel 關閉,brushRange 保持原狀", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(trades)} />,
+    );
+    fireEvent.click(
+      container.querySelector(
+        "[data-testid=bubble-manual-range-trigger]",
+      ) as HTMLButtonElement,
+    );
+    fireEvent.click(
+      container.querySelector(
+        "[data-testid=manual-range-cancel]",
+      ) as HTMLButtonElement,
+    );
+    expect(
+      container.querySelector("[data-testid=manual-range-panel]"),
+    ).toBeNull();
+    expect(container.querySelector("[data-testid=brush-summary]")).toBeNull();
+  });
+});
+
+// C10 (🟢 Item 5): help '?' trigger 存在。popover 內容走 Radix Portal,
+// jsdom 環境 Portal fireEvent.click 觸發成本高;測 trigger 存在 + aria-label 即可。
+describe("ChipBubbleView — C10 help '?' icon (🟢 Item 5)", () => {
+  it("header 右上角有 help '?' trigger 按鈕,aria-label 為使用說明", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(trades)} />,
+    );
+    const help = container.querySelector(
+      "[data-testid=bubble-help-trigger]",
+    ) as HTMLButtonElement | null;
+    expect(help).toBeTruthy();
+    expect(help!.getAttribute("aria-label")).toBe("泡泡圖使用說明");
+  });
+});
+
+// C10 (🔴 Item 3 擴充):brushRange 設定後,分點計數 header 同步只算區間內。
+// (Trade list 本身的 row 過濾靠 buildTradeRows 純函式覆蓋;右側 TradeList 走
+// react-virtual,jsdom 無 layout 幾何,rows 不 render — 用 header 可觀察值驗證。)
+describe("ChipBubbleView — brushRange 同步右側計數 header", () => {
+  it("套用區間 [101.5, 102.5](涵蓋 Bravo@102)→ header 顯「此區間 1 個分點」", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    fireEvent.click(
+      container.querySelector(
+        "[data-testid=bubble-manual-range-trigger]",
+      ) as HTMLButtonElement,
+    );
+    fireEvent.change(
+      container.querySelector(
+        "[data-testid=manual-range-min]",
+      ) as HTMLInputElement,
+      { target: { value: "101.5" } },
+    );
+    fireEvent.change(
+      container.querySelector(
+        "[data-testid=manual-range-max]",
+      ) as HTMLInputElement,
+      { target: { value: "102.5" } },
+    );
+    fireEvent.click(
+      container.querySelector(
+        "[data-testid=manual-range-apply]",
+      ) as HTMLButtonElement,
+    );
+    await waitFor(() => {
+      if (!container.querySelector("[data-testid=brush-summary]")) {
+        throw new Error("summary not shown");
+      }
+    });
+    const text = container.textContent ?? "";
+    expect(text.includes("此區間")).toBe(true);
+    expect(text.includes("今日共")).toBe(false);
+    // 只涵蓋 Bravo → uniqueBrokerCount = 1
+    expect(text.includes("1 個分點")).toBe(true);
+  });
+
+  // C11 (🔴):broker 選擇時 range 退為視覺參考 — brush-summary 顯示 hint,
+  // header 走「查看 X 於籌碼總覽 →」而非「此區間 N 個分點」。
+  it("已選 broker + 有 brushRange → brush-summary 顯示 range-parked hint", async () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        onJumpToOverview={vi.fn()}
+      />,
+    );
+    // 先套區間
+    fireEvent.click(
+      container.querySelector(
+        "[data-testid=bubble-manual-range-trigger]",
+      ) as HTMLButtonElement,
+    );
+    fireEvent.change(
+      container.querySelector(
+        "[data-testid=manual-range-min]",
+      ) as HTMLInputElement,
+      { target: { value: "101.5" } },
+    );
+    fireEvent.change(
+      container.querySelector(
+        "[data-testid=manual-range-max]",
+      ) as HTMLInputElement,
+      { target: { value: "102.5" } },
+    );
+    fireEvent.click(
+      container.querySelector(
+        "[data-testid=manual-range-apply]",
+      ) as HTMLButtonElement,
+    );
+    await waitFor(() => {
+      if (!container.querySelector("[data-testid=brush-summary]")) {
+        throw new Error("summary not shown");
+      }
+    });
+    // 再選 broker
+    await selectBrokerViaSearch("Bravo");
+    await waitFor(() => {
+      if (!container.querySelector("[data-testid=brush-range-parked]")) {
+        throw new Error("range-parked hint not shown");
+      }
+    });
+    // range 仍在(band + summary),但 header 改走 broker 路線
+    expect(container.querySelector("[data-testid=brush-summary]")).toBeTruthy();
+    expect(
+      container.querySelector('[data-testid="bubble-jump-to-overview"]'),
+    ).toBeTruthy();
+  });
+
+  it("清除 brush → header 回「今日共 3 個分點」", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    fireEvent.click(
+      container.querySelector(
+        "[data-testid=bubble-manual-range-trigger]",
+      ) as HTMLButtonElement,
+    );
+    fireEvent.change(
+      container.querySelector(
+        "[data-testid=manual-range-min]",
+      ) as HTMLInputElement,
+      { target: { value: "101.5" } },
+    );
+    fireEvent.change(
+      container.querySelector(
+        "[data-testid=manual-range-max]",
+      ) as HTMLInputElement,
+      { target: { value: "102.5" } },
+    );
+    fireEvent.click(
+      container.querySelector(
+        "[data-testid=manual-range-apply]",
+      ) as HTMLButtonElement,
+    );
+    await waitFor(() => {
+      if (!container.querySelector("[data-testid=brush-summary]")) {
+        throw new Error("summary not shown");
+      }
+    });
+    fireEvent.click(
+      container.querySelector("[data-testid=brush-clear]") as HTMLButtonElement,
+    );
+    await waitFor(() => {
+      if (container.querySelector("[data-testid=brush-summary]")) {
+        throw new Error("summary still visible after clear");
+      }
+    });
+    const text = container.textContent ?? "";
+    expect(text.includes("今日共")).toBe(true);
+    expect(text.includes("3 個分點")).toBe(true);
+  });
+});

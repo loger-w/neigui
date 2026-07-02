@@ -11,6 +11,7 @@ import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg"
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
 import { BrokerSearch } from "./BrokerSearch";
+import { BubbleHelpButton } from "./BubbleHelpButton";
 import { LoadingSpinner } from "./ui/loading-spinner";
 
 interface Props {
@@ -53,12 +54,15 @@ export function ChipBubbleView({
   const [sellSort, setSellSort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
   // C7 A1: Y 軸 brush 選價位 range。null = 無 brush;svg drag end 後 setBrushRange。
   const [brushRange, setBrushRange] = useState<{ min: number; max: number } | null>(null);
+  // C10 (🟢 Item 4): 手動輸入區間開啟狀態。true = 顯示輸入面板(可能有初值 = brushRange)。
+  const [manualInputOpen, setManualInputOpen] = useState<boolean>(false);
 
   // Reset selection ONLY on symbol change (NOT on date / bubbleData change).
   // C7 A1: brush 也一起清 —— 避免換股後舊 range 殘留誤導。
   useEffect(() => {
     setSelectedBrokerId(null);
     setBrushRange(null);
+    setManualInputOpen(false);
   }, [symbol]);
 
   const selectedBrokerName = useMemo(
@@ -83,15 +87,30 @@ export function ChipBubbleView({
     );
   }, []);
 
+  // C10 (🔴 Item 3 擴充):brushRange 設定後,右側 trade list / price bar /
+  // broker totals / 分點計數統一 filter。
+  // C11 (🔴):分點選擇時 range 退為視覺參考 — 若使用者已選 broker,即使有
+  //   brushRange 也不預過濾(範圍框仍畫,但資料回全 broker)。目的是解「先框
+  //   價區、後點分點想看全價位」的 UX,不需要清 range。selectedBrokerId 為 null
+  //   時走原 range 過濾邏輯。brushSummary 仍用原始 trades 算 summary。
+  const rangeActiveForFilter = brushRange !== null && !selectedBrokerId;
+  const rangeTrades = useMemo(() => {
+    if (!bubbleData) return [];
+    if (!rangeActiveForFilter || !brushRange) return bubbleData.trades;
+    return bubbleData.trades.filter(
+      (t) => t.price >= brushRange.min && t.price <= brushRange.max,
+    );
+  }, [bubbleData, brushRange, rangeActiveForFilter]);
+
   const uniqueBrokerCount = useMemo(
-    () => new Set(bubbleData?.trades.map((t) => t.broker) ?? []).size,
-    [bubbleData],
+    () => new Set(rangeTrades.map((t) => t.broker)).size,
+    [rangeTrades],
   );
 
-  // C6 A3: 選中分點的總買/賣張 + 精確成交金額。
+  // C6 A3: 選中分點的總買/賣張 + 精確成交金額。brushRange 有效時只算區間內。
   const brokerTotals = useMemo(
-    () => computeBrokerTotals(bubbleData?.trades ?? [], selectedBrokerId),
-    [bubbleData, selectedBrokerId],
+    () => computeBrokerTotals(rangeTrades, selectedBrokerId),
+    [rangeTrades, selectedBrokerId],
   );
 
   const bubbleRef = useRef<HTMLDivElement | null>(null);
@@ -129,6 +148,7 @@ export function ChipBubbleView({
       if (broker === null) {
         setSelectedBrokerId(null);
         setBrushRange(null);
+        setManualInputOpen(false);
         return;
       }
       const id =
@@ -140,33 +160,43 @@ export function ChipBubbleView({
   );
 
   // C7 A1: brush drag end callback。存 range → 顯示 summary panel。
+  // C10 (🟢 Item 4): drag brush 完成時關閉手動輸入(避免兩個面板 confusion)。
   const handleYBrush = useCallback((priceMin: number, priceMax: number) => {
     setBrushRange({ min: priceMin, max: priceMax });
+    setManualInputOpen(false);
   }, []);
 
-  // C7 A1: ESC 鍵清 brush(對齊 SC-A1c)。
+  // C7 A1: ESC 鍵清 brush + 手動輸入面板(對齊 SC-A1c)。
   useEffect(() => {
-    if (!brushRange) return;
+    if (!brushRange && !manualInputOpen) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setBrushRange(null);
+      if (e.key === "Escape") {
+        setBrushRange(null);
+        setManualInputOpen(false);
+      }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [brushRange]);
+  }, [brushRange, manualInputOpen]);
+
+  const handleManualApply = useCallback((minStr: string, maxStr: string) => {
+    const min = parseFloat(minStr);
+    const max = parseFloat(maxStr);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min >= max) return;
+    setBrushRange({ min, max });
+    setManualInputOpen(false);
+  }, []);
 
   const brushSummary = useMemo(() => {
     if (!brushRange || !bubbleData) return null;
     return summarizeTradesByPriceRange(bubbleData.trades, brushRange.min, brushRange.max);
   }, [brushRange, bubbleData]);
 
-  const allPriceAggs = useMemo(() => {
-    if (!bubbleData) return [];
-    return aggregateByPrice(bubbleData.trades);
-  }, [bubbleData]);
+  const allPriceAggs = useMemo(() => aggregateByPrice(rangeTrades), [rangeTrades]);
 
   const priceAggs = useMemo(() => {
-    if (!bubbleData || !selectedBrokerName) return allPriceAggs;
-    const filtered = bubbleData.trades.filter((t) => t.broker === selectedBrokerName);
+    if (!selectedBrokerName) return allPriceAggs;
+    const filtered = rangeTrades.filter((t) => t.broker === selectedBrokerName);
     if (filtered.length === 0) return allPriceAggs;
     const filteredAggs = aggregateByPrice(filtered);
     const filteredPrices = new Set(filteredAggs.map((a) => a.price));
@@ -175,17 +205,15 @@ export function ChipBubbleView({
         ? filteredAggs.find((f) => f.price === a.price)!
         : { price: a.price, buy: 0, sell: 0 },
     );
-  }, [bubbleData, selectedBrokerName, allPriceAggs]);
+  }, [rangeTrades, selectedBrokerName, allPriceAggs]);
 
   // Bug fix: filter must precede the top-N slice. Building the rows then
   // slicing drops every row that fell behind the global top-200 cap, which
   // was hiding most of a small-volume broker's price levels after filter.
-  const { buyRows: filteredBuyRows, sellRows: filteredSellRows } = useMemo(() => {
-    if (!bubbleData) return { buyRows: [] as TradeRow[], sellRows: [] as TradeRow[] };
-    return buildTradeRows(
-      bubbleData.trades, selectedBrokerName, MAX_TRADE_ROWS, buySort, sellSort,
-    );
-  }, [bubbleData, selectedBrokerName, buySort, sellSort]);
+  const { buyRows: filteredBuyRows, sellRows: filteredSellRows } = useMemo(
+    () => buildTradeRows(rangeTrades, selectedBrokerName, MAX_TRADE_ROWS, buySort, sellSort),
+    [rangeTrades, selectedBrokerName, buySort, sellSort],
+  );
 
   // C1 🔵: BrokerSearch onChange 回傳 name;此 wrapper 轉 id set state。
   const handleBrokerSearchChange = useCallback(
@@ -228,7 +256,7 @@ export function ChipBubbleView({
             )
           ) : (
             <span className="text-xs text-ink-dim">
-              今日共 <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
+              {brushRange ? "此區間" : "今日共"} <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
             </span>
           )}
           {selectedBrokerId && (
@@ -250,6 +278,20 @@ export function ChipBubbleView({
               </span>
             </div>
           )}
+          {/* C10 (🟢 Item 4 + 5):手動輸入區間 trigger + Help '?' icon 靠右 */}
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            {bubbleData && (
+              <button
+                type="button"
+                data-testid="bubble-manual-range-trigger"
+                onClick={() => setManualInputOpen(true)}
+                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer"
+              >
+                輸入區間
+              </button>
+            )}
+            <BubbleHelpButton />
+          </div>
         </div>
         <div ref={bubbleRef} className="flex-1 min-h-0 overflow-hidden relative">
           {!bubbleData && !loading ? (
@@ -268,6 +310,7 @@ export function ChipBubbleView({
               intradayPoints={intradayPoints}
               onYBrush={handleYBrush}
               brushRange={brushRange}
+              priceRange={rangeActiveForFilter ? brushRange : null}
             />
           ) : null}
           {loading && symbol && (
@@ -280,7 +323,7 @@ export function ChipBubbleView({
               載入 {symbol} 泡泡圖中…
             </div>
           )}
-          {brushRange && brushSummary && (
+          {brushRange && brushSummary && !manualInputOpen && (
             <div
               data-testid="brush-summary"
               className="absolute right-4 top-4 z-40 bg-bg-deep/95 border border-accent px-3 py-2 rounded shadow-lg text-xs"
@@ -297,6 +340,14 @@ export function ChipBubbleView({
               <div className="text-ink-muted tabular-nums">
                 買 {fmtVol(brushSummary.buyLots)} / 賣 {fmtVol(brushSummary.sellLots)} 張
               </div>
+              {selectedBrokerId && (
+                <div
+                  data-testid="brush-range-parked"
+                  className="mt-1 text-2xs text-ink-dim italic"
+                >
+                  分點選擇中,區間僅作參考(右側資料顯示全部價位)
+                </div>
+              )}
               <div className="flex gap-3 mt-2">
                 {onJumpToOverview && brushSummary.brokerIds.length > 0 && (
                   <button
@@ -310,6 +361,14 @@ export function ChipBubbleView({
                 )}
                 <button
                   type="button"
+                  data-testid="brush-edit"
+                  onClick={() => setManualInputOpen(true)}
+                  className="text-ink-muted hover:text-accent cursor-pointer"
+                >
+                  編輯
+                </button>
+                <button
+                  type="button"
                   data-testid="brush-clear"
                   onClick={() => setBrushRange(null)}
                   className="text-ink-dim hover:text-bear cursor-pointer"
@@ -318,6 +377,15 @@ export function ChipBubbleView({
                 </button>
               </div>
             </div>
+          )}
+          {manualInputOpen && (
+            <PriceRangeInputPanel
+              initialMin={brushRange?.min ?? null}
+              initialMax={brushRange?.max ?? null}
+              closePrice={closePrice}
+              onApply={handleManualApply}
+              onCancel={() => setManualInputOpen(false)}
+            />
           )}
         </div>
       </div>
@@ -384,6 +452,98 @@ export function ChipBubbleView({
 // line-height ≈ 22px). Used by the virtualizer to compute scroll bounds.
 // If the row styling changes (padding/font-size/line-height), update this.
 const ROW_HEIGHT_PX = 22;
+
+// C10 (🟢 Item 4): 手動輸入價位區間 mini form。onApply 只在兩個值 finite +
+// min < max 時觸發(在 parent handleManualApply 檢查)。空值 / NaN 由 parent
+// 靜默 reject,不彈錯誤(輸入中間態很常見)。
+function PriceRangeInputPanel({
+  initialMin,
+  initialMax,
+  closePrice,
+  onApply,
+  onCancel,
+}: {
+  initialMin: number | null;
+  initialMax: number | null;
+  closePrice?: number;
+  onApply: (minStr: string, maxStr: string) => void;
+  onCancel: () => void;
+}) {
+  const [minStr, setMinStr] = useState<string>(
+    initialMin !== null ? initialMin.toFixed(2) : "",
+  );
+  const [maxStr, setMaxStr] = useState<string>(
+    initialMax !== null ? initialMax.toFixed(2) : "",
+  );
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onApply(minStr, maxStr);
+  };
+
+  const min = parseFloat(minStr);
+  const max = parseFloat(maxStr);
+  const valid = Number.isFinite(min) && Number.isFinite(max) && min < max;
+
+  return (
+    <form
+      data-testid="manual-range-panel"
+      onSubmit={handleSubmit}
+      className="absolute right-4 top-4 z-40 bg-bg-deep/95 border border-accent px-3 py-2 rounded shadow-lg text-xs w-[240px]"
+    >
+      <div className="text-ink font-medium mb-2">輸入價位區間</div>
+      <div className="flex items-center gap-1.5 mb-2">
+        <input
+          type="number"
+          step="0.05"
+          inputMode="decimal"
+          value={minStr}
+          onChange={(e) => setMinStr(e.target.value)}
+          placeholder="下限"
+          aria-label="價位下限"
+          data-testid="manual-range-min"
+          className="w-20 h-7 px-1.5 tabular-nums bg-bg border border-line rounded text-ink placeholder:text-ink-dim focus:outline-none focus:border-accent"
+          autoFocus
+        />
+        <span className="text-ink-dim">～</span>
+        <input
+          type="number"
+          step="0.05"
+          inputMode="decimal"
+          value={maxStr}
+          onChange={(e) => setMaxStr(e.target.value)}
+          placeholder="上限"
+          aria-label="價位上限"
+          data-testid="manual-range-max"
+          className="w-20 h-7 px-1.5 tabular-nums bg-bg border border-line rounded text-ink placeholder:text-ink-dim focus:outline-none focus:border-accent"
+        />
+      </div>
+      {closePrice !== undefined && (
+        <div className="text-2xs text-ink-dim mb-2 tabular-nums">
+          參考收盤 {closePrice.toFixed(2)}
+        </div>
+      )}
+      <div className="flex items-center gap-3">
+        <button
+          type="submit"
+          data-testid="manual-range-apply"
+          disabled={!valid}
+          className="text-accent hover:text-ink underline underline-offset-2 cursor-pointer disabled:text-ink-dim disabled:cursor-not-allowed disabled:no-underline"
+        >
+          套用
+        </button>
+        <button
+          type="button"
+          data-testid="manual-range-cancel"
+          onClick={onCancel}
+          className="text-ink-dim hover:text-bear cursor-pointer"
+        >
+          取消
+        </button>
+      </div>
+    </form>
+  );
+}
 
 function SortHeader({
   label, sortKey, spec, side, onChange,
