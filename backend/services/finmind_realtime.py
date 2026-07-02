@@ -465,7 +465,8 @@ async def _fetch_eod_results(
     - component 為 None(compute 失敗 / empty-universe skip)不寫入 →
       下一 request 重算,不 pin 失敗
     - universe 變動 → digest 變 → 自然重算
-    - refresh=True → bypass cache 讀,refresh 照舊傳進 compute 鏈
+    - refresh=True → bypass cache 讀 + 傳進 compute 鏈(C2 後 snapshot 端
+      一律傳 False;此參數保留當手動強制重抓 EOD 的後門)
     - 各 component 的 try/except 範圍與 F6 stale 語意完全比照原 inline 版
     """
     cache_key = f"eod_results_{end_date.isoformat()}_{_universe_digest(allowed)}"
@@ -687,7 +688,11 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     # market-monitor-v2 P2/P3/P4 (SC-6) — 4 個 EOD compute,perf C1 起走
     # result-level cache(_fetch_eod_results)。F6 stale 語意 / 各 component
     # try/except 範圍 / None 降級全部維持原 inline 版契約。
-    eod = await _fetch_eod_results(clock.today(), allowed, primary_sector, refresh=refresh)
+    # perf C2 (🔴):refresh 不進 EOD — 「重新整理 = 看最新盤中」,EOD 是
+    # T-1 資料,end_date 前進自然失效;修正前 refresh=true 穿進 EOD fetcher
+    # = ~278s + 128 次 FinMind 呼叫。強制重抓後門 = 手動呼叫
+    # _fetch_eod_results(refresh=True) 或 bump _CACHE_VERSION_*。
+    eod = await _fetch_eod_results(clock.today(), allowed, primary_sector, refresh=False)
     breadth = eod.get("breadth")
     sector_breadth = eod.get("sector_breadth")
     sector_volume_ratio = eod.get("sector_volume_ratio")
