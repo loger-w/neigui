@@ -96,4 +96,12 @@ describe("MarketSectorAmountShare", () => {
     render(<MarketSectorAmountShare rows={rows} eodAsOf="2026-06-29" loaded={true} />);
     expect(screen.queryByText(/做多|做空|滿倉|減碼|加碼|看多|看空/)).toBeNull();
   });
+
+  it("loading 骨架 role=status + aria-label 載入中 (SC-10 / CR1-3)", () => {
+    render(<MarketSectorAmountShare rows={null} eodAsOf={null} loaded={false} />);
+    const root = screen.getByTestId("market-sector-amount-share");
+    const loadingEl = root.querySelector('[data-state="loading"]')!;
+    expect(loadingEl.getAttribute("role")).toBe("status");
+    expect(loadingEl.getAttribute("aria-label")).toBe("載入中");
+  });
 });

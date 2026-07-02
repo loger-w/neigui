@@ -111,4 +111,24 @@ describe("MarketBreadthPanel", () => {
     expect(root.querySelector('[data-state="loading"]')).toBeTruthy();
     expect(root.textContent).not.toContain("資料暫缺");
   });
+
+  it("loading 骨架 role=status + aria-label 載入中 (SC-10 / CR1-3)", () => {
+    render(<MarketBreadthPanel breadth={null} eodAsOf={null} loaded={false} />);
+    const root = screen.getByTestId("market-breadth-panel");
+    const loadingEl = root.querySelector('[data-state="loading"]')!;
+    expect(loadingEl.getAttribute("role")).toBe("status");
+    expect(loadingEl.getAttribute("aria-label")).toBe("載入中");
+  });
+
+  it("訊號槽 a11y:active dot aria-label『<label> 訊號觸發』,inactive dot aria-hidden=true (SC-10 / CR1-0)", () => {
+    const breadth: Breadth = { ...baseBreadth, thrust_dot: "above_plus_100" };
+    render(<MarketBreadthPanel breadth={breadth} eodAsOf="2026-06-29" loaded={true} />);
+    const thrust = screen.getByTestId("breadth-thrust-dot");
+    expect(thrust.getAttribute("aria-label")).toBe("±100 訊號觸發");
+
+    const root = screen.getByTestId("market-breadth-panel");
+    const inactiveDots = root.querySelectorAll('span[aria-hidden="true"]');
+    // centerline_cross 與 divergence_dot 皆 null(inactive),兩槽都應標 aria-hidden
+    expect(inactiveDots.length).toBe(2);
+  });
 });

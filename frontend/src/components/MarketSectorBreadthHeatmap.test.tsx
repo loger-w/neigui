@@ -115,4 +115,14 @@ describe("MarketSectorBreadthHeatmap", () => {
     );
     expect(screen.queryByText(/做多|做空|滿倉|減碼|加碼|看多|看空/)).toBeNull();
   });
+
+  it("loading 骨架 role=status + aria-label 載入中 (SC-10 / CR1-3)", () => {
+    render(
+      <MarketSectorBreadthHeatmap rows={null} eodAsOf={null} loaded={false} onSectorClick={() => {}} />,
+    );
+    const root = screen.getByTestId("market-sector-breadth-heatmap");
+    const loadingEl = root.querySelector('[data-state="loading"]')!;
+    expect(loadingEl.getAttribute("role")).toBe("status");
+    expect(loadingEl.getAttribute("aria-label")).toBe("載入中");
+  });
 });

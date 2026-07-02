@@ -76,6 +76,14 @@ describe("MarketSectorVolRatio", () => {
     expect(screen.queryByText(/做多|做空|滿倉|減碼|加碼|看多|看空/)).toBeNull();
   });
 
+  it("loading 骨架 role=status + aria-label 載入中 (SC-10 / CR1-3)", () => {
+    render(<MarketSectorVolRatio rows={null} eodAsOf={null} loaded={false} />);
+    const root = screen.getByTestId("market-sector-vol-ratio");
+    const loadingEl = root.querySelector('[data-state="loading"]')!;
+    expect(loadingEl.getAttribute("role")).toBe("status");
+    expect(loadingEl.getAttribute("aria-label")).toBe("載入中");
+  });
+
   it("照 props 序渲染 (契約事實 10)", () => {
     const rows: SectorVolumeRatioRow[] = [
       { sector: "B族群", today_vol_lots: 100000, vol_ratio: 1, flag: null },
