@@ -421,6 +421,24 @@ async def _fetch_sector_volume_ratio(
     return await sa.compute_sector_volume_ratio(end_date, universe, sector_map, refresh=refresh)
 
 
+async def _fetch_sector_amount_share(
+    end_date: date,
+    universe: set[str],
+    sector_map: dict[str, str],
+    refresh: bool = False,
+) -> list[dict] | None:
+    """market-monitor-v2 P4 (SC-6) — delegate to sector_aggregation.compute_sector_amount_share.
+
+    Empty universe → None (silent skip)。F6 sequel:exceptions propagate to
+    caller's try/except httpx.HTTPError only(aggregation empty prices → [] 不 raise)。
+    """
+    if not universe:
+        return None
+    from services import sector_aggregation as sa
+
+    return await sa.compute_sector_amount_share(end_date, universe, sector_map, refresh=refresh)
+
+
 async def _fetch_market_value_map(
     today: date | None = None,
     refresh: bool = False,
@@ -606,6 +624,16 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
         logger.warning("market snapshot: sector_volume_ratio compute failed: %s", exc)
         sector_volume_ratio = None
 
+    # market-monitor-v2 P4 (SC-6) — sector_amount_share (F6 sequel: fail 不動 stale;
+    # independent try/except from P3 twins; 共用 cache_key → serial near-zero cost)
+    try:
+        sector_amount_share = await _fetch_sector_amount_share(
+            clock.today(), allowed, primary_sector, refresh=refresh
+        )
+    except httpx.HTTPError as exc:
+        logger.warning("market snapshot: sector_amount_share compute failed: %s", exc)
+        sector_amount_share = None
+
     return {
         "as_of": now.isoformat(),
         "last_tick": last_tick.isoformat() if last_tick else None,
@@ -626,4 +654,6 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
         # market-monitor-v2 P3 (SC-6) — sector aggregations (None if compute failed)
         "sector_breadth": sector_breadth,
         "sector_volume_ratio": sector_volume_ratio,
+        # market-monitor-v2 P4 (SC-6) — sector amount share (None if compute failed)
+        "sector_amount_share": sector_amount_share,
     }
