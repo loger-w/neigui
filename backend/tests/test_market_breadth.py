@@ -372,6 +372,81 @@ class TestFetchTaiexSeriesFallback:
 
 
 # ---------------------------------------------------------------------------
+# perf snapshot-hot-path C3a — breadth_prices chunked JSONL cache
+# 痛點:單一 json.load/dump 是一個 C call,整份 1.5GB parse 持 GIL ~6-8s,
+# asyncio.to_thread 也救不了(2026-07-02 實驗:to_thread 下 ticker max gap
+# 6.35s;chunked 版 97ms)。sleep-mock 測不到 GIL(會釋放),此處只鎖
+# 格式結構 + roundtrip 行為;stall 上界由 real-env 探針量測把關。
+# ---------------------------------------------------------------------------
+
+
+class TestPricesCacheChunkedFormat:
+    def test_roundtrip(self) -> None:
+        rows = [
+            {"stock_id": "2330", "date": "2026-06-30", "close": 1.0},
+            {"stock_id": "2317", "date": "2026-06-30", "close": 2.0},
+        ]
+        mb._write_prices_cache("breadth_prices_rt", rows, "2026-06-30T10:00:00")
+        cached = mb._read_prices_cache("breadth_prices_rt")
+        assert cached is not None
+        assert cached["rows"] == rows
+        assert cached["fetched_at"] == "2026-06-30T10:00:00"
+
+    def test_rows_split_into_chunk_lines(self, monkeypatch) -> None:
+        """鎖 chunking 結構:GIL stall 上界 = 單 chunk parse 時間的前提是
+        rows 真的被切行,不是整包一行。"""
+        monkeypatch.setattr(mb, "_PRICES_CHUNK_ROWS", 2)
+        rows = [{"stock_id": str(i), "date": "2026-06-30", "close": float(i)} for i in range(5)]
+        mb._write_prices_cache("breadth_prices_chunk", rows, "2026-06-30T10:00:00")
+        text = mb._cache_path("breadth_prices_chunk").read_text(encoding="utf-8")
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        assert len(lines) == 1 + 3  # meta + ceil(5/2) chunks
+        cached = mb._read_prices_cache("breadth_prices_chunk")
+        assert cached is not None and cached["rows"] == rows
+
+    def test_version_mismatch_invalidates(self, monkeypatch) -> None:
+        mb._write_prices_cache("breadth_prices_ver", [], "2026-06-30T10:00:00")
+        monkeypatch.setattr(mb, "_CACHE_VERSION_BREADTH", mb._CACHE_VERSION_BREADTH + 1)
+        assert mb._read_prices_cache("breadth_prices_ver") is None
+
+    def test_legacy_single_doc_file_invalidates_cheaply(self) -> None:
+        """v1 legacy(atomic_write_json indent=2 單一文件)→ None,
+        不付整份 parse 成本(首行 `{` loads 立紅)。"""
+        from utils.cache import atomic_write_json as real_write
+
+        real_write(
+            mb._cache_path("breadth_prices_legacy"),
+            {"rows": [{"stock_id": "2330"}], "_cache_version": 1, "fetched_at": "x"},
+        )
+        assert mb._read_prices_cache("breadth_prices_legacy") is None
+
+    def test_missing_file_returns_none(self) -> None:
+        assert mb._read_prices_cache("breadth_prices_nope") is None
+
+    async def test_fetch_window_roundtrip_through_new_format(self, monkeypatch) -> None:
+        """整合:_do_fetch_prices 寫 → _fetch_daily_prices_window 讀,行為不變。"""
+
+        class FakeClient:
+            async def _get(self, url, params):
+                return [{"stock_id": "2330", "date": params["start_date"], "close": 1.0}]
+
+        end = date(2026, 6, 30)
+        start = end - timedelta(days=7)
+
+        async def fake_trading_days(end_d, n):
+            return [end]
+
+        monkeypatch.setattr(mb, "get_finmind", lambda: FakeClient())
+        monkeypatch.setattr(mb, "get_trading_days", fake_trading_days)
+
+        fetched = await mb._fetch_daily_prices_window(start, end, refresh=True)
+        assert fetched == [{"stock_id": "2330", "date": end.isoformat(), "close": 1.0}]
+        # 第二次(refresh=False)走 cache 讀,拿到同樣 rows
+        cached = await mb._fetch_daily_prices_window(start, end)
+        assert cached == fetched
+
+
+# ---------------------------------------------------------------------------
 # Batch B — SC-5 edge cases
 # ---------------------------------------------------------------------------
 

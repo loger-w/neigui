@@ -10,7 +10,9 @@ Design: .claude/feat/market-breadth-mcclellan/design.md v2
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import TypedDict
@@ -23,7 +25,12 @@ from utils.cache import atomic_write_json, chip_cache_dir, read_json
 logger = logging.getLogger(__name__)
 
 _FINMIND_BASE = "https://api.finmindtrade.com/api/v4"
-_CACHE_VERSION_BREADTH = 1
+# v2 (perf C3a):breadth_prices 改 chunked JSONL 格式(舊單一 JSON 文件全數作廢)
+_CACHE_VERSION_BREADTH = 2
+# 每 chunk 的 row 數:單 chunk json.loads/dumps 的 GIL hold ~65-100ms =
+# event loop stall 上界(單一 1.5GB 文件的 C parse 持 GIL ~6-8s,to_thread 救不了)
+_PRICES_CHUNK_ROWS = 100_000
+_PRICES_FORMAT = "prices_jsonl_v1"
 _BREADTH_TTL_HOURS = 24
 _SLOW_EMA_PERIOD = 39
 _FAST_EMA_PERIOD = 19
@@ -90,6 +97,62 @@ def _is_fresh(cached: dict, ttl_hours: float) -> bool:
     except ValueError:
         return False
     return datetime.now() - dt < timedelta(hours=ttl_hours)
+
+
+def _write_prices_cache(cache_key: str, rows: list[dict], fetched_at: str) -> None:
+    """perf C3a — breadth_prices 專用 chunked JSONL 原子寫入。
+
+    格式:line 1 = meta(version / format / fetched_at),line 2+ = 每
+    _PRICES_CHUNK_ROWS rows 一個 JSON array。逐 chunk dumps 讓 GIL 有
+    切換點(單一 json.dump 1.5GB 持 GIL ~數秒,event loop 全凍)。
+    在 asyncio.to_thread 內呼叫。
+    """
+    path = _cache_path(cache_key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    meta = {
+        "_cache_version": _CACHE_VERSION_BREADTH,
+        "format": _PRICES_FORMAT,
+        "fetched_at": fetched_at,
+    }
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(json.dumps(meta, ensure_ascii=False) + "\n")
+            for i in range(0, len(rows), _PRICES_CHUNK_ROWS):
+                f.write(json.dumps(rows[i : i + _PRICES_CHUNK_ROWS], ensure_ascii=False) + "\n")
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _read_prices_cache(cache_key: str) -> dict | None:
+    """perf C3a — 讀 chunked JSONL prices cache;非本格式 / 版本不符 → None。
+
+    Legacy 單一 JSON 文件(v1,indent=2)第一行是 `{` → loads 立紅 → None,
+    不付整份 parse 成本(cheap invalidate)。逐 chunk loads 讓 GIL 有切換點。
+    在 asyncio.to_thread 內呼叫。
+    """
+    path = _cache_path(cache_key)
+    if not path.exists():
+        return None
+    rows: list[dict] = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            # cap 1MB:合法 meta 行 <300B;超大單行(legacy 壓縮格式)截斷後
+            # loads 必失敗 → cheap invalidate
+            meta_line = f.readline(1_000_000)
+            meta = json.loads(meta_line)
+            if not isinstance(meta, dict) or meta.get("format") != _PRICES_FORMAT:
+                return None
+            if meta.get("_cache_version") != _CACHE_VERSION_BREADTH:
+                return None
+            for line in f:
+                if line.strip():
+                    rows.extend(json.loads(line))
+    except (json.JSONDecodeError, OSError, ValueError):
+        return None
+    return {"rows": rows, "fetched_at": meta.get("fetched_at", "")}
 
 
 async def _run_once(key: str, coro_fn):
@@ -322,7 +385,10 @@ async def _fetch_daily_prices_window(
     cache_key = f"breadth_prices_{start.isoformat()}_{end.isoformat()}"
     dedup_key = f"{cache_key}_r{int(refresh)}"
     if not refresh:
-        cached = _read_cache(cache_key)
+        # perf C3a:chunked JSONL + to_thread — 單一 json.load 是一個 C call
+        # 持 GIL 整份 parse(1.5GB ~6-8s,to_thread 也凍 loop);chunked 讀
+        # 讓 stall 上界縮到單 chunk ~100ms
+        cached = await asyncio.to_thread(_read_prices_cache, cache_key)
         if cached is not None and _is_fresh(cached, _BREADTH_TTL_HOURS):
             return cached.get("rows", [])
     return await _run_once(
@@ -351,9 +417,11 @@ async def _do_fetch_prices(start: date, end: date, cache_key: str) -> list[dict]
             start.isoformat(),
             end.isoformat(),
         )
-        _write_cache(
+        await asyncio.to_thread(
+            _write_prices_cache,
             cache_key,
-            {"rows": [], "fetched_at": datetime.now().isoformat(timespec="seconds")},
+            [],
+            datetime.now().isoformat(timespec="seconds"),
         )
         return []
 
@@ -378,9 +446,12 @@ async def _do_fetch_prices(start: date, end: date, cache_key: str) -> list[dict]
             )
             continue
         all_rows.extend(rows)
-    _write_cache(
+    # perf C3a:chunked 寫(單一 json.dump 1.5GB 同樣持 GIL 數秒)
+    await asyncio.to_thread(
+        _write_prices_cache,
         cache_key,
-        {"rows": all_rows, "fetched_at": datetime.now().isoformat(timespec="seconds")},
+        all_rows,
+        datetime.now().isoformat(timespec="seconds"),
     )
     return all_rows
 
