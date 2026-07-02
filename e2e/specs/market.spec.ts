@@ -35,4 +35,30 @@ test.describe("market mode", () => {
     await page.locator('[data-testid^="lb-row-"]').first().click();
     await expect(page.getByRole("heading", { name: "籌碼分析" })).toBeVisible();
   });
+
+  test("M4: v2 panels 空狀態渲染不 crash(SC-11b)", async ({ page }) => {
+    // 痛點:FAKE_FINMIND 缺全市場 TaiwanStockPrice window + TAIEX fixture,
+    // 四個 EOD 欄位必 null → panel 走「資料暫缺」降級。此 spec 鎖「null 不炸頁」
+    // (契約事實 2:頁級 error 不得 key 在四欄)。populated fixture 列 next-time(D-3)。
+    await expect(page.getByTestId(TESTIDS.marketBreadthPanel)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.marketSectorBreadthHeatmap)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.marketSectorAmountShare)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.marketSectorVolRatio)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.marketUniverseBanner)).toBeVisible();
+  });
+
+  test("M5: 經典檢視預設展開,舊 heatmap/leaderboard 可見(D-2,M1 顯性防回歸)", async ({ page }) => {
+    // 痛點:layout 重組把舊 panel 收進折疊區,若預設收合 M1 靜默失效。
+    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.marketLeaderboard)).toBeVisible();
+  });
+
+  test("M6: 折疊 toggle → 舊 panel hidden → 再點恢復(SC-9 hidden 慣例)", async ({ page }) => {
+    // 痛點:hidden attribute 慣例(保留 mount)— 若誤用條件 render,重展開會
+    // 重新 mount 重抓資料。assert hidden 而非 detached。
+    await page.getByTestId(TESTIDS.marketClassicToggle).click();
+    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeHidden();
+    await page.getByTestId(TESTIDS.marketClassicToggle).click();
+    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeVisible();
+  });
 });

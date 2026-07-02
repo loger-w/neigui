@@ -52,5 +52,15 @@ test.describe("@live upstream contract", () => {
     const body = await r.json();
     expect(body).toHaveProperty("sectors");
     expect(body).toHaveProperty("leaderboards");
+    // v2 四欄存在性(值可 null — EOD 降級獨立);known_gaps shape
+    expect(body).toHaveProperty("breadth");
+    expect(body).toHaveProperty("sector_breadth");
+    expect(body).toHaveProperty("sector_volume_ratio");
+    expect(body).toHaveProperty("sector_amount_share");
+    expect(body).toHaveProperty("universe_size");
+    if (body.breadth != null) {
+      expect(Array.isArray(body.breadth.known_gaps)).toBe(true);
+      expect(Array.isArray(body.breadth.mcclellan_series)).toBe(true);
+    }
   });
 });

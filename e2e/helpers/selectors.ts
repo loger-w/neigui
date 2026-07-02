@@ -4,7 +4,7 @@
  * TESTIDS / ROLES 集中宣告。所有 spec 透過此檔 import,**不**寫 magic string。
  *
  * **FOOTER ENFORCEMENT(R2-P2-3)**:
- * 這 10 root data-testid 是 spec 契約。改名 / 移除 / 拆 wrapper 等動作必須:
+ * 這 16 root data-testid 是 spec 契約。改名 / 移除 / 拆 wrapper 等動作必須:
  *   1. 同 PR 改 e2e/helpers/selectors.ts 對應 const
  *   2. 同 PR 改受影響的 e2e/specs/*.spec.ts
  *   3. CI E2E suite 是 enforcement gate;PR 紅 ≠ 接受
@@ -24,6 +24,13 @@ export const TESTIDS = {
   // market mode roots(Wave 1 已加)
   marketHeatmap: "market-heatmap",
   marketLeaderboard: "market-leaderboard",
+  // market v2 panels(feat/market-page-v2-frontend)
+  marketUniverseBanner: "market-universe-banner",
+  marketBreadthPanel: "market-breadth-panel",
+  marketSectorBreadthHeatmap: "market-sector-breadth-heatmap",
+  marketSectorAmountShare: "market-sector-amount-share",
+  marketSectorVolRatio: "market-sector-vol-ratio",
+  marketClassicToggle: "market-classic-toggle",
 
   // 既有(component 內既有,不在 Wave 1 modify scope)
   refreshSpinner: "refresh-spinner",
