@@ -224,6 +224,49 @@ export function computeBrokerTotals(
   return { buyLots, sellLots, buyAmount, sellAmount };
 }
 
+// C7 A1 (🟢): Y 軸 brush summary pure helper。
+export interface PriceRangeSummary {
+  priceMin: number;
+  priceMax: number;
+  /** distinct price levels within [priceMin, priceMax] inclusive */
+  priceLevelCount: number;
+  /** unique broker_id values that traded in the range (deduped) */
+  brokerIds: string[];
+  buyLots: number;
+  sellLots: number;
+}
+
+/**
+ * Summarize the trades that fall within a price range (inclusive on both
+ * ends). Used by the Y-axis brush to preview "hit N brokers in this band"
+ * and expose `brokerIds` to onJumpToOverview for bulk selection.
+ */
+export function summarizeTradesByPriceRange(
+  trades: BrokerTrade[],
+  priceMin: number,
+  priceMax: number,
+): PriceRangeSummary {
+  const inRange = trades.filter((t) => t.price >= priceMin && t.price <= priceMax);
+  const prices = new Set<number>();
+  const brokers = new Set<string>();
+  let buyLots = 0;
+  let sellLots = 0;
+  for (const t of inRange) {
+    prices.add(t.price);
+    if (t.broker_id) brokers.add(t.broker_id);
+    buyLots += t.buy;
+    sellLots += t.sell;
+  }
+  return {
+    priceMin,
+    priceMax,
+    priceLevelCount: prices.size,
+    brokerIds: [...brokers],
+    buyLots,
+    sellLots,
+  };
+}
+
 /**
  * Format 金額(元)into human string with tabular-nums-friendly widths:
  *  < 10,000        → `X,XXX 元`

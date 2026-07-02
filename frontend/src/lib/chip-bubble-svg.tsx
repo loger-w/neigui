@@ -1,7 +1,11 @@
 // Butterfly (mirror) bubble chart: sell bubbles left, buy bubbles right.
 // Pure functions exported for testing; component uses automatic JSX transform.
 
-import { memo, useCallback, useMemo, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  memo, useCallback, useMemo, useRef, useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type { BrokerTrade, IntradayPoint } from "./chip-data";
 import { CHIP } from "./chip-theme";
 import { IntradayLineLayer } from "./intraday-line-svg";
@@ -109,7 +113,15 @@ export interface BubbleChartProps {
    *  Y 軸 reuse 此圖 price scale,X 軸獨立為時間 09:00→13:30。
    *  缺則不畫,既有行為不變(向下相容)。 */
   intradayPoints?: IntradayPoint[] | null;
+  /** C7 A1: Y 軸 brush 選價位 range。overlay 在 Y 軸區域(x < PADDING.left)
+   *  drag ≥ 4px 觸發 callback(min, max price)。單擊或短拖曳不觸發。 */
+  onYBrush?: (priceMin: number, priceMax: number) => void;
+  /** C7 A1: 已提交的 brush range,persistent band 顯示。null / undefined 不畫。 */
+  brushRange?: { min: number; max: number } | null;
 }
+
+// C7 A1 (🟢): Y 軸 brush drag min threshold(px)。防手誤與單擊誤觸。
+const BRUSH_MIN_DRAG_PX = 4;
 
 interface Bubble {
   cx: number;
@@ -131,6 +143,8 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   onBubbleHover,
   onBubbleClick,
   intradayPoints,
+  onYBrush,
+  brushRange,
 }: BubbleChartProps) {
   // --- All hooks MUST be called before any conditional return ---
 
@@ -301,6 +315,80 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
     },
     [hitTest, onBubbleClick],
   );
+
+  // C7 A1 (🟢): Y 軸 brush drag state。drag 進行中用 svg-local y 座標暫存,
+  // pointerup 時反算 price via layoutRef 提供的 sY^-1,呼叫 onYBrush。
+  const [dragBrush, setDragBrush] = useState<
+    { startY: number; currentY: number } | null
+  >(null);
+
+  const yToPriceFromLayout = useCallback((y: number): number | null => {
+    const layout = layoutRef.current;
+    if (!layout) return null;
+    const yRange = layout.yHigh - layout.yLow;
+    if (yRange <= 0 || layout.cH <= 0) return null;
+    // clamp y to chart body
+    const clampedY = Math.max(
+      layout.paddingTop,
+      Math.min(y, layout.paddingTop + layout.cH),
+    );
+    return layout.yHigh - ((clampedY - layout.paddingTop) / layout.cH) * yRange;
+  }, []);
+
+  const handleBrushDown = useCallback(
+    (e: ReactPointerEvent<SVGRectElement>) => {
+      if (!onYBrush) return;
+      const svg = e.currentTarget.ownerSVGElement;
+      const svgRect = svg?.getBoundingClientRect();
+      if (!svgRect) return;
+      const localY = e.clientY - svgRect.top;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      setDragBrush({ startY: localY, currentY: localY });
+    },
+    [onYBrush],
+  );
+
+  const handleBrushMove = useCallback(
+    (e: ReactPointerEvent<SVGRectElement>) => {
+      if (!dragBrush) return;
+      const svg = e.currentTarget.ownerSVGElement;
+      const svgRect = svg?.getBoundingClientRect();
+      if (!svgRect) return;
+      const localY = e.clientY - svgRect.top;
+      setDragBrush({ startY: dragBrush.startY, currentY: localY });
+    },
+    [dragBrush],
+  );
+
+  const handleBrushUp = useCallback(
+    (e: ReactPointerEvent<SVGRectElement>) => {
+      if (!dragBrush || !onYBrush) {
+        setDragBrush(null);
+        return;
+      }
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch { /* pointer capture may already be released */ }
+      const distance = Math.abs(dragBrush.currentY - dragBrush.startY);
+      if (distance < BRUSH_MIN_DRAG_PX) {
+        // 抗誤觸:單擊或短拖曳不觸發
+        setDragBrush(null);
+        return;
+      }
+      const priceA = yToPriceFromLayout(dragBrush.startY);
+      const priceB = yToPriceFromLayout(dragBrush.currentY);
+      setDragBrush(null);
+      if (priceA === null || priceB === null) return;
+      const priceMin = Math.min(priceA, priceB);
+      const priceMax = Math.max(priceA, priceB);
+      onYBrush(priceMin, priceMax);
+    },
+    [dragBrush, onYBrush, yToPriceFromLayout],
+  );
+
+  const handleBrushCancel = useCallback(() => {
+    setDragBrush(null);
+  }, []);
 
   // --- End hooks section ---
 
@@ -644,11 +732,60 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         />
       </g>
 
-      {/* Invisible overlay for mouse interaction (single handler instead of per-bubble) */}
+      {/* C7 A1 (🟢): brush band 顯示 —— drag 進行中用 dragBrush 暫存區,
+          drag 結束後靠外層傳入 brushRange prop 顯示 persistent band。
+          Fill 用半透明琥珀色(對齊 CHIP.bull 系),不干擾泡泡讀圖。 */}
+      {dragBrush && (
+        <rect
+          data-testid="bubble-brush-band"
+          x={PADDING.left}
+          y={Math.min(dragBrush.startY, dragBrush.currentY)}
+          width={width - PADDING.left - PADDING.right}
+          height={Math.abs(dragBrush.currentY - dragBrush.startY)}
+          fill="rgba(240,180,41,0.1)"
+          stroke="rgba(240,180,41,0.5)"
+          strokeWidth={1}
+          pointerEvents="none"
+        />
+      )}
+      {!dragBrush && brushRange && brushRange.min < brushRange.max && (
+        <rect
+          data-testid="bubble-brush-band"
+          x={PADDING.left}
+          y={sY(brushRange.max)}
+          width={width - PADDING.left - PADDING.right}
+          height={sY(brushRange.min) - sY(brushRange.max)}
+          fill="rgba(240,180,41,0.1)"
+          stroke="rgba(240,180,41,0.5)"
+          strokeWidth={1}
+          pointerEvents="none"
+        />
+      )}
+
+      {/* C7 A1 (🟢): Y 軸 brush overlay —— 覆蓋 Y 軸 label 區(x < PADDING.left)。
+          drag ≥ 4px 才觸發 onYBrush;單擊不觸發。位置分離於主 overlay 之外,
+          不會吃掉 bubble hit test / click 空白清 selection 邏輯。 */}
       <rect
+        data-testid="bubble-yaxis-brush"
         x={0}
+        y={PADDING.top}
+        width={PADDING.left}
+        height={cH}
+        fill="transparent"
+        onPointerDown={handleBrushDown}
+        onPointerMove={handleBrushMove}
+        onPointerUp={handleBrushUp}
+        onPointerCancel={handleBrushCancel}
+        style={{ cursor: onYBrush ? "ns-resize" : "default", touchAction: "none" }}
+      />
+
+      {/* Invisible overlay for mouse interaction (bubble hit test + click empty
+          area). C7 A1: 從 x=PADDING.left 起,不佔 Y 軸 brush 區域,兩個 overlay
+          幾何分離,無事件衝突。 */}
+      <rect
+        x={PADDING.left}
         y={0}
-        width={width}
+        width={width - PADDING.left}
         height={height}
         fill="transparent"
         onMouseMove={handleMouseMove}

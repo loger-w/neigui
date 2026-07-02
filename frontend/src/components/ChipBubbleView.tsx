@@ -5,7 +5,7 @@ import type {
 } from "../lib/chip-data";
 import {
   DEFAULT_TRADE_SORT, aggregateByPrice, buildTradeRows, computeBrokerTotals,
-  fmtAmount, fmtVol,
+  fmtAmount, fmtVol, summarizeTradesByPriceRange,
 } from "../lib/chip-data";
 import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg";
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
@@ -50,10 +50,14 @@ export function ChipBubbleView({
   const [selectedBrokerId, setSelectedBrokerId] = useState<string | null>(null);
   const [buySort, setBuySort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
   const [sellSort, setSellSort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
+  // C7 A1: Y 軸 brush 選價位 range。null = 無 brush;svg drag end 後 setBrushRange。
+  const [brushRange, setBrushRange] = useState<{ min: number; max: number } | null>(null);
 
-  // Reset selection ONLY on symbol change (NOT on date / bubbleData change)
+  // Reset selection ONLY on symbol change (NOT on date / bubbleData change).
+  // C7 A1: brush 也一起清 —— 避免換股後舊 range 殘留誤導。
   useEffect(() => {
     setSelectedBrokerId(null);
+    setBrushRange(null);
   }, [symbol]);
 
   const selectedBrokerName = useMemo(
@@ -118,10 +122,12 @@ export function ChipBubbleView({
   );
 
   // C1 🔵: svg / TradeList 回傳 broker name;此 handler 轉 id set state。
+  // C7 A1: 點空白處(broker=null)同時清 brush,對齊 SC-A1c。
   const handleBubbleClick = useCallback(
     (broker: string | null) => {
       if (broker === null) {
         setSelectedBrokerId(null);
+        setBrushRange(null);
         return;
       }
       const id =
@@ -131,6 +137,26 @@ export function ChipBubbleView({
     },
     [bubbleData],
   );
+
+  // C7 A1: brush drag end callback。存 range → 顯示 summary panel。
+  const handleYBrush = useCallback((priceMin: number, priceMax: number) => {
+    setBrushRange({ min: priceMin, max: priceMax });
+  }, []);
+
+  // C7 A1: ESC 鍵清 brush(對齊 SC-A1c)。
+  useEffect(() => {
+    if (!brushRange) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setBrushRange(null);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [brushRange]);
+
+  const brushSummary = useMemo(() => {
+    if (!brushRange || !bubbleData) return null;
+    return summarizeTradesByPriceRange(bubbleData.trades, brushRange.min, brushRange.max);
+  }, [brushRange, bubbleData]);
 
   const allPriceAggs = useMemo(() => {
     if (!bubbleData) return [];
@@ -239,6 +265,8 @@ export function ChipBubbleView({
               onBubbleHover={handleBubbleHover}
               onBubbleClick={handleBubbleClick}
               intradayPoints={intradayPoints}
+              onYBrush={handleYBrush}
+              brushRange={brushRange}
             />
           ) : null}
           {loading && symbol && (
@@ -255,6 +283,45 @@ export function ChipBubbleView({
                 <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
               </svg>
               載入 {symbol} 泡泡圖中…
+            </div>
+          )}
+          {brushRange && brushSummary && (
+            <div
+              data-testid="brush-summary"
+              className="absolute right-4 top-4 z-40 bg-bg-deep/95 border border-accent px-3 py-2 rounded shadow-lg text-xs"
+            >
+              <div className="text-ink font-medium mb-1 tabular-nums">
+                {brushRange.min.toFixed(2)} – {brushRange.max.toFixed(2)}
+                <span className="text-ink-dim ml-2">
+                  ({brushSummary.priceLevelCount} 檔價位)
+                </span>
+              </div>
+              <div className="text-ink-muted">
+                涵蓋 {brushSummary.brokerIds.length} 個分點
+              </div>
+              <div className="text-ink-muted tabular-nums">
+                買 {fmtVol(brushSummary.buyLots)} / 賣 {fmtVol(brushSummary.sellLots)} 張
+              </div>
+              <div className="flex gap-3 mt-2">
+                {onJumpToOverview && brushSummary.brokerIds.length > 0 && (
+                  <button
+                    type="button"
+                    data-testid="brush-apply-filter"
+                    onClick={() => onJumpToOverview(brushSummary.brokerIds)}
+                    className="text-accent hover:text-ink underline underline-offset-2 cursor-pointer"
+                  >
+                    篩選這 {brushSummary.brokerIds.length} 個分點 →
+                  </button>
+                )}
+                <button
+                  type="button"
+                  data-testid="brush-clear"
+                  onClick={() => setBrushRange(null)}
+                  className="text-ink-dim hover:text-bear cursor-pointer"
+                >
+                  清除
+                </button>
+              </div>
             </div>
           )}
         </div>

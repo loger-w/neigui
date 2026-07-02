@@ -9,6 +9,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { ChipBubbleView } from "./ChipBubbleView";
 import type { BrokerTrade, ChipBubbleData } from "../lib/chip-data";
 
+// C7 A1 test 需要 BubbleChartSvg 真正 render(Y-axis brush overlay 從裡面出)。
+// jsdom 沒 layout → useContainerSize 回 {0,0} → svg gate 掉。mock 讓 A1 tests
+// 能 exercise brush 路徑。既有 F2 sort header tests 不依賴 svg render,不受影響。
+vi.mock("../hooks/useContainerSize", () => ({
+  useContainerSize: () => ({ width: 400, height: 300 }),
+}));
+
 afterEach(() => cleanup());
 
 // jsdom lacks ResizeObserver; useContainerSize would otherwise throw on
@@ -329,5 +336,114 @@ describe("ChipBubbleView — A3 分點總買/賣張/金額 (C6 🟢)", () => {
     expect(text.includes("30")).toBe(true);       // sell lots
     expect(text.includes("100 萬")).toBe(true);    // buyAmount
     expect(text.includes("300 萬")).toBe(true);    // sellAmount
+  });
+});
+
+// A1 (C7 🟢): Y-axis brush 端到端流程(ChipBubbleView 整合 svg + summary panel)。
+function stubPointerCaptureOn(el: Element) {
+  if (typeof (el as unknown as { setPointerCapture?: unknown }).setPointerCapture !== "function") {
+    (el as unknown as { setPointerCapture: (id: number) => void }).setPointerCapture = () => {};
+    (el as unknown as { releasePointerCapture: (id: number) => void }).releasePointerCapture = () => {};
+  }
+}
+
+async function triggerBrush(container: HTMLElement) {
+  const overlay = await waitFor(() => {
+    const el = container.querySelector("[data-testid=bubble-yaxis-brush]") as SVGRectElement | null;
+    if (!el) throw new Error("brush overlay not rendered");
+    return el;
+  });
+  stubPointerCaptureOn(overlay);
+  fireEvent.pointerDown(overlay, { clientY: 50, pointerId: 1 });
+  fireEvent.pointerMove(overlay, { clientY: 200, pointerId: 1 });
+  fireEvent.pointerUp(overlay, { clientY: 200, pointerId: 1 });
+}
+
+describe("ChipBubbleView — A1 Y-axis brush integration (C7 🟢)", () => {
+  it("brush drag 完成 → summary panel 出現", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await triggerBrush(container);
+    await waitFor(() => {
+      if (!container.querySelector('[data-testid="brush-summary"]')) {
+        throw new Error("summary not shown yet");
+      }
+    });
+  });
+
+  it("summary panel 內「篩選這 N 個分點」button → onJumpToOverview 收 brokerIds array", async () => {
+    const onJump = vi.fn();
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        onJumpToOverview={onJump}
+      />,
+    );
+    await triggerBrush(container);
+    const applyBtn = await waitFor(() => {
+      const el = container.querySelector('[data-testid="brush-apply-filter"]') as HTMLButtonElement | null;
+      if (!el) throw new Error("apply button not visible");
+      return el;
+    });
+    fireEvent.click(applyBtn);
+    expect(onJump).toHaveBeenCalledTimes(1);
+    const arg = onJump.mock.calls[0]![0];
+    expect(Array.isArray(arg)).toBe(true);
+  });
+
+  it("summary panel 「清除」button → summary 消失", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await triggerBrush(container);
+    const clearBtn = await waitFor(() => {
+      const el = container.querySelector('[data-testid="brush-clear"]') as HTMLButtonElement | null;
+      if (!el) throw new Error("clear button not visible");
+      return el;
+    });
+    fireEvent.click(clearBtn);
+    await waitFor(() => {
+      if (container.querySelector('[data-testid="brush-summary"]')) {
+        throw new Error("summary still visible");
+      }
+    });
+  });
+
+  it("ESC 鍵 → summary 消失", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await triggerBrush(container);
+    await waitFor(() => {
+      if (!container.querySelector('[data-testid="brush-summary"]')) {
+        throw new Error("summary not visible pre-ESC");
+      }
+    });
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      if (container.querySelector('[data-testid="brush-summary"]')) {
+        throw new Error("summary still visible after ESC");
+      }
+    });
+  });
+
+  it("symbol 變更 → brush range 一併清空", async () => {
+    const { container, rerender } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await triggerBrush(container);
+    await waitFor(() => {
+      if (!container.querySelector('[data-testid="brush-summary"]')) {
+        throw new Error("summary not visible pre-symbol-change");
+      }
+    });
+    rerender(<ChipBubbleView symbol="2454" bubbleData={mkData(namedTrades)} />);
+    await waitFor(() => {
+      if (container.querySelector('[data-testid="brush-summary"]')) {
+        throw new Error("summary still visible after symbol change");
+      }
+    });
   });
 });

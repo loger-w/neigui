@@ -1,8 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { BubbleChartSvg } from "./chip-bubble-svg";
 import type { BrokerTrade } from "./chip-data";
 
@@ -359,5 +359,100 @@ describe("BubbleChartSvg intraday line overlay (additive optional prop)", () => 
       .sort();
 
     expect(withPositions).toEqual(withoutPositions);
+  });
+});
+
+// C7 A1 (🟢): Y-axis brush overlay 交互驗證。
+describe("BubbleChartSvg — A1 Y-axis brush overlay (C7 🟢)", () => {
+  // jsdom pointer-capture 方法可能未實作。用 vi.spyOn 兜住,測試前設 stub。
+  function stubPointerCapture(el: Element) {
+    if (typeof (el as unknown as { setPointerCapture?: unknown }).setPointerCapture !== "function") {
+      (el as unknown as { setPointerCapture: (id: number) => void }).setPointerCapture = () => {};
+      (el as unknown as { releasePointerCapture: (id: number) => void }).releasePointerCapture = () => {};
+    }
+  }
+
+  const brushTrades: BrokerTrade[] = [
+    { broker: "A", broker_id: "A1", price: 100, buy: 20, sell: 0 },
+    { broker: "B", broker_id: "B1", price: 105, buy: 15, sell: 0 },
+    { broker: "C", broker_id: "C1", price: 110, buy: 10, sell: 0 },
+  ];
+
+  it("Y-axis brush overlay 存在 (data-testid=bubble-yaxis-brush)", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={brushTrades} width={400} height={300} onYBrush={vi.fn()} />,
+    );
+    const overlay = container.querySelector("[data-testid=bubble-yaxis-brush]");
+    expect(overlay).toBeTruthy();
+  });
+
+  it("Y-axis brush drag (≥ 4px):onYBrush 被呼叫", () => {
+    const onYBrush = vi.fn();
+    const { container } = render(
+      <BubbleChartSvg trades={brushTrades} width={400} height={300} onYBrush={onYBrush} />,
+    );
+    const overlay = container.querySelector("[data-testid=bubble-yaxis-brush]") as SVGRectElement;
+    stubPointerCapture(overlay);
+    fireEvent.pointerDown(overlay, { clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(overlay, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerUp(overlay, { clientY: 200, pointerId: 1 });
+    expect(onYBrush).toHaveBeenCalledTimes(1);
+    const [min, max] = onYBrush.mock.calls[0]!;
+    expect(min).toBeLessThan(max);
+  });
+
+  it("Y-axis brush 單擊或短拖曳 (< 4px):onYBrush 不呼叫", () => {
+    const onYBrush = vi.fn();
+    const { container } = render(
+      <BubbleChartSvg trades={brushTrades} width={400} height={300} onYBrush={onYBrush} />,
+    );
+    const overlay = container.querySelector("[data-testid=bubble-yaxis-brush]") as SVGRectElement;
+    stubPointerCapture(overlay);
+    // 單擊(down + up 同位置)
+    fireEvent.pointerDown(overlay, { clientY: 100, pointerId: 1 });
+    fireEvent.pointerUp(overlay, { clientY: 100, pointerId: 1 });
+    expect(onYBrush).not.toHaveBeenCalled();
+    // 3px 短拖曳
+    fireEvent.pointerDown(overlay, { clientY: 100, pointerId: 2 });
+    fireEvent.pointerMove(overlay, { clientY: 102, pointerId: 2 });
+    fireEvent.pointerUp(overlay, { clientY: 102, pointerId: 2 });
+    expect(onYBrush).not.toHaveBeenCalled();
+  });
+
+  it("onYBrush 未 pass:brush overlay 仍存在但 pointer 事件無 side-effect", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={brushTrades} width={400} height={300} />,
+    );
+    const overlay = container.querySelector("[data-testid=bubble-yaxis-brush]") as SVGRectElement;
+    stubPointerCapture(overlay);
+    expect(overlay).toBeTruthy();
+    // 沒 onYBrush handleBrushDown early-return,不設 dragBrush,不會 throw
+    fireEvent.pointerDown(overlay, { clientY: 50, pointerId: 1 });
+    fireEvent.pointerMove(overlay, { clientY: 200, pointerId: 1 });
+    fireEvent.pointerUp(overlay, { clientY: 200, pointerId: 1 });
+  });
+
+  it("brushRange prop 傳入:persistent band 顯示 (data-testid=bubble-brush-band)", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={brushTrades}
+        width={400}
+        height={300}
+        brushRange={{ min: 102, max: 108 }}
+      />,
+    );
+    expect(container.querySelector("[data-testid=bubble-brush-band]")).toBeTruthy();
+  });
+
+  it("brushRange=null:persistent band 不顯示", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={brushTrades}
+        width={400}
+        height={300}
+        brushRange={null}
+      />,
+    );
+    expect(container.querySelector("[data-testid=bubble-brush-band]")).toBeNull();
   });
 });

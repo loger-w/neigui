@@ -8,6 +8,7 @@ import {
   buildTradeRows,
   computeBrokerTotals,
   fmtAmount,
+  summarizeTradesByPriceRange,
 } from "./chip-data";
 import type { TopBroker, BrokerTrade } from "./chip-data";
 
@@ -362,6 +363,53 @@ describe("fmtAmount (C6 🟢)", () => {
     expect(fmtAmount(120_000_000)).toBe("1.20 億");
     expect(fmtAmount(105_000_000)).toBe("1.05 億");
     expect(fmtAmount(1_234_500_000)).toBe("12.35 億"); // rounded 2dp
+  });
+});
+
+describe("summarizeTradesByPriceRange (C7 🟢)", () => {
+  const mk = (broker_id: string, price: number, buy: number, sell: number): BrokerTrade =>
+    ({ broker: broker_id, broker_id, price, buy, sell });
+
+  it("empty trades: zeros + empty brokerIds", () => {
+    const r = summarizeTradesByPriceRange([], 100, 105);
+    expect(r).toEqual({
+      priceMin: 100, priceMax: 105,
+      priceLevelCount: 0, brokerIds: [], buyLots: 0, sellLots: 0,
+    });
+  });
+
+  it("range covers 3 prices × 2 brokers: distinct count + sum", () => {
+    const trades: BrokerTrade[] = [
+      mk("A", 100, 10, 0),
+      mk("A", 101, 5, 0),
+      mk("B", 101, 0, 8),
+      mk("B", 102, 3, 0),
+      mk("C", 110, 999, 999), // outside range
+    ];
+    const r = summarizeTradesByPriceRange(trades, 100, 102);
+    expect(r.priceLevelCount).toBe(3);       // 100, 101, 102
+    expect(r.brokerIds.sort()).toEqual(["A", "B"]);
+    expect(r.buyLots).toBe(18);              // 10+5+0+3
+    expect(r.sellLots).toBe(8);
+  });
+
+  it("range fully below or above all trades: empty summary", () => {
+    const trades: BrokerTrade[] = [mk("A", 100, 10, 0)];
+    const rBelow = summarizeTradesByPriceRange(trades, 50, 60);
+    expect(rBelow.priceLevelCount).toBe(0);
+    expect(rBelow.brokerIds).toEqual([]);
+    const rAbove = summarizeTradesByPriceRange(trades, 200, 300);
+    expect(rAbove.priceLevelCount).toBe(0);
+  });
+
+  it("range inclusive on both ends", () => {
+    const trades: BrokerTrade[] = [
+      mk("A", 100, 1, 0),
+      mk("B", 105, 2, 0),
+    ];
+    const r = summarizeTradesByPriceRange(trades, 100, 105);
+    expect(r.brokerIds.sort()).toEqual(["A", "B"]);
+    expect(r.buyLots).toBe(3);
   });
 });
 
