@@ -60,14 +60,51 @@ function spyChipApis() {
 }
 
 describe("useChipData split fetches", () => {
-  it("initial mount fires summary + history/base + history/major", async () => {
+  it("initial mount fires summary + base + major fast(150) then full(540)", async () => {
     const { chip, base, major } = spyChipApis();
     renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
     await waitFor(() => {
       expect(chip).toHaveBeenCalledTimes(1);
       expect(base).toHaveBeenCalledTimes(1);
-      expect(major).toHaveBeenCalledTimes(1);
+      // fast 150d window first; full 540d fires only after fast succeeds
+      expect(major).toHaveBeenCalledTimes(2);
     });
+    expect(major.mock.calls[0]![1]).toBe(150);
+    expect(major.mock.calls[1]![1]).toBe(540);
+  });
+
+  it("full 540 does NOT fire until fast 150 resolves", async () => {
+    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
+    vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
+    const majorResolvers: ((v: ChipHistoryMajor) => void)[] = [];
+    const major = vi.spyOn(api, "chipHistoryMajor").mockImplementation(
+      () =>
+        new Promise<ChipHistoryMajor>((r) => {
+          majorResolvers.push(r);
+        }),
+    );
+    renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(1));
+    expect(major.mock.calls[0]![1]).toBe(150);
+    // fast still pending → full must not have fired
+    await new Promise((r) => setTimeout(r, 30));
+    expect(major).toHaveBeenCalledTimes(1);
+    majorResolvers[0]!(mkHistoryMajor());
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(2));
+    expect(major.mock.calls[1]![1]).toBe(540);
+  });
+
+  it("fast failure surfaces error and never fires full", async () => {
+    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
+    vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
+    const major = vi
+      .spyOn(api, "chipHistoryMajor")
+      .mockRejectedValue(new Error("major_unavailable"));
+    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(result.current.error).toBe("major_unavailable"));
+    expect(major).toHaveBeenCalledTimes(1); // fast only — full stays gated
   });
 
   it("date change fires api.chip ONLY (not history endpoints)", async () => {
@@ -77,12 +114,12 @@ describe("useChipData split fetches", () => {
       { initialProps: { d: "2026-06-22" }, wrapper: makeQueryWrapper() },
     );
     await waitFor(() => expect(chip).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(2)); // fast + full
     expect(base).toHaveBeenCalledTimes(1);
-    expect(major).toHaveBeenCalledTimes(1);
     rerender({ d: "2026-06-21" });
     await waitFor(() => expect(chip).toHaveBeenCalledTimes(2));
     expect(base).toHaveBeenCalledTimes(1); // unchanged
-    expect(major).toHaveBeenCalledTimes(1); // unchanged
+    expect(major).toHaveBeenCalledTimes(2); // unchanged
   });
 
   it("symbol change fires all three endpoints", async () => {
@@ -94,13 +131,13 @@ describe("useChipData split fetches", () => {
     await waitFor(() => {
       expect(chip).toHaveBeenCalledTimes(1);
       expect(base).toHaveBeenCalledTimes(1);
-      expect(major).toHaveBeenCalledTimes(1);
+      expect(major).toHaveBeenCalledTimes(2); // fast + full
     });
     rerender({ sym: "2454" });
     await waitFor(() => {
       expect(chip).toHaveBeenCalledTimes(2);
       expect(base).toHaveBeenCalledTimes(2);
-      expect(major).toHaveBeenCalledTimes(2);
+      expect(major).toHaveBeenCalledTimes(4); // fast + full again
     });
   });
 
@@ -142,9 +179,9 @@ describe("useChipData split fetches", () => {
     await waitFor(() => expect(result.current.summary?.date).toBe("2026-06-21"));
   });
 
-  it("loading = summaryLoading OR historyLoading; majorLoading is independent", async () => {
+  it("loading = summaryLoading OR historyLoading; majorLoading clears on FAST landing", async () => {
     let resolveBase!: (v: ChipHistory) => void;
-    let resolveMajor!: (v: ReturnType<typeof mkHistoryMajor>) => void;
+    const majorResolvers: ((v: ChipHistoryMajor) => void)[] = [];
     vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
     vi.spyOn(api, "chipHistoryBase").mockImplementation(
       () =>
@@ -154,8 +191,8 @@ describe("useChipData split fetches", () => {
     );
     vi.spyOn(api, "chipHistoryMajor").mockImplementation(
       () =>
-        new Promise<ReturnType<typeof mkHistoryMajor>>((r) => {
-          resolveMajor = r;
+        new Promise<ChipHistoryMajor>((r) => {
+          majorResolvers.push(r);
         }),
     );
     const { result } = renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
@@ -169,36 +206,65 @@ describe("useChipData split fetches", () => {
     resolveBase(mkHistory());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.majorLoading).toBe(true);
-    resolveMajor(mkHistoryMajor());
+    // FAST window lands → the visible subchart has data, overlay must clear
+    // even though the background 540d fill is still pending.
+    majorResolvers[0]!(mkHistoryMajor());
     await waitFor(() => expect(result.current.majorLoading).toBe(false));
   });
 
-  it("refresh() forces all three endpoints with refresh=true", async () => {
+  it("refresh() forces all endpoints (fast + full major) with refresh=true", async () => {
     const { chip, base, major } = spyChipApis();
     const { result } = renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
-    await waitFor(() => expect(chip).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(2));
     act(() => result.current.refresh());
     await waitFor(() => {
       expect(chip).toHaveBeenCalledTimes(2);
       expect(base).toHaveBeenCalledTimes(2);
-      expect(major).toHaveBeenCalledTimes(2);
+      expect(major).toHaveBeenCalledTimes(4);
     });
     expect(chip.mock.calls[1]![2]).toBe(true);
     expect(base.mock.calls[1]![1]).toBe(540);
     expect(base.mock.calls[1]![2]).toBe(true);
-    expect(major.mock.calls[1]![1]).toBe(540);
-    expect(major.mock.calls[1]![2]).toBe(true);
+    // Refresh re-fires both major windows, each forced.
+    const refreshedDays = [major.mock.calls[2]![1], major.mock.calls[3]![1]].sort((a, b) => a - b);
+    expect(refreshedDays).toEqual([150, 540]);
+    expect(major.mock.calls[2]![2]).toBe(true);
+    expect(major.mock.calls[3]![2]).toBe(true);
   });
 
-  it("history base + major both carry days=540 (K-line zoom window)", async () => {
+  it("base carries days=540; major fast=150 then full=540", async () => {
     const { base, major } = spyChipApis();
     renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
     await waitFor(() => {
       expect(base).toHaveBeenCalledTimes(1);
-      expect(major).toHaveBeenCalledTimes(1);
+      expect(major).toHaveBeenCalledTimes(2);
     });
     expect(base.mock.calls[0]![1]).toBe(540);
-    expect(major.mock.calls[0]![1]).toBe(540);
+    expect(major.mock.calls[0]![1]).toBe(150);
+    expect(major.mock.calls[1]![1]).toBe(540);
+  });
+
+  it("merged major uses fast rows first, then full rows replace them", async () => {
+    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
+    vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
+    vi.spyOn(api, "chipHistoryMajor")
+      .mockResolvedValueOnce({
+        ...mkHistoryMajor(),
+        major: [{ date: "2026-06-22", major_net: 1 }],
+      })
+      .mockResolvedValueOnce({
+        ...mkHistoryMajor(),
+        major: [
+          { date: "2026-06-21", major_net: 2 },
+          { date: "2026-06-22", major_net: 1 },
+        ],
+      });
+    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), {
+      wrapper: makeQueryWrapper(),
+    });
+    // full (2 rows) eventually replaces fast (1 row); fast row visible en route
+    await waitFor(() => expect(result.current.history?.major.length).toBe(2));
+    expect(result.current.history?.major[0]?.major_net).toBe(2);
   });
 
   it("history merges base + major: major[] empty until major lands", async () => {

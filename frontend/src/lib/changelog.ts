@@ -40,6 +40,15 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.20.1",
+    date: "2026-07-03",
+    highlights: "主力買賣超首次載入大幅加速",
+    changes: [
+      { kind: "fix", scope: "equity", text: "首次查看一檔股票時,主力買賣超先載入近期資料快速顯示,較舊區間於背景補齊,等待時間大幅縮短" },
+      { kind: "fix", scope: "equity", text: "按重新整理時,主力買賣超保留原有畫面直接更新,不再被載入畫面蓋住" },
+    ],
+  },
+  {
     version: "0.20.0",
     date: "2026-07-02",
     highlights: "籌碼分點與泡泡圖操作改良:全分點篩選、區間過濾、手動輸入、使用說明",
