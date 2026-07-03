@@ -11,6 +11,8 @@ export type MarketSnapshot = {
   universe_size: number;
   excluded_count: ExcludedCount;
   eod_as_of: string | null;
+  /** EOD 背景計算尚未完成(冷啟動期間);optional — 舊後端無此欄。 */
+  eod_pending?: boolean;
   breadth: Breadth | null;
   sector_breadth: SectorBreadthRow[] | null;
   sector_volume_ratio: SectorVolumeRatioRow[] | null;

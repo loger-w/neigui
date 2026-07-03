@@ -60,7 +60,8 @@ _PRIMARY_INDUSTRY_OVERRIDE: dict[str, str] = {
 
 
 # Module-level inflight dedup (對齊 finmind.py:69 慣例)
-_inflight: dict[str, asyncio.Task] = {}
+# {key: {"task": Task, "refs": int}} — subscriber refcount(見 _run_once docstring)
+_inflight: dict[str, dict] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -105,13 +106,27 @@ def _is_fresh(cached: dict, ttl_seconds: float) -> bool:
 
 
 async def _run_once(key: str, coro_fn):
-    if key in _inflight:
-        return await _inflight[key]
-    _inflight[key] = asyncio.ensure_future(coro_fn())
+    """Inflight dedup with subscriber refcount(對齊 finmind.py::_run_once)。
+
+    2026-07-03 prd 500 修正:舊版直接 `await _inflight[key]` — asyncio 的
+    task cancel 會把取消傳進正在 await 的 future,第一個斷線請求(Vercel
+    30s 超時 → run_with_disconnect cancel)就把共用 task 殺掉,其他共乘
+    請求全部收 CancelledError。改 shield + refcount:subscriber 歸 0 才
+    cancel 底層 task。
+    """
+    entry = _inflight.get(key)
+    if entry is None:
+        entry = {"task": asyncio.ensure_future(coro_fn()), "refs": 0}
+        _inflight[key] = entry
+    entry["refs"] += 1
     try:
-        return await _inflight[key]
+        return await asyncio.shield(entry["task"])
     finally:
-        _inflight.pop(key, None)
+        entry["refs"] -= 1
+        if entry["refs"] == 0:
+            if not entry["task"].done():
+                entry["task"].cancel()
+            _inflight.pop(key, None)
 
 
 # ---------------------------------------------------------------------------
@@ -577,6 +592,58 @@ async def _fetch_eod_results(
     return results
 
 
+# ---------------------------------------------------------------------------
+# prd 502 修正(2026-07-03)— EOD 冷啟動與 request 生命週期脫鉤
+# 冷啟動 ~4min > Vercel 外部 rewrite 超時(~30s):router 斷線 → cancel 鏈
+# 取消計算 → 進度全丟 → 下一請求從零再來,prd 永遠暖不起來還狂燒配額。
+# 解法:EOD 以 module 持有引用的背景 task 執行(不掛在任何 request 上,
+# 斷線取消不波及);request 只 inline 等一個小預算,超時即回 partial +
+# eod_pending=True,背景跑完寫 cache 後下一請求自然拿到完整結果。
+# ---------------------------------------------------------------------------
+
+_EOD_INLINE_BUDGET_SEC = 5.0
+# {cache_key: Task} — module-level 引用讓背景 task 不被 GC / 不受 request 取消
+_eod_background: dict[str, asyncio.Task] = {}
+
+
+def _ensure_eod_task(
+    end_date: date,
+    allowed: set[str],
+    primary_sector: dict[str, str],
+) -> asyncio.Task:
+    """取得(或建立)該 (end_date, universe) 的 EOD 背景計算 task。
+
+    - 同 key 進行中 → 直接共用(不重複 fan-out)
+    - task 結束後 done_callback 自我移除 → 失敗時下一請求自然重試
+      (與舊 inline 版「每請求重算失敗 component」的重試頻率一致)
+    - task 不吞例外:inline 路徑 await 到的請求原樣 re-raise(保留
+      「非 httpx 例外 fail-loud propagate」既有契約,P4 T-INT-4 鎖);
+      背景路徑(無人 await)由 done_callback logger.exception 留 traceback,
+      避免 asyncio "exception was never retrieved" 噪音。
+    """
+    key = f"eod_results_{end_date.isoformat()}_{_universe_digest(allowed)}"
+    task = _eod_background.get(key)
+    if task is not None and not task.done():
+        return task
+
+    task = asyncio.create_task(
+        _fetch_eod_results(end_date, allowed, primary_sector, refresh=False)
+    )
+    _eod_background[key] = task
+
+    def _cleanup(t: asyncio.Task, k: str = key) -> None:
+        if _eod_background.get(k) is t:
+            _eod_background.pop(k, None)
+        if not t.cancelled() and t.exception() is not None:
+            logger.error(
+                "market snapshot: background EOD compute failed",
+                exc_info=t.exception(),
+            )
+
+    task.add_done_callback(_cleanup)
+    return task
+
+
 async def _fetch_market_value_map(
     today: date | None = None,
     refresh: bool = False,
@@ -741,7 +808,19 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     # T-1 資料,end_date 前進自然失效;修正前 refresh=true 穿進 EOD fetcher
     # = ~278s + 128 次 FinMind 呼叫。強制重抓後門 = 手動呼叫
     # _fetch_eod_results(refresh=True) 或 bump _CACHE_VERSION_*。
-    eod = await _fetch_eod_results(clock.today(), allowed, primary_sector, refresh=False)
+    # prd 502 修正:EOD 走背景 task + inline 小預算。cache 暖(或計算快,
+    # 含測試 instant mock)→ 預算內回傳,行為與舊 inline 版完全一致;
+    # 真冷啟動(~4min)→ 超時回 partial + eod_pending=True,背景繼續跑
+    # (module 引用持有,不受本 request 或任何 client 斷線取消)。
+    eod_task = _ensure_eod_task(clock.today(), allowed, primary_sector)
+    eod_pending = False
+    try:
+        eod = await asyncio.wait_for(
+            asyncio.shield(eod_task), timeout=_EOD_INLINE_BUDGET_SEC
+        ) or {}
+    except asyncio.TimeoutError:
+        eod = {}
+        eod_pending = True
     breadth = eod.get("breadth")
     sector_breadth = eod.get("sector_breadth")
     sector_volume_ratio = eod.get("sector_volume_ratio")
@@ -765,6 +844,9 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
         # perf C6 (🟢) — 四個 EOD compute 實際用的 max price date(null =
         # prices 不可得)
         "eod_as_of": eod.get("eod_as_of"),
+        # prd 502 修正 — EOD 背景計算尚未完成(冷啟動期間);frontend 據此
+        # 顯示載入中並短輪詢,而非誤判為「無資料」
+        "eod_pending": eod_pending,
         # market-monitor-v2 P2 (SC-6) — breadth field (None if compute failed)
         "breadth": breadth,
         # market-monitor-v2 P3 (SC-6) — sector aggregations (None if compute failed)

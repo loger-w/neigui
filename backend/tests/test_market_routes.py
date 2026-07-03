@@ -183,3 +183,22 @@ def test_payload_size_under_budget() -> None:
         f"Gzip-after size {gz_size} >= 50000 (SC-1 budget);raw was {raw_size}。"
         f" 若 fail 降 _HEATMAP_STOCKS_CAP_PER_SECTOR。"
     )
+
+
+# ---------------------------------------------------------------------------
+# prd 500 修正(2026-07-03)— CancelledError 邊界
+# ---------------------------------------------------------------------------
+
+
+def test_snapshot_returns_503_when_shared_task_cancelled_but_client_connected() -> None:
+    """共用 inflight task 被取消(他人斷線觸發)而本 client 還連著 →
+    不得裸 500,轉 503 snapshot_unavailable(前端有對應錯誤處理)。"""
+    import asyncio
+
+    with patch(
+        "routes.market.fetch_market_snapshot",
+        new=AsyncMock(side_effect=asyncio.CancelledError()),
+    ):
+        resp = TestClient(app).get("/api/market/snapshot")
+    assert resp.status_code == 503
+    assert resp.json()["detail"]["error"] == "snapshot_unavailable"

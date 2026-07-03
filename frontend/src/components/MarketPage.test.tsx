@@ -72,6 +72,32 @@ describe("MarketPage", () => {
     });
   });
 
+  it("eod_pending=true → EOD 面板維持載入骨架,不顯示「資料暫缺」(prd 冷啟動)", async () => {
+    vi.spyOn(marketApi, "fetchMarketSnapshot").mockResolvedValue({
+      as_of: "x",
+      last_tick: "2026-07-03T10:30:00",
+      is_trading_session: false,
+      stale: false,
+      lag_seconds: 5,
+      sectors: [],
+      leaderboards: { gainers: [], losers: [], amount: [], volume_ratio: [] },
+      universe_size: 1917,
+      excluded_count: { etf: 347, warrant: 67, watch_list: 57 },
+      eod_as_of: null,
+      eod_pending: true,
+      breadth: null,
+      sector_breadth: null,
+      sector_volume_ratio: null,
+      sector_amount_share: null,
+    } as MarketSnapshot);
+    render(wrap(<MarketPage isActive={true} onSymbolPick={() => {}} />));
+    await waitFor(() => {
+      expect(screen.getByText("大盤掃描")).toBeTruthy();
+    });
+    expect(document.querySelectorAll('[data-state="loading"]').length).toBeGreaterThan(0);
+    expect(document.querySelector('[data-state="unavailable"]')).toBeNull();
+  });
+
   it("shows error banner when fetch fails (E7)", async () => {
     vi.spyOn(marketApi, "fetchMarketSnapshot")
       .mockRejectedValue(new Error("finmind_unreachable"));

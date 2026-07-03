@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
+import asyncio
 import pytest
 
 from services.finmind_realtime import (
@@ -1543,3 +1544,112 @@ async def test_snapshot_empty_universe_sector_amount_share_none() -> None:
         result = await fetch_market_snapshot(refresh=False)
 
     assert result["sector_amount_share"] is None
+
+
+# ---------------------------------------------------------------------------
+# prd 502/500 修正(2026-07-03)— cancel 鏈 × 冷啟動
+# 根因:realtime _run_once 無 shield/refcount,第一個斷線請求(Vercel 30s
+# 超時)cancel route task 時 asyncio 把取消直接傳進共用 inflight task,
+# 其他共乘請求收 CancelledError → 500;且 EOD 冷啟動 4min 進度全丟。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_run_once_shared_task_survives_subscriber_cancel() -> None:
+    """共乘 subscriber 之一被 cancel(client 斷線)→ 其餘 subscriber 仍拿到結果。"""
+    import services.finmind_realtime as fr
+
+    started = asyncio.Event()
+
+    async def slow() -> dict:
+        started.set()
+        await asyncio.sleep(0.2)
+        return {"ok": True}
+
+    key = "test_survive_cancel"
+
+    async def subscribe() -> dict:
+        return await fr._run_once(key, slow)
+
+    t1 = asyncio.create_task(subscribe())
+    await started.wait()
+    t2 = asyncio.create_task(subscribe())
+    await asyncio.sleep(0.02)  # 讓 t2 進入 await 共用 task
+    t1.cancel()
+    result = await t2  # 修正前:CancelledError(共用 task 被 t1 的取消毒殺)
+    assert result == {"ok": True}
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_run_once_last_subscriber_cancel_cancels_underlying() -> None:
+    """全部 subscriber 都斷線 → 底層 task 才被 cancel(對齊 finmind.py refcount 契約)。"""
+    import services.finmind_realtime as fr
+
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def slow() -> dict:
+        started.set()
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            cancelled.set()
+            raise
+        return {}
+
+    key = "test_last_cancel"
+    t1 = asyncio.create_task(fr._run_once(key, slow))
+    await started.wait()
+    t1.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await t1
+    await asyncio.wait_for(cancelled.wait(), timeout=1.0)
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_eod_slow_compute_detaches_to_background(monkeypatch) -> None:
+    """EOD 計算超過 inline 預算 → 立即回 partial(eod_pending=True),背景跑完
+    寫 cache;下一個 request 拿完整結果且不重算。修 prd 冷啟動 4min ×
+    Vercel 30s 超時的結構性衝突。"""
+    import services.finmind_realtime as fr
+
+    monkeypatch.setattr(fr, "_EOD_INLINE_BUDGET_SEC", 0.05)
+
+    release = asyncio.Event()
+
+    async def slow_breadth(*args, **kwargs):
+        await release.wait()
+        return _FAKE_BREADTH_PAYLOAD
+
+    sb_mock = AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)
+    vr_mock = AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)
+    amt_mock = AsyncMock(return_value=_FAKE_AMOUNT_SHARE_PAYLOAD)
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=_C1_FAKE_UNIVERSE)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=_C1_FAKE_SECTOR_ROWS)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth", new=slow_breadth), \
+         patch("services.finmind_realtime._fetch_sector_breadth", new=sb_mock), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio", new=vr_mock), \
+         patch("services.finmind_realtime._fetch_sector_amount_share", new=amt_mock):
+        r1 = await fetch_market_snapshot(refresh=False)
+        assert r1["eod_pending"] is True
+        assert r1["breadth"] is None
+        # 盤中資料照給(partial 降級,不是整包失敗)
+        assert r1["sectors"]
+
+        # 背景任務仍活著(request 已回但計算持續)
+        bg_tasks = list(fr._eod_background.values())
+        assert bg_tasks, "背景 EOD task 應該被保留引用"
+
+        release.set()
+        await asyncio.gather(*bg_tasks)
+
+        r2 = await fetch_market_snapshot(refresh=False)
+
+    assert r2["eod_pending"] is False
+    assert r2["breadth"] == _FAKE_BREADTH_PAYLOAD

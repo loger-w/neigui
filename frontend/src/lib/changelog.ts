@@ -40,6 +40,15 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.21.3",
+    date: "2026-07-03",
+    highlights: "大盤頁面連線穩定性修復",
+    changes: [
+      { kind: "fix", scope: "global", text: "大盤頁面在每日資料準備期間不再連線逾時失敗,改為先顯示即時行情、統計區塊載入完成後自動補上" },
+      { kind: "fix", scope: "global", text: "多人同時開啟大盤頁時,其中一人離開不再造成其他人載入失敗" },
+    ],
+  },
+  {
     version: "0.21.2",
     date: "2026-07-03",
     highlights: "手機看得到前 15 大買賣超,泡泡圖提示改橫排",

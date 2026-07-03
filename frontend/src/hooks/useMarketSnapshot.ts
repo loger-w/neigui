@@ -27,7 +27,11 @@ export function useMarketSnapshot(enabled: boolean): UseMarketSnapshot {
     enabled,
     refetchInterval: (query) => {
       const d = query.state.data;
-      return d?.is_trading_session ? 2500 : false;
+      if (d?.is_trading_session) return 2500;
+      // 冷啟動期間(EOD 背景計算中)收盤後也短輪詢,計算完成自動補上;
+      // 後端每次輪詢只讀 cache / 共用同一背景任務,不會重複觸發計算。
+      if (d?.eod_pending) return 15_000;
+      return false;
     },
     refetchIntervalInBackground: false,
     retry: 1,

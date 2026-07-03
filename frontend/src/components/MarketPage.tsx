@@ -64,6 +64,8 @@ export function MarketPage({ isActive, onSymbolPick }: Props): ReactElement {
         />
       )}
       <div className="flex-1 overflow-y-auto min-h-0">
+        {/* eod_pending(後端冷啟動背景計算中)→ EOD 四面板維持載入骨架,
+            hook 會短輪詢至完成;不 pending 才把 null 視為「無資料」降級。 */}
         <div
           data-testid="market-v2-grid"
           className="lg:h-full grid grid-cols-1 lg:grid-cols-[3fr_4fr_3fr]"
@@ -71,24 +73,24 @@ export function MarketPage({ isActive, onSymbolPick }: Props): ReactElement {
           <MarketBreadthPanel
             breadth={data?.breadth ?? null}
             eodAsOf={data?.eod_as_of ?? null}
-            loaded={!!data}
+            loaded={!!data && !data.eod_pending}
           />
           <MarketSectorBreadthHeatmap
             rows={data?.sector_breadth ?? null}
             eodAsOf={data?.eod_as_of ?? null}
-            loaded={!!data}
+            loaded={!!data && !data.eod_pending}
             onSectorClick={() => {}} // concept-drill 接點,本輪 no-op
           />
           <div className="flex flex-col min-h-0 border-l border-line">
             <MarketSectorAmountShare
               rows={data?.sector_amount_share ?? null}
               eodAsOf={data?.eod_as_of ?? null}
-              loaded={!!data}
+              loaded={!!data && !data.eod_pending}
             />
             <MarketSectorVolRatio
               rows={data?.sector_volume_ratio ?? null}
               eodAsOf={data?.eod_as_of ?? null}
-              loaded={!!data}
+              loaded={!!data && !data.eod_pending}
             />
           </div>
         </div>

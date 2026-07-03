@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
   });
 
-  it("最新版本是 v0.21.2(手機前 15 大買賣超 + 橫排提示)", () => {
-    expect(CHANGELOG[0]?.version).toBe("0.21.2");
+  it("最新版本是 v0.21.3(大盤頁面連線穩定性修復)", () => {
+    expect(CHANGELOG[0]?.version).toBe("0.21.3");
   });
 
   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
