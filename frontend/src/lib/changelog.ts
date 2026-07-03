@@ -40,6 +40,15 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.21.2",
+    date: "2026-07-03",
+    highlights: "手機看得到前 15 大買賣超,泡泡圖提示改橫排",
+    changes: [
+      { kind: "fix", scope: "equity", text: "手機上的籌碼總覽改為整頁捲動,前 15 大買賣超與交易量分點完整看得到" },
+      { kind: "fix", scope: "equity", text: "泡泡圖的價位篩選提示改為橫排文字,不用歪頭就能讀" },
+    ],
+  },
+  {
     version: "0.21.1",
     date: "2026-07-03",
     highlights: "泡泡圖加上價位篩選操作提示",

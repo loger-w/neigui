@@ -778,22 +778,21 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         />
       )}
 
-      {/* 拖曳篩選提示:Y 軸 brush 沒有視覺線索(只有 hover 游標),沿價格軸
-          放常駐低調直排提示。onYBrush 未提供(mobile 停用 brush)不渲染;
-          拖曳中或已有區間時隱藏,避免與 brush band 疊字。 */}
+      {/* 拖曳篩選提示:Y 軸 brush 沒有視覺線索(只有 hover 游標),在圖表
+          左上角放常駐低調橫排提示(直排要歪頭讀,不可用)。onYBrush 未提供
+          (mobile 停用 brush)不渲染;拖曳中或已有區間時隱藏,避免疊字。 */}
       {onYBrush && !dragBrush && !brushRange && (
         <text
           data-testid="bubble-brush-hint"
-          x={11}
-          y={PADDING.top + cH / 2}
-          transform={`rotate(-90 11 ${PADDING.top + cH / 2})`}
-          textAnchor="middle"
+          x={PADDING.left + 10}
+          y={PADDING.top + 14}
+          textAnchor="start"
           fill={COLOR.text}
           fontSize="0.6875rem"
-          opacity={0.8}
+          opacity={0.85}
           pointerEvents="none"
         >
-          ⇕ 拖曳篩選價位區間
+          ⇕ 按住左側價格軸上下拖曳,可篩選價位區間
         </text>
       )}
 

@@ -753,3 +753,41 @@ describe("ChipBrokersPanel — B1 整 row 可點 (C8 🟢)", () => {
     expect(row.getAttribute("aria-pressed")).toBe("true");
   });
 });
+
+describe("ChipBrokersPanel — flowScroll(手機堆疊)模式", () => {
+  it("flowScroll 時清單容器不設內捲、header 不 sticky,交外層頁面捲動", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        flowScroll
+      />,
+    );
+    const root = container.querySelector('[data-testid="chip-brokers-panel"]')!;
+    expect(root.className.includes("overflow-hidden")).toBe(false);
+    const buyers = container.querySelector('[data-testid="buyers-scroll"]')!;
+    const sellers = container.querySelector('[data-testid="sellers-scroll"]')!;
+    for (const el of [buyers, sellers]) {
+      expect(el.className.includes("overflow-y-auto")).toBe(false);
+    }
+    expect(container.querySelector(".sticky")).toBeNull();
+  });
+
+  it("預設(桌面)維持內捲 + sticky header", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const buyers = container.querySelector('[data-testid="buyers-scroll"]')!;
+    expect(buyers.className.includes("overflow-y-auto")).toBe(true);
+    expect(container.querySelector(".sticky")).toBeTruthy();
+  });
+});

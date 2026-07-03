@@ -404,16 +404,18 @@ export default function App() {
                 loading={brokersWindow.loading}
                 windowDays={windowDays}
                 actualDays={brokersWindow.data?.actual_days}
+                flowScroll={isMobile}
               />
             );
-            // responsive spec §4.3:<lg 上下堆疊(K 線 45vh + 面板吃剩餘高,
-            // 面板內部既有雙捲動區直接可用);≥lg 維持三欄 + 拖曳調寬。
+            // responsive spec §4.3:<lg 上下堆疊、整頁垂直捲動 — K 線 45vh
+            // 在上,面板 flowScroll 自然高度全展開(前 15 大買賣超完整可見,
+            // 不被固定高度切掉);≥lg 維持三欄 + 拖曳調寬 + 面板內捲。
             return isMobile ? (
-              <div className="h-full flex flex-col overflow-hidden">
-                <div className="h-[45vh] min-h-[260px] shrink-0 border-b border-line">
+              <div className="h-full overflow-y-auto">
+                <div className="h-[45vh] min-h-[260px] border-b border-line">
                   {klineChart}
                 </div>
-                <div className="flex-1 min-h-0">{brokersPanel}</div>
+                {brokersPanel}
               </div>
             ) : (
               <div

@@ -24,6 +24,10 @@ interface Props {
   /** Trading-days actually aggregated, may be < windowDays when anchor date
    *  is too early in history. When < windowDays, panel adds "(實際 X 日)". */
   actualDays?: number;
+  /** 手機堆疊版面(responsive):true 時整體交由外層頁面捲動,買賣超清單
+   *  自然高度完整展開(不做內部雙捲動區、header 不 sticky)。桌面(預設
+   *  false)維持固定高度 + 買超/賣超各自內捲。 */
+  flowScroll?: boolean;
 }
 
 type Mode = "net" | "volume";
@@ -159,7 +163,7 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
 export function ChipBrokersPanel({
   summary, dayTotalLots, selectedBrokerIds,
   onToggleBroker, onClearAllBrokers, loading,
-  windowDays, actualDays,
+  windowDays, actualDays, flowScroll,
 }: Props) {
   const [mode, setMode] = useState<Mode>("net");
 
@@ -187,7 +191,7 @@ export function ChipBrokersPanel({
     return (
       <div
         data-testid="chip-brokers-panel"
-        className="h-full flex items-center justify-center text-ink-dim font-serif italic text-sm"
+        className="h-full min-h-[40vh] flex items-center justify-center text-ink-dim font-serif italic text-sm"
       >
         請搜尋股票代號
       </div>
@@ -204,7 +208,11 @@ export function ChipBrokersPanel({
   return (
     <div
       data-testid="chip-brokers-panel"
-      className="@container h-full flex flex-col overflow-hidden"
+      className={
+        flowScroll
+          ? "@container flex flex-col"
+          : "@container h-full flex flex-col overflow-hidden"
+      }
       aria-busy={loading || undefined}
     >
       {/* Cluster B 🟢: localized loading indicator — a 2 px-tall scanning
@@ -390,15 +398,16 @@ export function ChipBrokersPanel({
         )}
       </div>
 
-      {/* Broker list — F5: net mode splits into two half-height scroll halves */}
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+      {/* Broker list — F5: net mode splits into two half-height scroll halves。
+          flowScroll(手機):不做內捲,清單自然高度全展開交外層頁捲。 */}
+      <div className={flowScroll ? "flex flex-col" : "flex-1 min-h-0 flex flex-col overflow-hidden"}>
         {mode === "net" ? (
           <>
             <div
               data-testid="buyers-scroll"
-              className="flex-1 min-h-0 overflow-y-auto scroll-editorial"
+              className={flowScroll ? "" : "flex-1 min-h-0 overflow-y-auto scroll-editorial"}
             >
-              <div className={`sticky top-0 z-[2] grid ${netHeaderCols} text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep`}>
+              <div className={`${flowScroll ? "" : "sticky top-0 z-[2] "}grid ${netHeaderCols} text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep`}>
                 <span></span>
                 <span>#</span>
                 <span>分點</span>
@@ -428,9 +437,13 @@ export function ChipBrokersPanel({
             </div>
             <div
               data-testid="sellers-scroll"
-              className="flex-1 min-h-0 overflow-y-auto scroll-editorial border-t border-line"
+              className={
+                flowScroll
+                  ? "border-t border-line"
+                  : "flex-1 min-h-0 overflow-y-auto scroll-editorial border-t border-line"
+              }
             >
-              <div className={`sticky top-0 z-[2] grid ${netHeaderCols} text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep`}>
+              <div className={`${flowScroll ? "" : "sticky top-0 z-[2] "}grid ${netHeaderCols} text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep`}>
                 <span></span>
                 <span>#</span>
                 <span>分點</span>
@@ -462,9 +475,9 @@ export function ChipBrokersPanel({
         ) : (
           <div
             data-testid="volume-scroll"
-            className="flex-1 min-h-0 overflow-y-auto scroll-editorial"
+            className={flowScroll ? "" : "flex-1 min-h-0 overflow-y-auto scroll-editorial"}
           >
-            <div className={`sticky top-0 z-[2] grid ${volHeaderCols} text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep`}>
+            <div className={`${flowScroll ? "" : "sticky top-0 z-[2] "}grid ${volHeaderCols} text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep`}>
               <span></span>
               <span>#</span>
               <span>分點</span>
