@@ -10,6 +10,7 @@ import {
 import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg";
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { BrokerSearch } from "./BrokerSearch";
 import { BubbleHelpButton } from "./BubbleHelpButton";
 import { LoadingSpinner } from "./ui/loading-spinner";
@@ -56,6 +57,9 @@ export function ChipBubbleView({
   const [brushRange, setBrushRange] = useState<{ min: number; max: number } | null>(null);
   // C10 (🟢 Item 4): 手動輸入區間開啟狀態。true = 顯示輸入面板(可能有初值 = brushRange)。
   const [manualInputOpen, setManualInputOpen] = useState<boolean>(false);
+  // Responsive spec §4.4:<lg 右欄 400px 明細改 bottom sheet;brush 桌面限定。
+  const isMobile = useMediaQuery("(max-width: 1023px)");
+  const [sheetOpen, setSheetOpen] = useState<boolean>(false);
 
   // Reset selection ONLY on symbol change (NOT on date / bubbleData change).
   // C7 A1: brush 也一起清 —— 避免換股後舊 range 殘留誤導。
@@ -63,7 +67,13 @@ export function ChipBubbleView({
     setSelectedBrokerId(null);
     setBrushRange(null);
     setManualInputOpen(false);
+    setSheetOpen(false);
   }, [symbol]);
+
+  // Mobile:tap 泡泡選中分點 → 自動開明細 sheet(桌面右欄恆顯,不需要)。
+  useEffect(() => {
+    if (isMobile && selectedBrokerId) setSheetOpen(true);
+  }, [isMobile, selectedBrokerId]);
 
   const selectedBrokerName = useMemo(
     () =>
@@ -114,10 +124,11 @@ export function ChipBubbleView({
   );
 
   const bubbleRef = useRef<HTMLDivElement | null>(null);
-  const priceBarRef = useRef<HTMLDivElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const bubbleSize = useContainerSize(bubbleRef);
-  const priceBarSize = useContainerSize(priceBarRef);
+  // priceBar 的 ref + useContainerSize 移進 DetailPanel 內部 — mobile sheet
+  // 延遲 mount 時 ref 若掛 parent 會踩 useContainerSize「null ref 永不重跑」
+  // 陷阱(CLAUDE.md §9 market-page-v2 條目),量到 0×0 空白。
 
   const handleBubbleHover = useCallback(
     (payload: BubbleHoverPayload | null, x: number, y: number) => {
@@ -229,8 +240,28 @@ export function ChipBubbleView({
     [bubbleData],
   );
 
+  const detailPanel = (
+    <DetailPanel
+      priceAggs={priceAggs}
+      buyRows={filteredBuyRows}
+      sellRows={filteredSellRows}
+      selectedBrokerName={selectedBrokerName}
+      onSelect={handleBubbleClick}
+      buySort={buySort}
+      sellSort={sellSort}
+      onBuySortChange={handleBuySortChange}
+      onSellSortChange={handleSellSortChange}
+    />
+  );
+
   return (
-    <div className="h-full grid grid-cols-[1fr_400px] gap-0 overflow-hidden">
+    <div
+      className={
+        isMobile
+          ? "h-full flex flex-col overflow-hidden"
+          : "h-full grid grid-cols-[1fr_400px] gap-0 overflow-hidden"
+      }
+    >
       {/* Left: header search bar + bubble chart */}
       <div className="h-full flex flex-col min-h-0 border-r border-line overflow-hidden">
         <div className="shrink-0 h-10 px-3 border-b border-line bg-bg-deep/30 flex items-center gap-3">
@@ -290,6 +321,16 @@ export function ChipBubbleView({
                 輸入區間
               </button>
             )}
+            {isMobile && bubbleData && (
+              <button
+                type="button"
+                data-testid="bubble-open-sheet"
+                onClick={() => setSheetOpen(true)}
+                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer pointer-coarse:min-h-11"
+              >
+                明細
+              </button>
+            )}
             <BubbleHelpButton />
           </div>
         </div>
@@ -308,7 +349,7 @@ export function ChipBubbleView({
               onBubbleHover={handleBubbleHover}
               onBubbleClick={handleBubbleClick}
               intradayPoints={intradayPoints}
-              onYBrush={handleYBrush}
+              onYBrush={isMobile ? undefined : handleYBrush}
               brushRange={brushRange}
               priceRange={rangeActiveForFilter ? brushRange : null}
             />
@@ -390,35 +431,40 @@ export function ChipBubbleView({
         </div>
       </div>
 
-      {/* Right: Price bars + side-by-side buy/sell trade lists */}
-      <div className="h-full flex flex-col overflow-hidden">
-        {/* Price bar sub-chart */}
-        <div ref={priceBarRef} className="h-[180px] shrink-0 border-b border-line">
-          {priceBarSize.width > 0 && priceAggs.length > 0 && (
-            <PriceBarSvg data={priceAggs} width={priceBarSize.width} height={180} />
-          )}
-        </div>
-
-        {/* Side-by-side buy/sell lists */}
-        <div className="flex-1 min-h-0 grid grid-cols-2 divide-x divide-line">
-          <TradeList
-            rows={filteredBuyRows}
-            side="buy"
-            selectedBroker={selectedBrokerName}
-            onSelect={handleBubbleClick}
-            sortSpec={buySort}
-            onSortChange={handleBuySortChange}
+      {/* Right(desktop): Price bars + side-by-side buy/sell trade lists。
+          Mobile(responsive spec §4.4):改 bottom sheet,tap 泡泡自動開。 */}
+      {!isMobile && <div className="h-full">{detailPanel}</div>}
+      {isMobile && sheetOpen && (
+        <>
+          <div
+            data-testid="bubble-sheet-backdrop"
+            className="fixed inset-0 z-40 bg-black/40"
+            onClick={() => setSheetOpen(false)}
+            aria-hidden="true"
           />
-          <TradeList
-            rows={filteredSellRows}
-            side="sell"
-            selectedBroker={selectedBrokerName}
-            onSelect={handleBubbleClick}
-            sortSpec={sellSort}
-            onSortChange={handleSellSortChange}
-          />
-        </div>
-      </div>
+          <div
+            role="dialog"
+            aria-label="分點成交明細"
+            data-testid="bubble-detail-sheet"
+            className="fixed inset-x-0 bottom-0 z-50 h-[70vh] flex flex-col bg-bg-deep border-t border-line-strong rounded-t-lg animate-[sheet-up_0.25s_ease-out] motion-reduce:animate-none"
+          >
+            <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-line">
+              <span className="text-sm text-ink-muted">
+                成交明細{selectedBrokerName ? ` — ${selectedBrokerName}` : ""}
+              </span>
+              <button
+                type="button"
+                aria-label="關閉明細"
+                onClick={() => setSheetOpen(false)}
+                className="text-ink-dim hover:text-ink cursor-pointer px-3 py-1 pointer-coarse:min-h-11 text-base leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <div className="flex-1 min-h-0">{detailPanel}</div>
+          </div>
+        </>
+      )}
 
       {/* Ref-based tooltip — updated via DOM, no React re-render */}
       <div
@@ -452,6 +498,63 @@ export function ChipBubbleView({
 // line-height ≈ 22px). Used by the virtualizer to compute scroll bounds.
 // If the row styling changes (padding/font-size/line-height), update this.
 const ROW_HEIGHT_PX = 22;
+
+// 右欄明細(price bar + 買賣雙列表)。桌面恆 mount 於右欄;mobile 包進
+// bottom sheet 延遲 mount — priceBar 的 ref + useContainerSize 必須在這裡
+// 內部宣告(mount 時 ref 已掛),不能收 parent 的 ref(§9 null-ref 陷阱)。
+function DetailPanel({
+  priceAggs,
+  buyRows,
+  sellRows,
+  selectedBrokerName,
+  onSelect,
+  buySort,
+  sellSort,
+  onBuySortChange,
+  onSellSortChange,
+}: {
+  priceAggs: ReturnType<typeof aggregateByPrice>;
+  buyRows: TradeRow[];
+  sellRows: TradeRow[];
+  selectedBrokerName: string | null;
+  onSelect: (broker: string | null) => void;
+  buySort: SortSpec;
+  sellSort: SortSpec;
+  onBuySortChange: (key: TradeSortKey) => void;
+  onSellSortChange: (key: TradeSortKey) => void;
+}) {
+  const priceBarRef = useRef<HTMLDivElement | null>(null);
+  const priceBarSize = useContainerSize(priceBarRef);
+  return (
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Price bar sub-chart */}
+      <div ref={priceBarRef} className="h-[180px] shrink-0 border-b border-line">
+        {priceBarSize.width > 0 && priceAggs.length > 0 && (
+          <PriceBarSvg data={priceAggs} width={priceBarSize.width} height={180} />
+        )}
+      </div>
+      {/* Side-by-side buy/sell lists */}
+      <div className="flex-1 min-h-0 grid grid-cols-2 divide-x divide-line">
+        <TradeList
+          rows={buyRows}
+          side="buy"
+          selectedBroker={selectedBrokerName}
+          onSelect={onSelect}
+          sortSpec={buySort}
+          onSortChange={onBuySortChange}
+        />
+        <TradeList
+          rows={sellRows}
+          side="sell"
+          selectedBroker={selectedBrokerName}
+          onSelect={onSelect}
+          sortSpec={sellSort}
+          onSortChange={onSellSortChange}
+        />
+      </div>
+    </div>
+  );
+}
 
 // C10 (🟢 Item 4): 手動輸入價位區間 mini form。onApply 只在兩個值 finite +
 // min < max 時觸發(在 parent handleManualApply 檢查)。空值 / NaN 由 parent

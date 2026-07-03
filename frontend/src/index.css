@@ -53,3 +53,10 @@
   0% { transform: translateX(-100%); }
   100% { transform: translateX(400%); }
 }
+
+/* Mobile bottom sheet 進場(responsive spec §4.4):200-300ms ease-out,
+ * 使用端掛 motion-reduce:animate-none。 */
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
