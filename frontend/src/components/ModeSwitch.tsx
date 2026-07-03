@@ -25,7 +25,7 @@ export function ModeSwitch({ value, onChange }: Props): ReactElement {
             aria-current={active ? "page" : undefined}
             onClick={() => { if (!active) onChange(key); }}
             className={
-              `px-5 py-2 text-sm transition-colors cursor-pointer ` +
+              `px-5 py-2 pointer-coarse:min-h-11 text-sm transition-colors cursor-pointer ` +
               (active
                 ? "text-accent border-b-2 border-accent font-medium"
                 : "text-ink-dim hover:text-ink")

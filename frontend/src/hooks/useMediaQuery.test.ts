@@ -28,6 +28,12 @@ afterEach(() => {
 });
 
 describe("useMediaQuery", () => {
+  it("環境沒有 matchMedia(jsdom)時回 false 不丟例外", () => {
+    // 不 stub matchMedia — jsdom 原生就沒有,鎖住桌面 fallback 行為。
+    const { result } = renderHook(() => useMediaQuery("(max-width: 1023px)"));
+    expect(result.current).toBe(false);
+  });
+
   it("回傳目前 match 狀態", () => {
     mockMatchMedia(true);
     const { result } = renderHook(() => useMediaQuery("(max-width: 1023px)"));

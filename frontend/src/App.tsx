@@ -11,6 +11,7 @@ import {
   type WindowDays,
 } from "./components/ui/RangeSelector";
 import { useChipData } from "./hooks/useChipData";
+import { useMediaQuery } from "./hooks/useMediaQuery";
 import { useChipBubble } from "./hooks/useChipBubble";
 import { useChipIntraday } from "./hooks/useChipIntraday";
 import { useBrokerHistory } from "./hooks/useBrokerHistory";
@@ -69,6 +70,9 @@ function todayStr(): string {
 }
 
 export default function App() {
+  // 響應式(responsive spec §4.2):<lg 走手機堆疊版面。判斷方向固定
+  // max-width 判 mobile — jsdom matchMedia 恆 false,測試走桌面分支。
+  const isMobile = useMediaQuery("(max-width: 1023px)");
   const [mode, setMode] = useState<Mode>(() =>
     (localStorage.getItem("mode") as Mode) || "equity"
   );
@@ -278,20 +282,23 @@ export default function App() {
       </div>
       {mode === "equity" ? (
       <div className="flex-1 flex flex-col overflow-hidden">
-      <header className="shrink-0 px-6 pt-5 pb-3 border-b border-line">
+      <header className="shrink-0 px-4 sm:px-6 pt-5 pb-3 border-b border-line">
         {/* F8: 籌碼分析 title + SymbolSearch + symbol/name + date + refresh
-            collapsed onto a single horizontal row. */}
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl text-ink font-semibold mr-2">籌碼分析</h1>
-          <div className="w-[220px]">
-            <SymbolSearch onPick={handlePick} />
-          </div>
-          {symbol && (
-            <div className="flex items-baseline gap-1.5 text-sm">
-              <span className="text-ink font-medium">{symbol}</span>
-              {symbolName && <span className="text-ink-muted">{symbolName}</span>}
+            on a single horizontal row on desktop; responsive spec §4.3 —
+            兩群控制項 flex-wrap,窄螢幕自動換列,手機搜尋框吃滿剩餘寬。 */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="flex items-center gap-3 min-w-0 basis-full sm:basis-auto">
+            <h1 className="text-2xl text-ink font-semibold mr-2 shrink-0">籌碼分析</h1>
+            <div className="flex-1 min-w-[140px] sm:flex-none sm:w-[220px]">
+              <SymbolSearch onPick={handlePick} />
             </div>
-          )}
+            {symbol && (
+              <div className="flex items-baseline gap-1.5 text-sm shrink-0">
+                <span className="text-ink font-medium">{symbol}</span>
+                {symbolName && <span className="text-ink-muted">{symbolName}</span>}
+              </div>
+            )}
+          </div>
           <div className="inline-flex items-stretch gap-px">
             <TradingDayStepper
               direction="prev"
@@ -321,7 +328,7 @@ export default function App() {
             disabled={isLoading || !symbol}
             aria-label={isLoading ? "資料載入中" : "重新整理"}
             aria-busy={isLoading || undefined}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-line text-ink-muted hover:text-ink hover:border-accent disabled:opacity-50 disabled:cursor-default transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 pointer-coarse:min-h-11 text-sm border border-line text-ink-muted hover:text-ink hover:border-accent disabled:opacity-50 disabled:cursor-default transition-colors cursor-pointer"
           >
             {isLoading && (
               <svg
@@ -342,7 +349,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setTab("overview")}
-            className={`px-4 py-2 text-sm transition-colors cursor-pointer ${
+            className={`px-4 py-2 pointer-coarse:min-h-11 text-sm transition-colors cursor-pointer ${
               tab === "overview"
                 ? "text-accent border-b-2 border-accent font-medium"
                 : "text-ink-dim hover:text-ink"
@@ -353,7 +360,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setTab("bubble")}
-            className={`px-4 py-2 text-sm transition-colors cursor-pointer ${
+            className={`px-4 py-2 pointer-coarse:min-h-11 text-sm transition-colors cursor-pointer ${
               tab === "bubble"
                 ? "text-accent border-b-2 border-accent font-medium"
                 : "text-ink-dim hover:text-ink"
@@ -372,11 +379,8 @@ export default function App() {
 
       <div className="flex-1 min-h-0 overflow-hidden">
         <div hidden={tab !== "overview"} className="h-full">
-          <div
-            className="h-full grid overflow-hidden"
-            style={{ gridTemplateColumns: `1fr 4px ${panelWidth}px` }}
-          >
-            <div className="h-full overflow-hidden">
+          {(() => {
+            const klineChart = (
               <ChipKlineChart
                 history={history}
                 selectedDate={date}
@@ -389,17 +393,8 @@ export default function App() {
                 majorLoading={!!symbol && majorLoading}
                 windowDays={windowDays}
               />
-            </div>
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="調整籌碼欄寬度"
-              data-testid="panel-resize-handle"
-              onMouseDown={handlePanelResizeMouseDown}
-              className="h-full cursor-col-resize bg-line hover:bg-accent transition-colors"
-              title="拖曳調整籌碼欄寬度"
-            />
-            <div className="h-full overflow-hidden">
+            );
+            const brokersPanel = (
               <ChipBrokersPanel
                 summary={panelSummary}
                 dayTotalLots={windowTotalLots}
@@ -410,8 +405,35 @@ export default function App() {
                 windowDays={windowDays}
                 actualDays={brokersWindow.data?.actual_days}
               />
-            </div>
-          </div>
+            );
+            // responsive spec §4.3:<lg 上下堆疊(K 線 45vh + 面板吃剩餘高,
+            // 面板內部既有雙捲動區直接可用);≥lg 維持三欄 + 拖曳調寬。
+            return isMobile ? (
+              <div className="h-full flex flex-col overflow-hidden">
+                <div className="h-[45vh] min-h-[260px] shrink-0 border-b border-line">
+                  {klineChart}
+                </div>
+                <div className="flex-1 min-h-0">{brokersPanel}</div>
+              </div>
+            ) : (
+              <div
+                className="h-full grid overflow-hidden"
+                style={{ gridTemplateColumns: `1fr 4px ${panelWidth}px` }}
+              >
+                <div className="h-full overflow-hidden">{klineChart}</div>
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="調整籌碼欄寬度"
+                  data-testid="panel-resize-handle"
+                  onMouseDown={handlePanelResizeMouseDown}
+                  className="h-full cursor-col-resize bg-line hover:bg-accent transition-colors"
+                  title="拖曳調整籌碼欄寬度"
+                />
+                <div className="h-full overflow-hidden">{brokersPanel}</div>
+              </div>
+            );
+          })()}
         </div>
         <div hidden={tab !== "bubble"} className="h-full">
           <Suspense

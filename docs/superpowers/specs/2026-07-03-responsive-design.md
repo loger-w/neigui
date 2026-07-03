@@ -79,8 +79,10 @@ Tailwind 標準斷點,三層版面:
   RangeSelector + 重新整理」。外層 `flex-wrap`,窄螢幕自動兩列;`<sm` 搜尋框
   `w-full`(現固定 220px)。
 - **三欄 grid**(`App.tsx` `gridTemplateColumns: 1fr 4px ${panelWidth}px`):
-  `<lg` 改單欄堆疊 — K 線圖 `h-[45vh]` 在上、ChipBrokersPanel 自然高度接在下、
-  整個 tab 區 `overflow-y-auto`。`≥lg` 維持三欄 + 拖曳把手 + panelWidth 持久化。
+  `<lg` 改單欄堆疊(實作時修正:**固定高度 flex-col**,K 線 `45vh` 在上、
+  ChipBrokersPanel `flex-1 min-h-0` 吃剩餘高,面板內部既有雙捲動區直接可用,
+  非整頁捲動 — 避開 `overflow-hidden → auto` 全域改動風險與雙層捲動衝突)。
+  `≥lg` 維持三欄 + 拖曳把手 + panelWidth 持久化。
 - **ChipBrokersPanel 表格**:欄寬 `grid-cols-[22px_28px_1fr_64px…]` 在窄容器爆版。
   以容器寬度(非 viewport)降級:窄時隱藏次要欄,保留核心「排名 / 券商名 /
   買賣超 / 均價」;具體取捨實作時依欄位資料重要性定案,原則 = 手機至少保住
