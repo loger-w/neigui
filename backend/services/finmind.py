@@ -56,15 +56,18 @@ _fm_limiter: TokenBucket | None = None
 def get_finmind_rate_limiter() -> TokenBucket:
     global _fm_limiter
     if _fm_limiter is None:
-        # 2026-07-03 真實瓶頸是 Sponsor「每小時 6000 requests」配額,不是
-        # per-second rate(user_info 實測 user_count 5750/6000 → 之後全 502/503)。
-        # 一檔冷 major fan-out ~360 req = 每小時只能冷載入 ~16 檔。rate 拉高只
-        # 會燒配額更快、cancel 更來不及止血:
-        #   8/s → 冷 45s、abort 1.5s 內只燒 ~12 req
-        #   30/s → 冷 12s、abort 前已燒 ~45 req、連切幾檔就爆配額
-        # 8/s 是「單檔可忍受 + 配額止血優先」的折衷。真正的解是砍每檔 request
-        # 數(range dataset / 降 days),不是調 rate。
-        rate = float(os.getenv("FINMIND_RATE_LIMIT_PER_SEC", "8"))
+        # 結構性瓶頸是 Sponsor「每小時 6000 requests」配額,不是 per-second
+        # rate — 一檔冷 major fan-out ~360 req = 每小時冷載入 ~16 檔,調 rate
+        # 不改變這個上限。2026-07-03 曾降到 8/s 做「配額止血」,當時前提是
+        # cancel 鏈未驗證 + 前端一次抓 540 日。同日兩個前提都已改變:
+        #   (1) cancel 鏈實測有效(切股票 → fan-out 停,quota 差值證實)
+        #   (2) 前端 major fast-path(150d 先行、540d gated)把「切走浪費」
+        #       上限鎖在 fast 窗 ~100 req,背景補齊可隨時取消
+        # sustained probe:120 req @ 40/s(burst 40)全 200、p50 0.29s、零
+        # throttle(docs/specs/perf-major-fastpath/optimize-plan.md)。40/s 下
+        # fast 窗 ~2.5s、全量 ~9s。真正的解仍是砍每檔 request 數,rate 只是
+        # 在 FinMind 實測容忍範圍內把等待時間換短。
+        rate = float(os.getenv("FINMIND_RATE_LIMIT_PER_SEC", "40"))
         _fm_limiter = TokenBucket(rate=rate)
         logger.info("FinMind rate limiter: %.1f req/s", rate)
     return _fm_limiter

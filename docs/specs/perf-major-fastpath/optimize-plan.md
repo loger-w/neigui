@@ -61,6 +61,23 @@ FinMind `TaiwanStockTradingDailyReport` 拒絕日期區間(400 "only send one da
 暖載 major 從 41ms 變 0.5-1s 的原因:aggregate cache key 帶 days,150d 視窗是新 key
 首次冷;之後同日重看回到 <50ms。截圖:`screenshots/2886-after-two-stage-load.png`。
 
+## P2 結果(2026-07-03,rate 15→40,冷股 5880,同法量測)
+
+前提改變使 §9「降速止血」決策可逆:cancel 鏈實測有效 + P1 把切走浪費鎖在
+fast 窗 ~100 req。sustained probe:120 req @ 40/s(burst 40)全 200、
+p50 0.29s、零 throttle。
+
+| 指標 | P1(15/s) | P2(40/s) | 達標 |
+|---|---|---|---|
+| 主力副圖 TTI | 6.26 s | **1.97 s** | ✓ < 3s |
+| 540 全量完成(選股起算) | 23.7 s | **8.6 s** | ✓ < 12s |
+| summary / base / brokers(冷) | 0.19-0.26 s | 0.45-0.52 s | ✓ < 1s |
+| FinMind 錯誤(429/402/5xx) | 0 | 0 | ✓ |
+
+註:.env 用 PowerShell 5.1 `-Encoding utf8` 重寫會帶 BOM,`FINMIND_TOKEN`
+讀不到 → symbols 503「FINMIND_TOKEN not set」。修法:`[System.IO.File]::
+WriteAllLines` + `UTF8Encoding($false)`。
+
 ## 行為白名單(保證不變)
 
 - `useChipData` 對外 shape(`{summary, history, loading, summaryLoading,

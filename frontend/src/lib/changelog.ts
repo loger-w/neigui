@@ -40,6 +40,14 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.20.2",
+    date: "2026-07-03",
+    highlights: "資料載入速度再提升",
+    changes: [
+      { kind: "fix", scope: "equity", text: "首次查看一檔股票時,主力買賣超與完整歷史資料的載入速度再大幅提升" },
+    ],
+  },
+  {
     version: "0.20.1",
     date: "2026-07-03",
     highlights: "主力買賣超首次載入大幅加速",
