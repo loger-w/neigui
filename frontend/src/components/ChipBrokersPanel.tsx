@@ -70,9 +70,11 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
   const netCls = broker.net > 0 ? "text-accent" : broker.net < 0 ? "text-bear" : "text-ink-dim";
   // Column order: 買均 → 賣均 → 買張 → 賣張 (avg-price pair first, then
   // volume pair). Net mode prepends 淨買賣 col; volume mode appends 當沖率.
+  // Responsive spec §4.3:窄容器(<28rem,container query)隱藏買均/賣均,
+  // 手機至少保住「誰、買賣超多少」。
   const cls = mode === "net"
-    ? "grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]"
-    : "grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
+    ? "grid-cols-[22px_28px_1fr_64px_52px_52px] @md:grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]"
+    : "grid-cols-[22px_28px_1fr_52px_52px_56px] @md:grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
 
   // C8 B1 (🟢): 整 row 可點,擴大 hit area。checkbox 保留但用 span wrapper
   // 攔 click bubble 避免 double-toggle。keyboard Enter/Space 也觸發。
@@ -90,7 +92,7 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
       aria-pressed={selected}
       onClick={onToggle}
       onKeyDown={handleKeyDown}
-      className={`grid ${cls} items-center text-sm py-2 px-2 border-b border-line/40 cursor-pointer hover:bg-bg-deep/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${selected ? "bg-[#b794f4]/[0.06]" : ""}`}
+      className={`grid ${cls} items-center text-sm py-2 pointer-coarse:py-3 px-2 border-b border-line/40 cursor-pointer hover:bg-bg-deep/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${selected ? "bg-[#b794f4]/[0.06]" : ""}`}
     >
       <span
         onClick={(e) => e.stopPropagation()}
@@ -126,10 +128,10 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
           <span className={`text-right tabular-nums font-medium ${netCls}`}>
             {broker.net > 0 ? "+" : ""}{fmtVol(broker.net)}
           </span>
-          <span className="text-right tabular-nums text-xs text-ink-dim">
+          <span className="hidden @md:block text-right tabular-nums text-xs text-ink-dim">
             {fmtAvgPrice(broker.avg_buy_price)}
           </span>
-          <span className="text-right tabular-nums text-xs text-ink-dim">
+          <span className="hidden @md:block text-right tabular-nums text-xs text-ink-dim">
             {fmtAvgPrice(broker.avg_sell_price)}
           </span>
           <span className="text-right tabular-nums text-accent">{fmtVol(broker.buy)}</span>
@@ -137,10 +139,10 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
         </>
       ) : (
         <>
-          <span className="text-right tabular-nums text-xs text-ink-dim">
+          <span className="hidden @md:block text-right tabular-nums text-xs text-ink-dim">
             {fmtAvgPrice(broker.avg_buy_price)}
           </span>
-          <span className="text-right tabular-nums text-xs text-ink-dim">
+          <span className="hidden @md:block text-right tabular-nums text-xs text-ink-dim">
             {fmtAvgPrice(broker.avg_sell_price)}
           </span>
           <span className="text-right tabular-nums text-accent">{fmtVol(broker.buy)}</span>
@@ -194,13 +196,15 @@ export function ChipBrokersPanel({
 
   const { margin } = summary;
   const N = selectedBrokerIds.size;
-  const netHeaderCols = "grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]";
-  const volHeaderCols = "grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
+  const netHeaderCols =
+    "grid-cols-[22px_28px_1fr_64px_52px_52px] @md:grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]";
+  const volHeaderCols =
+    "grid-cols-[22px_28px_1fr_52px_52px_56px] @md:grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
 
   return (
     <div
       data-testid="chip-brokers-panel"
-      className="h-full flex flex-col overflow-hidden"
+      className="@container h-full flex flex-col overflow-hidden"
       aria-busy={loading || undefined}
     >
       {/* Cluster B 🟢: localized loading indicator — a 2 px-tall scanning
@@ -399,8 +403,8 @@ export function ChipBrokersPanel({
                 <span>#</span>
                 <span>分點</span>
                 <span className="text-right">淨買賣</span>
-                <span className="text-right">買均</span>
-                <span className="text-right">賣均</span>
+                <span className="hidden @md:block text-right">買均</span>
+                <span className="hidden @md:block text-right">賣均</span>
                 <span className="text-right">買張</span>
                 <span className="text-right">賣張</span>
               </div>
@@ -431,8 +435,8 @@ export function ChipBrokersPanel({
                 <span>#</span>
                 <span>分點</span>
                 <span className="text-right">淨買賣</span>
-                <span className="text-right">買均</span>
-                <span className="text-right">賣均</span>
+                <span className="hidden @md:block text-right">買均</span>
+                <span className="hidden @md:block text-right">賣均</span>
                 <span className="text-right">買張</span>
                 <span className="text-right">賣張</span>
               </div>
@@ -464,8 +468,8 @@ export function ChipBrokersPanel({
               <span></span>
               <span>#</span>
               <span>分點</span>
-              <span className="text-right">買均</span>
-              <span className="text-right">賣均</span>
+              <span className="hidden @md:block text-right">買均</span>
+              <span className="hidden @md:block text-right">賣均</span>
               <span className="text-right">買張</span>
               <span className="text-right">賣張</span>
               <span className="text-right">當沖率</span>
