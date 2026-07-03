@@ -55,7 +55,7 @@ export const InstBarSvg = memo(function InstBarSvg({
     return (
       <svg width={width} height={height}>
         {label && (
-          <text x={4} y={22} fontSize={22} fill={TEXT} fontFamily={FONT}>
+          <text x={4} y={22} fontSize="1.375rem" fill={TEXT} fontFamily={FONT}>
             {label}
           </text>
         )}
@@ -111,7 +111,7 @@ export const InstBarSvg = memo(function InstBarSvg({
       })}
 
       {label && (
-        <text y={22} fontSize={22} fontFamily={FONT}
+        <text y={22} fontSize="1.375rem" fontFamily={FONT}
           style={{ fontVariantNumeric: "tabular-nums" }}>
           <tspan x={4} fill={TEXT}>{label}</tspan>
           <tspan dx={8} fill={valColor}>{fmtLots(valRaw)} 張</tspan>
@@ -171,7 +171,7 @@ export const MarginLineSvg = memo(function MarginLineSvg({
     return (
       <svg width={width} height={height}>
         {label && (
-          <text x={4} y={22} fontSize={22} fill={TEXT} fontFamily={FONT}>
+          <text x={4} y={22} fontSize="1.375rem" fill={TEXT} fontFamily={FONT}>
             {label}
           </text>
         )}
@@ -243,7 +243,7 @@ export const MarginLineSvg = memo(function MarginLineSvg({
       )}
 
       {label && (
-        <text y={22} fontSize={22} fontFamily={FONT}
+        <text y={22} fontSize="1.375rem" fontFamily={FONT}
           style={{ fontVariantNumeric: "tabular-nums" }}>
           <tspan x={4} fill={TEXT}>{label}</tspan>
           <tspan dx={8} fill={BULL}>融資 {fmtLots(marginVal)} 張</tspan>

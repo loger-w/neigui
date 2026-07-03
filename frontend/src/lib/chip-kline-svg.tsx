@@ -323,7 +323,7 @@ function KlineChartSvgImpl({
           />
           <text
             x={width - padR + 4} y={yScale(p) + 4} textAnchor="start"
-            fill={t.inkDim} fontSize={11} fontFamily={t.font}
+            fill={t.inkDim} fontSize="0.6875rem" fontFamily={t.font}
             style={{ fontVariantNumeric: "tabular-nums" }}
           >
             {fmtPrice(p)}
@@ -484,7 +484,7 @@ function KlineChartSvgImpl({
                 />
                 <text
                   x={width - padR + 6} y={hoverY + 4}
-                  fontSize={11} fill={t.ink} fontFamily={t.font}
+                  fontSize="0.6875rem" fill={t.ink} fontFamily={t.font}
                   style={{ fontVariantNumeric: "tabular-nums" }}
                 >
                   {fmtPrice(price)}
@@ -497,7 +497,7 @@ function KlineChartSvgImpl({
 
       {/* OHLCV info row (top-left) */}
       <text
-        y={padT - 6} fontSize={22} fontFamily={t.font}
+        y={padT - 6} fontSize="1.375rem" fontFamily={t.font}
         style={{ fontVariantNumeric: "tabular-nums" }}
       >
         <tspan x={padL + 4} fill={t.inkDim}>{infoCandle.date.replace(/-/g, "/")}</tspan>
@@ -516,17 +516,17 @@ function KlineChartSvgImpl({
       </text>
 
       {/* MA / BB legend — gap 加大避免擠在一起 */}
-      <text x={padL + 4} y={padT + 14} fontSize={20} fontFamily={t.font} fill={t.ma5}>
+      <text x={padL + 4} y={padT + 14} fontSize="1.25rem" fontFamily={t.font} fill={t.ma5}>
         MA5
       </text>
-      <text x={padL + 64} y={padT + 14} fontSize={20} fontFamily={t.font} fill={t.ma20}>
+      <text x={padL + 64} y={padT + 14} fontSize="1.25rem" fontFamily={t.font} fill={t.ma20}>
         MA20
       </text>
       {showBB && (
         <text
           data-testid="bb-legend"
           x={padL + 132} y={padT + 14}
-          fontSize={20} fontFamily={t.font} fill={BB_COLOR}
+          fontSize="1.25rem" fontFamily={t.font} fill={BB_COLOR}
         >
           BB(20,2)
         </text>
@@ -547,7 +547,7 @@ function KlineChartSvgImpl({
           />
           <text
             x={xOf(selectedIndex) + 8} y={12}
-            fontSize={11} fill={t.ma5} fontFamily={t.font}
+            fontSize="0.6875rem" fill={t.ma5} fontFamily={t.font}
           >
             {candles[selectedIndex]!.date}
           </text>

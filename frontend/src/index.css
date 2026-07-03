@@ -19,6 +19,15 @@
   --color-danger: #dc2626;
 }
 
+/* 大螢幕字級縮放(responsive spec SC1):root font-size 隨 viewport 放大,
+ * Tailwind text-* / spacing 全 rem 基準一次生效。SVG 圖表文字同步用 rem 字串。 */
+@media (min-width: 1920px) {
+  html { font-size: 112.5%; }
+}
+@media (min-width: 2560px) {
+  html { font-size: 125%; }
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-line-strong) transparent;

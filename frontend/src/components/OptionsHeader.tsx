@@ -79,14 +79,14 @@ export function OptionsHeader({
           : "text-[var(--color-down,#16a34a)]";
         return (
           <div className="ml-auto flex items-baseline gap-1.5">
-            <span className="text-[10px] text-ink-dim uppercase tracking-wide">台指期</span>
-            <span className="text-[18px] font-semibold text-ink font-variant-numeric tabular-nums">
+            <span className="text-[0.625rem] text-ink-dim uppercase tracking-wide">台指期</span>
+            <span className="text-[1.125rem] font-semibold text-ink font-variant-numeric tabular-nums">
               {f.val}
             </span>
-            <span className={`text-[13px] font-variant-numeric tabular-nums ${chgColor}`}>
+            <span className={`text-[0.8125rem] font-variant-numeric tabular-nums ${chgColor}`}>
               {f.chg}
             </span>
-            <span className={`text-[11px] font-variant-numeric tabular-nums ${chgColor}`}>
+            <span className={`text-[0.6875rem] font-variant-numeric tabular-nums ${chgColor}`}>
               {f.chgPct}
             </span>
           </div>

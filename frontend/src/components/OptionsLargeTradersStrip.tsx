@@ -83,11 +83,11 @@ export function OptionsLargeTradersStrip({
               className="grid grid-cols-[1fr_90px] gap-3 items-center"
             >
               <div className="flex flex-col gap-0.5 min-w-0">
-                <span className="text-[10px] text-ink-dim uppercase tracking-wide truncate">
+                <span className="text-[0.625rem] text-ink-dim uppercase tracking-wide truncate">
                   {g.label}
                 </span>
                 <span
-                  className={`text-[16px] font-semibold leading-none ${
+                  className={`text-[1rem] font-semibold leading-none ${
                     cur.net >= 0 ? "text-[var(--color-up,#dc2626)]" : "text-[var(--color-down,#16a34a)]"
                   }`}
                 >
@@ -99,7 +99,7 @@ export function OptionsLargeTradersStrip({
               </div>
               <div className="flex flex-col gap-px border-l border-line pl-3"
                    data-testid="strip-spark">
-                <span className="text-[9px] text-ink-dim uppercase tracking-wide leading-none">
+                <span className="text-[0.5625rem] text-ink-dim uppercase tracking-wide leading-none">
                   20D · {fmtSigned(trend20)}
                 </span>
                 <Sparkline series={series} width={90} height={30} />

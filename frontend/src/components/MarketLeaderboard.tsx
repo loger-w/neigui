@@ -166,7 +166,7 @@ function Row({
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="px-3 py-1 text-[10px] text-ink-dim border-b border-line">
+    <div className="px-3 py-1 text-[0.625rem] text-ink-dim border-b border-line">
       {children}
     </div>
   );

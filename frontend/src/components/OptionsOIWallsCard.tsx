@@ -45,7 +45,7 @@ export function OptionsOIWallsCard({
                 {data.current.static_call_wall?.strike ?? "—"}
               </div>
               {data.current.dynamic_call_wall && (
-                <div className="text-[11px] text-ink-dim mt-0.5">
+                <div className="text-[0.6875rem] text-ink-dim mt-0.5">
                   動態 <span className="tabular-nums">{data.current.dynamic_call_wall.strike}</span>
                   {data.current.dynamic_call_wall.partial_window && " *"}
                 </div>
@@ -58,7 +58,7 @@ export function OptionsOIWallsCard({
                 {data.current.static_put_wall?.strike ?? "—"}
               </div>
               {data.current.dynamic_put_wall && (
-                <div className="text-[11px] text-ink-dim mt-0.5">
+                <div className="text-[0.6875rem] text-ink-dim mt-0.5">
                   動態 <span className="tabular-nums">{data.current.dynamic_put_wall.strike}</span>
                   {data.current.dynamic_put_wall.partial_window && " *"}
                 </div>
@@ -92,7 +92,7 @@ export function OptionsOIWallsCard({
           {(data.current.data_quality_warnings.length > 0 ||
             data.data_quality_warnings.length > 0) && (
             <ul
-              className="mt-2 text-[10px] text-ink-dim space-y-0.5"
+              className="mt-2 text-[0.625rem] text-ink-dim space-y-0.5"
               data-testid="warnings"
             >
               {[

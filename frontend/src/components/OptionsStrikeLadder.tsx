@@ -17,7 +17,7 @@ export function OptionsStrikeLadder({
       <header className="shrink-0 px-4 py-2 text-xs text-ink-dim uppercase tracking-wide border-b border-line flex items-center gap-2">
         <span>成交量分布 · Strike Ladder</span>
         {data && (
-          <span className="text-[10px] text-ink-dim normal-case tracking-normal">
+          <span className="text-[0.625rem] text-ink-dim normal-case tracking-normal">
             {(data.call.length + data.put.length)} 個有量
           </span>
         )}

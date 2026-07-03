@@ -430,7 +430,7 @@ export function ChipBubbleView({
           border: "1px solid #4a4234",
           color: "#ede4d3",
           fontFamily: '"Inter Tight", system-ui, sans-serif',
-          fontSize: 13,
+          fontSize: "0.8125rem",
           padding: "8px 12px",
           borderRadius: 6,
           boxShadow: "0 4px 12px rgba(0,0,0,0.5)",

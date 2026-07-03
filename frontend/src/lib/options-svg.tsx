@@ -196,7 +196,7 @@ export function StrikeLadder({ data, spot }: StrikeLadderProps): ReactElement {
           <col style={{ width: "calc(50% - 60px)" }} />
         </colgroup>
         <thead className="sticky top-0 bg-bg z-10">
-          <tr className="text-[10px] text-ink-dim uppercase tracking-wide border-b border-line">
+          <tr className="text-[0.625rem] text-ink-dim uppercase tracking-wide border-b border-line">
             <th className="px-3 py-1 text-right">Call vol / OI±</th>
             <th className="px-3 py-1 text-center">Strike</th>
             <th className="px-3 py-1 text-left">vol / OI± Put</th>
@@ -234,12 +234,12 @@ export function StrikeLadder({ data, spot }: StrikeLadderProps): ReactElement {
                           : isPutWall ? "put"
                           : undefined;
             const strikeClass = isCallWall && isPutWall
-              ? "text-center text-[13px] font-bold text-accent"
+              ? "text-center text-[0.8125rem] font-bold text-accent"
               : isCallWall
-              ? "text-center text-[13px] font-bold text-[var(--color-up,#dc2626)]"
+              ? "text-center text-[0.8125rem] font-bold text-[var(--color-up,#dc2626)]"
               : isPutWall
-              ? "text-center text-[13px] font-bold text-[var(--color-down,#16a34a)]"
-              : "text-center text-[13px] text-ink";
+              ? "text-center text-[0.8125rem] font-bold text-[var(--color-down,#16a34a)]"
+              : "text-center text-[0.8125rem] text-ink";
             return (
               <tr
                 key={`s-${row.strike}`}
@@ -257,10 +257,10 @@ export function StrikeLadder({ data, spot }: StrikeLadderProps): ReactElement {
                         className="absolute inset-y-1 right-0 bg-[var(--color-up,#dc2626)] opacity-60"
                         style={{ width: `${cw}%` }}
                       />
-                      <span className="relative text-[11px] text-ink z-10">
+                      <span className="relative text-[0.6875rem] text-ink z-10">
                         {c.volume.toLocaleString()}
                         <span
-                          className={`ml-1 text-[10px] px-1 rounded ${
+                          className={`ml-1 text-[0.625rem] px-1 rounded ${
                             c.oi_change >= 0
                               ? "bg-[var(--color-up,#dc2626)]/25 text-red-300"
                               : "bg-[var(--color-down,#16a34a)]/25 text-green-300"
@@ -285,10 +285,10 @@ export function StrikeLadder({ data, spot }: StrikeLadderProps): ReactElement {
                         className="absolute inset-y-1 left-0 bg-[var(--color-down,#16a34a)] opacity-60"
                         style={{ width: `${pw}%` }}
                       />
-                      <span className="relative text-[11px] text-ink z-10">
+                      <span className="relative text-[0.6875rem] text-ink z-10">
                         {p.volume.toLocaleString()}
                         <span
-                          className={`ml-1 text-[10px] px-1 rounded ${
+                          className={`ml-1 text-[0.625rem] px-1 rounded ${
                             p.oi_change >= 0
                               ? "bg-[var(--color-up,#dc2626)]/25 text-red-300"
                               : "bg-[var(--color-down,#16a34a)]/25 text-green-300"

@@ -124,7 +124,7 @@ export function OptionsPCRCard({
 
             {data.data_quality_warnings.length > 0 && (
               <ul
-                className="mt-2 text-[10px] text-ink-dim space-y-0.5"
+                className="mt-2 text-[0.625rem] text-ink-dim space-y-0.5"
                 data-testid="warnings"
               >
                 {data.data_quality_warnings.map((w) => (

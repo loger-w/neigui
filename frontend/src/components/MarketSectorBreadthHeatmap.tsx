@@ -79,8 +79,8 @@ export function MarketSectorBreadthHeatmap({
             )}
             style={{ left: c.x, top: c.y, width: c.w, height: c.h }}
           >
-            <span className="block text-[10px] truncate">{c.sector}</span>
-            <span className="block text-[10px]">{pctText(c.pct, 0)}</span>
+            <span className="block text-[0.625rem] truncate">{c.sector}</span>
+            <span className="block text-[0.625rem]">{pctText(c.pct, 0)}</span>
           </button>
         ))}
       </>
@@ -93,7 +93,7 @@ export function MarketSectorBreadthHeatmap({
         <h3 className="text-ink text-sm">族群參與度</h3>
         <span className="text-ink-dim text-xs">{eodLabel(eodAsOf)}</span>
       </div>
-      <span className="text-ink-dim text-[10px]">站上 20 日均線比例</span>
+      <span className="text-ink-dim text-[0.625rem]">站上 20 日均線比例</span>
       <div ref={containerRef} className="relative h-64 lg:h-full lg:flex-1 min-h-0">
         {body}
       </div>

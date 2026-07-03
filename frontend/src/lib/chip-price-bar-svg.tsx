@@ -40,7 +40,7 @@ export const PriceBarSvg = memo(function PriceBarSvg({
           y={height / 2}
           textAnchor="middle"
           dominantBaseline="central"
-          fontSize={14}
+          fontSize="0.875rem"
           fontFamily={FONT}
           fill={TEXT_FILL}
         >
@@ -130,7 +130,7 @@ export const PriceBarSvg = memo(function PriceBarSvg({
         x={centerX - 12}
         y={height - 6}
         textAnchor="end"
-        fontSize={12}
+        fontSize="0.75rem"
         fontFamily={FONT}
         fill={TEXT_FILL}
       >
@@ -140,7 +140,7 @@ export const PriceBarSvg = memo(function PriceBarSvg({
         x={centerX + 12}
         y={height - 6}
         textAnchor="start"
-        fontSize={12}
+        fontSize="0.75rem"
         fontFamily={FONT}
         fill={TEXT_FILL}
       >

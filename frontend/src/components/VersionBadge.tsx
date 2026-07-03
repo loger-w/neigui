@@ -46,7 +46,7 @@ export function VersionBadge(): ReactElement {
             ))}
           </div>
 
-          <footer className="sticky bottom-0 bg-bg-deep mt-auto px-3 py-1.5 border-t border-line flex items-center justify-between text-[10px] text-ink-dim tracking-wide">
+          <footer className="sticky bottom-0 bg-bg-deep mt-auto px-3 py-1.5 border-t border-line flex items-center justify-between text-[0.625rem] text-ink-dim tracking-wide">
             <span className="tabular-nums">{`${CHANGELOG.length} 版本 · ${TOTAL_UPDATES} updates`}</span>
             <span>{DATA_SOURCES.join(" / ")}</span>
           </footer>
@@ -70,10 +70,10 @@ function VersionSection({ entry, isLatest }: { entry: VersionEntry; isLatest: bo
         >
           v{entry.version}
         </span>
-        <span className="text-[10px] text-ink-dim tabular-nums">{entry.date}</span>
+        <span className="text-[0.625rem] text-ink-dim tabular-nums">{entry.date}</span>
       </div>
       {entry.highlights && (
-        <p className="text-[11px] text-ink-muted leading-relaxed mb-2">{entry.highlights}</p>
+        <p className="text-[0.6875rem] text-ink-muted leading-relaxed mb-2">{entry.highlights}</p>
       )}
       {features.length > 0 && <ChangeTable label="新增功能" items={features} />}
       {fixes.length > 0 && <ChangeTable label="修正" items={fixes} className="mt-2" />}
@@ -92,11 +92,11 @@ function ChangeTable({
 }): ReactElement {
   return (
     <div className={className}>
-      <div className="text-[10px] text-ink-dim uppercase tracking-[0.1em] mb-1">
+      <div className="text-[0.625rem] text-ink-dim uppercase tracking-[0.1em] mb-1">
         {`${label} · ${items.length}`}
       </div>
       <table className="w-full">
-        <tbody className="text-[12px]">
+        <tbody className="text-[0.75rem]">
           {items.map((it, i) => (
             <tr key={i} className="leading-snug">
               <td

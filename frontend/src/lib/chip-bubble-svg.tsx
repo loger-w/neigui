@@ -86,7 +86,7 @@ function HintSvg({
         y={height / 2}
         textAnchor="middle"
         fill={COLOR.text}
-        fontSize={13}
+        fontSize="0.8125rem"
       >
         {text}
       </text>
@@ -602,7 +602,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           y={sY(p) + 4}
           textAnchor="end"
           fill={COLOR.text}
-          fontSize={11}
+          fontSize="0.6875rem"
         >
           {p}
         </text>
@@ -619,7 +619,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
               y={height - PADDING.bottom + 16}
               textAnchor="middle"
               fill={COLOR.text}
-              fontSize={11}
+              fontSize="0.6875rem"
             >
               {v}
             </text>
@@ -629,7 +629,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
               y={height - PADDING.bottom + 16}
               textAnchor="middle"
               fill={COLOR.text}
-              fontSize={11}
+              fontSize="0.6875rem"
             >
               {v}
             </text>
@@ -688,7 +688,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           y={height / 2}
           textAnchor="middle"
           fill={COLOR.text}
-          fontSize={13}
+          fontSize="0.8125rem"
         >
           {priceRange
             ? `此價位區間 (${priceRange.min.toFixed(2)}–${priceRange.max.toFixed(2)}) 無成交`
@@ -727,7 +727,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           ref={crosshairXLabelRef}
           textAnchor="middle"
           fill={COLOR.crosshairLabelText}
-          fontSize={11}
+          fontSize="0.6875rem"
           opacity={0}
           x={0} y={0}
         />
@@ -742,7 +742,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           ref={crosshairYLabelRef}
           textAnchor="end"
           fill={COLOR.crosshairLabelText}
-          fontSize={11}
+          fontSize="0.6875rem"
           opacity={0}
           x={0} y={0}
         />

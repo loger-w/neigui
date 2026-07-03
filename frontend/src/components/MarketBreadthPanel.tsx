@@ -109,7 +109,7 @@ export function MarketBreadthPanel({ breadth, eodAsOf, loaded }: Props): ReactEl
               ),
             )}
           </svg>
-          <span className="absolute top-0 left-0 text-ink-dim text-[10px]">
+          <span className="absolute top-0 left-0 text-ink-dim text-[0.625rem]">
             McClellan {breadth.mcclellan_oscillator?.toFixed(1) ?? "—"}
           </span>
         </div>
@@ -135,7 +135,7 @@ export function MarketBreadthPanel({ breadth, eodAsOf, loaded }: Props): ReactEl
               ),
             )}
           </svg>
-          <span className="absolute top-0 left-0 text-ink-dim text-[10px]">窗口相對累計</span>
+          <span className="absolute top-0 left-0 text-ink-dim text-[0.625rem]">窗口相對累計</span>
         </div>
       </>
     );

@@ -71,7 +71,7 @@ export const BrokerAggBarSvg = memo(function BrokerAggBarSvg({
         );
       })}
 
-      <text y={22} fontSize={22} fontFamily={FONT}
+      <text y={22} fontSize="1.375rem" fontFamily={FONT}
         style={{ fontVariantNumeric: "tabular-nums" }}>
         <tspan x={4} fill={LABEL_COLOR} fontWeight={600}>{label}</tspan>
         <tspan dx={8} fill={valColor}>{fmtLots(valRaw)} 張</tspan>

@@ -38,7 +38,7 @@ export function MarketHeatmap({ sectors, onSymbolPick }: Props): ReactElement {
             <text
               x={g.x + 4}
               y={g.y + 12}
-              className="fill-ink-muted text-[10px] pointer-events-none"
+              className="fill-ink-muted text-[0.625rem] pointer-events-none"
             >
               {g.name}
             </text>
@@ -64,7 +64,7 @@ export function MarketHeatmap({ sectors, onSymbolPick }: Props): ReactElement {
                     x={t.x + t.w / 2}
                     y={t.y + t.h / 2}
                     textAnchor="middle"
-                    className="fill-ink text-[10px] pointer-events-none"
+                    className="fill-ink text-[0.625rem] pointer-events-none"
                   >
                     {t.stockId}
                   </text>

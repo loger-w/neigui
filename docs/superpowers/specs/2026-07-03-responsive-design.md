@@ -48,10 +48,13 @@ User 回報三個問題:
 
 Tailwind text/spacing 全是 rem 基準,一次生效且比例不失衡。
 
-**SVG 圖表文字**:`lib/*-svg.tsx` renderer 的字級是 px 計算,不吃 root font-size。
-各 renderer 加 `fontScale: number` 參數(預設 1),元件端用共用 helper
-`lib/font-scale.ts::useRootFontScale()`(讀 `document.documentElement` computed
-font-size / 16,監聽 resize)傳入。僅乘在文字尺寸上,不動幾何計算。
+**SVG 圖表文字**(實作時修正:改 rem 字串,取代原 fontScale 參數方案):
+`lib/*-svg.tsx` 的 SVG viewBox 全是 1:1(`0 0 ${width} ${height}`),SVG 內
+`fontSize="0.6875rem"` 這類 rem 字串直接吃 root font-size 自動縮放 — 零 API
+改動、零 hook,root 16px 下與原 px 值 pixel 等價(SC5 安全)。固定字級全數
+換 rem;幾何驅動的動態字級(chip-price-bar 依 rowH 計算那顆)保留 px。
+同理,元件內 `text-[Npx]` Tailwind arbitrary value 也不吃 root 縮放,全站
+36 處一併換成 `text-[N/16rem]`。
 
 ### 4.2 斷點策略(SC2/SC3)
 
