@@ -34,7 +34,7 @@ export function MarketLeaderboard({
               aria-selected={active}
               onClick={() => setTab(key)}
               className={cn(
-                "px-3 py-2 text-xs transition-colors cursor-pointer",
+                "px-3 py-2 pointer-coarse:min-h-11 text-xs transition-colors cursor-pointer",
                 active
                   ? "text-accent border-b-2 border-accent font-medium"
                   : "text-ink-dim hover:text-ink",
@@ -146,7 +146,7 @@ function Row({
       data-testid={`lb-row-${row.stock_id}`}
       data-color-bin={colorBin}
       className={cn(
-        "flex justify-between items-center w-full px-3 py-1",
+        "flex justify-between items-center w-full px-3 py-1 pointer-coarse:py-2",
         "hover:bg-bg-deep cursor-pointer text-xs",
       )}
     >

@@ -64,7 +64,7 @@ export function BrokerFilterPopover({
           data-testid="broker-filter-popover"
           sideOffset={6}
           align="start"
-          className="z-50 w-[320px] max-h-[60vh] bg-bg-deep border border-line-strong shadow-lg flex flex-col rounded"
+          className="z-50 w-[320px] max-w-[calc(100vw-2rem)] max-h-[60vh] bg-bg-deep border border-line-strong shadow-lg flex flex-col rounded"
         >
           <div className="px-3 py-2 border-b border-line flex items-center gap-2">
             <input

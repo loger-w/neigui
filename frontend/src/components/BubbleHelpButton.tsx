@@ -18,7 +18,7 @@ export function BubbleHelpButton() {
           data-testid="bubble-help-popover"
           sideOffset={6}
           align="end"
-          className="z-50 w-[320px] bg-bg-deep border border-line-strong shadow-lg rounded p-3 text-xs text-ink-muted"
+          className="z-50 w-[320px] max-w-[calc(100vw-2rem)] bg-bg-deep border border-line-strong shadow-lg rounded p-3 text-xs text-ink-muted"
         >
           <div className="text-ink font-medium mb-2">泡泡圖操作說明</div>
           <ul className="space-y-1.5 leading-relaxed">

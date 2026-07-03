@@ -35,9 +35,13 @@ export function OptionsStrikeLadder({
           載入中…
         </div>
       )}
+      {/* responsive spec §4.5:窄螢幕表格橫向捲動(內層 min-w 撐開),
+          桌面寬度足夠時無捲軸、行為不變。 */}
       {data && (
-        <div className="flex-1 overflow-hidden">
-          <StrikeLadder data={data} spot={spot?.spot ?? null} />
+        <div className="flex-1 overflow-x-auto overflow-y-hidden">
+          <div className="h-full min-w-[480px]">
+            <StrikeLadder data={data} spot={spot?.spot ?? null} />
+          </div>
         </div>
       )}
     </section>

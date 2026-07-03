@@ -34,7 +34,7 @@ export function VersionBadge(): ReactElement {
           sideOffset={6}
           align="end"
           aria-labelledby="version-info-title"
-          className="z-50 w-[360px] max-h-[60vh] overflow-y-auto bg-bg-deep border border-line shadow-lg flex flex-col"
+          className="z-50 w-[360px] max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto bg-bg-deep border border-line shadow-lg flex flex-col"
         >
           <header className="sticky top-0 bg-bg-deep border-b border-line px-3 py-2">
             <h2 id="version-info-title" className="text-sm font-semibold text-ink">版本資訊</h2>

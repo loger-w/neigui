@@ -31,7 +31,7 @@ export function OptionsHeader({
 }: Props): ReactElement {
   const contracts = useMemo(() => listActiveContracts(new Date()), []);
   return (
-    <header className="shrink-0 px-6 py-3 border-b border-line flex items-center gap-3">
+    <header className="shrink-0 px-4 sm:px-6 py-3 border-b border-line flex flex-wrap items-center gap-x-3 gap-y-2">
       <h1 className="text-2xl text-ink font-semibold mr-2">選擇權籌碼</h1>
       <label className="text-sm text-ink-muted flex items-center gap-1.5">
         合約
@@ -61,7 +61,7 @@ export function OptionsHeader({
         onClick={onRefresh}
         disabled={loading}
         aria-busy={loading || undefined}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border border-line text-ink-muted hover:text-ink hover:border-accent disabled:opacity-50 disabled:cursor-default transition-colors cursor-pointer"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 pointer-coarse:min-h-11 text-sm border border-line text-ink-muted hover:text-ink hover:border-accent disabled:opacity-50 disabled:cursor-default transition-colors cursor-pointer"
       >
         {loading && (
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"

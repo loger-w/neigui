@@ -102,7 +102,12 @@ export function MarketPage({ isActive, onSymbolPick }: Props): ReactElement {
           >
             經典檢視 {classicOpen ? "▾" : "▸"}
           </button>
-          <div hidden={!classicOpen} className="h-[560px] grid grid-cols-1 lg:grid-cols-[7fr_3fr]">
+          {/* responsive spec §4.5:mobile 明確列高(heatmap 360px 量測有依據 +
+              leaderboard 自然高由外層頁捲動收),lg 維持 560px 雙欄。 */}
+          <div
+            hidden={!classicOpen}
+            className="grid grid-cols-1 grid-rows-[360px_auto] lg:h-[560px] lg:grid-rows-1 lg:grid-cols-[7fr_3fr]"
+          >
             <MarketHeatmap
               sectors={data?.sectors ?? []}
               onSymbolPick={onSymbolPick}
