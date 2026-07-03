@@ -10,3 +10,15 @@ export const CHIP = {
   ma20: "#b794f4",
   font: '"Inter Tight", system-ui, sans-serif',
 } as const;
+
+/** SVG 大標籤字級(OHLC 資訊列、子圖標籤)。桌面 22px 等值;窄容器
+ *  (<500px,手機堆疊)降到 13px 等值避免與 bars/資訊互相重疊。
+ *  回傳 rem 字串讓大螢幕 root font-size 縮放同步生效(responsive spec SC1)。 */
+export function svgLabelFont(width: number): string {
+  return width < 500 ? "0.8125rem" : "1.375rem";
+}
+
+/** SVG 圖例字級(MA5 / MA20 / BB 標籤)。桌面 20px 等值;窄容器 12px 等值。 */
+export function svgLegendFont(width: number): string {
+  return width < 500 ? "0.75rem" : "1.25rem";
+}

@@ -264,7 +264,7 @@ export function ChipBubbleView({
     >
       {/* Left: header search bar + bubble chart */}
       <div className="h-full flex flex-col min-h-0 border-r border-line overflow-hidden">
-        <div className="shrink-0 h-10 px-3 border-b border-line bg-bg-deep/30 flex items-center gap-3">
+        <div className="shrink-0 min-h-10 px-3 py-1 border-b border-line bg-bg-deep/30 flex flex-wrap items-center gap-x-3 gap-y-1">
           <BrokerSearch
             trades={bubbleData?.trades ?? []}
             value={selectedBrokerName}

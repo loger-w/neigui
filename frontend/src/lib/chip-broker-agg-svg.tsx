@@ -4,7 +4,7 @@
  * 唯一差異:label 字色改為紫色 (ma20) 標示「分點 aggregate」。
  */
 import { memo } from "react";
-import { CHIP } from "./chip-theme";
+import { CHIP, svgLabelFont } from "./chip-theme";
 import { KLINE_PAD_L, KLINE_PAD_R } from "./chip-kline-svg";
 import { instBarHeight } from "./chip-inst-bar-svg";
 
@@ -71,7 +71,7 @@ export const BrokerAggBarSvg = memo(function BrokerAggBarSvg({
         );
       })}
 
-      <text y={22} fontSize="1.375rem" fontFamily={FONT}
+      <text y={22} fontSize={svgLabelFont(width)} fontFamily={FONT}
         style={{ fontVariantNumeric: "tabular-nums" }}>
         <tspan x={4} fill={LABEL_COLOR} fontWeight={600}>{label}</tspan>
         <tspan dx={8} fill={valColor}>{fmtLots(valRaw)} 張</tspan>

@@ -2,7 +2,7 @@
 // 顏色 inline hex,不用 CSS var / Tailwind class。
 import { memo } from "react";
 import type { DailyCandle } from "../lib/chip-data";
-import { CHIP } from "./chip-theme";
+import { CHIP, svgLabelFont, svgLegendFont } from "./chip-theme";
 import { rangeBandX, type RangeBand } from "./chip-range-band";
 
 const CHIP_THEME = {
@@ -497,7 +497,7 @@ function KlineChartSvgImpl({
 
       {/* OHLCV info row (top-left) */}
       <text
-        y={padT - 6} fontSize="1.375rem" fontFamily={t.font}
+        y={padT - 6} fontSize={svgLabelFont(width)} fontFamily={t.font}
         style={{ fontVariantNumeric: "tabular-nums" }}
       >
         <tspan x={padL + 4} fill={t.inkDim}>{infoCandle.date.replace(/-/g, "/")}</tspan>
@@ -516,17 +516,17 @@ function KlineChartSvgImpl({
       </text>
 
       {/* MA / BB legend — gap 加大避免擠在一起 */}
-      <text x={padL + 4} y={padT + 14} fontSize="1.25rem" fontFamily={t.font} fill={t.ma5}>
+      <text x={padL + 4} y={padT + 14} fontSize={svgLegendFont(width)} fontFamily={t.font} fill={t.ma5}>
         MA5
       </text>
-      <text x={padL + 64} y={padT + 14} fontSize="1.25rem" fontFamily={t.font} fill={t.ma20}>
+      <text x={padL + 64} y={padT + 14} fontSize={svgLegendFont(width)} fontFamily={t.font} fill={t.ma20}>
         MA20
       </text>
       {showBB && (
         <text
           data-testid="bb-legend"
           x={padL + 132} y={padT + 14}
-          fontSize="1.25rem" fontFamily={t.font} fill={BB_COLOR}
+          fontSize={svgLegendFont(width)} fontFamily={t.font} fill={BB_COLOR}
         >
           BB(20,2)
         </text>
