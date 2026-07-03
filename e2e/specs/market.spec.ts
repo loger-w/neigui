@@ -93,3 +93,22 @@ test.describe("market mode @1440x900", () => {
     expect(internal.scrollHeight).toBeLessThanOrEqual(internal.clientHeight);
   });
 });
+
+// responsive spec SC2:手機 viewport smoke。
+test.describe("market mode — mobile viewport", () => {
+  test.use({ viewport: { width: 375, height: 667 } });
+
+  test("M8: 375px 下 v2 grid + heatmap 可見且無水平溢出", async ({ page }) => {
+    // 痛點:classic 區 h-[560px] 曾在手機硬擠雙 panel(改 mobile 明確列高);
+    // 主 grid grid-cols-1 堆疊。鎖 SC2 無水平溢出。
+    await installFixtureClock(page);
+    await page.addInitScript(() => localStorage.setItem("mode", "market"));
+    await page.goto("/");
+    await expect(page.getByTestId("market-v2-grid")).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+});

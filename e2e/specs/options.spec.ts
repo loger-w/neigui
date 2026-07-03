@@ -55,3 +55,21 @@ test.describe("options mode", () => {
     await expect(oiCard).toBeVisible();
   });
 });
+
+// responsive spec SC2:手機 viewport smoke。
+test.describe("options mode — mobile viewport", () => {
+  test.use({ viewport: { width: 375, height: 667 } });
+
+  test("O5: 375px 下 4 cards 可見且無水平溢出", async ({ page }) => {
+    // 痛點:4 cards xl:grid-cols-4 在手機必須收 1 欄;大戶 strip grid-cols-4
+    // 曾無降級(改 2x2)。鎖 SC2 無水平溢出。
+    await installFixtureClock(page);
+    await page.addInitScript(() => localStorage.setItem("mode", "options"));
+    await page.goto("/");
+    await expect(page.getByTestId(TESTIDS.optionsMaxPainCard)).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+});

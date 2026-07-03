@@ -65,3 +65,25 @@ test.describe("equity mode", () => {
     await expect(page.getByTestId(TESTIDS.panelResizeHandle)).toBeVisible();
   });
 });
+
+// responsive spec SC2/SC4:手機 viewport smoke。viewport 一律 test.use 導航前固定
+// (§9:setViewportSize 後立即量測會撞 resize relayout race)。
+test.describe("equity mode — mobile viewport", () => {
+  test.use({ viewport: { width: 375, height: 667 } });
+
+  test("E6: 375px 搜尋 2330 → K 線 + 面板堆疊、無水平溢出、resize handle 不存在", async ({ page }) => {
+    // 痛點:手機用戶「幾乎無法使用」— 三欄 grid 無降級、resize handle 綁 mouse。
+    // 鎖 SC2(無水平溢出)+ 堆疊分支(handle 桌面限定)。
+    await installFixtureClock(page);
+    await page.goto("/");
+    await page.getByPlaceholder(/搜尋代號/).fill("2330");
+    await page.getByRole("option").first().click();
+    await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.chipKlineChart)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.panelResizeHandle)).toHaveCount(0);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+});

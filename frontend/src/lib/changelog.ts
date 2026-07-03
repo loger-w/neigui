@@ -40,6 +40,16 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.21.0",
+    date: "2026-07-03",
+    highlights: "支援手機與小螢幕瀏覽",
+    changes: [
+      { kind: "feature", scope: "global", text: "支援手機與平板瀏覽,版面自動調整為直向堆疊" },
+      { kind: "feature", scope: "global", text: "大螢幕上文字自動放大,更易閱讀" },
+      { kind: "feature", scope: "equity", text: "泡泡圖在手機上點選分點即可從底部開啟成交明細" },
+    ],
+  },
+  {
     version: "0.20.2",
     date: "2026-07-03",
     highlights: "資料載入速度再提升",
