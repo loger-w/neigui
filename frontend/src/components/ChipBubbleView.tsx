@@ -432,8 +432,11 @@ export function ChipBubbleView({
       </div>
 
       {/* Right(desktop): Price bars + side-by-side buy/sell trade lists。
-          Mobile(responsive spec §4.4):改 bottom sheet,tap 泡泡自動開。 */}
-      {!isMobile && <div className="h-full">{detailPanel}</div>}
+          Mobile(responsive spec §4.4):改 bottom sheet,tap 泡泡自動開。
+          注意:DetailPanel 必須「直接」當 grid item(root 自帶 h-full flex
+          overflow-hidden)— 多包一層 div.h-full 會破壞高度約束,虛擬化列表
+          的 totalSize(數萬 px)撐爆 grid row,左側泡泡 SVG 跟著爆高變空白。 */}
+      {!isMobile && detailPanel}
       {isMobile && sheetOpen && (
         <>
           <div
