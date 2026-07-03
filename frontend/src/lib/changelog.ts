@@ -40,6 +40,15 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.21.1",
+    date: "2026-07-03",
+    highlights: "泡泡圖加上價位篩選操作提示",
+    changes: [
+      { kind: "fix", scope: "equity", text: "泡泡圖左側價格軸加上提示文字,告知可以按住拖曳來篩選價位區間" },
+      { kind: "fix", scope: "global", text: "版本說明全面改用一般用語,減少專業術語與英文" },
+    ],
+  },
+  {
     version: "0.21.0",
     date: "2026-07-03",
     highlights: "支援手機與小螢幕瀏覽",
@@ -72,7 +81,7 @@ export const CHANGELOG: VersionEntry[] = [
     highlights: "籌碼分點與泡泡圖操作改良:全分點篩選、區間過濾、手動輸入、使用說明",
     changes: [
       { kind: "feature", scope: "equity", text: "分點篩選加開「篩選」彈出視窗,可看當日全部分點清單並勾選、搜尋、按淨買賣或名稱排序" },
-      { kind: "feature", scope: "equity", text: "泡泡圖拖曳 Y 軸選價位區間後,只顯示區間內的成交泡泡" },
+      { kind: "feature", scope: "equity", text: "泡泡圖按住左側價格軸拖曳選價位區間後,只顯示區間內的成交泡泡" },
       { kind: "feature", scope: "equity", text: "泡泡圖新增「輸入區間」可手動輸入買賣價位下限與上限" },
       { kind: "feature", scope: "equity", text: "泡泡圖右上角新增「?」操作說明,首次使用者可看操作指引" },
       { kind: "feature", scope: "equity", text: "泡泡圖框選價位區間後點選分點,會顯示該分點今日所有價位的成交,原本的區間仍保留作為視覺參考" },
@@ -116,9 +125,9 @@ export const CHANGELOG: VersionEntry[] = [
     date: "2026-06-29",
     highlights: "新增「大盤」掃描頁面 — 一眼看整盤族群熱力圖 + 漲跌幅 / 大量單 / 量比三榜",
     changes: [
-      { kind: "feature", scope: "global", text: "新增「大盤」掃描頁面:左側是按產業分類的熱力圖、右側是漲跌幅 / 大量單 / 量比 top 30 切換榜單" },
-      { kind: "feature", scope: "global", text: "熱力圖或榜單點任一檔股票直接跳到該檔的籌碼分析頁(個股 mode)" },
-      { kind: "feature", scope: "global", text: "盤中自動每 2-3 秒抓最新整盤資料,收盤後自動暫停 polling" },
+      { kind: "feature", scope: "global", text: "新增「大盤」掃描頁面:左側是按產業分類的熱力圖、右側是漲跌幅 / 大量單 / 量比前 30 名切換榜單" },
+      { kind: "feature", scope: "global", text: "熱力圖或榜單點任一檔股票直接跳到該檔的個股籌碼分析頁" },
+      { kind: "feature", scope: "global", text: "盤中自動每 2-3 秒抓最新整盤資料,收盤後自動暫停更新" },
     ],
   },
   {
@@ -133,9 +142,9 @@ export const CHANGELOG: VersionEntry[] = [
   {
     version: "0.17.0",
     date: "2026-06-29",
-    highlights: "N 日聚合範圍在 K 線上看得到,任意天數打字直接設",
+    highlights: "N 日加總範圍在 K 線上看得到,任意天數打字直接設",
     changes: [
-      { kind: "feature", scope: "equity", text: "選 1 天以上聚合時,K 線與底下各資料區會用淡金色帶標出涵蓋的交易日範圍" },
+      { kind: "feature", scope: "equity", text: "選 1 天以上加總時,K 線與底下各資料區會用淡金色帶標出涵蓋的交易日範圍" },
       { kind: "feature", scope: "equity", text: "頂部新增「過去 N 日」標籤,一眼知道現在看的是幾日加總" },
       { kind: "feature", scope: "equity", text: "天數選擇器右側可直接輸入任意 1-60 整數,Enter 或滑開即套用;預設按鈕仍保留" },
       { kind: "fix", scope: "equity", text: "右側面板左邊不再多畫彩色邊條(改在 K 線上呈現範圍,視覺更直觀)" },
@@ -149,15 +158,15 @@ export const CHANGELOG: VersionEntry[] = [
       { kind: "feature", scope: "equity", text: "預設籌碼期間改為當日,要看更長期間可手動選 1 / 10 / 20 / 30 / 60 日" },
       { kind: "feature", scope: "equity", text: "日期欄左右新增前/後一交易日按鈕,自動跳過週末與非交易日,未來日卡在當日" },
       { kind: "feature", scope: "equity", text: "選到非交易日(週末等)時自動跳到最近的交易日,避免畫面空白" },
-      { kind: "feature", scope: "equity", text: "聚合多日籌碼時右側面板左緣顯示彩色邊條,一眼分辨當日 vs 區間加總" },
+      { kind: "feature", scope: "equity", text: "看多日加總籌碼時右側面板左緣顯示彩色邊條,一眼分辨當日或區間加總" },
     ],
   },
   {
     version: "0.15.0",
     date: "2026-06-29",
-    highlights: "泡泡圖背景多了當日分時走勢線,看 bubble 落點時對齊股價形狀",
+    highlights: "泡泡圖背景多了當日分時走勢線,看泡泡落點時對齊股價形狀",
     changes: [
-      { kind: "feature", scope: "equity", text: "泡泡圖背景新增當日分時走勢線(灰色細線),Y 軸與泡泡共用價格刻度,可一眼看出 bubble 落在當日什麼價位區段" },
+      { kind: "feature", scope: "equity", text: "泡泡圖背景新增當日分時走勢線(灰色細線),與泡泡共用價格刻度,可一眼看出泡泡落在當日什麼價位區段" },
     ],
   },
   {
@@ -195,7 +204,7 @@ export const CHANGELOG: VersionEntry[] = [
     date: "2026-06-27",
     highlights: "K 線新增布林通道與滾輪 / 框選縮放,分頁切換更順",
     changes: [
-      { kind: "feature", scope: "equity", text: "K 線新增布林通道(20 日 ±2σ)" },
+      { kind: "feature", scope: "equity", text: "K 線新增布林通道(20 日)" },
       { kind: "feature", scope: "equity", text: "K 線支援滾輪縮放與框選區間放大" },
       { kind: "feature", scope: "global", text: "籌碼與選擇權頁切換更順,資料載入更快" },
     ],
@@ -203,10 +212,10 @@ export const CHANGELOG: VersionEntry[] = [
   {
     version: "0.10.0",
     date: "2026-06-26",
-    highlights: "TXO 籌碼框架接上真實資料:命中率、統計與相關係數改用實況數據",
+    highlights: "TXO 籌碼分析接上真實資料:命中率與統計改用實際數據",
     changes: [
       { kind: "feature", scope: "options", text: "Max Pain / OI 牆 命中率改用真實歷史結算資料計算" },
-      { kind: "feature", scope: "options", text: "新增結算價、台指期報酬與外資籌碼的統計與相關係數呈現" },
+      { kind: "feature", scope: "options", text: "新增結算價、台指期報酬與外資籌碼的統計,附歷史相關性" },
       { kind: "fix", scope: "options", text: "命中率改用結算前一交易日資料,避免結算當日未平倉收斂造成虛高" },
       { kind: "fix", scope: "options", text: "OI 牆欄位顯示修正,資料缺漏時改用最近可用日期不再空白" },
     ],
@@ -214,7 +223,7 @@ export const CHANGELOG: VersionEntry[] = [
   {
     version: "0.9.0",
     date: "2026-06-26",
-    highlights: "TXO 籌碼框架首版上線:Max Pain、OI 牆、PCR、三大法人四卡整合面板",
+    highlights: "TXO 籌碼分析首版上線:Max Pain、OI 牆、PCR、三大法人四卡整合面板",
     changes: [
       { kind: "feature", scope: "options", text: "新增 Max Pain 卡:顯示最大痛點履約價與歷史命中率" },
       { kind: "feature", scope: "options", text: "新增 OI 牆卡:Call Wall / Put Wall 位階與歷史命中率" },
@@ -254,7 +263,7 @@ export const CHANGELOG: VersionEntry[] = [
     changes: [
       { kind: "feature", scope: "options", text: "新增履約價量能階梯,完整呈現價內外履約價的未平倉量與成交量分布" },
       { kind: "feature", scope: "options", text: "新增大戶淨未平倉四卡,每卡附 20 日迷你走勢圖" },
-      { kind: "feature", scope: "options", text: "選擇權頁顯示台指期現價與漲跌,作為履約價對齊錨點" },
+      { kind: "feature", scope: "options", text: "選擇權頁顯示台指期現價與漲跌,方便對照目前價位落在哪個履約價附近" },
       { kind: "fix", scope: "options", text: "大戶未平倉資料改逐日抓取,迷你走勢圖呈現真實 20 日序列" },
       { kind: "fix", scope: "options", text: "迷你走勢圖在資料點不足或資料缺漏時顯示更穩健" },
     ],
@@ -312,7 +321,7 @@ export const CHANGELOG: VersionEntry[] = [
   {
     version: "0.1.0",
     date: "2026-06-14",
-    highlights: "首版上線:個股籌碼總覽端到端(K 線、三大法人、主力券商、泡泡圖)",
+    highlights: "首版上線:個股籌碼總覽(K 線、三大法人、主力券商、泡泡圖)",
     changes: [
       { kind: "feature", scope: "global", text: "專案首版上線:個股籌碼分析工具" },
       { kind: "feature", scope: "equity", text: "新增個股 K 線圖,呈現日線歷史走勢" },

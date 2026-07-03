@@ -583,3 +583,39 @@ describe("BubbleChartSvg — C10 priceRange 過濾泡泡 (🔴 Item 3)", () => {
     expect(container.querySelector("[data-testid=bubble-brush-band]")).toBeTruthy();
   });
 });
+
+describe("BubbleChartSvg — Y 軸拖曳篩選提示", () => {
+  const trades: BrokerTrade[] = [
+    mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 50, sell: 0 }),
+    mkTrade({ broker: "B", broker_id: "B1", price: 101, buy: 0, sell: 30 }),
+  ];
+
+  it("有 onYBrush(桌面)且無 brushRange 時顯示提示", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={trades} width={400} height={300} onYBrush={() => {}} />,
+    );
+    const hint = container.querySelector('[data-testid="bubble-brush-hint"]');
+    expect(hint).toBeTruthy();
+    expect(hint!.textContent).toContain("拖曳");
+  });
+
+  it("無 onYBrush(mobile,brush 停用)時不顯示提示", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={trades} width={400} height={300} />,
+    );
+    expect(container.querySelector('[data-testid="bubble-brush-hint"]')).toBeNull();
+  });
+
+  it("已有 brushRange 時隱藏提示(避免與區間帶疊字)", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={trades}
+        width={400}
+        height={300}
+        onYBrush={() => {}}
+        brushRange={{ min: 99, max: 102 }}
+      />,
+    );
+    expect(container.querySelector('[data-testid="bubble-brush-hint"]')).toBeNull();
+  });
+});

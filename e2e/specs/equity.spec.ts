@@ -87,3 +87,16 @@ test.describe("equity mode — mobile viewport", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 });
+test.describe("equity mode — 泡泡圖提示", () => {
+  test("E7: 桌面泡泡圖顯示價格軸拖曳篩選提示", async ({ page }) => {
+    // 痛點:Y 軸 brush 是隱形功能(只有 hover 游標線索),使用者不知道能拖曳
+    // 篩選價位。鎖住 desktop 顯示提示;mobile(E6 viewport)brush 停用不顯示。
+    await installFixtureClock(page);
+    await page.goto("/");
+    await page.getByPlaceholder(/搜尋代號/).fill("2330");
+    await page.getByRole("option").first().click();
+    await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
+    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await expect(page.getByTestId("bubble-brush-hint")).toBeVisible();
+  });
+});

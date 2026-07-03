@@ -778,6 +778,25 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         />
       )}
 
+      {/* 拖曳篩選提示:Y 軸 brush 沒有視覺線索(只有 hover 游標),沿價格軸
+          放常駐低調直排提示。onYBrush 未提供(mobile 停用 brush)不渲染;
+          拖曳中或已有區間時隱藏,避免與 brush band 疊字。 */}
+      {onYBrush && !dragBrush && !brushRange && (
+        <text
+          data-testid="bubble-brush-hint"
+          x={11}
+          y={PADDING.top + cH / 2}
+          transform={`rotate(-90 11 ${PADDING.top + cH / 2})`}
+          textAnchor="middle"
+          fill={COLOR.text}
+          fontSize="0.6875rem"
+          opacity={0.8}
+          pointerEvents="none"
+        >
+          ⇕ 拖曳篩選價位區間
+        </text>
+      )}
+
       {/* C7 A1 (🟢): Y 軸 brush overlay —— 覆蓋 Y 軸 label 區(x < PADDING.left)。
           drag ≥ 4px 才觸發 onYBrush;單擊不觸發。位置分離於主 overlay 之外,
           不會吃掉 bubble hit test / click 空白清 selection 邏輯。 */}
