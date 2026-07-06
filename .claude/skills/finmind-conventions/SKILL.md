@@ -1,6 +1,6 @@
 ---
 name: finmind-conventions
-description: FinMind 接入慣例與配額真相。接新 FinMind dataset、寫 probe 腳本、設計 fan-out endpoint、評估冷載入成本、寫 backend test 碰到 FinMindClient 時先讀。含 Bearer 認證、共用 window 設計、6000 req/hr 配額、conftest test 基建。
+description: FinMind 接入慣例與配額真相。接新 FinMind dataset、寫 probe 腳本、設計 fan-out endpoint、評估冷載入成本、排查成串 502/503(配額燒乾徵兆)、寫 backend test 碰到 FinMindClient 時先讀。含 Bearer 認證、共用 window 設計、6000 req/hr 配額、conftest test 基建。
 ---
 
 # FinMind 接入慣例
