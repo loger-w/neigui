@@ -29,3 +29,6 @@ e2e/.cache/
 .idea/
 .vscode/
 *.swp
+
+# 私有交易策略研究(具名分點 intel,不進 public repo;未來搬 private repo)
+docs/specs/broker-signature-explorer/
