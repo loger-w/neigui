@@ -1,0 +1,47 @@
+[
+  {
+    "id": "R1",
+    "severity": "P1",
+    "location": "design.md §1 收尾節 步驟 2(及鏡像 docs/harness/skills/branch-lifecycle.md 步驟 2)",
+    "problem": "漂移路徑的觸發條件「origin/main 未動 / 動了」沒有可操作判準:開工節並未記錄當時的 origin/main SHA,收尾時「動了」相對什麼基準無從比對。弱模型最可能拿 local main SHA vs origin/main SHA 比對,但 solo 常態是 local main 領先(前輪 merge 未 push),兩 SHA 必不同 → 每次收尾都誤入漂移路徑白跑 rebase + 整輪 auto-verify。",
+    "suggested_fix": "步驟 2 明寫判準指令:`git merge-base --is-ancestor origin/main HEAD` 成立 = 未動 → 進步驟 3;不成立 = 動了 → 漂移路徑。design 與 skill 檔同步補。",
+    "rationale": "criterion 7 + 8:主資料流的分支條件是隱性假設,兩種誤判方向都會在 SC-5 rollout 真實發生。",
+    "resolution": "accepted — 判準原句補進 design 步驟 2 與 skill 步驟 2"
+  },
+  {
+    "id": "R2",
+    "severity": "P1",
+    "location": "design.md §1 收尾節 步驟 6(PR 路徑,上輪 R5 fix 引入)",
+    "problem": "預設路徑收尾後 main 領先 origin 且不自動 push;此狀態下走 PR 路徑 + GitHub squash → local main 與 origin/main 永久分岔,之後每輪開工節都撞「分岔停下」,local 未推 commit 推不上去。",
+    "suggested_fix": "PR 路徑前置檢查:local main == origin/main(領先 → 先走鐵則 H push 流程推平再開 PR);或限制領先時禁 --squash。",
+    "rationale": "cross-round:上輪 R5 fix 引入的新狀態組合會讓 repo 進入需手動 reset 的分岔。",
+    "resolution": "accepted — 採前置檢查版,寫進 design/skill PR 路徑前置依賴"
+  },
+  {
+    "id": "R3",
+    "severity": "P2",
+    "location": "design.md §1 異常處理表「開工時不在 main」(上輪 R3 fix 引入)",
+    "problem": "「resume 該分支走完原流程」隱含當前分支是 lifecycle 分支;任意實驗分支 / detached HEAD 時「原流程」不存在,兩出口都不適用。",
+    "suggested_fix": "出口限定:符合 <prefix>/ 對照表才可 resume,否則只有確認處置後回 main 重開。",
+    "rationale": "cross-round:R3 fix 只覆蓋 harness 自己開的分支。",
+    "resolution": "accepted — design/skill 該列改限定句式"
+  },
+  {
+    "id": "R4",
+    "severity": "P2",
+    "location": "design.md §4 SC-5",
+    "problem": "驗法「實際使用觀察」無具體判準與證據形式,不可重現,不符鐵則 D。",
+    "suggested_fix": "SC-5 補觀察 checklist + 證據指令(git log --graph 線性、branch --list 為空、回報含「main 領先 origin N」)。",
+    "rationale": "criterion 9:唯一行為級 SC 沒有可重現量法。",
+    "resolution": "accepted — SC-5 驗法欄改 checklist"
+  },
+  {
+    "id": "R5",
+    "severity": "P2",
+    "location": "design.md §1 異常處理表「user 中途放棄」 vs skill 檔",
+    "problem": "design「或」句式可讀成 /feat 也允許直接 -D;skill 是明確分流 — 同型 design/skill drift 再現。",
+    "suggested_fix": "design 改分流句式與 skill 一致。",
+    "rationale": "cross-round:單一 source of truth 宣稱下的措辭 drift。",
+    "resolution": "accepted — design 該列改分流句式"
+  }
+]
