@@ -29,6 +29,11 @@ def _find_root() -> Path:
 
 
 def main(root: Path | None = None) -> int:
+    # Windows pipe 預設 locale 編碼(cp950),繁中輸出會變亂碼 — 強制 UTF-8
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8")
     root = root or _find_root()
     config_path = root / ".claude" / "harness.json"
     if not config_path.is_file():
