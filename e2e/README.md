@@ -1,4 +1,4 @@
-# trash-cmoney E2E
+# neigui E2E
 
 Playwright + fixture-mode FinMind, fully isolated npm root(不污染 `frontend/` deps tree)。
 

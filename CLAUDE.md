@@ -1,4 +1,4 @@
-# trash-cmoney — 台股籌碼 / 選擇權分析 dashboard
+# neigui — 台股籌碼 / 選擇權分析 dashboard
 
 User-global `~/.claude/CLAUDE.md` 的鐵則(觀察優先 / Scope / 測試 / 證據 / 禁止繞過 / 3 次上限 / Sub-agent)一律繼承,不在這裡重述。本檔只放「讀 code 看不出來」的專案級事實。
 
