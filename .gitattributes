@@ -1,0 +1,2 @@
+# sh script 的 shebang 不能帶 CR — Git Bash 執行 CRLF 的 hook 會 "/bin/sh\r: not found"
+scripts/git-hooks/pre-push text eol=lf
