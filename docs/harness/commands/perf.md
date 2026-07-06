@@ -9,6 +9,7 @@
 
 ## Phases
 
+0. **Phase 0|工作區**:呼叫 `branch-lifecycle` 開工節(status 乾淨 + 主線同步 + `git switch -c perf/<slug>`)
 1. **Phase 1|量化目標 gate**(必須,不可跳):
    - **現況數字** + 量測方式 + 環境(例:LCP p95 = 3.2s / DevTools Performance / prod-like build)
    - **目標數字**:具體 threshold
@@ -45,7 +46,8 @@
 ✓ 強烈推薦:`/goal <metric 達標如 LCP < 2.5s> 且 既有測試全綠 /perf <metric>`
 
 ## Done
-Metric 達標 + 既有測試全綠 + benchmark 入庫 + 沒退化其他 metric + before/after 對照表
+Metric 達標 + 既有測試全綠 + benchmark 入庫 + 沒退化其他 metric + before/after 對照表。
+**全過後呼叫 `branch-lifecycle` 收尾節**(自動 merge 回 main + 刪分支),再做最終回報。
 
 ## 禁止(本流程特有,共通禁止見 CLAUDE.md)
 - ❌ 沒量測就開始改(premature optimization)

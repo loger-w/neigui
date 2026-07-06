@@ -9,6 +9,7 @@
 
 ## Phases
 
+0. **Phase 0|工作區**:呼叫 `branch-lifecycle` 開工節(status 乾淨 + 主線同步 + `git switch -c fix/<slug>`)
 1. **Phase 1|重現 + 蒐證**:最小重現步驟 / stack trace / error log / 截圖 / 影響範圍(哪些功能、哪些使用者、嚴重度)。**無法穩定重現 → 停下問**,不靠猜
 2. **Phase 2|Root cause**:呼叫 `superpowers:systematic-debugging` 並**遵循其方法論**:調查階段可先列候選假說清單(廣度),但**驗證嚴格一次一個假說、一次改一個變數**(不同時驗多個)。用實驗證明 root cause(不是「看起來像」)。不允許跳過假說驗證直接改 code
 3. **Phase 3|紅測試先行**(鐵則 C):用 Phase 1 重現條件寫測試 → 現在紅且訊息符合 → 以後防 regression。「寫不出測試」九成是測試設計問題,寫不出來說明原因
@@ -28,7 +29,8 @@
 ✓ 強烈推薦:`/goal pytest 全綠 且 Phase 3 紅測試轉綠 且 regression 抽樣綠 /bug <desc>`
 
 ## Done
-紅測試綠 + 既有測試保持綠 + regression 抽樣綠 + 反向驗證通過
+紅測試綠 + 既有測試保持綠 + regression 抽樣綠 + 反向驗證通過。
+**全過後呼叫 `branch-lifecycle` 收尾節**(自動 merge 回 main + 刪分支),再做最終回報。
 
 ## 禁止(本流程特有,共通禁止見 CLAUDE.md)
 - ❌ 「無法重現,姑且修一下」

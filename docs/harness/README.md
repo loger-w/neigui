@@ -21,6 +21,10 @@
 ├─ 驗證 skill(skills/auto-verify.md,~/.claude/skills/)
 │   專案形狀偵測 → 自動化五步驟 + 真實環境驗證分流(單一 source of truth)
 │
+├─ 版控 skill(skills/branch-lifecycle.md,~/.claude/skills/)
+│   開工(主線同步 + prefix 分支)/ 收尾(自動 merge + 刪分支)/ 異常處理
+│   五個流程 command 共用(單一 source of truth;merge 不必停、push 必停)
+│
 ├─ 專案知識層(repo 內,按需載入)
 │   CLAUDE.md         — 每 session 必讀的契約與風格(12k chars)
 │   .claude/skills/   — 6 個主題 skill(FinMind / market pipeline /
@@ -95,5 +99,6 @@ cp ~/.claude/commands/{feat,bug,mod,perf,refactor,goal}.md docs/harness/commands
 cp ~/.claude/hooks/{block-no-verify,safety-hooks,format-on-edit,harness_lib,harness-context,harness-stop-audit,harness-push-gate}.py docs/harness/hooks/
 cp ~/.claude/hooks/tests/test_*.py docs/harness/hooks/tests/
 cp ~/.claude/skills/auto-verify/SKILL.md docs/harness/skills/auto-verify.md
+cp ~/.claude/skills/branch-lifecycle/SKILL.md docs/harness/skills/branch-lifecycle.md
 cp ~/.claude/CLAUDE.md docs/harness/global-rules.md
 ```

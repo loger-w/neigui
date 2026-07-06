@@ -9,6 +9,7 @@
 
 ## Phases
 
+0. **Phase 0|工作區**:呼叫 `branch-lifecycle` 開工節(status 乾淨 + 主線同步 + `git switch -c refactor/<slug>`)
 1. **Phase 1|Why? gate**:明確寫出動機(被哪個即將要做的 feature / bug fix 卡住、哪段 duplication / 命名造成 review 看不懂、哪個 deprecated API 逼著動)。**為什麼是現在?** 寫不出明確理由 → 停。Refactor 沒理由就是 churn
 2. **Phase 2|測試覆蓋盤點**:現有測試 baseline 全綠;覆蓋不夠 → **先寫 characterization test 把當前行為拍下來**(不求漂亮,求「行為偷偷變了會抓到」),**標 🟢 新測試、跟 refactor 的 🔵 分開 commit**。沒測試保護的 refactor 不允許
 3. **Phase 3|拆步驟**:寫 `refactor-plan.md`,拆 N 個小步驟,**每步單獨保持綠**。每步預估 diff > 100 行再拆。大爆炸(一次改 20+ 檔)禁止。大型 refactor 呼叫 sub-agent(`Plan` type)review:每步真能保持綠?順序合理?scope 沒滑?caller 沒漏?**Max 2 輪;退出條件:無 P0/P1**。2 輪後仍有 → 停下回報 user(縮範圍 / 換拆法 / 接受風險註記)
@@ -27,7 +28,8 @@
 ✓ 強烈推薦:`/goal 既有測試 refactor 前後皆全綠 /refactor <why>`
 
 ## Done
-所有既有測試 refactor 前後都全綠 + refactor commits 純 🔵(characterization test 為 🟢 獨立 commit)+ Phase 1 動機被處理
+所有既有測試 refactor 前後都全綠 + refactor commits 純 🔵(characterization test 為 🟢 獨立 commit)+ Phase 1 動機被處理。
+**全過後呼叫 `branch-lifecycle` 收尾節**(自動 merge 回 main + 刪分支),再做最終回報。
 
 ## 禁止(本流程特有,共通禁止見 CLAUDE.md)
 - ❌ 沒測試保護就 refactor

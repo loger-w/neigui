@@ -16,11 +16,9 @@
 
 ## Phase -1:工作區隔離 + artifact 釘定
 
-1. `git status` 確認 working tree 乾淨;不乾淨停下問(commit / stash / 放棄)
-2. 從 $ARGUMENTS 推導 kebab-case `<slug>`
-3. `git switch -c feat/<slug>`(monorepo / 長隔離 → 改呼叫 `superpowers:using-git-worktrees`,worktree 路徑寫 state.json)
-4. 建 `.claude/feat/<slug>/` + `echo ".claude/feat/<slug>/" >> .git/info/exclude`(Phase 8 再拿掉)
-5. 初始化 state.json(schema 見尾,必含 `sc_cycle_counts._unscoped` 骨架),記錄 `start_sha`
+1. 呼叫 `branch-lifecycle` 開工節:status 乾淨 + 主線同步 + 從 $ARGUMENTS 推導 kebab-case `<slug>` + `git switch -c feat/<slug>`(monorepo / 長隔離 → 改呼叫 `superpowers:using-git-worktrees`,worktree 路徑寫 state.json)
+2. 建 `.claude/feat/<slug>/` + `echo ".claude/feat/<slug>/" >> .git/info/exclude`(Phase 8 再拿掉)
+3. 初始化 state.json(schema 見尾,必含 `sc_cycle_counts._unscoped` 骨架),記錄 `start_sha`
 
 ## Phase 0:Brainstorm + 可驗證性 gate + S/M/L 分流
 
@@ -120,7 +118,7 @@
 
 ## Phase 8:整合與收尾
 
-1. 呼叫 `superpowers:finishing-a-development-branch` 取 merge / PR / cleanup 選項
+1. 收尾路徑:**預設走 `branch-lifecycle` 收尾節**(自動 local merge + 刪分支)— **顯式覆寫** `superpowers:finishing-a-development-branch` 的三選一互動,理由:solo 無 reviewer,user 2026-07-06 拍板自動化。user 事先指定 PR → 走收尾節 PR 路徑。執行順序:步驟 2 tag 驗證 → 步驟 3 artifact commit → 收尾節 merge
 2. **Commit tag 機械化驗證**(從 state.json 取 START_SHA),四類 grep:
    ```bash
    git log $START_SHA..HEAD --grep='\[red\]' --oneline       # 標準 TDD 流須 > 0
@@ -134,7 +132,7 @@
    git add ".claude/feat/<slug>/" && git commit -m "chore(feat-<slug>): artifacts"
    ```
    不允許 `git add -f` 短路(會掩蓋 exclude 是否真清除)
-4. 依使用者選:**PR**(`/code-review --comment` 落 Phase 4 已分類 findings + `gh pr create`)/ **merge**(S 可 squash;M/L 預設 fast-forward 保留分類 commit)/ **保留 branch**(state.json 標 `paused: <reason>`)
+4. 非預設路徑(user 指定才走):**PR**(`/code-review --comment` 落 Phase 4 已分類 findings + 收尾節 PR 路徑)/ **保留 branch**(state.json 標 `paused: <reason>`,不 merge)。merge 規則(ff / S squash)在 branch-lifecycle,不重抄
 5. Worktree 清理(若有):`git worktree remove <path>` + `git branch -d feat/<slug>`
 
 ## Phase 8.5:沉澱(閉環)

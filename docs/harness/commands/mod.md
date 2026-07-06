@@ -9,6 +9,7 @@
 
 ## Phases
 
+0. **Phase 0|工作區**:呼叫 `branch-lifecycle` 開工節(status 乾淨 + 主線同步 + `git switch -c mod/<slug>`)
 1. **Phase 1|摸清現況**(不能跳):
    - **grep 所有 caller**(含動態用法:template string / reflection / 字串拼接 / 外部 caller)
    - 跑現有測試,baseline **全綠**
@@ -55,7 +56,8 @@
 - L 級:⚠ 慎用(見上)
 
 ## Done
-目標成功條件全綠 + 既有行為白名單全保留 + 三類 commit 分明 + migration 可逆(若有)
+目標成功條件全綠 + 既有行為白名單全保留 + 三類 commit 分明 + migration 可逆(若有)。
+**全過後呼叫 `branch-lifecycle` 收尾節**(自動 merge 回 main + 刪分支),再做最終回報。
 
 ## 禁止(本流程特有,共通禁止見 CLAUDE.md)
 - ❌ 「順手」refactor / rename / 風格修正(寫進 `docs/next-time.md`)
