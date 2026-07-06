@@ -25,6 +25,11 @@
 │   開工(主線同步 + prefix 分支)/ 收尾(自動 merge + 刪分支)/ 異常處理
 │   五個流程 command 共用(單一 source of truth;merge 不必停、push 必停)
 │
+├─ Review agent 定義(agents/,~/.claude/agents/)
+│   design-reviewer(/feat P1,medium)/ impl-spec-reviewer(/feat P2,low)/
+│   change-spec-reviewer(/mod P3,medium)/ refactor-plan-reviewer(/refactor P3,low)
+│   criteria + JSON schema + 唯讀 tools 固化在定義檔,dispatch 降級為指名
+│
 ├─ 專案知識層(repo 內,按需載入)
 │   CLAUDE.md         — 每 session 必讀的契約與風格(12k chars)
 │   .claude/skills/   — 6 個主題 skill(FinMind / market pipeline /
@@ -100,5 +105,6 @@ cp ~/.claude/hooks/{block-no-verify,safety-hooks,format-on-edit,harness_lib,harn
 cp ~/.claude/hooks/tests/test_*.py docs/harness/hooks/tests/
 cp ~/.claude/skills/auto-verify/SKILL.md docs/harness/skills/auto-verify.md
 cp ~/.claude/skills/branch-lifecycle/SKILL.md docs/harness/skills/branch-lifecycle.md
+cp ~/.claude/agents/{design-reviewer,impl-spec-reviewer,change-spec-reviewer,refactor-plan-reviewer}.md docs/harness/agents/
 cp ~/.claude/CLAUDE.md docs/harness/global-rules.md
 ```

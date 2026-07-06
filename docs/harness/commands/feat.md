@@ -35,30 +35,18 @@
 ## Phase 1:設計 spec(L: max 3 輪;M: 1 輪;S: 跳過)
 
 1. 呼叫 `superpowers:writing-plans` 寫 `design.md`:架構 / 檔案組織 / 資料流 / 邊界 / 接點;每條 SC-N 對應設計章節;標版本 v1(後續改 → v2…,檔頭保留 changelog)
-2. Sub-agent(`Plan` type)review,JSON 寫 `design-review-round-<N>.json`(`[{id, severity P0/P1/P2, location, problem, suggested_fix, rationale}]`)
+2. Sub-agent 用 `design-reviewer` agent type dispatch:傳 design.md + brainstorm.md 路徑(round ≥ 2 加上一輪 JSON 路徑 + changelog 摘要),回傳 JSON 寫 `design-review-round-<N>.json`(schema / severity / criteria 固化在 agent 定義,command 不重抄)
 3. main agent 對每條 finding 過 `superpowers:receiving-code-review` 分類,附 `resolution` 欄位
 4. 處理 accepted 的 P0/P1 後 `state.json.pending_review_rounds.phase_1 += 1`,重跑 review
 5. **退出條件**:該輪無 P0 **且 P1 ≤ 2**(餘 P1 逐條寫入 design.md `## Known Risks`)→ reset `phase_1: 0`,進 Phase 2
 6. **3 輪上限後仍有 P0** → 結構化回報(剩哪些 P0 + 為何 suggested_fix 被拒 + 試過的方向 + 推測根因),user 三選一:[1] 縮 scope 回 Phase 0 / [2] 換技術方向重寫(**計次歸零需 user 此處批准**)/ [3] 接受 P0 寫入 `## Known Risks`
 
-### Phase 1 review criteria
-- [ ] Goal 全覆蓋(每條 SC-N 都有對應設計章節)
-- [ ] Edge cases ≥ 3
-- [ ] 與 codebase 一致(命名 / 模式 / 依賴)
-- [ ] Testability(每元件可獨立測)
-- [ ] 安全 / 輸入驗證 / 權限邊界
-- [ ] Scope creep(沒做 brainstorm.md 沒要求的)
-- [ ] 隱性假設(資料格式 / 外部 API / 效能)
-- [ ] **動態 trace**:用真實輸入紙上跑一遍主資料流(fetch → cache → invalidate → response),看時序 / race,不只靜態 contract 檢查
-- [ ] **量化 SC 的量法可重現**(unit + 指令真的量得出來)
-
 ## Phase 2:Implementation spec(L: max 3 輪;M: 1 輪;S: 簡化版)
 
 1. **模式選擇**(寫 `state.json.phase_2_mode`):預估改動檔數 ≤ 15 → `per_file`(逐檔 `implementation/<file>.md`:signature / 輸入輸出範例 / 失敗測試清單對應 SC-N);> 15 → `condensed_grid`(單一 `implementation/PLAN.md` grid,Phase 3 落地時 ad-hoc 對齊)
-2. 多檔用 `superpowers:dispatching-parallel-agents` fan-out review,`location` 用 `{file, section}` 雙欄
-3. **Review criteria(implementation 層,不重審 Phase 1 架構)**:signature 對得上 design / 失敗測試涵蓋 SC-N edge / unit + 整合雙層 / 沒未授權新檔案 / 範例自洽
-4. Receiving 分類同 Phase 1;退出條件:全檔無 P0 且 P1 ≤ 2(進 Known Risks)→ reset 進 Phase 3
-5. 3 輪上限後仍有 P0 → [1] 縮 scope 回 Phase 0 / [2] implementation 改寫(finding 暗示問題在 design → escalate 回 Phase 1,計次歸零需 user 批准)/ [3] 接受寫入 Known Risks,Phase 7 表格 regression 欄必涵蓋
+2. 多檔用 `superpowers:dispatching-parallel-agents` fan-out,每檔 dispatch 一個 `impl-spec-reviewer`(傳該檔 + design.md 路徑;criteria / JSON schema / {file, section} 雙欄 location 固化在 agent 定義)
+3. Receiving 分類同 Phase 1;退出條件:全檔無 P0 且 P1 ≤ 2(進 Known Risks)→ reset 進 Phase 3
+4. 3 輪上限後仍有 P0 → [1] 縮 scope 回 Phase 0 / [2] implementation 改寫(finding 暗示問題在 design → escalate 回 Phase 1,計次歸零需 user 批准)/ [3] 接受寫入 Known Risks,Phase 7 表格 regression 欄必涵蓋
 
 ## Phase 3:TDD + 文件同步 + commit 三分類
 

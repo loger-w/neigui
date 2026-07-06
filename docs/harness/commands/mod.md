@@ -23,7 +23,7 @@
 3. **Phase 3|Diff 級 spec**:寫 `change-spec.md`,逐檔列動什麼,**三類動作分開標記**:
    - 🔴 **行為改動**(預期會讓既有測試紅)/ 🟢 **新功能**(加新測試)/ 🔵 **純重構**(測試不該變)
    - 既有測試逐一標:該紅的 / 不該紅的;新測試清單
-   - Sub-agent(`Plan` type)review,criteria:caller 影響都評估過 / backward compat 風險點 / 三類分清 / 該紅 vs 不該紅明確 / scope 沒滑 / migration 可逆
+   - Sub-agent 用 `change-spec-reviewer` agent type dispatch:傳 change-spec.md + Phase 1 現況表路徑(criteria / JSON schema 固化在 agent 定義)
    - **Max 2 輪;退出條件:無 P0/P1**(P2 記入 spec 註記)。2 輪後仍有 P0/P1 → 停下回報 user 三選一(縮 scope / 換做法 / 接受寫入 Known Risks)— 同 /feat 慣例
 4. **Phase 4|TDD + 分 commit**(順序 **🔵 → 🔴 → 🟢**:先重構讓地基乾淨,再改行為,最後加新東西):
    - 🔵 純重構:測試完全不動,改完該綠的還是綠
