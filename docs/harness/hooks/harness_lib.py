@@ -71,6 +71,8 @@ def is_active(state: dict) -> bool:
         return False
     if state.get("final_merge_sha"):
         return False
+    if state.get("archived"):  # 已出貨但 state 未收尾的歷史欠帳,盤點後標記封存
+        return False
     completed = state.get("completed_phases") or []
     return 8.5 not in completed
 

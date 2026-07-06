@@ -4,9 +4,23 @@
   "branch": "feat/e2e-tests",
   "worktree_path": null,
   "current_phase": 8,
-  "completed_phases": [-1, 0, 1, 2, 3, 4, 5, 6, 7],
+  "completed_phases": [
+    -1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
   "scope": "L",
-  "pending_review_rounds": { "phase_1": 0, "phase_2": 0, "phase_4": 0 },
+  "pending_review_rounds": {
+    "phase_1": 0,
+    "phase_2": 0,
+    "phase_4": 0
+  },
   "blockers": [],
   "last_updated": "2026-06-30T11:30:00Z",
   "project_shape": "fullstack",
@@ -15,14 +29,35 @@
   "phase_1_summary": {
     "total_rounds": 6,
     "tech_pivot_at_round": 3,
-    "design_versions": ["v1","v2","v3","v4","v5","v6"],
+    "design_versions": [
+      "v1",
+      "v2",
+      "v3",
+      "v4",
+      "v5",
+      "v6"
+    ],
     "findings_processed": 49,
     "final_verdict": "exit_phase_1"
   },
   "phase_2_summary": "condensed (single PLAN.md vs 25 per-file MD per /goal efficiency mode)",
   "phase_3_summary": {
-    "waves": ["Wave 1: NoOpBucket + clock + 10 testid","Wave 2: 20 clock swaps + 3 env-gates + lifespan fail-loud","Wave 3: FakeFinMindClient + MANIFEST + 14 fixtures","Wave 4: 2 C gate tests + 8 D contract tests","Wave 5: Playwright harness 11 files","Wave 6: 2 CI workflows"],
-    "commits": ["882b356","7689a3d","be7ffb9","7f7b92f","3fa584d","6cd565d"]
+    "waves": [
+      "Wave 1: NoOpBucket + clock + 10 testid",
+      "Wave 2: 20 clock swaps + 3 env-gates + lifespan fail-loud",
+      "Wave 3: FakeFinMindClient + MANIFEST + 14 fixtures",
+      "Wave 4: 2 C gate tests + 8 D contract tests",
+      "Wave 5: Playwright harness 11 files",
+      "Wave 6: 2 CI workflows"
+    ],
+    "commits": [
+      "882b356",
+      "7689a3d",
+      "be7ffb9",
+      "7f7b92f",
+      "3fa584d",
+      "6cd565d"
+    ]
   },
   "phase_5_summary": {
     "backend_pytest": "317 passed, 1 skipped",
@@ -33,18 +68,127 @@
   },
   "phase_6_note": "covered as Phase 5 side-effect — Playwright spawns real Chromium + real backend + real vite frontend",
   "sc_cycle_counts": {
-    "SC-1":  { "phase_1": 6, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 6 },
-    "SC-2":  { "phase_1": 6, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 6 },
-    "SC-3":  { "phase_1": 6, "phase_2": 0, "phase_3": 1, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 7 },
-    "SC-4":  { "phase_1": 6, "phase_2": 0, "phase_3": 1, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 7 },
-    "SC-5":  { "phase_1": 6, "phase_2": 0, "phase_3": 1, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 7 },
-    "SC-6":  { "phase_1": 6, "phase_2": 0, "phase_3": 1, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 7 },
-    "SC-7":  { "phase_1": 6, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 6 },
-    "SC-8":  { "phase_1": 6, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 6 },
-    "SC-9":  { "phase_1": 6, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 6 },
-    "SC-10": { "phase_1": 6, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 6 },
-    "SC-11": { "phase_1": 6, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 6 },
-    "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 }
+    "SC-1": {
+      "phase_1": 6,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 6
+    },
+    "SC-2": {
+      "phase_1": 6,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 6
+    },
+    "SC-3": {
+      "phase_1": 6,
+      "phase_2": 0,
+      "phase_3": 1,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 7
+    },
+    "SC-4": {
+      "phase_1": 6,
+      "phase_2": 0,
+      "phase_3": 1,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 7
+    },
+    "SC-5": {
+      "phase_1": 6,
+      "phase_2": 0,
+      "phase_3": 1,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 7
+    },
+    "SC-6": {
+      "phase_1": 6,
+      "phase_2": 0,
+      "phase_3": 1,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 7
+    },
+    "SC-7": {
+      "phase_1": 6,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 6
+    },
+    "SC-8": {
+      "phase_1": 6,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 6
+    },
+    "SC-9": {
+      "phase_1": 6,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 6
+    },
+    "SC-10": {
+      "phase_1": 6,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 6
+    },
+    "SC-11": {
+      "phase_1": 6,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 6
+    },
+    "_unscoped": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    }
   },
-  "paused": null
+  "paused": null,
+  "archived": "2026-07-06 harness v3 第一期盤點:feature 已出貨(app 現行版本含其功能),state.json 未收尾為歷史欠帳(SPEC §9 自承的 3/9 不同步),補 archived 標記封存;不宣稱未留痕的 phase 曾執行"
 }

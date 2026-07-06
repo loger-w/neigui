@@ -40,6 +40,9 @@ class TestIsActive:
     def test_merged_not_active(self):
         assert harness_lib.is_active(make_state(final_merge_sha="abc123")) is False
 
+    def test_archived_not_active(self):
+        assert harness_lib.is_active(make_state(archived="2026-07-06 盤點補收尾")) is False
+
     def test_completed_85_not_active(self):
         assert harness_lib.is_active(
             make_state(completed_phases=[-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 8.5])

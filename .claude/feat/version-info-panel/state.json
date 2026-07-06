@@ -4,21 +4,85 @@
   "branch": "feat/version-info-panel",
   "worktree_path": null,
   "current_phase": 3,
-  "completed_phases": [-1, 0, 1, 2],
+  "completed_phases": [
+    -1,
+    0,
+    1,
+    2
+  ],
   "scope": "M",
-  "pending_review_rounds": { "phase_1": 0, "phase_2": 0, "phase_4": 0 },
+  "pending_review_rounds": {
+    "phase_1": 0,
+    "phase_2": 0,
+    "phase_4": 0
+  },
   "blockers": [],
   "last_updated": "2026-06-29T00:00:00Z",
   "project_shape": "fullstack",
   "last_commit_sha": null,
   "final_merge_sha": null,
   "sc_cycle_counts": {
-    "SC-1": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-2": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-3": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-4": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-5": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 }
+    "SC-1": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-2": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-3": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-4": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-5": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "_unscoped": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    }
   },
-  "paused": null
+  "paused": null,
+  "archived": "2026-07-06 harness v3 第一期盤點:feature 已出貨(app 現行版本含其功能),state.json 未收尾為歷史欠帳(SPEC §9 自承的 3/9 不同步),補 archived 標記封存;不宣稱未留痕的 phase 曾執行"
 }

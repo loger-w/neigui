@@ -4,7 +4,17 @@
   "branch": "feat/market-monitor",
   "worktree_path": null,
   "current_phase": 8,
-  "completed_phases": [-1, 0, 1, 2, 3, 4, 5, 6, 7],
+  "completed_phases": [
+    -1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
   "scope": "L",
   "pending_review_rounds": {
     "phase_1": 0,
@@ -17,11 +27,57 @@
   "last_commit_sha": null,
   "final_merge_sha": null,
   "sc_cycle_counts": {
-    "SC-1": { "phase_1": 0, "phase_2": 0, "phase_3": 1, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 1, "_amend_note": "phase_3 cycle = SC-1 measurement unit clarification (gzip 前 → gzip 後)" },
-    "SC-2": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-3": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-4": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
-    "SC-5": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
+    "SC-1": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 1,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 1,
+      "_amend_note": "phase_3 cycle = SC-1 measurement unit clarification (gzip 前 → gzip 後)"
+    },
+    "SC-2": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-3": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-4": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
+    "SC-5": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    },
     "_unscoped": {
       "phase_1": 0,
       "phase_2": 0,
@@ -45,5 +101,6 @@
       "v1 R10: TickType 含義未知 — backend 不暴露 raw 給 frontend",
       "v1 R11: snapshot 只有最佳 1 檔 bid/ask,UI 不可假設五檔"
     ]
-  }
+  },
+  "archived": "2026-07-06 harness v3 第一期盤點:feature 已出貨(app 現行版本含其功能),state.json 未收尾為歷史欠帳(SPEC §9 自承的 3/9 不同步),補 archived 標記封存;不宣稱未留痕的 phase 曾執行"
 }
