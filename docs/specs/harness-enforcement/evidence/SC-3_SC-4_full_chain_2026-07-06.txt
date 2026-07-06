@@ -1,0 +1,20 @@
+SC-3 + SC-4 整鏈真實環境驗證 — 2026-07-06
+
+SC-3(push 強制確認):
+- Claude 執行 `git push --dry-run origin main` → permission prompt 跳出,user 本人確認
+  「有跳確認框」(user 原話)。harness-push-gate.py 的 permissionDecision: ask 生效。
+- 註:hooks 為熱載入,註冊當個 session 即生效,無需重啟。
+
+SC-4(pre-push 防線,git 真實路徑):
+- user 設定 core.hooksPath = scripts/git-hooks(git config --show-origin 確認)
+- `git push --dry-run origin main` 觸發完整鏈:
+  sh shim → pre_push.py → 讀 .claude/harness.json →
+  [backend] 479 passed, 1 skipped (34.49s)
+  [frontend-test] 585 passed / 56 files (7.75s)
+  [frontend-build] tsc -b && vite build ✓ (1.34s)
+  pre-push: 全部驗證通過 → Everything up-to-date
+- 紅側(任一紅 exit 1 拒 push)由 test_pre_push.py 單元覆蓋。
+
+殘餘觀察項(依 design §7 rollout,掛在下 1-2 個真實 /feat):
+- SC-1 注入的「context 中實際可見」— 目前 9 個 state 均已封存/收尾,注入正確靜默
+  (SC-7);下次 /feat 開新 feature 時觀察每回合注入內容。
