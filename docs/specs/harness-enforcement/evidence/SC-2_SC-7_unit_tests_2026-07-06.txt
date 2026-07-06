@@ -1,0 +1,21 @@
+SC-1 / SC-2 / SC-7 單元測試證據 — 2026-07-06
+
+> python -m pytest C:\Users\USER\.claude\hooks\tests\ -q
+................................
+32 passed in 1.60s
+
+> cd scripts\git-hooks; python -m pytest test_pre_push.py -q
+....
+4 passed in 0.17s
+
+對映:
+- SC-1 注入:test_harness_context.py::test_active_feature_injects_slug_phase_gate
+- SC-2 Stop 審計:test_harness_stop_audit.py::test_lagging_state_blocks(block 側)
+  + test_head_commit_touching_state_not_lagging(false-positive 排除側)
+- SC-7 靜默:test_no_active_feature_silent × 2(context / stop-audit)
+- push 偵測:test_harness_push_gate.py 9 條(Bash + PowerShell + compound + fail-closed)
+
+實作過程被測試抓到的 3 個真 bug(TDD 紅燈的價值):
+1. git diff-tree 對 root commit 輸出空 → 改 git show --name-only
+2. Windows pipe 預設 cp950,hook 印繁中/⚠ 會亂碼或 crash → force_utf8_stdio()
+3. pre-push sh shim CRLF shebang 在 Git Bash 無法執行 → .gitattributes 鎖 LF

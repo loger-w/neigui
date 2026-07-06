@@ -1,0 +1,20 @@
+SC-4(綠側)pre-push 防線真跑證據 — 2026-07-06
+指令:python scripts\git-hooks\pre_push.py(cwd = repo root)
+
+pre-push: [backend] python -m pytest -q(cwd=C:\side-project\neigui\backend)
+479 passed, 1 skipped, 1 warning in 37.02s
+
+pre-push: [frontend-test] npm test(cwd=C:\side-project\neigui\frontend)
+Test Files  56 passed (56)
+     Tests  585 passed (585)
+  Duration  7.88s
+
+pre-push: [frontend-build] npm run build(cwd=C:\side-project\neigui\frontend)
+tsc -b && vite build
+✓ 256 modules transformed / ✓ built in 1.33s
+
+pre-push: 全部驗證通過(exit 0)
+
+紅側(任一紅 → exit 1)由單元測試覆蓋:
+scripts/git-hooks/test_pre_push.py::test_any_red_fails
+scripts/git-hooks/test_pre_push.py::test_broken_config_fails_closed
