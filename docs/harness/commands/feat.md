@@ -18,12 +18,12 @@
 
 1. 呼叫 `branch-lifecycle` 開工節:status 乾淨 + 主線同步 + 從 $ARGUMENTS 推導 kebab-case `<slug>` + `git switch -c feat/<slug>`(monorepo / 長隔離 → 改呼叫 `superpowers:using-git-worktrees`,worktree 路徑寫 state.json)
 2. 建 `.claude/feat/<slug>/` + `echo ".claude/feat/<slug>/" >> .git/info/exclude`(Phase 8 再拿掉)
-3. 初始化 state.json(schema 見尾,必含 `sc_cycle_counts._unscoped` 骨架),記錄 `start_sha`
+3. 初始化 state.json(schema 見尾;`sc_cycle_counts` 只建 `_unscoped`,SC-N 條目**稀疏** — 首次回退發生時才建),記錄 `start_sha`
 
 ## Phase 0:Brainstorm + 可驗證性 gate + S/M/L 分流
 
 1. 呼叫 `superpowers:brainstorming`,**遵循 skill 的對話流程**(一次一問、2-3 方案、分節確認)。以下 2-4 是本流程的**加值 gate**,疊在 skill 之上,不取代其流程。
-2. **SC gate**:每條成功條件編號 `SC-1, SC-2…`,強制附「驗證方式」一行(指令 / 測試名 / 截圖步驟)。**量化 SC(size / time / count)必附 measurement unit + 量法指令** — `size ≤ 50 KB` 不合格,要寫 `size ≤ 50 KB(gzip 後;量法 curl --compressed | wc -c)`。寫不出 → 該條不合格(gate 不是建議)。同步在 state.json `sc_cycle_counts` 補 SC-N 子物件。
+2. **SC gate**:每條成功條件編號 `SC-1, SC-2…`,強制附「驗證方式」一行(指令 / 測試名 / 截圖步驟)。**量化 SC(size / time / count)必附 measurement unit + 量法指令** — `size ≤ 50 KB` 不合格,要寫 `size ≤ 50 KB(gzip 後;量法 curl --compressed | wc -c)`。寫不出 → 該條不合格(gate 不是建議)。
 3. 寫入 `brainstorm.md`(後續修改必標 `[amendment YYYY-MM-DD: <原因>]`)+ ≥ 3 edge cases + out of scope。
 4. **S/M/L 分流**(寫 `state.json.scope`):
    - **S**:單檔 / 無新資料流 / 無新依賴 / 不在 hot path、安全邊界、共用 util、對外 API → 跳 Phase 1 文件化,Phase 2 0 輪 review
@@ -43,8 +43,9 @@
 
 ## Phase 2:Implementation spec(L: max 3 輪;M: 1 輪;S: 簡化版)
 
-1. **模式選擇**(寫 `state.json.phase_2_mode`):預估改動檔數 ≤ 15 → `per_file`(逐檔 `implementation/<file>.md`:signature / 輸入輸出範例 / 失敗測試清單對應 SC-N);> 15 → `condensed_grid`(單一 `implementation/PLAN.md` grid,Phase 3 落地時 ad-hoc 對齊)
-2. 多檔用 `superpowers:dispatching-parallel-agents` fan-out,每檔 dispatch 一個 `impl-spec-reviewer`(傳該檔 + design.md 路徑;criteria / JSON schema / {file, section} 雙欄 location 固化在 agent 定義)
+1. **模式選擇**(寫 `state.json.phase_2_mode`):**預設 `condensed`** — 單一 `implementation/PLAN.md`,每檔一節 3-5 行(動什麼 / 新增或變更的 signature / 失敗測試清單對應 SC-N)。`per_file`(逐檔 `implementation/<file>.md`:signature / 輸入輸出範例 / 失敗測試清單)**降為 opt-in**:僅 L 級且該檔屬高風險面(安全邊界 / 共用 util / 對外 API / hot path)才逐檔寫(2026-07-06 實證:per-file MD 零回讀、condensed 走完全程,token 成本差一個量級)
+   - **Phase 3 對齊規則**(取代舊「ad-hoc 對齊」):落地發現 PLAN.md 該節粒度不足 → 就地補 signature 細節並標 `[phase-3 補註]`,不回頭重跑 review;介面級衝突仍走 Phase 3 失敗回退表
+2. Review dispatch:`condensed` → 對 PLAN.md dispatch **單一** `impl-spec-reviewer`(逐節視同逐檔套 criteria);`per_file` → 用 `superpowers:dispatching-parallel-agents` fan-out 每檔一個(傳該檔 + design.md 路徑;criteria / JSON schema / {file, section} 雙欄 location 固化在 agent 定義)
 3. Receiving 分類同 Phase 1;退出條件:全檔無 P0 且 P1 ≤ 2(進 Known Risks)→ reset 進 Phase 3
 4. 3 輪上限後仍有 P0 → [1] 縮 scope 回 Phase 0 / [2] implementation 改寫(finding 暗示問題在 design → escalate 回 Phase 1,計次歸零需 user 批准)/ [3] 接受寫入 Known Risks,Phase 7 表格 regression 欄必涵蓋
 
@@ -68,7 +69,8 @@
 
 ## Phase 4:自評 — code-review 雙焦點 → receiving → 依層級回對應 phase
 
-1. 跑 `/code-review`,**雙焦點**:(a) implementation bug;(b) **missing-from-spec** — 回看 design.md 交叉確認「spec 機制在 impl 有沒有 spec 沒提到的副作用」。寫 `code-review-round-<N>.json`
+1. 跑 `/code-review`(**預設 medium 檔位**;xhigh 全量掃描保留給 user 顯式要求 — 2026-07-06 實證:xhigh 52 候選中真 P1 僅 1 條),**雙焦點**:(a) implementation bug;(b) **missing-from-spec** — 回看 design.md 交叉確認「spec 機制在 impl 有沒有 spec 沒提到的副作用」。寫 `code-review-round-<N>.json`
+   - **輸出契約**:round JSON 只逐條展開 P0/P1;P2 慣例 / 風格類彙總為 `p2_summary`(計數 + 主題一行),**不逐條 receiving**。例外:P2 中疑似行為級(資料正確性 / 時序 / 邊界)照常展開
 2. 呼叫 `superpowers:receiving-code-review` 對每條 finding 分類。**Verify / skeptic 階段前,先摘 design.md changelog 的 accepted findings + rationale 注入 verify prompt**(避免 refute 事後合理的設計收窄)。Lens 經驗值:mature codebase 上 test_coverage lens 命中率最高,correctness / consistency 易產生被 refute 的風格建議 — lens prompt 要角度真差異化
 3. accepted 依層級回對應 phase:spec 漏 → Phase 1/2 改文件 / impl 漏 → Phase 3 / test 漏 → Phase 3 紅先行(鐵則 C)。**Test-gap finding 補 lock test**:鎖「已正確行為」天生無紅 → 走 mutation 抽驗(手動改壞 → lock test 紅 → 還原 → 綠),commit 用 `[lock]` tag + body 註 `mutation-verified`
 4. **退場條件**:round 1 accepted ≤ 5 且無 P0 且 fix 後自動化測試全綠 → 可單輪退場;accepted > 5 或有 P0 → 強制 round 2 verify。loop max 3 輪
@@ -84,10 +86,7 @@
 
 1. 呼叫 `auto-verify` skill 的「真實環境驗證」節(feature shape 分流表以 skill 為準)
 2. **Subsumed 判定**:feature shape = web 且該 SC 已有 Playwright e2e 覆蓋(Phase 5 跑過真 backend + 真 browser)→ 該 SC 標 `subsumed by Phase 5`,不重複 DevTools MCP 截圖
-3. **Infra_fail 標準 case**(不算 SC 回退,`_unscoped.phase_6 += 1` + state.json 記 `phase_6_blocked_reason`):
-   - 外部 API token 過期(JWT exp 是日常事件)
-   - Browser MCP 連不上 → fallback A:`--isolated` profile 重試;fallback B:curl + JSON shape check 證 backend SC,UI SC 標「RTL 測試涵蓋 logic,視覺 next session 補」寫進 Phase 7 evidence 欄
-   - 外部服務 503 / dev server boot fail
+3. **Infra_fail 標準 case 與 fallback 路徑以 `auto-verify` skill 真實環境節為準**(token 過期 / browser MCP 斷線 / 外部 503,本檔不重抄)。本流程只補記帳規則:不算 SC 回退,`_unscoped.phase_6 += 1` + state.json 記 `phase_6_blocked_reason`;fallback 的 UI SC 註記(「RTL 涵蓋 logic,視覺 next session 補」)寫進 Phase 7 evidence 欄
 4. **失敗回退**(依 cycle-count rule 記數):(a) 情境沒列 SC → 回 Phase 0 補 SC /(b) SC 有列 design 沒兼顧 → 回 Phase 1 /(c) 測試漏 → 回 Phase 3 先寫紅
 5. 證據放 `evidence/`,檔名含 SC-N(例:`SC-2_login-empty-input.png`);每輪輸出 `real-env-verification-round-<N>.json`
 
@@ -107,14 +106,11 @@
 ## Phase 8:整合與收尾
 
 1. 收尾路徑:**預設走 `branch-lifecycle` 收尾節**(自動 local merge + 刪分支)— **顯式覆寫** `superpowers:finishing-a-development-branch` 的三選一互動,理由:solo 無 reviewer,user 2026-07-06 拍板自動化。user 事先指定 PR → 走收尾節 PR 路徑。執行順序:步驟 2 tag 驗證 → 步驟 3 artifact commit → 收尾節 merge
-2. **Commit tag 機械化驗證**(從 state.json 取 START_SHA),四類 grep:
+2. **Commit tag 機械化驗證(script 化,2026-07-06)**:
    ```bash
-   git log $START_SHA..HEAD --grep='\[red\]' --oneline       # 標準 TDD 流須 > 0
-   git log $START_SHA..HEAD --grep='\[green\]' --oneline     # 配對規則見下
-   git log $START_SHA..HEAD --grep='\[refactor\]' --oneline  # 可為 0
-   git log $START_SHA..HEAD --grep='\[lock\]' --oneline      # 可為 0
+   python ~/.claude/hooks/check_feat_tags.py --state .claude/feat/<slug>/state.json
    ```
-   **配對規則**:每個 `[green]` 對應一個更早的 `[red]`,**豁免**:(a) `[lock]` commit(body 含 `mutation-verified`)不需配對;(b) 🟢 + body 含 `Phase 6 real-env finding` 的 design-amend commit 不需配對;(c) `goal_efficiency_mode` 下改驗 `[waveN]` 序列 — 每 wave body 列涵蓋 SC-N,全 SC 有 wave 歸屬即過。配對失敗且無豁免 → 回 Phase 3 rebase commit message(不增計數)。emoji 三類:🟢 新功能 / 🔵 純重構 / 🔴 行為改動(/feat 純新功能 🔴 可為 0)
+   四類 tag 掃描 / `[green]`→`[red]` 配對 / 豁免((a) `[lock]`+`mutation-verified`、(b) `Phase 6 real-env finding` design-amend)/ wave 模式判定**固化在 script**(規則本檔不重抄;script 有 pytest 護住)。**wave 模式的「全 SC 有 wave 歸屬」屬半語意判定** — script 只列 wave→SC 對映,由 main agent 對照 brainstorm.md 核。FAIL 且無豁免 → 回 Phase 3 rebase commit message(不增計數)。emoji 三類:🟢 新功能 / 🔵 純重構 / 🔴 行為改動(/feat 純新功能 🔴 可為 0)
 3. **Artifact commit**:手動編輯 `.git/info/exclude` 移除 `.claude/feat/<slug>/` 該行(用編輯器 / `grep -v` 重寫,**不用花式 sed delimiter**),然後:
    ```bash
    git add ".claude/feat/<slug>/" && git commit -m "chore(feat-<slug>): artifacts"
@@ -162,12 +158,11 @@
   "last_updated": "<ISO>", "project_shape": null,
   "last_commit_sha": null, "final_merge_sha": null,
   "sc_cycle_counts": {
-    "SC-1": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 },
     "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 }
   },
   "paused": null }
 ```
-(`sc_cycle_counts.SC-N.phase_7` 是「Phase 7 判定失敗後回退到該 phase」的記錄欄;Phase 7 自身不 increment `phase_7` — 該欄只在回退目標是 Phase 7 重驗時使用。)
+(`sc_cycle_counts` **稀疏記帳**(2026-07-06,實證多數 feature 全零):初始化只建 `_unscoped`;`SC-N` 條目在該 SC **首次回退時才建**,且只含實際發生過的 phase 欄 + `total` — 零回退的 SC 不出現在 state。`phase_7` 欄是「Phase 7 判定失敗後回退到該 phase」的記錄欄;Phase 7 自身不 increment。meta-cycle 升級規則(同 SC ≥2 / 跨 phase ≥3)讀法不變。)
 
 ## 自主模式建議
 - 完整契約見 `~/.claude/commands/goal.md`
