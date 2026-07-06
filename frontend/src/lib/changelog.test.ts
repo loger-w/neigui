@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
   });
 
-  it("最新版本是 v0.21.3(大盤頁面連線穩定性修復)", () => {
-    expect(CHANGELOG[0]?.version).toBe("0.21.3");
+  it("最新版本是 v0.22.0(專案更名 neigui)", () => {
+    expect(CHANGELOG[0]?.version).toBe("0.22.0");
   });
 
   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {

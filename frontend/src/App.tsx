@@ -275,6 +275,9 @@ export default function App() {
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <div className="shrink-0 flex items-center border-b border-line bg-bg">
+        <span className="pl-4 pr-2 text-sm font-semibold text-ink tracking-wide select-none">
+          neigui
+        </span>
         <ModeSwitch value={mode} onChange={setMode} />
         <div className="ml-auto pr-4">
           <VersionBadge />

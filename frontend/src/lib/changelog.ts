@@ -40,6 +40,14 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.22.0",
+    date: "2026-07-06",
+    highlights: "專案更名 neigui",
+    changes: [
+      { kind: "feature", scope: "global", text: "介面頂部與瀏覽器分頁標題顯示新專案名稱 neigui" },
+    ],
+  },
+  {
     version: "0.21.3",
     date: "2026-07-03",
     highlights: "大盤頁面連線穩定性修復",
