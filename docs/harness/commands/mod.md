@@ -14,7 +14,7 @@
    - 跑現有測試,baseline **全綠**
    - 讀懂現有實作意圖(註解 / commit message / 為什麼這樣寫)
    - 整理表:現況 vs 目標(行為 / signature / 對 caller 影響 / backward compat / migration)
-2. **Phase 2|聚焦 brainstorm**:呼叫 `superpowers:brainstorming`(遵循 skill 對話流程 — 一次一問),聚焦四件事:
+2. **Phase 2|聚焦 brainstorm**:呼叫 `superpowers:brainstorming`(遵循 skill 對話流程 — 一次一問)。產物落點為 `change-spec.md`(**user preference,顯式覆寫**該 skill 的 docs/superpowers/ 落點與「先 commit」要求,同 /feat 慣例)。聚焦四件事:
    - 改完的成功條件(可驗收;量化條件必附 unit + 量法,同 /feat Phase 0 SC gate)
    - **不能破壞的既有行為白名單**(列出來,這比新行為更重要)
    - Backward compat / migration 策略
