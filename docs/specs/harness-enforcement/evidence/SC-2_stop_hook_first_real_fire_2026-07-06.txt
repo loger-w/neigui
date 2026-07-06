@@ -1,0 +1,18 @@
+SC-2 Stop hook 真實環境首次觸發 — 2026-07-06(非計畫內的意外驗證,證據力最強)
+
+事件:harness-stop-audit.py 註冊後的第一個回合結束,hook 即 block 並回饋:
+
+  [harness-stop-audit] C:\side-project\neigui\.claude\feat\market-sector-amount-share\state.json
+  落後最新 commit。結束回合前先回寫 current_phase / completed_phases / last_updated。
+
+這證明了三件事:
+1. Stop hook 註冊即生效(本 session 未重啟),block → 模型收到理由 → 修正行為的迴路成立
+2. harness_lib 的 active 判定在真實 repo 資料上運作(非 fixture)
+3. 抓到的是真問題:盤點後發現 6 個已出貨 feature 的 state.json 從未收尾
+   (e2e-tests / market-breadth-mcclellan / market-monitor / market-sector-amount-share /
+   market-sector-breadth / version-info-panel)— 正是 SPEC §9 自承「state 3/9 不同步」
+   的完整名單,由新強制層自動翻出。
+
+處置:is_active 增列 archived 判定(TDD,33 tests)+ 6 檔補 archived 標記
+(不偽造 completed_phases,不宣稱未留痕的 phase 曾執行)。
+commit:217159f。處置後重新盤點:9/9 均非 active,Stop hook 不再 block。
