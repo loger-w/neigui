@@ -6,6 +6,10 @@
 
 ---
 
+## From harness 強制層 v3 第一期(2026-07-06)
+
+- **[harness] block-no-verify.py / safety-hooks.py 的 matcher 只有 Bash**:PowerShell 工具是繞過面(harness-push-gate.py 已覆蓋 `Bash|PowerShell`,舊兩個 hook 待補 matcher + tool_name 支援;PowerShell 語法的 pattern 也要重驗,如 `--%` stop-parsing token)
+
 ## From /mod chip-bubble-intraday-overlay(2026-06-29)
 
 Phase 5 code review(workflow `wc2wlfiym`)未處理的 P2/P3,留待下次 /refactor:

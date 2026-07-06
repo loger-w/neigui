@@ -1,0 +1,7 @@
+{
+  "verify": [
+    { "name": "backend",        "cwd": "backend",  "cmd": "python -m pytest -q" },
+    { "name": "frontend-test",  "cwd": "frontend", "cmd": "npm test" },
+    { "name": "frontend-build", "cwd": "frontend", "cmd": "npm run build" }
+  ]
+}

@@ -1,0 +1,3 @@
+#!/bin/sh
+# 委派給 pre_push.py — 邏輯與測試都在 Python 側
+exec python "$(git rev-parse --show-toplevel)/scripts/git-hooks/pre_push.py"
