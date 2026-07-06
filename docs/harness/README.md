@@ -28,13 +28,25 @@
 │                       trigger 寫進 description,本體按需載入
 │   docs/decisions.md — 技術選型的採納 / 不採納決策(防重開已結案討論)
 │   docs/next-time.md — 順手事項 backlog(scope 紀律的出口)
+│   .claude/harness.json — 驗證指令插槽(git pre-push 與 auto-verify 共用,
+│                          單一 source of truth;無此檔的專案優雅降級)
+│   scripts/git-hooks/   — git pre-push 測試防線(user 手動
+│                          `git config core.hooksPath scripts/git-hooks` 啟用;
+│                          Claude 被 block-no-verify 擋著動不了這條防線)
 │
-├─ 強制層(hooks/,~/.claude/hooks/,PreToolUse/PostToolUse)
+├─ 強制層(hooks/,~/.claude/hooks/,PreToolUse/PostToolUse/
+│          SessionStart/UserPromptSubmit/Stop)
 │   block-no-verify.py — 攔截 --no-verify / hooksPath 覆寫 / plumbing
 │                        escape / printf 重組 flag 等 20+ 種繞過手法
 │   safety-hooks.py    — 攔截危險 rm -rf / bulk git add / 讀寫 secrets /
 │                        curl|bash / chmod 777
 │   format-on-edit.py  — 編輯後自動 format
+│   harness-context.py — SessionStart/UserPromptSubmit 注入進行中 /feat
+│                        的 phase 與 gate(soft reminder,弱模型防遺忘)
+│   harness-stop-audit.py — Stop 審計 state.json 回寫與收件匣義務
+│   harness-push-gate.py  — git push / gh pr merge 強制 user 確認
+│                           (鐵則 H 硬化,permissionDecision ask)
+│   tests/             — hooks 的 pytest(強制層有 bug 比沒有更糟)
 │
 └─ 自我改進迴路
     .claude/feat/<slug>/       — 每個 feature 的全程證據(brainstorm /
@@ -80,7 +92,8 @@
 
 ```bash
 cp ~/.claude/commands/{feat,bug,mod,perf,refactor,goal}.md docs/harness/commands/
-cp ~/.claude/hooks/{block-no-verify,safety-hooks,format-on-edit}.py docs/harness/hooks/
+cp ~/.claude/hooks/{block-no-verify,safety-hooks,format-on-edit,harness_lib,harness-context,harness-stop-audit,harness-push-gate}.py docs/harness/hooks/
+cp ~/.claude/hooks/tests/test_*.py docs/harness/hooks/tests/
 cp ~/.claude/skills/auto-verify/SKILL.md docs/harness/skills/auto-verify.md
 cp ~/.claude/CLAUDE.md docs/harness/global-rules.md
 ```
