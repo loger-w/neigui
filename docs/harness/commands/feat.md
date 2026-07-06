@@ -120,7 +120,7 @@
    git add ".claude/feat/<slug>/" && git commit -m "chore(feat-<slug>): artifacts"
    ```
    不允許 `git add -f` 短路(會掩蓋 exclude 是否真清除)
-4. 非預設路徑(user 指定才走):**PR**(`/code-review --comment` 落 Phase 4 已分類 findings + 收尾節 PR 路徑)/ **保留 branch**(state.json 標 `paused: <reason>`,不 merge)。merge 規則(ff / S squash)在 branch-lifecycle,不重抄
+4. 非預設路徑(user 指定才走):**PR**(`/code-review --comment` 落 Phase 4 已分類 findings + 收尾節 PR 路徑)/ **保留 branch**(state.json 標 `paused: <reason>`,不 merge)。merge 規則(一律 ff)在 branch-lifecycle,不重抄
 5. Worktree 清理(若有):`git worktree remove <path>` + `git branch -d feat/<slug>`
 
 ## Phase 8.5:沉澱(閉環)

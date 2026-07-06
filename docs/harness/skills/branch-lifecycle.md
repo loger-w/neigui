@@ -32,22 +32,24 @@ metadata:
 ## 收尾節(各 command Done 條件全過後、最終回報前呼叫)
 
 1. **Gate**:該 command 的 Done 條件全過 + auto-verify 全綠。沒過不准進收尾(收尾不是逃生門)。
-2. `git switch main` → 再次 `git fetch origin`:
-   - origin/main 未動 → 直接 merge
-   - origin/main 動了 → `git pull --ff-only` 後**重跑 auto-verify 自動化節**(main 變了,綠燈要重新確認)→ 全綠才 merge;紅 → 停下回報
-3. `git merge <prefix>/<slug>`:預設 **fast-forward**(保留分類 commit);單一 commit 的 S 級改動可 squash(/feat Phase 8 既有規則)。
+2. 在分支上 `git fetch origin` 檢查 origin/main:
+   - 未動 → 進步驟 3
+   - **動了(漂移路徑)** → `git switch main` + `git pull --ff-only` → 切回分支 `git rebase main`(預設路徑分支從未推遠端,重寫安全;rebase 衝突 → `git rebase --abort` 停下回報)→ **在 rebase 後的分支上重跑 auto-verify 自動化節** — ff 保證分支樹 = merge 後 main 的最終樹,綠燈驗的就是要上 main 的狀態;紅 → 停下回報,分支保留。
+3. `git switch main` → `git merge --ff-only <prefix>/<slug>`(**一律 fast-forward**,保留分類 commit;squash 選項取消 — 單 commit 分支 ff 結果等價,多 commit squash 會使步驟 4 的 `-d` 誤判 not-merged)。
 4. `git branch -d <prefix>/<slug>`(小寫 `-d`:未 merge 的分支 git 會擋,天然防誤刪)。
 5. 回報時提醒 user「main 領先 origin N 個 commit,可 push」— **不自動 push**(鐵則 H + push-gate)。
-6. **PR 路徑**(user 事先指定才走):`git push -u origin <branch>`(觸發 push-gate 確認)→ `gh pr create`;user 決定合併時 `gh pr merge --squash|--merge --delete-branch`(一步完成 merge + 清遠端與本地分支)。預設路徑不推分支上遠端,無遠端殘留分支問題。
+6. **PR 路徑**(user 事先指定才走;前置依賴:`gh` CLI 已認證):`git push -u origin <branch>`(觸發 push-gate 確認)→ `gh pr create`;user 決定合併時 `gh pr merge --squash|--merge --delete-branch`(一步完成 merge + 清遠端與本地分支)→ 最後 `git switch main && git pull --ff-only`(GitHub 端的 merge commit 拉回本地,補齊與預設路徑的狀態對稱)。預設路徑不推分支上遠端,無遠端殘留分支問題。
 
 ## 異常處理(兩節共用)
 
 | 情境 | 處置 |
 |---|---|
-| merge conflict | 停下回報(列衝突檔),不自動解 |
+| rebase 衝突(收尾漂移路徑) | `git rebase --abort` → 停下回報(列衝突檔),不自動解 |
 | `--ff-only` 失敗(main 分岔) | 停下回報,不自動 rebase |
 | 收尾 gate 沒過 | 留在分支上,回對應 phase(依各 command 失敗 routing) |
 | user 中途放棄 | 分支保留;/feat 標 state.json `paused: <reason>`,其他流程口頭確認後才 `git branch -D` |
+| 開工 `switch -c` 撞既有同名分支 | 停下問三選一:resume 該分支續作 / user 確認後 `git branch -D` 重開 / 改 slug |
+| 開工時不在 main | 停下問,兩個合法出口:resume 該分支走完原流程含收尾 / 放棄(確認後 `-D`)回 main 重開 |
 
 ## 自主模式(/goal)
 

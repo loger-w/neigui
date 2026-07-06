@@ -1,0 +1,42 @@
+[
+  {
+    "id": "R1",
+    "severity": "P0",
+    "location": "design.md §1 收尾節 步驟 2-3",
+    "problem": "動態 trace(分支 b 基於 main@A,origin/main 期間前進到 B):收尾時 `git switch main` → `git pull --ff-only`(main 到 B)→ 重跑 auto-verify — 此時跑的是「新 main 但不含分支改動」的 code,天然會綠(B 本來就是綠的);之後才 `git merge b`,merged 結果(分支改動 + 新 main 的組合)從頭到尾沒被驗證過,與步驟 2 括號宣稱的「含分支上改動與新 main 的相容」矛盾。且此情境下 b 不是 B 的 descendant,步驟 3 的「預設 fast-forward」不可能成立,git 會默默做出一個未經驗證的 merge commit 後直接刪分支收工 — 產出未測試的 main。",
+    "suggested_fix": "origin/main 動了的路徑改順序:pull 新 main → 先 merge(或在分支上 rebase onto 新 main)→ 在 merged 結果上重跑 auto-verify → 紅則 `git reset --hard ORIG_HEAD` 回退 merge 並停下回報(分支保留);綠才 `git branch -d`。同時把「此路徑必然非 ff,會產生 merge commit」寫明,或明定改走 rebase 保持 ff。",
+    "rationale": "驗證時點錯在 merge 之前,綠燈覆蓋的 code 狀態 ≠ 最終落在 main 的狀態;這是 harness 的核心承諾(gate 全綠才 merge)在最常見漂移情境下失效。"
+  },
+  {
+    "id": "R2",
+    "severity": "P1",
+    "location": "design.md §1 收尾節 步驟 3-4",
+    "problem": "步驟 3 允許 S 級 squash,但 squash merge 不建立 ancestry,步驟 4 的 `git branch -d` 會被 git 以「not fully merged」拒絕 — 設計自己標榜的「-d 天然防誤刪」在 squash 路徑上必然觸發假警報,弱模型此時最可能的反應是升級成 `-D` 或卡住,兩者都沒被 spec 規範。",
+    "suggested_fix": "squash 路徑明寫:squash merge + commit 後改用 `git branch -D <branch>`(並註明此為 squash 專屬豁免,理由:改動已進 main),或乾脆取消 squash 選項統一 ff。",
+    "rationale": "兩個相鄰步驟在同一條允許路徑上互斥,照 spec 執行必卡。"
+  },
+  {
+    "id": "R3",
+    "severity": "P1",
+    "location": "design.md §1 開工節 步驟 3 + 異常處理表「user 中途放棄」",
+    "problem": "異常處理明定放棄時「分支保留」,但開工節的 `git switch -c <prefix>/<slug>` 在同名分支已存在時會失敗 — 同一 bug/feature 重試(slug 由 $ARGUMENTS 推導,重試幾乎必同名)是設計自己製造的可預期路徑,異常處理表卻沒有對應條目。同理「當前不在 main → 停下問」之後的 resume 分支(切回舊分支續作 vs 收掉重開)也未定義。",
+    "suggested_fix": "異常處理表加一列:`switch -c` 撞既有分支 → 停下問(resume 該分支 / 確認後 -D 重開 / 改 slug);並定義「不在 main 停下問」的兩個合法出口。",
+    "rationale": "保留分支是 spec 明文行為,其直接後果(重試撞名)無處置規則,會在真實 rollout(SC-5)第一次重試時卡住。"
+  },
+  {
+    "id": "R4",
+    "severity": "P2",
+    "location": "design.md §1 開工節 步驟 2 vs 已落地 skill(docs/harness/skills/branch-lifecycle.md 行 18)",
+    "problem": "design 寫「落後 → `git switch main && git pull --ff-only`」,但步驟 1 已規定不在 main 就停下問,`git switch main` 不可能需要執行(冗餘或與步驟 1 矛盾);已落地的 skill 檔已把 `git switch main` 拿掉,design 與其宣稱的單一 source of truth 產物出現文字 drift。",
+    "suggested_fix": "design 步驟 2 移除 `git switch main &&`,與 skill 檔對齊。",
+    "rationale": "design 自稱設計依據(skill 檔行 11 反向引用本 design),兩邊指令不一致會在下次同步 / 審計時製造誤判。"
+  },
+  {
+    "id": "R5",
+    "severity": "P2",
+    "location": "design.md §1 收尾節 步驟 6(PR 路徑)",
+    "problem": "隱性假設未寫明:PR 路徑依賴 `gh` CLI 已安裝且已認證、remote 名為 `origin`、主線名為 `main`;且 `gh pr merge --delete-branch` 完成後 local main 落後於 remote(merge commit 在 GitHub 端產生),spec 沒寫後續 `git pull`,下一輪開工節會以「落後」路徑補救但屬隱式依賴。",
+    "suggested_fix": "PR 路徑補一行「merge 後 `git switch main && git pull --ff-only`」,並註明 gh CLI 為前置依賴;或明寫「靠下一輪開工節同步兜底」讓依賴顯式化。",
+    "rationale": "criterion 7:外部工具與收尾後狀態的假設未寫明,PR 路徑走完的 local 狀態與預設路徑不對稱。"
+  }
+]
