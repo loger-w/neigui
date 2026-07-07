@@ -28,11 +28,11 @@ test.describe("@visual visual regression", () => {
   });
 
   test("V2: options mode top-of-page", async ({ page }) => {
-    // 痛點:4 options cards layout grid。
+    // 痛點:options-page-v2 四層 layout(結論列/區間地圖/溫度計/收合層)。
     await installFixtureClock(page);
     await page.addInitScript(() => localStorage.setItem("mode", "options"));
     await page.goto("/");
-    await page.waitForSelector(`[data-testid="${TESTIDS.optionsMaxPainCard}"]`);
+    await page.waitForSelector(`[data-testid="${TESTIDS.optionsThermometer}"]`);
     await expect(page).toHaveScreenshot("options-top.png", { ...VISUAL_THRESHOLD, fullPage: false });
   });
 
@@ -67,11 +67,11 @@ test.describe("@visual responsive baselines", () => {
     });
 
     test("V5: options mode mobile 單欄", async ({ page }) => {
-      // 痛點:4 cards 收單欄 + 大戶 strip 2x2 版面鎖住。
+      // 痛點:溫度計收 2 欄 + 區間地圖橫向捲動版面鎖住。
       await installFixtureClock(page);
       await page.addInitScript(() => localStorage.setItem("mode", "options"));
       await page.goto("/");
-      await page.waitForSelector(`[data-testid="${TESTIDS.optionsMaxPainCard}"]`);
+      await page.waitForSelector(`[data-testid="${TESTIDS.optionsThermometer}"]`);
       await expect(page).toHaveScreenshot("options-top-mobile.png", { ...VISUAL_THRESHOLD, fullPage: false });
     });
   });

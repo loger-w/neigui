@@ -28,7 +28,8 @@ test.describe("navigation & persistence", () => {
     await page.goto("/");
     await page.getByRole(ROLES.modeSwitchOptions.role, { name: ROLES.modeSwitchOptions.name }).click();
     await page.reload();
-    await expect(page.getByTestId(TESTIDS.optionsMaxPainCard)).toBeVisible();
+    // options-page-v2:首屏 root 改結論列(四卡收進收合層,預設 hidden)
+    await expect(page.getByTestId(TESTIDS.optionsConclusion)).toBeVisible();
   });
 
   test("N3: chip_window_days localStorage roundtrip(SC-6 case 3)", async ({ page }) => {
@@ -53,12 +54,12 @@ test.describe("navigation & persistence", () => {
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
     // 切 options → assert chip-brokers unmount
     await page.getByRole(ROLES.modeSwitchOptions.role, { name: ROLES.modeSwitchOptions.name }).click();
-    await expect(page.getByTestId(TESTIDS.optionsMaxPainCard)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.optionsConclusion)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toHaveCount(0);
     // (2) 切 market → assert options unmount
     await page.getByRole(ROLES.modeSwitchMarket.role, { name: ROLES.modeSwitchMarket.name }).click();
     await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.optionsMaxPainCard)).toHaveCount(0);
+    await expect(page.getByTestId(TESTIDS.optionsConclusion)).toHaveCount(0);
     // (3) 切回 equity → assert market unmount
     await page.getByRole(ROLES.modeSwitchEquity.role, { name: ROLES.modeSwitchEquity.name }).click();
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();

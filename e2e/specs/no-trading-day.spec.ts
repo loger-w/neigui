@@ -14,8 +14,8 @@ test("NTD1: options page 選 Sat 日期 → 顯示無交易日", async ({ page }
   await installFixtureClock(page);
   await page.addInitScript(() => localStorage.setItem("mode", "options"));
   await page.goto("/");
-  // 等 options page mount
-  await expect(page.getByTestId(TESTIDS.optionsMaxPainCard)).toBeVisible();
+  // 等 options page mount(options-page-v2:首屏 root = 結論列)
+  await expect(page.getByTestId(TESTIDS.optionsConclusion)).toBeVisible();
   // 選 2026-06-27 (Sat)
   await page.getByLabel("選擇日期").fill("2026-06-27");
   // 4 cards 之一秀「無交易」訊息(真實前端文案 — banner 顯示
