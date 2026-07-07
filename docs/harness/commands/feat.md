@@ -27,7 +27,7 @@
 2. **SC gate**:每條成功條件編號 `SC-1, SC-2…`,強制附「驗證方式」一行(指令 / 測試名 / 截圖步驟)。**量化 SC(size / time / count)必附 measurement unit + 量法指令** — `size ≤ 50 KB` 不合格,要寫 `size ≤ 50 KB(gzip 後;量法 curl --compressed | wc -c)`。寫不出 → 該條不合格(gate 不是建議)。
 3. 寫入 `brainstorm.md`(後續修改必標 `[amendment YYYY-MM-DD: <原因>]`)+ ≥ 3 edge cases + out of scope。
 4. **S/M/L 分流**(寫 `state.json.scope`):
-   - **S**:單檔 / 無新資料流 / 無新依賴 / 不在 hot path、安全邊界、共用 util、對外 API → 跳 Phase 1 文件化,Phase 2 0 輪 review
+   - **S**:單檔 / 無新資料流 / 無新依賴 / 不在 hot path、安全邊界、共用 util、對外 API → 跳 Phase 1 文件化,Phase 2 0 輪 review(hot path 判準:有 profile 證據或專案文件 / skill 點名的路徑才算;無證據視為不在)
    - **M**:2-4 檔 → Phase 1/2 各 1 輪 review
    - **L**:≥ 5 檔、跨前後端 / 跨服務、或鑑權 / 加密 / 金流 / 對外 API 任何單檔改動 → 完整流程,Phase 1/2 各 max 3 輪
    - **風險升級**:碰到高風險面無視檔案數一律升 L
