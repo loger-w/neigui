@@ -2,7 +2,7 @@
 
 (若 $ARGUMENTS 為空,先問我要優化什麼、目標數字是多少再繼續。)
 
-共通鐵則套用 `~/.claude/CLAUDE.md`。自主模式契約見 `~/.claude/commands/goal.md`。
+共通鐵則套用 `~/.claude/CLAUDE.md`。自主模式契約見 `~/.claude/commands/auto.md`。
 
 ## 核心紀律
 **沒量測就不是 optimization。** 沒可量化目標 → 切到 `/refactor`。
@@ -44,7 +44,7 @@
 - 3 次量測都沒達標 → 套鐵則 F 回報三策略
 
 ## 自主模式建議
-✓ 強烈推薦:`/goal <metric 達標如 LCP < 2.5s> 且 既有測試全綠 /perf <metric>`
+✓ 強烈推薦:`/auto <metric 達標如 LCP < 2.5s> 且 既有測試全綠 /perf <metric>`
 
 ## Done
 Metric 達標 + 既有測試全綠 + benchmark 入庫 + 沒退化其他 metric + before/after 對照表。

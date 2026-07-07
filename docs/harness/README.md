@@ -16,7 +16,7 @@
 │   /mod  — caller map → 行為白名單 → 🔵🔴🟢 三類分離 commit
 │   /refactor — why gate → characterization test → 小步保綠
 │   /perf — 量化目標 gate → profile → 一策略一 commit → 重量測
-│   /goal — 自主模式契約(退出條件 / 自動核准邊界 / 必停清單)
+│   /auto — 自主模式契約(退出條件 / 自動核准邊界 / 必停清單;2026-07-07 由 /goal 改名,避免遮蔽內建 /goal)
 │
 ├─ 驗證 skill(skills/auto-verify.md,~/.claude/skills/)
 │   專案形狀偵測 → 自動化五步驟 + 真實環境驗證分流(單一 source of truth)
@@ -90,7 +90,7 @@
 | 改既有功能的行為或介面 | `/mod <改什麼>` |
 | 純結構整理(行為不變) | `/refactor <為什麼現在做>` |
 | 有量化目標的變快 | `/perf <metric + 目標數字>`(沒數字會被擋,「感覺慢」→ 先 `/bug` 或 `/refactor`) |
-| 想全自動跑到某個檢查點 | `/goal <退出條件> /feat <目標>`(push / PR / merge 仍會停下來問) |
+| 想全自動跑到某個檢查點 | `/auto <退出條件> /feat <目標>`(push / PR 仍會停下來問;merge 收尾 gate 全綠即自動) |
 | 完成前驗證 | 各流程內建呼叫 `auto-verify`,不需手動 |
 | 深度審查當前 diff | `/code-review`(想要多 agent 深審在訊息加 `ultracode`) |
 | 動 market / FinMind / e2e / 前端某塊之前 | 對應主題 skill 會自動掛上;手動看:CLAUDE.md §8 索引 |

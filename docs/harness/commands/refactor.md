@@ -2,7 +2,7 @@
 
 (若 $ARGUMENTS 為空,先問我要 refactor 什麼、為什麼再繼續。)
 
-共通鐵則套用 `~/.claude/CLAUDE.md`。自主模式契約見 `~/.claude/commands/goal.md`。
+共通鐵則套用 `~/.claude/CLAUDE.md`。自主模式契約見 `~/.claude/commands/auto.md`。
 
 ## 核心紀律
 **行為絕對不變。** 一旦想順手改行為 → 那不是 refactor,切到 `/mod`。
@@ -25,7 +25,7 @@
 - 順手改動的發現 → 寫 `docs/next-time.md`,不在本次處理
 
 ## 自主模式建議
-✓ 強烈推薦:`/goal 既有測試 refactor 前後皆全綠 /refactor <why>`
+✓ 強烈推薦:`/auto 既有測試 refactor 前後皆全綠 /refactor <why>`
 
 ## Done
 所有既有測試 refactor 前後都全綠 + refactor commits 純 🔵(characterization test 為 🟢 獨立 commit)+ Phase 1 動機被處理。

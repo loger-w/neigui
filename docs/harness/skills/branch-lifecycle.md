@@ -51,6 +51,6 @@ metadata:
 | 開工 `switch -c` 撞既有同名分支 | 停下問三選一:resume 該分支續作 / user 確認後 `git branch -D` 重開 / 改 slug |
 | 開工時不在 main | 停下問;當前分支符合 `<prefix>/` 對照表才可選「resume 走完原流程含收尾」,否則(實驗分支 / detached HEAD)只有「user 確認處置該分支後回 main 重開」 |
 
-## 自主模式(/goal)
+## 自主模式(/auto)
 
 merge **不在必停清單**(2026-07-06 拍板):收尾 gate 全綠即自動 local merge(可逆;push / PR 仍必停)。

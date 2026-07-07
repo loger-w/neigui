@@ -2,7 +2,7 @@
 
 (若 $ARGUMENTS 為空,先問我要做什麼功能再繼續。)
 
-共通鐵則套用 `~/.claude/CLAUDE.md`。自主模式契約見 `~/.claude/commands/goal.md`(下稱 /goal)。
+共通鐵則套用 `~/.claude/CLAUDE.md`。自主模式契約見 `~/.claude/commands/auto.md`(下稱 /auto)。
 
 ## 核心原則(全程適用)
 
@@ -31,7 +31,7 @@
    - **M**:2-4 檔 → Phase 1/2 各 1 輪 review
    - **L**:≥ 5 檔、跨前後端 / 跨服務、或鑑權 / 加密 / 金流 / 對外 API 任何單檔改動 → 完整流程,Phase 1/2 各 max 3 輪
    - **風險升級**:碰到高風險面無視檔案數一律升 L
-5. 等使用者確認再進 Phase 1(自主模式的替代確認條件見 goal.md)
+5. 等使用者確認再進 Phase 1(自主模式的替代確認條件見 auto.md)
 
 ## Phase 1:設計 spec(L: max 3 輪;M: 1 輪;S: 跳過)
 
@@ -62,7 +62,7 @@
    - 紅測試:`git add <測試檔>`(不要 `-A`)+ `🟢 test(<area>): add failing test for SC-N [red]`
    - 實作到綠:`git add <實作檔>` + `🟢 feat(<area>): implement SC-N [green]`(body 註 `red→green for <red-sha>`)
    - Refactor(再跑測試綠才 commit):`🔵 refactor(<area>): ... [refactor]`
-   - **goal_efficiency_mode**(見 goal.md):可改 wave batch,單 `[waveN]` tag,commit body 列該 wave 涵蓋的 SC-N
+   - **goal_efficiency_mode**(見 auto.md):可改 wave batch,單 `[waveN]` tag,commit body 列該 wave 涵蓋的 SC-N
 3. 新發現 case:先回 Phase 2 文件追加(只追加不重跑 review)再寫紅。**test-infra 例外**:selector / matcher / jsdom 行為修正(非新 SC 行為)可同階段直接 patch test 檔,commit body 註 `test-infra-fix: <reason>`,不回 Phase 2
 4. **失敗回退**(禁止「就地改 code 不更新上游文件」):(a) 介面 / 資料流無法實作 → 回 Phase 1(快速路徑:只 review 變更段落)/(b) signature 細節錯 → 回 Phase 2 /(c) edge case 沒列 → 回 Phase 0 補 SC
 5. **next-time.md 鉤子**:每次 commit 前 cat `docs/next-time.md`,順手改動衝動寫進去或拆獨立 commit。**Subagent 模式下 main agent 在每 task dispatch 前代查**,有相關條目才塞進 dispatch prompt(fresh context 的 subagent 不知道檔案存在)
@@ -166,9 +166,9 @@
 (`sc_cycle_counts` **稀疏記帳**(2026-07-06,實證多數 feature 全零):初始化只建 `_unscoped`;`SC-N` 條目在該 SC **首次回退時才建**,且只含實際發生過的 phase 欄 + `total` — 零回退的 SC 不出現在 state。`phase_7` 欄是「Phase 7 判定失敗後回退到該 phase」的記錄欄;Phase 7 自身不 increment。meta-cycle 升級規則(同 SC ≥2 / 跨 phase ≥3)讀法不變。)
 
 ## 自主模式建議
-- 完整契約見 `~/.claude/commands/goal.md`
-- **S 級**想全自動:`/goal Phase 8.5 完成 /feat <desc>`
-- 保留 PR 決策、中段自動:`/goal Phase 7 結構化表格全綠 /feat <desc>`
+- 完整契約見 `~/.claude/commands/auto.md`
+- **S 級**想全自動:`/auto Phase 8.5 完成 /feat <desc>`
+- 保留 PR 決策、中段自動:`/auto Phase 7 結構化表格全綠 /feat <desc>`
 - **L 級不建議全自動**(Phase 0 對齊 + Phase 8 PR 決策價值高)
 
 ## Done

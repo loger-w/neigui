@@ -2,7 +2,7 @@
 
 (若 $ARGUMENTS 為空,先問我 bug 描述再繼續。)
 
-共通鐵則套用 `~/.claude/CLAUDE.md`。自主模式契約見 `~/.claude/commands/goal.md`。
+共通鐵則套用 `~/.claude/CLAUDE.md`。自主模式契約見 `~/.claude/commands/auto.md`。
 
 ## 核心紀律
 **穩定重現 → 紅測試 → 修 root cause → 反向驗證**。沒重現先別動 code。
@@ -26,7 +26,7 @@
 - Blast radius 抽樣紅 → 改錯方向,回 Phase 2
 
 ## 自主模式建議
-✓ 強烈推薦:`/goal pytest 全綠 且 Phase 3 紅測試轉綠 且 regression 抽樣綠 /bug <desc>`
+✓ 強烈推薦:`/auto pytest 全綠 且 Phase 3 紅測試轉綠 且 regression 抽樣綠 /bug <desc>`
 
 ## Done
 紅測試綠 + 既有測試保持綠 + regression 抽樣綠 + 反向驗證通過。

@@ -2,7 +2,7 @@
 
 (若 $ARGUMENTS 為空,先問我要改什麼再繼續。)
 
-共通鐵則套用 `~/.claude/CLAUDE.md`。自主模式契約見 `~/.claude/commands/goal.md`。
+共通鐵則套用 `~/.claude/CLAUDE.md`。自主模式契約見 `~/.claude/commands/auto.md`。
 
 ## 核心紀律
 **改既有 feature 不是新做** — Caller map 完整 + 鐵則 B 三類分離 commit + Backward compat 評估,缺一不可。
@@ -52,7 +52,7 @@
 - **L**(≥ 5 檔 / 對外 API / migration / 多 caller):完整流程,Phase 3 max 2 輪;**慎用自主模式**(caller map + backward compat 對齊價值高)
 
 ## 自主模式建議
-- S/M 級:✓ `/goal tests 全綠 且 Phase 2 白名單行為保留 /mod <desc>`
+- S/M 級:✓ `/auto tests 全綠 且 Phase 2 白名單行為保留 /mod <desc>`
 - L 級:⚠ 慎用(見上)
 
 ## Done
