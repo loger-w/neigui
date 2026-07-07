@@ -35,9 +35,14 @@ REGEX_BLOCKS: list[tuple[re.Pattern[str], str]] = [
         re.compile(r"(?i)core\.hooksPath\s*[=\s]\s*\S+"),
         "core.hooksPath override (any value) disables git hooks",
     ),
+    # Setting a value is caught above; here only unset (removes the repo's
+    # pre-push defense when core.hooksPath points at scripts/git-hooks).
+    # Read-only queries (`git config core.hooksPath`, `--get`) are allowed.
     (
-        re.compile(r"(?i)\bgit\s+config\s+(?:--\w+\s+)?core\.hooksPath\b"),
-        "git config core.hooksPath persists hook disabling",
+        re.compile(
+            r"(?i)\bgit\s+config\b[^|;&]*--unset(?:-all)?\b[^|;&]*\bcore\.hooksPath\b"
+        ),
+        "git config --unset core.hooksPath removes the repo hook defense",
     ),
     # --- Plumbing escape: commit-tree + update-ref skip all porcelain hooks ---
     (
