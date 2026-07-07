@@ -2,6 +2,7 @@ import { __apiGet, type RequestOptions } from "./api";
 import type {
   OptionsLargeTraders, OptionsStrikeVolume, OptionsSpot,
   OptionsMaxPain, OptionsOIWalls, OptionsPCR, OptionsInstitutional,
+  OptionsRetailMtx, OptionsForeignFutures,
 } from "./options-types";
 
 const BASE = "/api/options";
@@ -108,5 +109,27 @@ export const optionsApi = {
     if (lookback !== undefined) params.lookback = String(lookback);
     if (corrWindow !== undefined) params.corr_window = String(corrWindow);
     return __apiGet(`${BASE}/institutional`, params, options);
+  },
+
+  retailMtx(
+    date?: string,
+    refresh?: boolean,
+    options?: RequestOptions,
+  ): Promise<OptionsRetailMtx> {
+    const params: Record<string, string> = {};
+    if (date) params.date = date;
+    if (refresh) params.refresh = "true";
+    return __apiGet(`${BASE}/retail_mtx`, params, options);
+  },
+
+  foreignFutures(
+    date?: string,
+    refresh?: boolean,
+    options?: RequestOptions,
+  ): Promise<OptionsForeignFutures> {
+    const params: Record<string, string> = {};
+    if (date) params.date = date;
+    if (refresh) params.refresh = "true";
+    return __apiGet(`${BASE}/foreign_futures`, params, options);
   },
 };
