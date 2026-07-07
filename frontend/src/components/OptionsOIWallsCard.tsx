@@ -73,6 +73,9 @@ export function OptionsOIWallsCard({
             <div className="mt-3 pt-3 border-t border-line/60">
               <div className="text-xs text-ink-dim mb-1">
                 過去 {data.hit_rate.samples} 期 結算落於牆區比例
+                {/* CR3 / design R13:剔除樣本數透明化(T-1 close 缺或側別無候選) */}
+                {data.hit_rate.dropped_no_close > 0 &&
+                  `(剔除 ${data.hit_rate.dropped_no_close} 期資料不全)`}
               </div>
               <div className="flex gap-3 text-xs">
                 <span className="tabular-nums text-ink">
