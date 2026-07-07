@@ -20,7 +20,7 @@
    - **不能破壞的既有行為白名單**(列出來,這比新行為更重要)
    - Backward compat / migration 策略
    - Out of scope
-3. **Phase 3|Diff 級 spec**:寫 `change-spec.md`,逐檔列動什麼,**三類動作分開標記**:
+3. **Phase 3|Diff 級 spec**:擴寫 Phase 2 的 `change-spec.md`(同一檔,追加 diff 級章節),逐檔列動什麼,**三類動作分開標記**:
    - 🔴 **行為改動**(預期會讓既有測試紅)/ 🟢 **新功能**(加新測試)/ 🔵 **純重構**(測試不該變)
    - 既有測試逐一標:該紅的 / 不該紅的;新測試清單
    - Sub-agent 用 `change-spec-reviewer` agent type dispatch:傳 change-spec.md + Phase 1 `current-state.md` 路徑(criteria / JSON schema 固化在 agent 定義)

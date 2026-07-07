@@ -16,7 +16,7 @@
 4. **Phase 4|逐步執行**:每步 = 改 → 跑相關測試 → 全綠 → `git commit`(**純 🔵**)→ 下一步。若紅:**預設 refactor 改錯**(鐵則 C),次選才考慮測試在測 implementation detail(若真是 → 標註,這已經變相是 mod,停下切 `/mod`)
 5. **Phase 5|Blast radius**:grep 動到的命名 / signature 所有 caller(含動態用法 / template string / reflection / 外部 caller),跑完整 test suite(不只動到那塊)
 6. **Phase 6|自動化驗證**:呼叫 `auto-verify` skill 全綠
-7. **Phase 7|真實環境驗證**:呼叫 `auto-verify` 真實環境節 — dev server 跑改動範圍功能,**行為跟 refactor 前完全一樣**;抽幾個沒改的相關功能確認沒事
+7. **Phase 7|真實環境驗證**:呼叫 `auto-verify` 真實環境節 — dev server 跑改動範圍功能,**行為跟 refactor 前完全一樣**;抽 2 個沒改的相關功能確認沒事(同 auto-verify regression 抽樣數)
 8. **Phase 8|回頭核**:Phase 1 動機解決了?diff 中沒有任何行為差異?能量化的改進(複雜度 / duplication / 命名 / 行數)有沒有真的好
 
 ## 失敗 routing

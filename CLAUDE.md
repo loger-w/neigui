@@ -47,7 +47,7 @@ scripts/git-hooks/   git pre-push 測試防線(core.hooksPath 指向此)
 | E2E visual baseline 更新 | `npm run test:update-snapshots`(或在 GitHub 跑 `e2e-update-snapshots` workflow) | `e2e/` |
 | Lint(Python) | `ruff check .`(line-length 100,target py312) | `backend/` |
 
-完成前要過的 gate(/feat Phase 5、/mod Phase 6 等自動化驗證階段,`auto-verify` 一律套):`pytest -q` + `ruff check .`(backend)+ `npm test`(frontend vitest)+ `npm run build`(frontend,捕 TS error)+ **`npm test`(e2e,屬於下表「需要 e2e」的改動類型才必跑;不屬則可豁免並在 commit 註明)**。Build 過 ≠ 行為對,UI 改動還要走 chrome-devtools-mcp 真實截圖驗證。
+完成前要過的 gate(/feat Phase 5、/mod Phase 6 等自動化驗證階段,`auto-verify` 一律套):`pytest -q` + `ruff check .`(backend)+ `npm test`(frontend vitest)+ `npm run build`(frontend,捕 TS error)+ **`npm test`(e2e,屬於 skill `e2e-conventions` 判準表「需要 e2e」的改動類型才必跑;不屬則可豁免並在 commit 註明)**。Build 過 ≠ 行為對,UI 改動還要走 chrome-devtools-mcp 真實截圖驗證。
 
 驗證指令的**機器可讀來源** = `.claude/harness.json`(auto-verify 優先讀它、git pre-push 防線共用);改驗證指令改那裡,上表是人讀對照,兩邊要同步。**harness.json 只涵蓋無條件 gate**(pytest / ruff / vitest / build);E2E 刻意排除 — 條件跑(判準在 `e2e-conventions`)且 pre-push 跑不起,豁免與必跑由流程層把關。
 

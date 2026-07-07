@@ -14,6 +14,7 @@
    - **現況數字** + 量測方式 + 環境(例:LCP p95 = 3.2s / DevTools Performance / prod-like build)
    - **目標數字**:具體 threshold
    - **可重現量測步驟**(寫下來,unit + 指令,同 /feat 的量化 SC gate)
+   - Baseline 量測前呼叫 `auto-verify` 自動化節確認全綠(壞掉的 tree 量出的 baseline 無意義;對應該 skill「何時呼叫」的 /perf Phase 1 條目)
    - 沒可量化目標 → 停,「感覺慢」不算
 2. **Phase 2|Profile 找真實 bottleneck**:呼叫 `superpowers:systematic-debugging`(profile 假說同樣是假說 — 一次驗一個,用實驗證明是 **root bottleneck** 不是「順便也慢」的旁支),不准靠直覺猜:
    - Frontend:DevTools Performance / React Profiler / bundle analyzer
