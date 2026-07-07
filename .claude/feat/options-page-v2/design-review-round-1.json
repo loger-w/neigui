@@ -1,0 +1,16 @@
+{
+  "round": 1,
+  "reviewed": "design.md v1",
+  "verdict": "1 P0 + 3 P1 + 5 P2 → design.md v2",
+  "findings": [
+    {"id": "R1", "severity": "P0", "section": "1.1/3.3", "summary": "spot=None 傳導斷裂:fetch_oi_walls `or 0.0` coercion 使 parser None 分支不可達,spot 缺日產出假 warning + 未過濾牆", "resolution": "accepted — v2 §1.1 明列 caller 改動(移除 or 0.0、band guard None-aware)+ route-level 測試"},
+    {"id": "R2", "severity": "P1", "section": "1.2/3.3", "summary": "spot=None 時 dynamic wall 行為未規格(TypeError 或未定義)", "resolution": "accepted — v2 §1.2:spot=None → 四面牆全 None,只 emit oi_walls_no_spot,不 emit 其他牆 warning"},
+    {"id": "R3", "severity": "P1", "section": "2.4/3.1", "summary": "(a) foreign_history 只有 call 側,total_net series 不能『零額外聚合』導出;(b) day_change 恆 0,判讀句『較昨日』不能用它", "resolution": "accepted — v2 §2.4:series 由 rows_day call+put 全側聚合新寫;較昨日 = 前端取 series 末兩點差;day_change 恆 0 列 Known Risks(前端不使用)"},
+    {"id": "R4", "severity": "P1", "section": "3.1 range-svg", "summary": "strike_volume drop volume==0 strike,與 oi_walls 權威牆的 strike 集合不一致 → 牆標記懸空 / OI 分布缺大 OI 檔位", "resolution": "accepted — v2 新增 §1.4(🔴):parse_strike_volume 改含 volume>0 OR oi>0 的 strike + _CACHE_VERSION_OPTIONS bump;renderer 另加防禦(牆 strike 缺 bar 仍畫軸標記)+ 測試鎖"},
+    {"id": "R5", "severity": "P2", "section": "2.1", "summary": "MTX 法人缺日以 0 入 series = 偽中性點污染 sparkline", "resolution": "accepted — v2 §2.1:法人 rows 缺的日子從 series drop,warning 記 dropped 日數(固定字串 + payload 欄位)"},
+    {"id": "R6", "severity": "P2", "section": "3.1 檔案表", "summary": "漏列 lib/options-svg.test.tsx 遷移(StrikeLadder/maxOIStrike 引用 11 處)", "resolution": "accepted — v2 檔案表補測試遷移 + 『該變』assertion 清單交 Phase 2"},
+    {"id": "R7", "severity": "P2", "section": "3.1/3.2", "summary": "StrikeLadder 基底牆色反轉遺留(isCallWall→紅),『台股色不變』措辭會讓實作沿用錯色", "resolution": "accepted — v2 §3.2 明文點名反轉遺留,range-svg 必翻轉 + data-testid 正向 assertion 先紅後綠"},
+    {"id": "R8", "severity": "P2", "section": "2.2", "summary": "期貨 cache 借用 _CACHE_VERSION_OPTIONS_CHIP 跨域耦合", "resolution": "accepted — v2:finmind_futures.py 自帶 _CACHE_VERSION_FUTURES = 1"},
+    {"id": "R9", "severity": "P2", "section": "1.3", "summary": "warning 名帶動態計數後綴 `_{n}` 破壞固定字串契約", "resolution": "accepted — v2:固定名 hit_rate_samples_dropped_no_close,計數放 hit_rate.dropped_no_close 欄位"}
+  ]
+}

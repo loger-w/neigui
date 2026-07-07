@@ -1,0 +1,14 @@
+{
+  "round": 1,
+  "reviewed": "implementation/PLAN.md (condensed)",
+  "verdict": "0 P0 + 2 P1 + 5 P2 → gate 達標;7 條全 accepted 修進 PLAN,Phase 2 收斂",
+  "findings": [
+    {"id": "R1", "severity": "P1", "summary": "OptionsChipPanel.test.tsx 寫死 window_activity_oi,W3 types 改名會讓中間 wave TS 紅,該變清單漏 frontend", "resolution": "accepted — W3 該變清單補:types 改名同 commit 更新尚存測試檔的 fixture 欄位名"},
+    {"id": "R2", "severity": "P1", "summary": "W3 hooks 無失敗測試清單(useRetailMtx / useForeignFutures / useOptionsChip 擴充)", "resolution": "accepted — 補三個 hook 測試(樣板=useOptionsStrikeVolume.test.ts)"},
+    {"id": "R3", "severity": "P2", "summary": "route 層缺法人日 warning 測試漏列", "resolution": "accepted — 補 test_retail_mtx_missing_inst_days_warning"},
+    {"id": "R4", "severity": "P2", "summary": "e2e/helpers/selectors.ts 未列(兩個失效 TESTIDS + 新結構常數)", "resolution": "accepted — W5 明列"},
+    {"id": "R5", "severity": "P2", "summary": "SC-2 新掛牌 strike 分支無紅測", "resolution": "accepted — 補 test_parse_oi_walls_dynamic_new_listing_strike_full_increase"},
+    {"id": "R6", "severity": "P2", "summary": "PCR 格 fallback 文案 PLAN(—)與 design(資料不足)矛盾", "resolution": "accepted — 對齊 design:PCR 格「資料不足」,其餘格 error「—」"},
+    {"id": "R7", "severity": "P2", "summary": "probe 檔位置未對齊既有慣例", "resolution": "accepted — 改 backend/tests/fixtures/futures/probe.py(沿 options_chip/probe.py 慣例)"}
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "round": 1,
+  "head": "ba71a2d",
+  "steps": [
+    {"step": "backend-test", "command": "python -m pytest -q", "cwd": "backend", "exit_code": 0, "result": "515 passed, 1 skipped"},
+    {"step": "backend-lint", "command": "ruff check .", "cwd": "backend", "exit_code": 0, "result": "All checks passed"},
+    {"step": "frontend-test", "command": "npm test", "cwd": "frontend", "exit_code": 0, "result": "626 passed(64 files)"},
+    {"step": "frontend-build", "command": "npm run build", "cwd": "frontend", "exit_code": 0, "result": "tsc -b + vite build 成功"},
+    {"step": "e2e", "command": "npm test", "cwd": "e2e", "exit_code": 0, "result": "24 passed, 2 skipped(@visual/@live gate);e2e-conventions 判準:O# UI 大改屬必跑類型,已改寫 O1-O6 + N#/NTD#/V# 等待點;跑前清 e2e/.cache(fixture 改動後殘留 cache 會餵舊 payload)"}
+  ],
+  "all_green": true
+}

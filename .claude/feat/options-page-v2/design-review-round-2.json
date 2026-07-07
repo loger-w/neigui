@@ -1,0 +1,11 @@
+{
+  "round": 2,
+  "reviewed": "design.md v2",
+  "verdict": "0 P0 + 1 P1 + 3 P2 → gate 達標;四條全 accepted 修進 v3(不掛 Known Risks)",
+  "findings": [
+    {"id": "R10", "severity": "P1", "section": "0/1.4/3.3", "summary": "交易日早晨 oi_walls F7 fallback 退 D-1、strike_volume 選 D(夜盤 volume rows、OI 全 0)→ RangeMap 疊圖基準日不一致,懸空牆 + 全零分布每天早上重現", "resolution": "accepted — v3 §1.4:strike_volume 套 oi_walls 同款 non-empty-OI fallback(基準日對齊,根治)+ §3.3 前端 as_of_date 比對防禦(mismatch 隱藏牆標記 + 註記)+ vitest 鎖"},
+    {"id": "R11", "severity": "P2", "section": "1.4", "summary": "_CACHE_VERSION_OPTIONS bump 波及 spot + oi_lt 30 個攤提 cache,與 R8 per-domain 理由矛盾", "resolution": "accepted — v3:拆 `_CACHE_VERSION_STRIKE_VOL = 2`(從 2 起跳作廢共用 v1 舊 entry),spot / oi_lt 不動"},
+    {"id": "R12", "severity": "P2", "section": "1.4/3.1", "summary": "volume>0 OR oi>0 後 strike 清單可能膨脹到百檔,渲染視窗未規格", "resolution": "accepted — v3 §3.1:視窗 = spot 上下各 20 檔,牆 / Max Pain 在窗外則擴窗納入,窗外截尾 [auto-default: 固定檔數視窗 | reason: 渲染可預測,牆強制納入已保關鍵資訊]"},
+    {"id": "R13", "severity": "P2", "section": "1.3/3.1", "summary": "types 清單漏 hit_rate.dropped_no_close 欄位", "resolution": "accepted — v3 §3.1 types 補 `OIWallsHitRate.dropped_no_close: number`,AdvancedPanel hit rate 表顯示剔除數"}
+  ]
+}

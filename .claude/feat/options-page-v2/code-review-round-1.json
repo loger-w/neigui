@@ -1,0 +1,44 @@
+{
+  "round": 1,
+  "scope": "git diff main...HEAD(wave0-5)",
+  "finders": "8 angles / 4 agents(sonnet)",
+  "verdict": "accepted 4(1 P0 + 2 P1 + 1 P2 行為級效率)≤ 5 且修後全綠 → 單輪退場",
+  "findings": [
+    {
+      "id": "CR1", "severity": "P0", "angle": "A",
+      "file": "backend/services/finmind_options.py", "line": 1095,
+      "summary": "parse_foreign_total_net_series 對 put 腿未做 delta 等效換向(call/put 都 += long−short)— 外資大買保護性 put 會被溫度計判讀成「淨多」,方向相反;tile tooltip 明說「買 call + 賣 put 視為偏多」與數字語意矛盾",
+      "verdict": "CONFIRMED(code 直讀 + 同檔 _aggregate_call_put_pair 的正確樣板對照)",
+      "resolution": "accepted — 根因在 design.md §2.4 公式本身寫錯(call_net + put_net):spec 層 amendment + parser 改 delta 等效(call_net − put_net),fetch series 測試該變改寫 + 補 put-heavy 方向 case(紅先行)"
+    },
+    {
+      "id": "CR2", "severity": "P1", "angle": "B + missing-from-spec(兩 finder 撞,merged)",
+      "file": "frontend/src/components/OptionsNetTable.tsx", "line": null,
+      "summary": "週選 aggregate 免責 banner(大戶 OI 為週三+週五共用 aggregate)隨 OptionsLargeTradersStrip 刪除被靜默丟掉;design 的內容遷移清單沒有授權移除此資料品質警示",
+      "verdict": "CONFIRMED(git show main 對照 + 新元件樹 grep 零命中)",
+      "resolution": "accepted — OptionsPage 恢復 isWeekly 計算,傳入 NetTable(caption 註記)與 ThermometerRow 前十大 tile(附註),測試紅先行"
+    },
+    {
+      "id": "CR3", "severity": "P1", "angle": "missing-from-spec",
+      "file": "frontend/src/components/OptionsOIWallsCard.tsx", "line": 72,
+      "summary": "design R13 要求 hit rate 表顯示剔除樣本數;型別/後端都到位但 UI 從未讀 dropped_no_close — 樣本被剔除時使用者只看到變小的 N,無從知道統計基於過濾子集",
+      "verdict": "CONFIRMED(grep 全 tsx 零讀取)",
+      "resolution": "accepted — OIWallsCard hit rate 區塊 dropped_no_close > 0 時顯示「剔除 N」,測試紅先行"
+    },
+    {
+      "id": "CR4", "severity": "P2(行為級效率,展開)", "angle": "efficiency",
+      "file": "backend/services/finmind_options.py", "line": 680,
+      "summary": "淨增倉改首尾差後 daily_snapshots 仍對整個 window 逐日跑 _per_side_oi,但只用 [0] — delta_window=20 時 19 次全量聚合白算,oi_walls 是熱 endpoint",
+      "verdict": "CONFIRMED(net_increase_for_side 只讀 daily_snapshots[0])",
+      "resolution": "accepted — 只聚合 rows_history[0](或空時用 today),行為零差異(既有動態牆測試鎖住),🔵 refactor"
+    }
+  ],
+  "p2_summary": {
+    "count": 8,
+    "themes": [
+      "reuse ×4(fmtSigned / fmtPct / 距現價% / _inst_by_date 重複)→ 已記 docs/next-time.md,後續 /refactor 批次處理",
+      "simplification ×1(RangeMapSvg spot 插入迴圈沿襲 StrikeLadder 舊寫法)→ 同上",
+      "altitude ×3:as_of 前端防禦(rejected_with_reason — design v3 R10 明文決策『後端 fallback 對齊為主 + 前端殘餘防線』,reviewer 未見 changelog rationale);dropped_no_close 合併兩種失敗(rejected — design §1.3 明文『任一側 None → 同計 dropped』的既定取捨);conclusion 分支成長(needs_more_context — 未來擴充才成立,YAGNI 現不動)"
+    ]
+  }
+}
