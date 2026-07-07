@@ -35,7 +35,7 @@
 - ❌ 沒測試保護就 refactor
 - ❌ Refactor + 行為改動混在同一個 commit
 - ❌ 「順手」修 lint / rename / 換 library
-- ❌ 大爆炸:一個 commit 改 30 個檔
+- ❌ 大爆炸:一個 commit 改 20+ 個檔(門檻同 Phase 3)
 - ❌ 預設「測試錯了」(預設是 refactor 改錯)
 - ❌ 沒理由的「為了一致性」rename
 - ❌ 砍掉「看起來沒用」的 code,沒查過動態用法

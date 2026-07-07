@@ -13,7 +13,7 @@
 ## B. Scope 紀律
 - 看到順手想改的 → 寫進「下次處理」清單,不在這次動
 - 不為「未來可能」加 abstraction
-- 三類動作分開 commit:🔴 行為改動 / 🟢 新功能 / 🔵 純重構
+- 三類動作分開 commit:🔴 行為改動 / 🟢 新功能 / 🔵 純重構(emoji 前綴的強制範圍由流程 command / 專案 CLAUDE.md 定義;未定義處只要求三類不混,不強制 emoji)
 - 不順手 lint fix / rename / 升 dependency
 
 ## C. 測試紀律
@@ -45,7 +45,7 @@ TDD 走 `superpowers:test-driven-development`(紅先行)。沒測試保護的 co
 ## G. Sub-agent / Loop 紀律
 - Sub-agent 是 fresh context → 明確傳入 goal + spec + criteria + 上輪 feedback
 - Review criteria 結構化(checklist + JSON 回傳),不是「請反思一下」
-- Loop max 3 輪,嚴重度 P0/P1/P2,退出條件「無 P0/P1」
+- Loop max 3 輪,嚴重度 P0/P1/P2,退出條件「無 P0/P1」(流程 command 檔可**顯式覆寫** P1 門檻 — 覆寫處必標明,以 command 檔為準)
 - 禁止「直到沒問題為止」的無限迴圈
 - 資源:Workflow `agent()` 預設 `effort:'low'` 省額度;Agent tool 無 effort 參數改用最小可勝任 model(如 haiku);難 judge 才升級且說明理由
 

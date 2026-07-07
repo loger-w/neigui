@@ -123,7 +123,7 @@ scripts/git-hooks/   git pre-push 測試防線(core.hooksPath 指向此)
 ## 6. 提交慣例
 
 - Commit message 既有風格:`<type>(<scope>): <subject>`,type 取 `feat` / `fix` / `chore` / `refactor` / `perf`,scope 多用 `options` / `chip` / `frontend`。subject 描述「為何」 > 「做了什麼」。
-- 三類分開(對應 user-global B 條):🔴 行為改 / 🟢 新功能 / 🔵 重構 不混 commit。
+- 三類分開(對應 user-global B 條):🔴 行為改 / 🟢 新功能 / 🔵 重構 不混 commit。emoji 前綴僅流程內(/feat /mod /refactor 等)TDD commit 強制(/feat Phase 8 script 驗);流程外 commit 只要求三類不混,不強制 emoji 前綴。
 - DevTools MCP 驗證截圖放 `docs/specs/<feature>/screenshots/`,commit 訊息註明 `chore(...): ... verification screenshots`。
 
 ---

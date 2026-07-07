@@ -9,6 +9,7 @@
 - **Artifacts 釘檔**:每 phase 產物寫到 `.claude/feat/<slug>/`,跨 session 可 resume(state.json schema 見尾)。**此為 user preference,顯式覆寫** `superpowers:brainstorming` / `superpowers:writing-plans` 的 `docs/superpowers/` 落點與「設計文件先 commit」要求 — artifact 統一釘專案內,Phase 8 才 commit。
 - **Receiving 紀律**:所有 RECEIVING feedback(sub-agent JSON / `/code-review` finding / 環境問題)一律過 `superpowers:receiving-code-review` 分類 `accepted` / `rejected_with_reason` / `needs_more_context`,絕不照單全收。
 - **Review 輪數上限 3**:**顯式覆寫** `superpowers:subagent-driven-development` 與 `superpowers:requesting-code-review` 的「repeat until approved」無上限迴圈 — 理由:鐵則 G + token 經濟。**Tech pivot(換架構重做)想重置計數 → 必須先向 user 回報並取得批准**,不准自行續跑超限。
+- **P1 帶額度退場**:Phase 1/2 退出條件「無 P0 且 P1 ≤ 2(入 Known Risks)」與 Phase 4 的單輪退場條件,**顯式覆寫**鐵則 G 的退出條件「無 P0/P1」— 理由:餘 P1 已具名寫入 Known Risks 落檔追蹤,非默默放掉。
 - **失敗類型分流**:Phase 7 失敗不是無腦回 Phase 3,依失敗類型(goal 漏 / design 漏 / impl 漏 / test 漏)回對應 phase。
 - **跨 phase meta-cycle**:同 SC 單 phase 回退 ≥ 2 次或跨 phase 累計 ≥ 3 次 → 升級回 Phase 0/1,計數寫 `state.json.sc_cycle_counts`(Phase -1 豁免)。
 - **state.json 為唯一資料源**:`brainstorm.md` 對應 SC 旁只標 `cycle-count: [see state.json]`。**每完成一個 phase 立即回寫 `current_phase` / `completed_phases`**(2026-07-06 審計:9 個 feature 有 3 個 state 與 artifact 不同步)。
