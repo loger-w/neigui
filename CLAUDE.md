@@ -44,7 +44,6 @@ scripts/git-hooks/   git pre-push 測試防線(core.hooksPath 指向此)
 | Frontend build | `npm run build` (tsc -b + vite build) | `frontend/` |
 | E2E 測試 | `npm test` (playwright,跳過 `@live` / `@visual`) | `e2e/` |
 | E2E 單檔 | `npx playwright test specs/equity.spec.ts` | `e2e/` |
-| E2E visual baseline 更新 | `npm run test:update-snapshots`(或在 GitHub 跑 `e2e-update-snapshots` workflow) | `e2e/` |
 | Lint(Python) | `ruff check .`(line-length 100,target py312) | `backend/` |
 
 完成前要過的 gate(/feat Phase 5、/mod Phase 6 等自動化驗證階段,`auto-verify` 一律套):`pytest -q` + `ruff check .`(backend)+ `npm test`(frontend vitest)+ `npm run build`(frontend,捕 TS error)+ **`npm test`(e2e,屬於 skill `e2e-conventions` 判準表「需要 e2e」的改動類型才必跑;不屬則可豁免並在 commit 註明)**。Build 過 ≠ 行為對,UI 改動還要走 chrome-devtools-mcp 真實截圖驗證。
@@ -146,23 +145,12 @@ User-facing changelog 在 `frontend/src/lib/changelog.ts`,前端 top bar 右側 
 
 ### 每次 commit / PR 前
 
-判斷本次改動屬於哪一格,**新增 VersionEntry 條目**(最新放陣列 index 0):
-- 同一 ship event 多 commit 收尾 → 一個新 entry,date = 最後 commit 日期
+判斷本次改動屬於哪一格,**新增 VersionEntry 條目**:
 - Hotfix 一個既有 release → 新 entry,bump PATCH(`0.14.0` → `0.14.1`)
 - Refactor 不入 changelog,除非伴隨 user-visible 變動則合併到該變動的 entry
+- 結構欄位(`kind` / `scope` / `date` / index 0 / 同 ship event 合併)與 `text` 撰寫判準 → skill `changelog-conventions`,**寫 entry 前必讀**
 
-### 撰寫 change item 規則
-
-- `kind` 二選一:`feature`(新功能 / 新視覺)或 `fix`(影響體驗的修正)
-- `scope` 三選一:`equity` / `options` / `global`,**不要混用** `prop` 或自由文字
-- `date` 用 `YYYY-MM-DD`(同專案其他 date 慣例)
-- `text` 一句話 user-facing:核心原則 = **寫「使用者體感到什麼」,不寫「工程上怎麼做」**;完整撰寫判準與壞/好詞例對照已移至 skill `changelog-conventions`(2026-07-06),**寫 entry 文字前必讀**。
-
-### 1.0.0 升級標準
-
-SemVer FAQ 建議「production use 或 stable consumed API」。本專案無外部 API consumer,1.0.0 留給 user 自行宣告「日常依賴」的時點。
-
-不在自動化驗證強制,屬 PR 流程紀律(類似 commit message convention)。
+不在自動化驗證強制,屬 PR 流程紀律(類似 commit message convention)。1.0.0 升級時點由 user 自行宣告(理由見 `docs/decisions.md`)。
 
 ---
 

@@ -24,3 +24,7 @@
 | Backend feature-based 重構 | 官方 template + 現況都是 layered,共識本身分歧,不動 |
 | RFC 7807 problem details | FastAPI 官方未實作,frontend 已依賴 `{"detail": {"error": "<code>"}}` 格式,改動成本 > 收益 |
 | mypy strict | 共識不強;選 pyright 因比 mypy 快、預設 basic 即可,不上 strict |
+
+## 其他已結案決策
+
+- **1.0.0 升級標準**(2026-07-07 自 CLAUDE.md §7 移入):SemVer FAQ 建議「production use 或 stable consumed API」時升 1.0.0;本專案無外部 API consumer,留給 user 自行宣告「日常依賴」的時點,不設自動化判準。
