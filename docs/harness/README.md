@@ -22,8 +22,9 @@
 │   專案形狀偵測 → 自動化五步驟 + 真實環境驗證分流(單一 source of truth)
 │
 ├─ 版控 skill(skills/branch-lifecycle.md,~/.claude/skills/)
-│   開工(主線同步 + prefix 分支)/ 收尾(自動 merge + 刪分支)/ 異常處理
-│   五個流程 command 共用(單一 source of truth;merge 不必停、push 必停)
+│   開工(主線同步 + prefix 分支)/ 收尾(push → PR → review 補齊 →
+│   merge 確認 → auto-merge;離線 fallback local merge)/ 異常處理
+│   五個流程 command 共用(單一 source of truth;merge 確認 = 唯一必停點)
 │
 ├─ Review agent 定義(agents/,~/.claude/agents/)
 │   design-reviewer(/feat P1,medium)/ impl-spec-reviewer(/feat P2,low)/
@@ -53,8 +54,9 @@
 │   harness-context.py — SessionStart/UserPromptSubmit 注入進行中 /feat
 │                        的 phase 與 gate(soft reminder,弱模型防遺忘)
 │   harness-stop-audit.py — Stop 審計 state.json 回寫與收件匣義務
-│   harness-push-gate.py  — git push / gh pr merge 強制 user 確認
-│                           (鐵則 H 硬化,permissionDecision ask)
+│   harness-push-gate.py  — 流程分支 push 放行(嚴格 fullmatch);
+│                           push main / force / gh pr merge 強制 user 確認
+│                           (鐵則 H 硬化;merge ask = PR 收尾單一確認點)
 │   tests/             — hooks 的 pytest(強制層有 bug 比沒有更糟)
 │
 └─ 自我改進迴路
@@ -90,7 +92,7 @@
 | 改既有功能的行為或介面 | `/mod <改什麼>` |
 | 純結構整理(行為不變) | `/refactor <為什麼現在做>` |
 | 有量化目標的變快 | `/perf <metric + 目標數字>`(沒數字會被擋,「感覺慢」→ 先 `/bug` 或 `/refactor`) |
-| 想全自動跑到某個檢查點 | `/auto <退出條件> /feat <目標>`(push / PR 仍會停下來問;merge 收尾 gate 全綠即自動) |
+| 想全自動跑到某個檢查點 | `/auto <退出條件> /feat <目標>`(收尾自動 push + 開 PR;merge 確認框仍會停) |
 | 完成前驗證 | 各流程內建呼叫 `auto-verify`,不需手動 |
 | 深度審查當前 diff | `/code-review`(想要多 agent 深審在訊息加 `ultracode`) |
 | 動 market / FinMind / e2e / 前端某塊之前 | 對應主題 skill 會自動掛上;手動看:CLAUDE.md §8 索引 |

@@ -50,7 +50,9 @@ TDD 走 `superpowers:test-driven-development`(紅先行)。沒測試保護的 co
 - 資源:Workflow `agent()` 預設 `effort:'low'` 省額度;Agent tool 無 effort 參數改用最小可勝任 model(如 haiku);難 judge 才升級且說明理由
 
 ## H. Git 推送紀律
-- push 前必列 `origin/<branch>..HEAD` commit 清單 + 目標 branch 給我確認;「push」≠「直推 main」。自主模式(/auto)不豁免。
+- 流程分支 push(單獨指令 `git push -u origin <feat|fix|mod|refactor|perf>/<slug>`,PR 收尾用)屬自動步驟,不必停。
+- 其他 push(main / `--force` / 非流程分支)前必列 `origin/<branch>..HEAD` commit 清單 + 目標 branch 給我確認;「push」≠「直推 main」。
+- `gh pr merge` = PR 收尾單一確認點(push-gate hook ask 框,試用完按 allow 即 merge 到底)。自主模式(/auto)不豁免。
 
 ---
 

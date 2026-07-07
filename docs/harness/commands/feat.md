@@ -76,6 +76,7 @@
 3. accepted 依層級回對應 phase:spec 漏 → Phase 1/2 改文件 / impl 漏 → Phase 3 / test 漏 → Phase 3 紅先行(鐵則 C)。**Test-gap finding 補 lock test**:鎖「已正確行為」天生無紅 → 走 mutation 抽驗(手動改壞 → lock test 紅 → 還原 → 綠),commit 用 `[lock]` tag + body 註 `mutation-verified`
 4. **退場條件**:round 1 accepted ≤ 5 且無 P0 且 fix 後自動化測試全綠 → 可單輪退場;accepted > 5 或有 P0 → 強制 round 2 verify。loop max 3 輪
 5. 完成後跑 **inline 完工自查 checklist**(不呼叫 requesting-code-review — 該 skill 是 dispatch reviewer 流程,不是自查):測試齊全 / commit 分類分明 / 文件同步 / known-risk 已標記
+6. 自評收斂後把當下 HEAD sha 寫入 state.json `self_review_head`(收尾節 review 增量判準:`self_review_head..HEAD` 非空才補增量 review)
 
 ## Phase 5:自動化驗證
 
@@ -106,7 +107,7 @@
 
 ## Phase 8:整合與收尾
 
-1. 收尾路徑:**預設走 `branch-lifecycle` 收尾節**(自動 local merge + 刪分支)— **顯式覆寫** `superpowers:finishing-a-development-branch` 的三選一互動,理由:solo 無 reviewer,user 2026-07-06 拍板自動化。user 事先指定 PR → 走收尾節 PR 路徑。執行順序:步驟 2 tag 驗證 → 步驟 3 artifact commit → 收尾節 merge
+1. 收尾路徑:**預設走 `branch-lifecycle` 收尾節**(push → PR → review 補齊 → merge 確認 → auto-merge;2026-07-07 拍板)— **顯式覆寫** `superpowers:finishing-a-development-branch` 的三選一互動,理由:solo 無 reviewer,user 拍板自動化。執行順序:步驟 2 tag 驗證 → 步驟 3 artifact commit → 收尾節
 2. **Commit tag 機械化驗證(script 化,2026-07-06)**:
    ```bash
    python ~/.claude/hooks/check_feat_tags.py --state .claude/feat/<slug>/state.json
@@ -117,7 +118,7 @@
    git add ".claude/feat/<slug>/" && git commit -m "chore(feat-<slug>): artifacts"
    ```
    不允許 `git add -f` 短路(會掩蓋 exclude 是否真清除)
-4. 非預設路徑(user 指定才走):**PR**(`/code-review --comment` 落 Phase 4 已分類 findings + 收尾節 PR 路徑)/ **保留 branch**(state.json 標 `paused: <reason>`,不 merge)。merge 規則(一律 ff)在 branch-lifecycle,不重抄
+4. 非預設路徑(user 指定才走):**保留 branch**(state.json 標 `paused: <reason>`,不 push 不 merge)。PR 已是預設收尾;merge 規則在 branch-lifecycle,不重抄
 5. Worktree 清理(若有):`git worktree remove <path>` + `git branch -d feat/<slug>`
 
 ## Phase 8.5:沉澱(閉環)
@@ -157,7 +158,7 @@
   "blockers": [], "phase_6_blocked_reason": null,
   "scope_overrides": { "goal_efficiency_mode": false },
   "last_updated": "<ISO>", "project_shape": null,
-  "last_commit_sha": null, "final_merge_sha": null,
+  "last_commit_sha": null, "final_merge_sha": null, "self_review_head": null,
   "sc_cycle_counts": {
     "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 }
   },
@@ -168,8 +169,8 @@
 ## 自主模式建議
 - 完整契約見 `~/.claude/commands/auto.md`
 - **S 級**想全自動:`/auto Phase 8.5 完成 /feat <desc>`
-- 保留 PR 決策、中段自動:`/auto Phase 7 結構化表格全綠 /feat <desc>`
-- **L 級不建議全自動**(Phase 0 對齊 + Phase 8 PR 決策價值高)
+- 中段自動(merge 確認天然停在收尾):`/auto Phase 7 結構化表格全綠 /feat <desc>`
+- **L 級不建議全自動**(Phase 0 對齊 + 收尾 merge 確認前人工試用價值高)
 
 ## Done
 **Phase 8 完成 + Phase 8.5 (A)(B)(C) 都處理**才算結束:Phase 7 表格全綠 / Phase 8 tag 驗證過 + artifact commit / 沉澱寫入 + GC pass + meta-review 檢查,缺一不可。

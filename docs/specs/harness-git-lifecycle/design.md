@@ -1,5 +1,7 @@
 # Harness 版控生命週期補洞 — 設計
 
+> **2026-07-07 更新**:收尾節設計已被 [`harness-pr-lifecycle/design.md`](../harness-pr-lifecycle/design.md) 取代(PR 收尾成為預設);本檔的開工節與漂移處理仍有效。
+
 > **v2(2026-07-06)**:`design-reviewer` agent round-1 review 5 findings 全 accepted —
 > R1(P0)漂移路徑驗證時點錯置 → 改 rebase-先-驗-後-merge;R2(P1)squash 與 `-d` 互斥 → 取消 squash 統一 ff;
 > R3(P1)補撞名分支與不在 main 的出口;R4/R5(P2)design-skill 文字對齊、PR 路徑依賴顯式化。
