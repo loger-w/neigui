@@ -31,13 +31,19 @@ async def lifespan(app: FastAPI):
     if fake not in ("", "0", "1"):
         raise RuntimeError(f"invalid FAKE_FINMIND={fake!r} — only ''/'0'/'1' allowed")
 
-    from routes.symbols import load_symbols
+    from routes import symbols as symbols_mod
     import services.finmind as fm_mod
 
-    await load_symbols()
+    # perf/cold-start:kickoff 背景載入即 serve,不 await — 冷啟動 ready 時間
+    # 與 FinMind fetch 脫鉤;第一發 /api/symbols/* 由 _ensure_loaded await 共用 task。
+    symbols_mod.ensure_load_task()
     yield
-    if fm_mod._client is not None:
-        await fm_mod._client.close()
+    try:
+        await symbols_mod.shutdown_load_task()
+    finally:
+        # close 放 finally:shutdown 段的取消 / 例外不得跳過連線清理。
+        if fm_mod._client is not None:
+            await fm_mod._client.close()
 
 
 app = FastAPI(title="Chip Overview", version="0.1.0", lifespan=lifespan)

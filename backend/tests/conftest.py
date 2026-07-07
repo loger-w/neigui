@@ -50,6 +50,15 @@ def _reset_finmind_singleton_and_env(monkeypatch, tmp_path):
     monkeypatch.setattr(fm, "_fm_limiter", None)
 
 
+@pytest.fixture(autouse=True)
+def _reset_symbols_load_task(monkeypatch):
+    """symbols 共用載入 task 殘留會綁死舊 event loop(bare TestClient 每請求
+    各開一個 loop),跨測試 await 到它會 hang / RuntimeError — 每測試起點清空。"""
+    import routes.symbols as symbols_mod
+
+    monkeypatch.setattr(symbols_mod, "_load_task", None)
+
+
 @pytest.fixture
 def bypass_finmind_rate_limiter(monkeypatch):
     """Opt-in: swap the rate limiter for a no-op + force client rebuild.

@@ -35,4 +35,23 @@ export default async function globalSetup(): Promise<void> {
       "ABORT:e2e:live 模式但 backend 在 fake mode — 環境變數設定錯",
     );
   }
+
+  // perf/cold-start:backend 啟動不再等 symbols 載入(lifespan 非阻塞化)。
+  // webServer url gate(/api/symbols?search=2)的 200 仍等於「fixture 已載」
+  // (503 不在 Playwright 接受清單),這裡再顯式斷言非空 — fixture 缺檔 /
+  // MANIFEST 漏列時直接指向 backend,而不是散成一堆 spec selector timeout。
+  if (expectFake) {
+    const symbols = await api.get("/api/symbols/all");
+    if (!symbols.ok()) {
+      throw new Error(
+        `ABORT:/api/symbols/all 回 ${symbols.status()} — FAKE fixture 載入失敗?`,
+      );
+    }
+    const list = (await symbols.json()) as unknown[];
+    if (!Array.isArray(list) || list.length === 0) {
+      throw new Error(
+        "ABORT:/api/symbols/all 空清單 — FAKE fixture 缺檔或 MANIFEST 漏列?",
+      );
+    }
+  }
 }

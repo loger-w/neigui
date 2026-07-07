@@ -25,6 +25,11 @@ def _e2e_env(monkeypatch, tmp_path):
     import services.finmind as fm
 
     monkeypatch.setattr(fm, "_client", None)
+    # symbols 共用載入 task 跨測試殘留會綁死舊 event loop(pytest-asyncio 每
+    # 測試一個 loop)— 同 tests/conftest.py 的 reset,兩邊同步。
+    import routes.symbols as symbols_mod
+
+    monkeypatch.setattr(symbols_mod, "_load_task", None)
 
 
 @pytest.fixture
