@@ -53,8 +53,8 @@ const mockOIWalls: OptionsOIWalls = {
   current: {
     static_call_wall: { strike: 23232, oi: 800 },  // unique-to-OI Walls call
     static_put_wall: { strike: 19191, oi: 700 },   // unique-to-OI Walls put
-    dynamic_call_wall: { strike: 23500, window_activity_oi: 600, partial_window: false },
-    dynamic_put_wall: { strike: 18900, window_activity_oi: 500, partial_window: false },
+    dynamic_call_wall: { strike: 23500, window_net_increase_oi: 600, partial_window: false },
+    dynamic_put_wall: { strike: 18900, window_net_increase_oi: 500, partial_window: false },
     band_width_pct: 9.5,
     data_quality_warnings: [],
   },
@@ -72,6 +72,7 @@ const mockPcr: OptionsPCR = {
     region: "high",
     thresholds: { high_pct: 70, low_pct: 30 },
   },
+  series: [{ date: TODAY, pcr: 0.92 }],
   next_day_stats: null,
   data_quality_warnings: [],
   insufficient_data: null,
@@ -85,6 +86,7 @@ const mockInst: OptionsInstitutional = {
     trust:   { call_net: 30, put_net: -10, total_net: 20, day_change: 0 },
     session_breakdown: { day_session: {}, after_hours: null },
   },
+  series: [{ date: TODAY, foreign_total_net: 700 }],
   correlation: null,
   data_quality_warnings: [],
   insufficient_data: null,

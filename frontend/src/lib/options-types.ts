@@ -103,7 +103,8 @@ export interface OIWallStatic {
 
 export interface OIWallDynamic {
   strike: number;
-  window_activity_oi: number;
+  /** options-page-v2 SC-2:window 首尾淨增倉(原 window_activity_oi 語意反轉後改名) */
+  window_net_increase_oi: number;
   partial_window: boolean;
 }
 
@@ -120,6 +121,8 @@ export interface OptionsOIWallsHitRate {
   pct_settled_inside_band: number;
   avg_band_width_pct: number;
   history: OIWallsHitRateEntry[];
+  /** SC-3:T-1 close 缺或側別無候選而剔除的樣本數 */
+  dropped_no_close: number;
   latest_settlement_pending: boolean;
 }
 
@@ -133,7 +136,8 @@ export interface OptionsOIWalls {
     static_put_wall: OIWallStatic | null;
     dynamic_call_wall: OIWallDynamic | null;
     dynamic_put_wall: OIWallDynamic | null;
-    band_width_pct: number;
+    /** SC-1:任一牆缺 → null(0 是合法窄區間值);有值恆 >= 0 */
+    band_width_pct: number | null;
     data_quality_warnings: string[];
   };
   hit_rate: OptionsOIWallsHitRate | null;
@@ -164,6 +168,8 @@ export interface OptionsPCR {
     region: PCRRegion;
     thresholds: { high_pct: number; low_pct: number };
   };
+  /** options-page-v2 SC-8:溫度計 sparkline 用 20 日 tail */
+  series: Array<{ date: string; pcr: number }>;
   next_day_stats: {
     high_region: PCRRegionStats;
     neutral_region: PCRRegionStats;
@@ -171,6 +177,31 @@ export interface OptionsPCR {
   } | null;
   data_quality_warnings: string[];
   insufficient_data?: InsufficientData | null;
+  no_trading_day?: boolean;
+}
+
+// ============================================================================
+// options-page-v2 SC-4 / SC-5(期貨情緒指標)
+// ============================================================================
+
+export interface OptionsRetailMtx {
+  date: string;
+  fetched_at: string;
+  as_of_date: string | null;
+  current: { retail_long: number; retail_short: number; ratio: number } | null;
+  series: Array<{ date: string; ratio: number }>;
+  dropped_days: number;
+  data_quality_warnings: string[];
+  no_trading_day?: boolean;
+}
+
+export interface OptionsForeignFutures {
+  date: string;
+  fetched_at: string;
+  as_of_date: string | null;
+  current: { long_oi: number; short_oi: number; net_oi: number } | null;
+  series: Array<{ date: string; net_oi: number }>;
+  data_quality_warnings: string[];
   no_trading_day?: boolean;
 }
 
@@ -194,6 +225,9 @@ export interface OptionsInstitutional {
       after_hours: Record<string, unknown> | null;
     };
   };
+  /** options-page-v2 SC-8:外資 call+put 全側淨部位 20 日 tail(R3a)。
+   * 「較昨日」一律取末兩點差 — current.*.day_change 恆 0 是已知死欄位(KR-1),不要用。 */
+  series: Array<{ date: string; foreign_total_net: number }>;
   correlation: {
     samples: number;
     latest_corr: number;
