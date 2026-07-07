@@ -24,6 +24,8 @@ interface Props {
   pcr: HookSlice<OptionsPCR>;
   retail: HookSlice<OptionsRetailMtx>;
   ff: HookSlice<OptionsForeignFutures>;
+  /** 週選合約時前十大格附 aggregate 註記(CR2 回復) */
+  weeklyAggregate?: boolean;
 }
 
 const fmt = (n: number): string => Math.abs(n).toLocaleString("zh-TW");
@@ -112,7 +114,7 @@ function Tile({
 }
 
 export function OptionsThermometerRow({
-  inst, lt, pcr, retail, ff,
+  inst, lt, pcr, retail, ff, weeklyAggregate = false,
 }: Props): ReactElement {
   // --- 外資選擇權(+期貨對照行) ---
   const instSeries = inst.data?.series ?? [];
@@ -177,6 +179,13 @@ export function OptionsThermometerRow({
         valueClass={top10 !== null ? posNeg(top10) : ""}
         reading={top10 !== null ? buildTop10Reading(top10, top10Series) : null}
         spark={top10Series}
+        extra={
+          weeklyAggregate ? (
+            <div className="text-[0.6875rem] text-ink-dim">
+              週選為週三選 + 週五選合計
+            </div>
+          ) : undefined
+        }
         fallback="—"
       />
       <Tile

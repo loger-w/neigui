@@ -1346,9 +1346,10 @@ async def test_fetch_oi_walls_spot_missing_passes_none_not_zero(monkeypatch):
     assert "static_wall_no_otm_candidate_put" not in out["data_quality_warnings"]
 
 
-async def test_fetch_institutional_series_uses_call_plus_put(monkeypatch):
-    """options-page-v2 SC-8 / R3a:payload series = 外資 call+put 全側 per-date
-    聚合(foreign_history 只有 call 側,不能拿來導 total)。"""
+async def test_fetch_institutional_series_delta_equivalent(monkeypatch):
+    """options-page-v2 SC-8 / R3a + code-review CR1(P0):payload series =
+    外資 per-date **delta 等效**淨部位 = call_net − put_net(買 put = 偏空)。
+    純 call_net + put_net 加總會把大買保護性 put 判讀成「淨多」— 方向相反。"""
     from services.finmind import get_finmind
 
     client = get_finmind()
@@ -1361,10 +1362,11 @@ async def test_fetch_institutional_series_uses_call_plus_put(monkeypatch):
         }
 
     rows_day = [
+        inst_row("2026-06-24", "外資", "賣權", 5000, 0),   # 大買 put、call 平 → 必為 −5000
         inst_row("2026-06-25", "外資", "買權", 100, 40),   # call_net +60
-        inst_row("2026-06-25", "外資", "賣權", 30, 80),    # put_net  −50 → total +10
+        inst_row("2026-06-25", "外資", "賣權", 30, 80),    # put_net −50(淨賣 put=偏多)→ 60−(−50)=+110
         inst_row("2026-06-26", "外資", "買權", 200, 50),   # call_net +150
-        inst_row("2026-06-26", "外資", "賣權", 20, 100),   # put_net  −80 → total +70
+        inst_row("2026-06-26", "外資", "賣權", 20, 100),   # put_net −80 → 150−(−80)=+230
         inst_row("2026-06-26", "自營商", "買權", 999, 0),  # non-foreign → series 不計
     ]
 
@@ -1381,8 +1383,9 @@ async def test_fetch_institutional_series_uses_call_plus_put(monkeypatch):
 
     out = await client.fetch_institutional("2026-06-26")
     assert out["series"] == [
-        {"date": "2026-06-25", "foreign_total_net": 10},
-        {"date": "2026-06-26", "foreign_total_net": 70},
+        {"date": "2026-06-24", "foreign_total_net": -5000},
+        {"date": "2026-06-25", "foreign_total_net": 110},
+        {"date": "2026-06-26", "foreign_total_net": 230},
     ]
 
 

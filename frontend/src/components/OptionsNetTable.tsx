@@ -3,6 +3,8 @@ import type { OptionsLargeTraders } from "../lib/options-types";
 
 interface Props {
   data: OptionsLargeTraders | null;
+  /** 週選合約時附 aggregate 免責註記(FinMind contract_type='week' 週三+週五共用;CR2 回復) */
+  weeklyAggregate?: boolean;
 }
 
 const GROUPS = [
@@ -19,7 +21,7 @@ function fmtSigned(n: number): string {
 
 /** NET 四組對照表(options-page-v2 §2 — 原 OptionsLargeTradersStrip 降級進
  * 進階區)。當日淨部位 + 20 日變化,附受眾需要的名詞說明。 */
-export function OptionsNetTable({ data }: Props): ReactElement | null {
+export function OptionsNetTable({ data, weeklyAggregate = false }: Props): ReactElement | null {
   if (!data) return null;
 
   const first = data.series[0];
@@ -63,6 +65,11 @@ export function OptionsNetTable({ data }: Props): ReactElement | null {
         特定法人 = 前 N 大交易人中的法人機構;全交易人 = 含自然人大戶。
         正值代表整體佈局偏多方(買 call + 賣 put 合成),負值偏空方。
       </p>
+      {weeklyAggregate && (
+        <p className="mt-1 text-[0.6875rem] text-ink-dim leading-relaxed">
+          📌 大戶資料為近週週選 aggregate:週三選 + 週五選共用同一份數字,非單一合約。
+        </p>
+      )}
     </div>
   );
 }

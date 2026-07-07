@@ -149,4 +149,9 @@ describe("OptionsThermometerRow", () => {
     renderRow();
     expect(screen.queryByText(/做多|做空|賣選|滿倉/)).toBeNull();
   });
+
+  it("weeklyAggregate 時前十大格附週選 aggregate 註記(code-review CR2 回復)", () => {
+    renderRow({ weeklyAggregate: true });
+    expect(screen.getByText(/週三選.*週五選合計/)).toBeTruthy();
+  });
 });
