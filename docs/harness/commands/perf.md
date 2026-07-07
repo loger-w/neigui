@@ -27,7 +27,7 @@
 4. **Phase 4|實作**:
    - 既有測試保持全綠(行為不變)
    - 加 **performance test / benchmark**(可重複跑的,入庫 — Done 條件之一)
-   - Cache → 特別小心 invalidation(cache 是最容易引入 bug 的優化)
+   - Cache 類策略:實作前 optimize-plan.md 該策略節必列 invalidation 三欄 — 失效時機 / bust 觸發點(誰在哪呼叫)/ 驗證測試名;缺任一欄不准實作(cache 是最容易引入 bug 的優化)
    - **一個策略一個 commit**(才能歸因哪個有效)
 5. **Phase 5|量測**(關鍵):
    - 跑跟 Phase 1 **完全一樣**的量測方式
@@ -52,7 +52,7 @@ Metric 達標 + 既有測試全綠 + benchmark 入庫 + 沒退化其他 metric +
 ## 禁止(本流程特有,共通禁止見 CLAUDE.md)
 - ❌ 沒量測就開始改(premature optimization)
 - ❌ 沒 profile 靠猜哪裡慢
-- ❌ Cache 沒想清楚 invalidation 就加 cache
+- ❌ optimize-plan.md 沒列 invalidation 三欄(失效時機 / bust 觸發點 / 驗證測試名)就加 cache
 - ❌ 為了 1% 改善加 100% 複雜度
 - ❌ 改完沒重新量測就說「應該更快了」
 - ❌ Dev 環境量到的數字當 production 用
