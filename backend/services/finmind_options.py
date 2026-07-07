@@ -11,7 +11,10 @@ from collections.abc import Sequence
 from datetime import date, timedelta
 
 _CACHE_VERSION_OPTIONS = 1
-_CACHE_VERSION_OPTIONS_CHIP = 1  # NEW chip endpoints (max_pain/oi_walls/pcr/inst); isolated from above
+_CACHE_VERSION_OPTIONS_CHIP = 2  # bumped: options-page-v2 SC-1/2/3 (OTM walls / net-increase / hit-rate)
+# strike_volume 專用(options-page-v2 §1.4 R11):從 2 起跳使共用 _CACHE_VERSION_OPTIONS=1
+# 時代的舊 entry 失效;spot / oi_large_traders 沿用 _CACHE_VERSION_OPTIONS 不波及。
+_CACHE_VERSION_STRIKE_VOL = 2
 
 
 def _third_wednesday(year: int, month: int) -> date:
@@ -223,16 +226,23 @@ def parse_strike_volume(
 ) -> dict:
     """Parse TaiwanOptionDaily rows into per-strike volume + OI change.
 
-    Redesign 2026-06-24: returns ALL volume>0 strikes sorted by strike asc
-    (no longer top-N by volume). Frontend's Strike Ladder is the consumer.
+    Redesign 2026-06-24: returns ALL active strikes sorted by strike asc
+    (no longer top-N by volume). Frontend's RangeMap is the consumer.
 
-    Phase-0 rules unchanged:
+    options-page-v2 §1.4 changes:
+    - Keep strikes with volume > 0 OR oi > 0 (walls often sit on zero-volume
+      deep-OTM strikes; the OI profile must share the oi_walls strike set).
+      Rows with volume == 0 AND oi == 0 are dropped.
+    - `today` = the most recent date carrying ANY positive OI (aligned with
+      fetch_oi_walls' F7 non-empty-OI fallback, R10) — mornings where only
+      the night session has published (volume>0, OI all 0) fall back to the
+      previous OI day so the RangeMap overlay shares one basis date.
+    - oi_change = today aggregated OI − previous OI-day aggregated OI.
+
+    Unchanged rules:
     - Filter on option_id (default TXO) AND contract_date.
     - Sum volume across trading_session ∈ {position, after_market}; take MAX
       of OI across sessions.
-    - Drop strikes with summed volume == 0 (typically illiquid OTM).
-    - oi_change = today aggregated OI − prev-trading-day aggregated OI for
-      that strike; 0 if no prev row exists.
     """
     matched = [
         r for r in rows
@@ -263,12 +273,16 @@ def parse_strike_volume(
         return {"call": [], "put": [], "as_of_date": None}
 
     dates = sorted({k[0] for k in agg})
-    today = dates[-1]
-    prev = dates[-2] if len(dates) >= 2 else None
+    # R10: prefer the most recent date with ANY positive OI (same criterion
+    # as fetch_oi_walls' F7 fallback); degenerate all-zero-OI data keeps the
+    # plain last date.
+    dates_with_oi = sorted({d for (d, _cp, _s), v in agg.items() if v["oi"] > 0})
+    today = dates_with_oi[-1] if dates_with_oi else dates[-1]
+    prev = next((d for d in reversed(dates_with_oi) if d < today), None)
 
     def side(cp_value: str) -> list[dict]:
         items = [(strike, v) for (d, cp, strike), v in agg.items()
-                 if d == today and cp == cp_value and v["volume"] > 0]
+                 if d == today and cp == cp_value and (v["volume"] > 0 or v["oi"] > 0)]
         items.sort(key=lambda t: t[0])  # strike asc (redesign)
         out: list[dict] = []
         for strike, v in items:
@@ -562,12 +576,22 @@ def _per_side_oi(
     return call_oi, put_oi
 
 
-def _pick_static_wall(oi_map: dict[float, int], spot: float) -> dict | None:
-    """Strike with max OI; ties broken by proximity to spot."""
-    if not oi_map:
+def _pick_static_wall(oi_map: dict[float, int], spot: float, side: str) -> dict | None:
+    """Max-OI strike on the OTM side of spot; ties broken by proximity to spot.
+
+    options-page-v2 SC-1: Call Wall candidates = strikes >= spot, Put Wall
+    candidates = strikes <= spot — a wall on the wrong side of spot cannot be
+    labelled 壓力/支撐. Empty OTM side → None (caller emits the per-side
+    ``static_wall_no_otm_candidate_{side}`` warning).
+    """
+    if side == "call":
+        otm = {s: oi for s, oi in oi_map.items() if s >= spot}
+    else:
+        otm = {s: oi for s, oi in oi_map.items() if s <= spot}
+    if not otm:
         return None
-    max_oi = max(oi_map.values())
-    candidates = [s for s, oi in oi_map.items() if oi == max_oi]
+    max_oi = max(otm.values())
+    candidates = [s for s, oi in otm.items() if oi == max_oi]
     chosen = min(candidates, key=lambda s: abs(s - spot))
     return {
         "strike": int(chosen) if chosen.is_integer() else chosen,
@@ -576,25 +600,25 @@ def _pick_static_wall(oi_map: dict[float, int], spot: float) -> dict | None:
 
 
 def _pick_dynamic_wall(
-    activity_map: dict[float, int], spot: float,
+    net_increase_map: dict[float, int], spot: float,
 ) -> dict | None:
-    """Strike with max activity (Σ|ΔOI|); ties broken by proximity to spot."""
-    if not activity_map:
+    """Strike with max positive net OI increase over the window (first→last
+    diff); ties broken by proximity to spot.
+
+    options-page-v2 SC-2: replaces the Σ|ΔOI| activity metric — churn
+    (build-then-unwind) no longer wins; the semantic is "where new money is
+    parking". All net increases <= 0 → None (caller emits
+    ``dynamic_wall_no_net_increase``).
+    """
+    positive = {s: v for s, v in net_increase_map.items() if v > 0}
+    if not positive:
         return None
-    max_act = max(activity_map.values())
-    if max_act == 0:
-        # All activity zero — still pick closest-to-spot for downstream
-        chosen = min(activity_map.keys(), key=lambda s: abs(s - spot))
-        return {
-            "strike": int(chosen) if chosen.is_integer() else chosen,
-            "window_activity_oi": 0,
-            "partial_window": False,
-        }
-    candidates = [s for s, a in activity_map.items() if a == max_act]
+    max_inc = max(positive.values())
+    candidates = [s for s, v in positive.items() if v == max_inc]
     chosen = min(candidates, key=lambda s: abs(s - spot))
     return {
         "strike": int(chosen) if chosen.is_integer() else chosen,
-        "window_activity_oi": int(max_act),
+        "window_net_increase_oi": int(max_inc),
         "partial_window": False,
     }
 
@@ -604,32 +628,55 @@ def parse_oi_walls(
     rows_history: list[list[dict]],
     contract_date: str,
     delta_window: int,
-    spot: float,
+    spot: float | None,
     option_id: str = "TXO",
 ) -> dict:
-    """Static + dynamic OI walls per side (call / put). Design v4 §4.2.
+    """Static + dynamic OI walls per side (call / put).
+
+    options-page-v2 revision (design v3 §1.1/§1.2 over the v4 base):
+    - static walls are OTM-side restricted (see _pick_static_wall);
+    - dynamic walls use window first→last net increase (see _pick_dynamic_wall);
+    - ``spot=None`` (TX not published) → ALL four walls None, band None, and
+      warnings contain ONLY ``oi_walls_no_spot`` — no side/dynamic warnings,
+      missing spot ≠ missing candidates (R2);
+    - ``band_width_pct`` is ``None`` whenever either static wall is missing
+      (0 is a legitimate narrow-band value), and >= 0 otherwise.
 
     Args:
         rows_today: TaiwanOptionDaily rows for end_date.
         rows_history: rows per past trading day, oldest-first, length ≤ delta_window.
-            Each inner list is one day's rows.
         contract_date: strict equality filter.
         delta_window: requested window in trading days. If history shorter,
             partial_window flag is set on dynamic walls + warning emitted.
-        spot: index spot for tie-break.
+        spot: index spot for OTM split + tie-break; None when unavailable.
 
     Returns:
         ``{static_call_wall, static_put_wall, dynamic_call_wall,
           dynamic_put_wall, band_width_pct, data_quality_warnings}``.
     """
+    if spot is None:
+        return {
+            "static_call_wall": None,
+            "static_put_wall": None,
+            "dynamic_call_wall": None,
+            "dynamic_put_wall": None,
+            "band_width_pct": None,
+            "data_quality_warnings": ["oi_walls_no_spot"],
+        }
+
     warnings: list[str] = []
 
     today_call_oi, today_put_oi = _per_side_oi(rows_today, contract_date, option_id)
 
-    static_call = _pick_static_wall(today_call_oi, spot)
-    static_put = _pick_static_wall(today_put_oi, spot)
+    static_call = _pick_static_wall(today_call_oi, spot, side="call")
+    static_put = _pick_static_wall(today_put_oi, spot, side="put")
+    if today_call_oi and static_call is None:
+        warnings.append("static_wall_no_otm_candidate_call")
+    if today_put_oi and static_put is None:
+        warnings.append("static_wall_no_otm_candidate_put")
 
-    # Build per-day OI snapshots for activity calculation
+    # Per-day OI snapshots (history oldest-first, then today) for the window
+    # first→last net-increase calculation.
     daily_snapshots: list[tuple[dict[float, int], dict[float, int]]] = []
     for day_rows in rows_history:
         daily_snapshots.append(_per_side_oi(day_rows, contract_date, option_id))
@@ -639,43 +686,26 @@ def parse_oi_walls(
     if partial_window:
         warnings.append("dynamic_wall_partial_window")
 
-    # Activity = Σ |oi_{d+1} - oi_d| over CONSECUTIVE day pairs only.
-    # The initial "0 → first day" jump is NOT counted (it conflates "strike
-    # newly listed" with "true activity"; design v4 §4.2 / N13).
-    def activity_for_side(side_key: str) -> dict[float, int]:
-        act: dict[float, int] = {}
-        end_strikes = set(
-            (today_call_oi if side_key == "call" else today_put_oi).keys()
-        )
-        for K in end_strikes:
-            total = 0
-            prev = None
-            for c_oi, p_oi in daily_snapshots:
-                cur = (c_oi if side_key == "call" else p_oi).get(K, 0)
-                if prev is not None:
-                    total += abs(cur - prev)
-                prev = cur
-            act[K] = total
-        return act
+    # net_increase(K) = oi_end(K) − oi_start(K). Strikes not yet listed at
+    # window start count from 0 → full OI counts as new money (design §1.2).
+    def net_increase_for_side(side_key: str) -> dict[float, int]:
+        first_c, first_p = daily_snapshots[0]
+        start_map = first_c if side_key == "call" else first_p
+        end_map = today_call_oi if side_key == "call" else today_put_oi
+        return {K: end_map[K] - start_map.get(K, 0) for K in end_map}
 
-    call_activity = activity_for_side("call")
-    put_activity = activity_for_side("put")
-
-    dynamic_call = _pick_dynamic_wall(call_activity, spot)
-    dynamic_put = _pick_dynamic_wall(put_activity, spot)
+    dynamic_call = _pick_dynamic_wall(net_increase_for_side("call"), spot)
+    dynamic_put = _pick_dynamic_wall(net_increase_for_side("put"), spot)
 
     if dynamic_call:
         dynamic_call["partial_window"] = partial_window
     if dynamic_put:
         dynamic_put["partial_window"] = partial_window
 
-    # no_activity warning (N13): max activity across both sides is 0
-    max_call_act = max(call_activity.values()) if call_activity else 0
-    max_put_act = max(put_activity.values()) if put_activity else 0
-    if max_call_act == 0 and max_put_act == 0 and (call_activity or put_activity):
-        warnings.append("dynamic_wall_no_activity")
+    if dynamic_call is None and dynamic_put is None and (today_call_oi or today_put_oi):
+        warnings.append("dynamic_wall_no_net_increase")
 
-    band_width_pct = 0.0
+    band_width_pct: float | None = None
     if static_call and static_put and spot > 0:
         band_width_pct = (static_call["strike"] - static_put["strike"]) / spot * 100
 
@@ -698,29 +728,34 @@ def parse_oi_walls_hit_rate(
 ) -> dict:
     """Settlement-day hit rate using **T-1 day's** OI walls (design v4 §4 / F3).
 
-    ``closes_by_date`` maps trading_date → TX close. When provided, the wall
-    tie-break uses T-1's close as the spot anchor — strictly no look-ahead.
-    When omitted, falls back to anchor=0.0 (deterministic: picks lowest-strike
-    of tied candidates). The previous behaviour of using the settlement-day
-    price for the T-1 tie-break is removed because it leaks T-day information
-    into a T-1 selection (design v4 §4 / F3 forbids look-ahead).
+    options-page-v2 SC-3: wall selection applies the SC-1 OTM-side rule with
+    T-1's TX close as spot — strictly no look-ahead. ``closes_by_date`` is
+    semantically REQUIRED: samples whose T-1 close is missing (or whose OTM
+    side carries no candidate) are dropped and counted in
+    ``dropped_no_close`` (the fetch layer appends the fixed warning string
+    ``hit_rate_samples_dropped_no_close`` when > 0). The old anchor=0.0
+    fallback is removed — a zero anchor under the OTM rule degenerates the
+    put side to an always-empty candidate set.
 
     Returns:
         ``{samples, pct_settled_inside_band, avg_band_width_pct,
           history: [{settlement_date, put_wall_at_t_minus_1,
                      call_wall_at_t_minus_1, settlement_price, inside_band}],
-          latest_settlement_pending}``
+          dropped_no_close, latest_settlement_pending}``
     """
     if not oi_by_trading_day or not settlements:
         return {
             "samples": 0, "pct_settled_inside_band": 0.0,
             "avg_band_width_pct": 0.0, "history": [],
+            "dropped_no_close": 0,
             "latest_settlement_pending": False,
         }
 
     sorted_trading_days = sorted(oi_by_trading_day.keys())
     history: list[dict] = []
     latest_settlement_pending = False
+    dropped_no_close = 0
+    closes = closes_by_date or {}
     sorted_settlements = sorted(settlements.items())
 
     for idx, (settlement_date, info) in enumerate(sorted_settlements):
@@ -735,15 +770,17 @@ def parse_oi_walls_hit_rate(
         )
         if t_minus_1 is None:
             continue
+        t1_close = closes.get(t_minus_1)
+        if t1_close is None:
+            dropped_no_close += 1
+            continue
         call_oi, put_oi = _per_side_oi(
             oi_by_trading_day[t_minus_1], contract_date, option_id,
         )
-        anchor = (
-            float(closes_by_date.get(t_minus_1, 0.0)) if closes_by_date else 0.0
-        )
-        call_wall = _pick_static_wall(call_oi, spot=anchor)
-        put_wall = _pick_static_wall(put_oi, spot=anchor)
+        call_wall = _pick_static_wall(call_oi, spot=float(t1_close), side="call")
+        put_wall = _pick_static_wall(put_oi, spot=float(t1_close), side="put")
         if not call_wall or not put_wall:
+            dropped_no_close += 1
             continue
         put_w = float(put_wall["strike"])
         call_w = float(call_wall["strike"])
@@ -761,6 +798,7 @@ def parse_oi_walls_hit_rate(
         return {
             "samples": 0, "pct_settled_inside_band": 0.0,
             "avg_band_width_pct": 0.0, "history": [],
+            "dropped_no_close": dropped_no_close,
             "latest_settlement_pending": latest_settlement_pending,
         }
     inside_count = sum(1 for h in history if h["inside_band"])
@@ -774,6 +812,7 @@ def parse_oi_walls_hit_rate(
         "pct_settled_inside_band": inside_count / samples,
         "avg_band_width_pct": avg_band,
         "history": history,
+        "dropped_no_close": dropped_no_close,
         "latest_settlement_pending": latest_settlement_pending,
     }
 

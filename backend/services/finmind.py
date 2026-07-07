@@ -979,19 +979,20 @@ class FinMindClient:
         date_str: str,
         refresh: bool = False,
     ) -> dict:
-        """Fetch TaiwanOptionDaily for the given contract, return ALL volume>0
-        strikes sorted asc per side + OI change vs previous trading day.
+        """Fetch TaiwanOptionDaily for the given contract, return ALL active
+        strikes (volume>0 OR oi>0, options-page-v2 §1.4) sorted asc per side
+        + OI change vs previous OI day.
 
         `contract` is a dict from
         services.finmind_options.list_active_contracts (uses `option_id`
         and `contract_date` keys); see spec §2.3.
         """
-        from services.finmind_options import _CACHE_VERSION_OPTIONS
+        from services.finmind_options import _CACHE_VERSION_STRIKE_VOL
 
         contract_id = f"{contract['option_id']}{contract['contract_date']}"
         cache_key = f"{contract_id}_{date_str}_strike_vol"  # dropped _top{n} suffix
         if not refresh:
-            cached = self._read_cache_v(cache_key, _CACHE_VERSION_OPTIONS)
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_STRIKE_VOL)
             if cached is not None:
                 if not self._is_today(date_str) or not self._is_stale(cached):
                     return cached
@@ -1008,7 +1009,7 @@ class FinMindClient:
         cache_key: str,
     ) -> dict:
         from services.finmind_options import (
-            _CACHE_VERSION_OPTIONS,
+            _CACHE_VERSION_STRIKE_VOL,
             parse_strike_volume,
         )
 
@@ -1034,7 +1035,7 @@ class FinMindClient:
             "fetched_at": datetime.now().isoformat(timespec="seconds"),
             **parsed,
         }
-        self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS)
+        self._write_cache_v(cache_key, result, _CACHE_VERSION_STRIKE_VOL)
         return result
 
     # -- options: 台指期 spot price ----------------------------------------
@@ -1490,11 +1491,14 @@ class FinMindClient:
         )
         rows_history = [by_date_iso[d] for d in delta_days if by_date_iso[d]]
 
-        # F1 修: fetch spot so static-wall tie-break + band_width_pct work.
-        # We can't await fetch_spot here without an inner runtime; just call it.
+        # F1 修: fetch spot so static-wall OTM split + tie-break + band work.
         # fetch_spot has its own _run_once + cache, so the cost is low.
+        # options-page-v2 R1: spot missing → pass None through (parser returns
+        # all-None walls + oi_walls_no_spot); NEVER coerce to 0.0 — a zero spot
+        # under the OTM rule fabricates no_otm_candidate warnings.
         spot_payload = await self.fetch_spot(date_str, refresh=refresh)
-        spot_val = float(spot_payload.get("spot") or 0.0)
+        spot_raw = spot_payload.get("spot")
+        spot_val = float(spot_raw) if spot_raw is not None else None
 
         current_walls = parse_oi_walls(
             rows_today=today_rows,
@@ -1521,6 +1525,11 @@ class FinMindClient:
             closes_by_date=tx_closes,
         )
 
+        payload_warnings = list(current_walls.get("data_quality_warnings", []))
+        # options-page-v2 R9: fixed warning string; the count itself lives in
+        # hit_rate.dropped_no_close (dynamic values never enter contract strings).
+        if hit_rate.get("dropped_no_close", 0) > 0:
+            payload_warnings.append("hit_rate_samples_dropped_no_close")
         result = {
             "contract": contract_id,
             "date": date_str,
@@ -1529,7 +1538,7 @@ class FinMindClient:
             "current": current_walls,
             "hit_rate": None if hit_rate["samples"] == 0 else hit_rate,
             "latest_settlement_pending": hit_rate.get("latest_settlement_pending", False),
-            "data_quality_warnings": current_walls.get("data_quality_warnings", []),
+            "data_quality_warnings": payload_warnings,
             "insufficient_data": (
                 {"reason": "no_settlements_fetched_in_mvp", "required_days": 0}
                 if hit_rate["samples"] == 0
