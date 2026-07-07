@@ -176,10 +176,8 @@ export function RangeMapSvg({
                       <span className="relative text-[0.6875rem] text-ink z-10">
                         {valueOf(c).toLocaleString()}
                         <span
-                          className={`ml-1 text-[0.625rem] px-1 rounded ${
-                            c.oi_change >= 0
-                              ? "bg-bull/25 text-bull"
-                              : "bg-bear/25 text-bear"
+                          className={`ml-1 text-[0.625rem] px-1 rounded bg-bg/75 ${
+                            c.oi_change >= 0 ? "text-bull" : "text-bear"
                           }`}
                         >
                           {fmtSigned(c.oi_change)}
@@ -221,10 +219,8 @@ export function RangeMapSvg({
                       <span className="relative text-[0.6875rem] text-ink z-10">
                         {valueOf(p).toLocaleString()}
                         <span
-                          className={`ml-1 text-[0.625rem] px-1 rounded ${
-                            p.oi_change >= 0
-                              ? "bg-bull/25 text-bull"
-                              : "bg-bear/25 text-bear"
+                          className={`ml-1 text-[0.625rem] px-1 rounded bg-bg/75 ${
+                            p.oi_change >= 0 ? "text-bull" : "text-bear"
                           }`}
                         >
                           {fmtSigned(p.oi_change)}
