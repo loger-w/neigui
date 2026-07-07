@@ -16,7 +16,7 @@
 │   /mod  — caller map → 行為白名單 → 🔵🔴🟢 三類分離 commit
 │   /refactor — why gate → characterization test → 小步保綠
 │   /perf — 量化目標 gate → profile → 一策略一 commit → 重量測
-│   /auto — 自主模式契約(退出條件 / 自動核准邊界 / 必停清單;2026-07-07 由 /goal 改名,避免遮蔽內建 /goal)
+│   /auto — 自主模式契約(退出條件 / 自動核准邊界 / 必停清單)
 │
 ├─ 驗證 skill(skills/auto-verify.md,~/.claude/skills/)
 │   專案形狀偵測 → 自動化五步驟 + 真實環境驗證分流(單一 source of truth)
