@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type ReactElement } from "react";
 import { OptionsHeader } from "./OptionsHeader";
-import { OptionsChipPanel } from "./OptionsChipPanel";
-import { OptionsLargeTradersStrip } from "./OptionsLargeTradersStrip";
-import { OptionsStrikeLadder } from "./OptionsStrikeLadder";
+import { OptionsConclusionBar } from "./OptionsConclusionBar";
+import { OptionsRangeMap } from "./OptionsRangeMap";
+import { OptionsThermometerRow } from "./OptionsThermometerRow";
+import { OptionsAdvancedPanel } from "./OptionsAdvancedPanel";
 import { useOptionsLargeTraders } from "../hooks/useOptionsLargeTraders";
 import { useOptionsStrikeVolume } from "../hooks/useOptionsStrikeVolume";
 import { useOptionsSpot } from "../hooks/useOptionsSpot";
@@ -32,6 +33,10 @@ function defaultContractId(): string {
   return `${head.optionId}${head.contractDate}`;
 }
 
+/** options-page-v2 四層結構(design v3 §0):
+ * 結論列 → 區間地圖 → 溫度計列 → 進階統計收合層。
+ * 舊平列結構(OptionsChipPanel / OptionsLargeTradersStrip / OptionsStrikeLadder)
+ * 的內容分別收進 AdvancedPanel / ThermometerRow+NetTable / RangeMap。 */
 export function OptionsPage(): ReactElement {
   const [contractId, setContractId] = useState<string>(defaultContractId);
   const [date, setDate] = useState<string>(todayStr);
@@ -51,17 +56,16 @@ export function OptionsPage(): ReactElement {
   const spot = useOptionsSpot(date);
   const chip = useOptionsChip(contractId, date);
 
-  // F9 修 (post-impl review): top-bar refresh + no-trading-day banner now
-  // include chip state too, so the user gets a consistent panel-wide UX.
   const loading = lt.loading || sv.loading || spot.loading || chip.loading;
   const refresh = () => {
     lt.refresh(); sv.refresh(); spot.refresh();
     chip.refreshAll();
   };
 
-  const isWeekly = currentContract?.kind.startsWith("weekly") ?? false;
   const anyNoTradingDay =
     lt.noTradingDay || sv.noTradingDay || spot.noTradingDay || chip.anyNoTradingDay;
+
+  const walls = chip.ow.data?.current ?? null;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -79,19 +83,28 @@ export function OptionsPage(): ReactElement {
           {date} 無交易
         </div>
       )}
-      <OptionsChipPanel chip={chip} />
-      <OptionsLargeTradersStrip
-        data={lt.data}
-        loading={lt.loading}
-        error={lt.error}
-        weeklyAggregateBanner={isWeekly}
+      <OptionsConclusionBar
+        spot={spot.data?.spot ?? null}
+        putWall={walls?.static_put_wall?.strike ?? null}
+        callWall={walls?.static_call_wall?.strike ?? null}
+        maxPain={chip.mp.data?.current.max_pain ?? null}
       />
-      <OptionsStrikeLadder
-        data={sv.data}
+      <OptionsRangeMap
+        sv={sv.data}
+        ow={chip.ow.data}
+        mp={chip.mp.data}
         spot={spot.data}
         loading={sv.loading}
         error={sv.error}
       />
+      <OptionsThermometerRow
+        inst={chip.inst}
+        lt={lt}
+        pcr={chip.pcr}
+        retail={chip.retail}
+        ff={chip.ff}
+      />
+      <OptionsAdvancedPanel chip={chip} lt={lt} spot={spot.data} />
     </div>
   );
 }

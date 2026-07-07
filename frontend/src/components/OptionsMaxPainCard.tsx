@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { OptionsInfoHint } from "./OptionsInfoHint";
 import type { OptionsMaxPain } from "../lib/options-types";
 
 interface Props {
@@ -6,6 +7,8 @@ interface Props {
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
+  /** SC-10:主數字旁顯示「距現價 ±x.x%」;null 省略 */
+  spot?: number | null;
 }
 
 function fmtPct(p: number | null | undefined, digits = 1): string {
@@ -21,12 +24,29 @@ function fmtNTD(n: number): string {
 }
 
 export function OptionsMaxPainCard({
-  data, loading, error, onRefresh,
+  data, loading, error, onRefresh, spot = null,
 }: Props): ReactElement {
   return (
     <div data-testid="options-max-pain-card" className="rounded-lg border border-line bg-bg-deep/50 p-4 flex flex-col">
       <div className="flex items-baseline justify-between mb-3">
-        <h3 className="text-sm font-semibold text-ink-muted">Max Pain</h3>
+        <h3 className="text-sm font-semibold text-ink-muted flex items-center gap-1.5">
+          Max Pain
+          <OptionsInfoHint label="Max Pain 說明">
+            <div className="text-ink font-medium mb-1">Max Pain 是什麼?</div>
+            <p>
+              讓選擇權賣方整體賠最少的結算價位。歷史上結算常落在附近,
+              但偏離也很常見 — 參考位置,不是預測。
+            </p>
+            {data && (
+              <p className="mt-2 text-ink-dim">
+                技術細節:賣方總賠付 {fmtNTD(data.current.total_loss_ntd)}
+                、履約價數 {data.current.strike_count}
+                {data.current.strikes_with_call_oi_only > 0 && ` · call-only ${data.current.strikes_with_call_oi_only}`}
+                {data.current.strikes_with_put_oi_only > 0 && ` · put-only ${data.current.strikes_with_put_oi_only}`}
+              </p>
+            )}
+          </OptionsInfoHint>
+        </h3>
         <button
           type="button"
           onClick={onRefresh}
@@ -44,16 +64,25 @@ export function OptionsMaxPainCard({
         <div className="text-ink-dim text-sm">{loading ? "載入中…" : "無資料"}</div>
       ) : (
         <>
-          <div className="text-3xl font-bold tabular-nums text-ink">
-            {data.current.max_pain ?? "—"}
-          </div>
-          <div className="text-xs text-ink-dim mt-1">
-            賣方總賠付:{fmtNTD(data.current.total_loss_ntd)}
-          </div>
-          <div className="text-xs text-ink-dim">
-            履約價數 {data.current.strike_count}
-            {data.current.strikes_with_call_oi_only > 0 && ` · call-only ${data.current.strikes_with_call_oi_only}`}
-            {data.current.strikes_with_put_oi_only > 0 && ` · put-only ${data.current.strikes_with_put_oi_only}`}
+          <div className="flex items-baseline gap-2">
+            <div className="text-3xl font-bold tabular-nums text-ink">
+              {data.current.max_pain !== null
+                ? data.current.max_pain.toLocaleString()
+                : "—"}
+            </div>
+            {spot !== null && spot > 0 && data.current.max_pain !== null && (() => {
+              const diff = (data.current.max_pain - spot) / spot;
+              return (
+                <span
+                  data-testid="max-pain-distance"
+                  className="text-xs text-ink-dim tabular-nums"
+                >
+                  {Math.abs(diff) < 0.0005
+                    ? "與現價幾乎重合"
+                    : `距現價${diff > 0 ? "上方" : "下方"} ${(Math.abs(diff) * 100).toFixed(1)}%`}
+                </span>
+              );
+            })()}
           </div>
 
           {data.hit_rate ? (
