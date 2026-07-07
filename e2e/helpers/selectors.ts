@@ -14,13 +14,19 @@ export const TESTIDS = {
   // equity mode roots(Wave 1 已加)
   chipBrokersPanel: "chip-brokers-panel",
   chipKlineChart: "chip-kline-chart",
-  // options mode roots(Wave 1 已加)
+  // options mode roots(options-page-v2 四層重排,2026-07-07)
+  optionsConclusion: "options-conclusion",
+  optionsRangeMap: "options-range-map",
+  optionsThermometer: "options-thermometer",
+  thermoTile: "thermo-tile",
+  optionsAdvancedPanel: "options-advanced-panel",
+  advancedToggle: "advanced-toggle",
+  optionsNetTable: "options-net-table",
+  // 收合層內的四卡(展開後才 visible)
   optionsMaxPainCard: "options-max-pain-card",
   optionsOIWallsCard: "options-oi-walls-card",
   optionsPCRCard: "options-pcr-card",
   optionsInstitutionalCard: "options-institutional-card",
-  optionsLargeTradersStrip: "options-large-traders-strip",
-  optionsStrikeLadder: "options-strike-ladder",
   // market mode roots(Wave 1 已加)
   marketHeatmap: "market-heatmap",
   marketLeaderboard: "market-leaderboard",

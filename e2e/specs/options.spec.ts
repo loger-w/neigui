@@ -1,5 +1,6 @@
 /**
- * SC-4 options mode golden paths(4 case)。design.md v6 §3 SC-4。
+ * options mode golden paths — options-page-v2 四層結構(2026-07-07 改寫)。
+ * 對應 .claude/feat/options-page-v2/brainstorm.md SC-6~SC-10。
  */
 import { test, expect } from "@playwright/test";
 import { TESTIDS, ROLES } from "../helpers/selectors.ts";
@@ -8,51 +9,70 @@ import { installFixtureClock } from "../helpers/clock.ts";
 test.describe("options mode", () => {
   test.beforeEach(async ({ page }) => {
     await installFixtureClock(page);
-    await page.addInitScript(() => localStorage.setItem("mode", "options"));
+    await page.addInitScript(() => {
+      localStorage.setItem("mode", "options");
+      // FAKE fixture 只有月選 202607 rows;頁面預設合約是最近週選
+      // (202607W1)會拿到空資料 → 釘住月選讓 data-path assertion 有效。
+      localStorage.setItem("opt:contractId", "TXO202607");
+    });
     await page.goto("/");
   });
 
-  test("O1: 4 cards 同時 render(SC-4 case 1)", async ({ page }) => {
-    // 痛點:OptionsPage lazy load 後,4 個 card root testid 必須全 visible。
-    // 任一漏 = 對應 hook(useMaxPain / useOptionsOIWalls / useOptionsPCR /
-    // useInstitutionalOptions)斷,前端 silent 空白。
+  test("O1: 首屏四層 root 全 visible(SC-6/7/8/9)", async ({ page }) => {
+    // 痛點:重排後首屏 = 結論列 + 區間地圖 + 溫度計 + 收合層 toggle。
+    // 任一漏 = 對應資料通路斷,前端 silent 空白。
+    await expect(page.getByTestId(TESTIDS.optionsConclusion)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.optionsRangeMap)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.optionsThermometer)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.advancedToggle)).toBeVisible();
+  });
+
+  test("O2: 結論列生成句子且溫度計四格有判讀(SC-6/8 anti-tautology)", async ({ page }) => {
+    // 痛點:結論列「資料不足」fallback 也算 visible — 必須驗 fixture data
+    // 真的流通成句(含「TX」與牆數字),四格 tile 齊。
+    const conclusion = page.getByTestId(TESTIDS.optionsConclusion);
+    await expect(conclusion).toBeVisible();
+    await expect(conclusion).toContainText("TX");
+    await expect(conclusion).not.toContainText("結論生成資料不足");
+    await expect(page.getByTestId(TESTIDS.thermoTile)).toHaveCount(4);
+    await expect(page.getByTestId(TESTIDS.optionsThermometer)).toContainText("小台散戶");
+  });
+
+  test("O3: RangeMap 牆標記非空(SC-7 anti-tautology + 後端權威值)", async ({ page }) => {
+    // 痛點:牆改吃後端 oi_walls payload — 若 as_of 防禦誤觸發或 payload
+    // 斷線,牆標記整組消失但 RangeMap 仍 visible。鎖 data-wall 標記存在。
+    await expect(page.locator("[data-wall='call']").first()).toBeVisible();
+    await expect(page.locator("[data-wall='put']").first()).toBeVisible();
+    // Max Pain ▼ 標記同鎖(mp payload 通路)
+    await expect(page.getByTestId("rangemap-maxpain").first()).toBeVisible();
+  });
+
+  test("O4: 進階統計展開 → 四卡 + NET 對照表 + refresh 可點(SC-9)", async ({ page }) => {
+    // 痛點:收合層用 hidden attribute 保留 DOM — 展開前四卡不可見、
+    // 展開後全 visible;卡內 refresh 點擊不死 mount。
+    await expect(page.getByTestId(TESTIDS.optionsMaxPainCard)).toBeHidden();
+    await page.getByTestId(TESTIDS.advancedToggle).click();
     await expect(page.getByTestId(TESTIDS.optionsMaxPainCard)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.optionsOIWallsCard)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.optionsPCRCard)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.optionsInstitutionalCard)).toBeVisible();
-  });
-
-  test("O2: strike ladder + large traders strip visible(SC-4 case 3+4)", async ({ page }) => {
-    // 痛點:strike ladder 是 spot price + 履約價分布,large traders strip 是
-    // 大戶 OI 帶狀區。兩者都 dep fixture data populated;若 fixture 漂移
-    // → empty 不出現。
-    await expect(page.getByTestId(TESTIDS.optionsStrikeLadder)).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.optionsLargeTradersStrip)).toBeVisible();
-  });
-
-  test("O3: OI walls call/put 值非空(SC-4 anti-tautology)", async ({ page }) => {
-    // 痛點:`getByTestId('options-oi-walls-card').toBeVisible()` 過寬 ——
-    // empty card 也算 visible。直接驗 call-wall / put-wall textContent
-    // 不是空 — 鎖 fixture data 真的流通,不是空 shell 騙過 visibility assert。
+    await expect(page.getByTestId(TESTIDS.optionsNetTable)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.callWall)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.putWall)).toBeVisible();
-  });
-
-  test("O4: 各 card 自己的 refresh button 點得到(SC-4 case 2)", async ({ page }) => {
-    // 痛點:OptionsPage 每張 card 內各自 own 一個 refresh button(scope 在
-    // card 內以免跟 header refresh strict-mode conflict)。點 max-pain card
-    // 的 refresh 後 card 仍在,代表 onClick 不會死 mount。
     const maxPainCard = page.getByTestId(TESTIDS.optionsMaxPainCard);
-    await expect(maxPainCard).toBeVisible();
     const refresh = maxPainCard.getByRole(ROLES.refresh.role, { name: ROLES.refresh.name });
-    await expect(refresh).toBeVisible();
     await refresh.click();
     await expect(maxPainCard).toBeVisible();
-    // OI walls card 同樣 each-card pattern
-    const oiCard = page.getByTestId(TESTIDS.optionsOIWallsCard);
-    await expect(oiCard).toBeVisible();
-    await oiCard.getByRole(ROLES.refresh.role, { name: ROLES.refresh.name }).click();
-    await expect(oiCard).toBeVisible();
+  });
+
+  test("O6: RangeMap OI/成交量 toggle 切換(SC-7)", async ({ page }) => {
+    // 痛點:toggle 是普通 button role=tab;預設 OI,點成交量後 aria-selected 轉移。
+    const oiTab = page.getByRole("tab", { name: "OI" });
+    const volTab = page.getByRole("tab", { name: "成交量" });
+    await expect(oiTab).toHaveAttribute("aria-selected", "true");
+    await volTab.click();
+    await expect(volTab).toHaveAttribute("aria-selected", "true");
+    await expect(oiTab).toHaveAttribute("aria-selected", "false");
   });
 });
 
@@ -60,13 +80,13 @@ test.describe("options mode", () => {
 test.describe("options mode — mobile viewport", () => {
   test.use({ viewport: { width: 375, height: 667 } });
 
-  test("O5: 375px 下 4 cards 可見且無水平溢出", async ({ page }) => {
-    // 痛點:4 cards xl:grid-cols-4 在手機必須收 1 欄;大戶 strip grid-cols-4
-    // 曾無降級(改 2x2)。鎖 SC2 無水平溢出。
+  test("O5: 375px 下首屏 root 可見且無水平溢出", async ({ page }) => {
+    // 痛點:溫度計 grid-cols-2 在手機收 2 欄;整頁不得水平溢出。
     await installFixtureClock(page);
     await page.addInitScript(() => localStorage.setItem("mode", "options"));
     await page.goto("/");
-    await expect(page.getByTestId(TESTIDS.optionsMaxPainCard)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.optionsConclusion)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.optionsThermometer)).toBeVisible();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );

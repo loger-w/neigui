@@ -34,7 +34,7 @@ test.describe("@live upstream contract", () => {
     });
   });
 
-  test("L2: options max_pain 真打回應 schema", async ({ request }) => {
+  test("L2: options max_pain + 期貨情緒 真打回應 schema", async ({ request }) => {
     // 痛點:TaiwanOptionDaily upstream schema drift(strike_price / call_put 等)。
     const r = await request.get("/api/options/max_pain?contract=TXO202607");
     expect(r.status()).toBe(200);
@@ -43,6 +43,26 @@ test.describe("@live upstream contract", () => {
       contract: "TXO202607",
       current: expect.any(Object),
     });
+    // options-page-v2 SC-4/5:TaiwanFuturesDaily(MTX) +
+    // TaiwanFuturesInstitutionalInvestors schema drift 防線。live cap=3
+    // 不開新 test(,併入本 test(quota +2 request)。
+    const retail = await request.get("/api/options/retail_mtx?date=2026-06-26");
+    expect(retail.status()).toBe(200);
+    const retailBody = await retail.json();
+    expect(retailBody).toHaveProperty("series");
+    if (retailBody.current != null) {
+      expect(retailBody.current).toMatchObject({ ratio: expect.any(Number) });
+    }
+    const ff = await request.get("/api/options/foreign_futures?date=2026-06-26");
+    expect(ff.status()).toBe(200);
+    const ffBody = await ff.json();
+    if (ffBody.current != null) {
+      expect(ffBody.current).toMatchObject({
+        long_oi: expect.any(Number),
+        short_oi: expect.any(Number),
+        net_oi: expect.any(Number),
+      });
+    }
   });
 
   test("L3: market snapshot 真打回應 schema", async ({ request }) => {

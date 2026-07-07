@@ -40,6 +40,48 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.23.0",
+    date: "2026-07-07",
+    highlights: "選擇權頁全面改版:先給結論、再給證據",
+    changes: [
+      {
+        kind: "feature",
+        scope: "options",
+        text: "新增今日結論列:一句話說明大盤位置(支撐與壓力之間偏哪側、Max Pain 距現價多遠)",
+      },
+      {
+        kind: "feature",
+        scope: "options",
+        text: "新增區間地圖:每個履約價的未平倉分布一張圖看完,現價、支撐牆、壓力牆、Max Pain 全標在上面,可切換看成交量",
+      },
+      {
+        kind: "feature",
+        scope: "options",
+        text: "新增籌碼溫度計:外資、前十大交易人、Put/Call 比、小台散戶多空比四格,每格附白話判讀",
+      },
+      {
+        kind: "feature",
+        scope: "options",
+        text: "新增小台散戶多空比與外資台指期淨部位兩項指標",
+      },
+      {
+        kind: "fix",
+        scope: "options",
+        text: "OI 牆改只從現價外側找:大漲大跌後不會再把已被穿過的價位標成支撐或壓力",
+      },
+      {
+        kind: "fix",
+        scope: "options",
+        text: "動態牆改為顯示近 5 日增倉最多的履約價,更貼近「新資金在哪裡佈局」的意義",
+      },
+      {
+        kind: "feature",
+        scope: "options",
+        text: "統計細節(命中率、歷史分位表、法人明細)收進「進階統計」,點開才顯示;各術語加上白話說明",
+      },
+    ],
+  },
+  {
     version: "0.22.1",
     date: "2026-07-07",
     changes: [
