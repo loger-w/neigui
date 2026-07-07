@@ -1,0 +1,51 @@
+{
+  "slug": "options-page-v2",
+  "start_sha": "ef0959055a54113419fdb79377e1505051e61854",
+  "branch": "feat/options-page-v2",
+  "worktree_path": null,
+  "current_phase": 7,
+  "completed_phases": [
+    -1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "scope": "L",
+  "phase_2_mode": "condensed",
+  "pending_review_rounds": {
+    "phase_1": 0,
+    "phase_2": 0,
+    "phase_4": 0
+  },
+  "blockers": [],
+  "phase_6_blocked_reason": null,
+  "scope_overrides": {
+    "goal_efficiency_mode": true
+  },
+  "auto_mode": {
+    "exit_condition": "Phase 7 結構化表格全綠(含 Phase 5 自動化全綠 + Phase 6 真實環境:頁面獲取 API 正常、console 無 error);收尾停在 gh pr merge 確認",
+    "note": "[auto-default: goal_efficiency_mode=true | reason: L 級預估 >15 檔 + /auto 同啟,逐 SC 三 commit 會爆 commit 數]"
+  },
+  "last_updated": "2026-07-07T19:20:00+08:00",
+  "project_shape": "fastapi-backend + vite-react-frontend + playwright-e2e",
+  "last_commit_sha": "ba71a2d",
+  "final_merge_sha": null,
+  "self_review_head": "ba71a2d36afd58ae7b8c54d9d3788d7593c05339",
+  "sc_cycle_counts": {
+    "_unscoped": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    }
+  },
+  "paused": null
+}

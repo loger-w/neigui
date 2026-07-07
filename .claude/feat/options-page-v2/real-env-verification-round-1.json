@@ -1,0 +1,22 @@
+{
+  "round": 1,
+  "date": "2026-07-07",
+  "env": "真 FinMind(Sponsor token)+ uvicorn :8000 + vite :5173 + Chrome DevTools MCP",
+  "checks": [
+    {"sc": "SC-4/5", "how": "curl 全 endpoint(冷載入預熱)", "result": "retail_mtx ratio=+0.166 series=20 dropped=0;foreign_futures net=−80,042;量級與 probe sanity 一致", "evidence": "回應值記錄於本檔"},
+    {"sc": "SC-1/2", "how": "curl oi_walls(真實資料)", "result": "call=49500 ≥ spot 45775 ≥ put=45000(OTM 規則成立)、band=9.83% ≥ 0、dynamic 雙牆有值、零 warning", "evidence": "同上"},
+    {"sc": "SC-6", "how": "DevTools 頁面渲染", "result": "結論列「TX 45,775 位於支撐 45,000 與壓力 49,500 之間,偏下緣;Max Pain 46,300 在現價上方 1.1%」— 落區/距離皆正確", "evidence": "evidence/SC-6_7_8_top-page-real-data.png"},
+    {"sc": "SC-7", "how": "DevTools RangeMap + toggle", "result": "OI 分布 + 現價列 + 牆色(call 綠/put 紅)+ Max Pain ▼ 於 46,300;成交量 toggle aria-selected 正確切換;chip 對比修正後可讀", "evidence": "evidence/SC-7_volume-toggle.png、SC-7_chip-contrast-fixed.png"},
+    {"sc": "SC-8", "how": "DevTools 溫度計四格", "result": "外資 −9,513(delta 等效,put-heavy 正確判讀淨空)+ 期貨淨空 80,042 對照行;前十大 −15,958 + 週選 aggregate 註記(CR2);PCR 0.99 P12 偏低;散戶 +16.6%;375px overflow=0", "evidence": "evidence/SC-8_mobile-375.png"},
+    {"sc": "SC-9/10", "how": "DevTools 展開進階統計", "result": "hidden 收合預設、展開後四卡 + NET 對照表 + 說明 + 週選註記全在;Max Pain 距現價上方 1.1%、診斷資訊移 ? popover", "evidence": "evidence/SC-9_10_advanced-panel-expanded.png"},
+    {"sc": "console", "how": "list_console_messages", "result": "0 error / 0 red warning(僅 vite debug + React DevTools info + 既有 date-field a11y issue)", "evidence": "本檔記錄"},
+    {"sc": "L#(@live)", "how": "npm run test:live(真 FinMind)", "result": "3 passed — L2 含 retail_mtx / foreign_futures schema 真打", "evidence": "本檔記錄"}
+  ],
+  "findings_fixed": [
+    {"finding": "RangeMap OI± chip 25% 同色底可讀性差(疊對側色 bar)", "fix": "bg-bg/75 深色底 + 色字,commit 於 wave6", "evidence": "SC-7_chip-contrast-fixed.png"}
+  ],
+  "subsumed": [
+    {"sc": "no_trading_day / mode 切換 / 收合展開流程", "by": "Phase 5 e2e(NTD1 / N1-N4 / O4,FAKE 真 backend + 真 browser)"}
+  ],
+  "all_pass": true
+}
