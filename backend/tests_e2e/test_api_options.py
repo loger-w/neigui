@@ -59,3 +59,25 @@ async def test_strike_volume_happy(client):
 async def test_oi_large_traders_happy(client):
     r = await client.get("/api/options/oi_large_traders?contract=TXO202607&date=2026-06-26")
     assert r.status_code == 200
+
+
+async def test_retail_mtx_happy(client):
+    """痛點:options-page-v2 SC-4 — 溫度計散戶格的資料通路;FAKE fixture
+    (TaiwanFuturesDaily/法人 MTX)缺 MANIFEST 條目時這裡會 silent 空。"""
+    r = await client.get("/api/options/retail_mtx?date=2026-06-26")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["current"] is not None
+    assert -1.0 <= body["current"]["ratio"] <= 1.0
+    assert len(body["series"]) > 0
+    assert body["as_of_date"] == "2026-06-26"
+
+
+async def test_foreign_futures_happy(client):
+    """痛點:options-page-v2 SC-5 — 外資期貨對照行;net = long − short 契約。"""
+    r = await client.get("/api/options/foreign_futures?date=2026-06-26")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["current"] is not None
+    assert body["current"]["net_oi"] == (body["current"]["long_oi"] - body["current"]["short_oi"])
+    assert len(body["series"]) > 0

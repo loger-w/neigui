@@ -1627,6 +1627,8 @@ class FinMindClient:
                 "region": current_region,
                 "thresholds": {"high_pct": high_pct, "low_pct": low_pct},
             },
+            # options-page-v2 SC-8: 20-day tail for the thermometer sparkline
+            "series": [{"date": d.isoformat(), "pcr": p} for d, p in pcr_history[-20:]],
             "next_day_stats": stats if any(stats[k]["samples"] > 0 for k in stats) else None,
             "data_quality_warnings": walk_warnings + stats_warnings,
             "insufficient_data": (
@@ -1743,11 +1745,16 @@ class FinMindClient:
         all_dates = sorted({r.get("date", "") for r in rows_day if r.get("date")})
         as_of = all_dates[-1] if all_dates else date_str
 
+        # options-page-v2 SC-8 / R3a: series from raw rows_day call+put per-date
+        # aggregation (foreign_history is call-only, cannot derive total).
+        from services.finmind_options import parse_foreign_total_net_series
+
         result = {
             "date": date_str,
             "fetched_at": datetime.now().isoformat(timespec="seconds"),
             "as_of_date": as_of,
             "current": current["current"],
+            "series": parse_foreign_total_net_series(rows_day),
             "correlation": None if correlation["samples"] == 0 else correlation,
             "data_quality_warnings": corr_warnings,
             "insufficient_data": (
@@ -1757,6 +1764,96 @@ class FinMindClient:
             ),
         }
         self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS_CHIP)
+        return result
+
+    # -- futures sentiment (options-page-v2 SC-4/SC-5) ----------------------
+
+    async def fetch_retail_mtx(self, date_str: str, refresh: bool = False) -> dict:
+        """散戶小台多空比(SC-4)— TaiwanFuturesDaily(MTX) + 法人 MTX 反推。"""
+        from services.finmind_futures import _CACHE_VERSION_FUTURES
+
+        cache_key = f"retail_mtx_{date_str}"
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_FUTURES)
+            if cached is not None:
+                if not self._is_today(date_str) or not self._is_stale(cached):
+                    return cached
+
+        return await self._run_once(
+            f"retail_mtx_{date_str}",
+            lambda: self._do_fetch_retail_mtx(date_str, cache_key),
+        )
+
+    async def _do_fetch_retail_mtx(self, date_str: str, cache_key: str) -> dict:
+        from services.finmind_futures import _CACHE_VERSION_FUTURES, parse_retail_mtx
+
+        end = date.fromisoformat(date_str)
+        start = (end - timedelta(days=40)).isoformat()  # ≥ 20 trading days
+        rows_total = await self._get(
+            f"{_FINMIND_BASE}/data",
+            {
+                "dataset": "TaiwanFuturesDaily",
+                "data_id": "MTX",
+                "start_date": start,
+                "end_date": date_str,
+            },
+        )
+        rows_inst = await self._get(
+            f"{_FINMIND_BASE}/data",
+            {
+                "dataset": "TaiwanFuturesInstitutionalInvestors",
+                "data_id": "MTX",
+                "start_date": start,
+                "end_date": date_str,
+            },
+        )
+        result = {
+            "date": date_str,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            **parse_retail_mtx(rows_total, rows_inst),
+        }
+        self._write_cache_v(cache_key, result, _CACHE_VERSION_FUTURES)
+        return result
+
+    async def fetch_foreign_futures(self, date_str: str, refresh: bool = False) -> dict:
+        """外資台指期淨未平倉(SC-5)— TaiwanFuturesInstitutionalInvestors(TX)。"""
+        from services.finmind_futures import _CACHE_VERSION_FUTURES
+
+        cache_key = f"foreign_futures_{date_str}"
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_FUTURES)
+            if cached is not None:
+                if not self._is_today(date_str) or not self._is_stale(cached):
+                    return cached
+
+        return await self._run_once(
+            f"foreign_futures_{date_str}",
+            lambda: self._do_fetch_foreign_futures(date_str, cache_key),
+        )
+
+    async def _do_fetch_foreign_futures(self, date_str: str, cache_key: str) -> dict:
+        from services.finmind_futures import (
+            _CACHE_VERSION_FUTURES,
+            parse_foreign_futures,
+        )
+
+        end = date.fromisoformat(date_str)
+        start = (end - timedelta(days=40)).isoformat()
+        rows_inst = await self._get(
+            f"{_FINMIND_BASE}/data",
+            {
+                "dataset": "TaiwanFuturesInstitutionalInvestors",
+                "data_id": "TX",
+                "start_date": start,
+                "end_date": date_str,
+            },
+        )
+        result = {
+            "date": date_str,
+            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            **parse_foreign_futures(rows_inst),
+        }
+        self._write_cache_v(cache_key, result, _CACHE_VERSION_FUTURES)
         return result
 
     # -- options cache version helpers (separate _CACHE_VERSION_OPTIONS) ---
