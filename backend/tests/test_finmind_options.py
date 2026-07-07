@@ -307,21 +307,22 @@ def _od_row(date_, ct, cp, strike, vol, oi, *, session="position", option_id="TX
             "volume": vol, "open_interest": oi, "trading_session": session}
 
 
-def test_parse_strike_volume_returns_all_volume_strikes_sorted_by_strike_asc():
-    """Redesign drops top_n - return every volume>0 strike, sorted by strike asc."""
+def test_parse_strike_volume_returns_all_active_strikes_sorted_by_strike_asc():
+    """options-page-v2 §1.4(該變 assertion,原「volume>0 only」):保留
+    volume>0 OR oi>0 的 strike — OI 牆常落在零成交大 OI 檔位,RangeMap 的
+    分布與牆標記必須共享同一 strike 集合。"""
     from services.finmind_options import parse_strike_volume
     today = "2026-06-23"
     rows = [
         _od_row(today, "202607", "call", 53500, 1200, 8410),
         _od_row(today, "202607", "call", 50000,  165, 1240),
         _od_row(today, "202607", "call", 52000,  240, 2680),
-        _od_row(today, "202607", "call", 51000,    0, 1380),  # zero -- drop
+        _od_row(today, "202607", "call", 51000,    0, 1380),  # zero vol, oi>0 -- KEEP
         _od_row(today, "202607", "put",  51500,  209, 5180),
         _od_row(today, "202607", "put",  50000,  364, 8120),
     ]
     out = parse_strike_volume(rows, "202607")  # NOTE: no top_n
-    # All call strikes with volume > 0, sorted ascending
-    assert [c["strike"] for c in out["call"]] == [50000, 52000, 53500]
+    assert [c["strike"] for c in out["call"]] == [50000, 51000, 52000, 53500]
     assert [p["strike"] for p in out["put"]]  == [50000, 51500]
     assert out["as_of_date"] == today
 
@@ -392,18 +393,37 @@ def test_parse_strike_volume_filters_by_option_id():
     assert out["call"][0]["volume"] == 100
 
 
-def test_parse_strike_volume_drops_zero_volume_rows():
-    """Phase 0 noted ~70% of TXO rows have volume=0 (illiquid OTM strikes).
-    Those should never appear in the output."""
+def test_parse_strike_volume_keeps_zero_volume_positive_oi_drops_dead_rows():
+    """options-page-v2 §1.4(該變 assertion,原 drops_zero_volume_rows):
+    volume=0 但 oi>0 保留(牆檔位);volume=0 且 oi=0 才 drop。"""
     from services.finmind_options import parse_strike_volume
     rows = [
         _od_row("2026-06-23", "202607", "call", 22000,  10, 5),
-        _od_row("2026-06-23", "202607", "call", 22100,   0, 7),
-        _od_row("2026-06-23", "202607", "call", 22200,   0, 9),
+        _od_row("2026-06-23", "202607", "call", 22100,   0, 7),   # zero vol, oi>0 → keep
+        _od_row("2026-06-23", "202607", "call", 22200,   0, 0),   # dead → drop
     ]
     out = parse_strike_volume(rows, "202607")
-    assert len(out["call"]) == 1
-    assert out["call"][0]["strike"] == 22000
+    assert [c["strike"] for c in out["call"]] == [22000, 22100]
+    assert out["call"][1]["volume"] == 0
+    assert out["call"][1]["oi"] == 7
+
+
+def test_parse_strike_volume_today_falls_back_to_last_oi_day():
+    """options-page-v2 §1.4 / R10:交易日早晨僅夜盤 rows(volume>0、OI 全 0)
+    時,`today` 必須退回最近「有 OI」的日子 — 與 fetch_oi_walls 的 F7
+    fallback 同準則,RangeMap 疊圖(牆 vs 分布)基準日才一致。"""
+    from services.finmind_options import parse_strike_volume
+    rows = [
+        # D-1:正常盤後資料(有 OI)
+        _od_row("2026-06-25", "202607", "call", 22000, 500, 3000),
+        _od_row("2026-06-25", "202607", "put",  21000, 400, 2500),
+        # D:早晨僅夜盤 rows — 有量但 OI 全 0
+        _od_row("2026-06-26", "202607", "call", 22000, 120, 0, session="after_market"),
+        _od_row("2026-06-26", "202607", "put",  21000,  80, 0, session="after_market"),
+    ]
+    out = parse_strike_volume(rows, "202607")
+    assert out["as_of_date"] == "2026-06-25"
+    assert out["call"][0]["oi"] == 3000
 
 
 def test_parse_strike_volume_empty_returns_empty_lists():
@@ -1087,59 +1107,177 @@ def test_parse_max_pain_hit_rate_empty_inputs():
 # ============================================================================
 
 def test_parse_oi_walls_static_tie_break_by_spot():
-    """SC-2 / F16: when two strikes have equal max OI, pick the one
-    closest to the spot price (more informative as a 'wall')."""
+    """SC-2 / F16 + options-page-v2 SC-1(該變):tie-break 在**價外側候選**內
+    取最近 spot;價內側大 OI 不再參賽。"""
     from services.finmind_options import parse_oi_walls
     rows_today = [
-        _option_row("202607", 21000, "call", oi=500),
-        _option_row("202607", 22000, "call", oi=500),  # tie at 500
-        _option_row("202607", 23000, "call", oi=200),
+        _option_row("202607", 21000, "call", oi=900),  # below spot — excluded (OTM rule)
+        _option_row("202607", 22500, "call", oi=500),
+        _option_row("202607", 23500, "call", oi=500),  # tie at 500
         _option_row("202607", 20000, "put", oi=300),
     ]
     result = parse_oi_walls(
         rows_today=rows_today, rows_history=[], contract_date="202607",
         delta_window=5, spot=22000.0,
     )
-    # Tied 21000 vs 22000 — closer to spot 22000 wins
-    assert result["static_call_wall"]["strike"] == 22000
+    # OTM candidates {22500, 23500} tie at 500 — closer to spot 22500 wins
+    assert result["static_call_wall"]["strike"] == 22500
     assert result["static_call_wall"]["oi"] == 500
 
 
-def test_parse_oi_walls_dynamic_uses_activity_not_telescoping_delta():
-    """SC-2 / N4: dynamic wall = Σ_d |oi_d+1 - oi_d|, an activity-intensity
-    measure. NOT the telescoping 2-point delta (oi_today - oi_window_start)
-    which masks intermediate movement."""
+def test_parse_oi_walls_static_call_wall_otm_only():
+    """options-page-v2 SC-1:Call Wall 只從 strike >= spot 找 — 行情大漲後
+    價內殘留大 OI 不能再被標成「壓力」。"""
     from services.finmind_options import parse_oi_walls
-    # 5-day window. Strike A: OI ramps smoothly 100→200→300→400→500.
-    # Strike B: OI flips 100→500→100→500→100. Same net end-to-start (0 vs 400),
-    # but B has 4× higher activity. Dynamic wall must pick B.
+    rows_today = [
+        _option_row("202607", 20000, "call", oi=9000),  # ITM leftovers, biggest OI
+        _option_row("202607", 22500, "call", oi=400),
+        _option_row("202607", 21000, "put", oi=300),
+    ]
+    result = parse_oi_walls(
+        rows_today=rows_today, rows_history=[], contract_date="202607",
+        delta_window=5, spot=22000.0,
+    )
+    assert result["static_call_wall"]["strike"] == 22500
+
+
+def test_parse_oi_walls_static_put_wall_otm_only():
+    """options-page-v2 SC-1:Put Wall 只從 strike <= spot 找。"""
+    from services.finmind_options import parse_oi_walls
+    rows_today = [
+        _option_row("202607", 23000, "put", oi=9000),  # above spot — excluded
+        _option_row("202607", 21500, "put", oi=400),
+        _option_row("202607", 22500, "call", oi=300),
+    ]
+    result = parse_oi_walls(
+        rows_today=rows_today, rows_history=[], contract_date="202607",
+        delta_window=5, spot=22000.0,
+    )
+    assert result["static_put_wall"]["strike"] == 21500
+
+
+def test_parse_oi_walls_no_otm_candidate_returns_none_with_warning():
+    """options-page-v2 SC-1:該側無價外 OI → wall None + 分側 warning;
+    band_width_pct 為 None(不是 0,也不是負數)。"""
+    from services.finmind_options import parse_oi_walls
+    rows_today = [
+        _option_row("202607", 20000, "call", oi=500),  # all call OI below spot
+        _option_row("202607", 21000, "put", oi=300),
+    ]
+    result = parse_oi_walls(
+        rows_today=rows_today, rows_history=[], contract_date="202607",
+        delta_window=5, spot=22000.0,
+    )
+    assert result["static_call_wall"] is None
+    assert result["static_put_wall"]["strike"] == 21000
+    assert result["band_width_pct"] is None
+    assert "static_wall_no_otm_candidate_call" in result["data_quality_warnings"]
+
+
+def test_parse_oi_walls_band_width_non_negative():
+    """options-page-v2 SC-1:OTM 限制後 band_width_pct 有值恆 >= 0。"""
+    from services.finmind_options import parse_oi_walls
+    rows_today = [
+        _option_row("202607", 22500, "call", oi=500),
+        _option_row("202607", 21500, "put", oi=400),
+    ]
+    result = parse_oi_walls(
+        rows_today=rows_today, rows_history=[], contract_date="202607",
+        delta_window=5, spot=22000.0,
+    )
+    assert result["band_width_pct"] is not None
+    assert result["band_width_pct"] >= 0
+    assert result["static_call_wall"]["strike"] >= result["static_put_wall"]["strike"]
+
+
+def test_parse_oi_walls_spot_none_returns_all_walls_none_only_no_spot_warning():
+    """options-page-v2 SC-1 / R1+R2:spot 缺(TX 未發布)→ 四面牆全 None、
+    band None,warnings 只含 oi_walls_no_spot — 不得出現側別 no_otm_candidate
+    (缺 spot ≠ 無候選)也不得出現 dynamic_wall_no_net_increase。"""
+    from services.finmind_options import parse_oi_walls
+    rows_today = [
+        _option_row("202607", 22500, "call", oi=500),
+        _option_row("202607", 21500, "put", oi=400),
+    ]
+    result = parse_oi_walls(
+        rows_today=rows_today, rows_history=[], contract_date="202607",
+        delta_window=5, spot=None,
+    )
+    assert result["static_call_wall"] is None
+    assert result["static_put_wall"] is None
+    assert result["dynamic_call_wall"] is None
+    assert result["dynamic_put_wall"] is None
+    assert result["band_width_pct"] is None
+    assert result["data_quality_warnings"] == ["oi_walls_no_spot"]
+
+
+def test_parse_oi_walls_dynamic_net_increase_first_last_diff():
+    """options-page-v2 SC-2(該變,原 activity Σ|Δ| 語意反轉):dynamic wall =
+    window 首尾**淨增倉** max(oi_end − oi_start, 只取正)。建倉平倉互抵的
+    高活動 strike(churn)不再被選 — 語意 = 新錢正在進駐的價位。"""
+    from services.finmind_options import parse_oi_walls
+    # Strike A: OI ramps 100→500 (net +400). Strike B: churns 100→500→100→500→100
+    # (net 0). Old activity metric picked B; net-increase must pick A.
     history = [
-        # d1
         [_option_row("202607", 21000, "call", oi=100, day="2026-06-19"),
          _option_row("202607", 22000, "call", oi=100, day="2026-06-19")],
-        # d2
         [_option_row("202607", 21000, "call", oi=200, day="2026-06-20"),
          _option_row("202607", 22000, "call", oi=500, day="2026-06-20")],
-        # d3
         [_option_row("202607", 21000, "call", oi=300, day="2026-06-23"),
          _option_row("202607", 22000, "call", oi=100, day="2026-06-23")],
-        # d4
         [_option_row("202607", 21000, "call", oi=400, day="2026-06-24"),
          _option_row("202607", 22000, "call", oi=500, day="2026-06-24")],
     ]
     today = [
         _option_row("202607", 21000, "call", oi=500),
-        _option_row("202607", 22000, "call", oi=100),  # B ends at 100, A ends at 500
+        _option_row("202607", 22000, "call", oi=100),
     ]
     result = parse_oi_walls(
         rows_today=today, rows_history=history, contract_date="202607",
         delta_window=5, spot=21500.0,
     )
-    # Telescoping (wrong): A delta = 500-100=400, B delta = 100-100=0 → A wins
-    # Activity (right): A activity = |200-100|+|300-200|+|400-300|+|500-400|=400
-    #                   B activity = |500-100|+|100-500|+|500-100|+|100-500|=1600 → B wins
-    assert result["dynamic_call_wall"]["strike"] == 22000  # B = activity king
-    assert result["dynamic_call_wall"]["window_activity_oi"] == 1600
+    assert result["dynamic_call_wall"]["strike"] == 21000  # A = net-increase king
+    assert result["dynamic_call_wall"]["window_net_increase_oi"] == 400
+    assert "window_activity_oi" not in result["dynamic_call_wall"]  # renamed contract
+
+
+def test_parse_oi_walls_dynamic_all_nonpositive_returns_none():
+    """options-page-v2 SC-2:全部 strike 淨增倉 <= 0 → dynamic wall None +
+    dynamic_wall_no_net_increase warning(取代舊 dynamic_wall_no_activity)。"""
+    from services.finmind_options import parse_oi_walls
+    today = [_option_row("202607", 22000, "call", oi=300)]
+    history = [
+        [_option_row("202607", 22000, "call", oi=500, day="2026-06-23")],
+        [_option_row("202607", 22000, "call", oi=400, day="2026-06-24")],
+    ]
+    result = parse_oi_walls(
+        rows_today=today, rows_history=history, contract_date="202607",
+        delta_window=2, spot=22000.0,
+    )
+    assert result["dynamic_call_wall"] is None
+    warnings = result["data_quality_warnings"]
+    assert "dynamic_wall_no_net_increase" in warnings
+    assert "dynamic_wall_no_activity" not in warnings
+
+
+def test_parse_oi_walls_dynamic_new_listing_strike_full_increase():
+    """options-page-v2 SC-2 / impl-review R5:window 起點沒掛牌的 strike 視
+    oi_start=0,今日 OI 全額算淨增倉(語意=新錢);partial_window 沿用。"""
+    from services.finmind_options import parse_oi_walls
+    history = [
+        [_option_row("202607", 21000, "call", oi=300, day="2026-06-24")],  # B 未掛牌
+    ]
+    today = [
+        _option_row("202607", 21000, "call", oi=350),   # net +50
+        _option_row("202607", 22000, "call", oi=800),   # new listing → net +800
+    ]
+    result = parse_oi_walls(
+        rows_today=today, rows_history=history, contract_date="202607",
+        delta_window=5, spot=21500.0,
+    )
+    assert result["dynamic_call_wall"]["strike"] == 22000
+    assert result["dynamic_call_wall"]["window_net_increase_oi"] == 800
+    assert result["dynamic_call_wall"]["partial_window"] is True
 
 
 def test_parse_oi_walls_partial_window_for_young_weekly():
@@ -1159,24 +1297,58 @@ def test_parse_oi_walls_partial_window_for_young_weekly():
     assert "dynamic_wall_partial_window" in warnings
 
 
-def test_parse_oi_walls_emits_no_activity_warning():
-    """SC-2 / N13: when no strike moves in window, dynamic_wall_no_activity warning."""
-    from services.finmind_options import parse_oi_walls
-    today = [_option_row("202607", 22000, "call", oi=500)]
-    history = [
-        [_option_row("202607", 22000, "call", oi=500, day="2026-06-23")],
-        [_option_row("202607", 22000, "call", oi=500, day="2026-06-24")],
-    ]
-    result = parse_oi_walls(
-        rows_today=today, rows_history=history, contract_date="202607",
-        delta_window=2, spot=22000.0,
+async def test_fetch_oi_walls_spot_missing_passes_none_not_zero(monkeypatch):
+    """options-page-v2 R1(P0 lock,mutation-verified):fetch_oi_walls 在
+    spot 缺時必須把 None 傳進 parser — 舊 `or 0.0` coercion 會讓 put 側
+    候選恆空,產出假 static_wall_no_otm_candidate_put + 未過濾 call wall。"""
+    import services.trading_calendar as tc
+    from services.finmind import get_finmind
+
+    client = get_finmind()
+
+    async def fake_days(end, n):
+        return [date(2026, 6, 25), date(2026, 6, 26)]
+
+    async def fake_window(dates, end_date, refresh=False):
+        return {
+            "2026-06-25": [
+                _option_row("202607", 22000, "call", oi=500, day="2026-06-25"),
+                _option_row("202607", 21000, "put", oi=400, day="2026-06-25"),
+            ],
+        }
+
+    async def fake_spot(date_str, refresh=False):
+        return {"spot": None, "as_of_date": None}
+
+    async def fake_settlements(end, refresh=False):
+        return {}
+
+    async def fake_closes(end, refresh=False):
+        return {}
+
+    monkeypatch.setattr(tc, "get_trading_days", fake_days)
+    monkeypatch.setattr(client, "fetch_taiwan_option_daily_window", fake_window)
+    monkeypatch.setattr(client, "fetch_spot", fake_spot)
+    monkeypatch.setattr(client, "fetch_settlement_history", fake_settlements)
+    monkeypatch.setattr(client, "fetch_tx_close_history", fake_closes)
+
+    out = await client.fetch_oi_walls(
+        {"option_id": "TXO", "contract_date": "202607"}, "2026-06-26",
     )
-    warnings = result.get("data_quality_warnings", [])
-    assert "dynamic_wall_no_activity" in warnings
+    cur = out["current"]
+    assert cur["static_call_wall"] is None
+    assert cur["static_put_wall"] is None
+    assert cur["dynamic_call_wall"] is None
+    assert cur["dynamic_put_wall"] is None
+    assert cur["band_width_pct"] is None
+    assert "oi_walls_no_spot" in out["data_quality_warnings"]
+    assert "static_wall_no_otm_candidate_call" not in out["data_quality_warnings"]
+    assert "static_wall_no_otm_candidate_put" not in out["data_quality_warnings"]
 
 
 def test_parse_oi_walls_hit_rate_t_minus_1():
-    """SC-6 / F3: settlement inside [put_wall, call_wall] computed on T-1."""
+    """SC-6 / F3(該變:closes_by_date 改必要語意):settlement inside
+    [put_wall, call_wall] computed on T-1,牆選擇以 T-1 close 為 spot。"""
     from services.finmind_options import parse_oi_walls_hit_rate
     oi_by_trading_day = {
         # 2026-06-16: walls put=20000, call=22000 (settlement_price 21000 inside)
@@ -1191,12 +1363,63 @@ def test_parse_oi_walls_hit_rate_t_minus_1():
     settlements = {date(2026, 6, 17): {"contract_date": "202606", "price": 21000.0}}
     result = parse_oi_walls_hit_rate(
         oi_by_trading_day=oi_by_trading_day, settlements=settlements,
+        closes_by_date={date(2026, 6, 16): 21000.0},
     )
     assert result["samples"] == 1
     assert result["pct_settled_inside_band"] == 1.0
     assert result["history"][0]["inside_band"] is True
     assert result["history"][0]["put_wall_at_t_minus_1"] == 20000
     assert result["history"][0]["call_wall_at_t_minus_1"] == 22000
+    assert result["dropped_no_close"] == 0
+
+
+def test_parse_oi_walls_hit_rate_otm_restricted_uses_t1_close():
+    """options-page-v2 SC-3:T-1 牆選擇套 SC-1 側別限制(以 T-1 close 為
+    spot)— 價外規則下,高於 close 的大 put OI 不能當 Put Wall。"""
+    from services.finmind_options import parse_oi_walls_hit_rate
+    oi_by_trading_day = {
+        date(2026, 6, 16): [
+            _option_row("202606", 23000, "put",  oi=900, day="2026-06-16"),  # above close → excluded
+            _option_row("202606", 20000, "put",  oi=500, day="2026-06-16"),
+            _option_row("202606", 22000, "call", oi=500, day="2026-06-16"),
+        ],
+    }
+    settlements = {date(2026, 6, 17): {"contract_date": "202606", "price": 21000.0}}
+    result = parse_oi_walls_hit_rate(
+        oi_by_trading_day=oi_by_trading_day, settlements=settlements,
+        closes_by_date={date(2026, 6, 16): 21000.0},
+    )
+    assert result["samples"] == 1
+    assert result["history"][0]["put_wall_at_t_minus_1"] == 20000  # NOT 23000
+    assert result["history"][0]["inside_band"] is True
+
+
+def test_parse_oi_walls_hit_rate_drops_samples_without_close():
+    """options-page-v2 SC-3 / R9:t-1 無 close 的樣本剔除並計入
+    dropped_no_close(固定欄位;warning 字串由 fetch 層附加)。"""
+    from services.finmind_options import parse_oi_walls_hit_rate
+    oi_by_trading_day = {
+        date(2026, 6, 16): [
+            _option_row("202606", 20000, "put",  oi=500, day="2026-06-16"),
+            _option_row("202606", 22000, "call", oi=500, day="2026-06-16"),
+        ],
+        date(2026, 7, 14): [
+            _option_row("202607", 20500, "put",  oi=500, day="2026-07-14"),
+            _option_row("202607", 22500, "call", oi=500, day="2026-07-14"),
+        ],
+    }
+    settlements = {
+        date(2026, 6, 17): {"contract_date": "202606", "price": 21000.0},
+        date(2026, 7, 15): {"contract_date": "202607", "price": 21500.0},
+    }
+    # closes only for the first sample's T-1
+    result = parse_oi_walls_hit_rate(
+        oi_by_trading_day=oi_by_trading_day, settlements=settlements,
+        closes_by_date={date(2026, 6, 16): 21000.0},
+    )
+    assert result["samples"] == 1
+    assert result["dropped_no_close"] == 1
+    assert result["history"][0]["settlement_date"] == "2026-06-17"
 
 
 # ============================================================================

@@ -13,6 +13,10 @@
 - **[harness P2] Batch 3 剩餘**:`scripts/sync-harness-mirror.py`(--check/--fix,消 README cp 塊 + 文字清單漏列雙源)、Phase 6 deferred 證據追蹤(state.json `deferred_evidence` + harness-context 注入)、/chore 輕量入口(一頁內:升級 / 補測試 / docs / 研究腳本 + 分支政策)
 - **[harness P2] Batch 4 第二期**:`derive_phase_from_artifacts` advisory(附進 stop-audit block reason,不 auto-patch)、final_merge_sha 向 git log 驗真、SubagentStop spike(payload 可判 agent 身分?)後才立案 schema 機驗、條件式 e2e 進機讀 gate **需 user 裁決**(撞 pre_push「e2e 不在此跑」已拍板決策)
 
+## From /feat options-page-v2(2026-07-07)
+
+- **`parse_institutional` 的 `day_change` 欄位恆 0**(註解宣稱 caller 回填但從未發生;design.md KR-1):前端已改用 series 末兩點差,該欄位成死欄位 — 下次動 institutional payload 時移除(連動 options-types.ts + 測試)。觸發重評估:動 fetch_institutional 或 InstitutionalSide 型別時
+
 ## From /perf cold-start(2026-07-07)
 
 - **`routes/symbols.py::load_symbols` 未走 FinMind 接入慣例**:直接裸 httpx 呼叫,沒過 `FinMindClient._get` / TokenBucket / per-module `get_finmind()` wrap(conventions 制定前的既有債)。觸發重評估:下次動 symbols route 或 FinMind 客戶端重構時,順路收編
