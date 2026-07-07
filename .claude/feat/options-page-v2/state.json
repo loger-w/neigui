@@ -3,7 +3,7 @@
   "start_sha": "ef0959055a54113419fdb79377e1505051e61854",
   "branch": "feat/options-page-v2",
   "worktree_path": null,
-  "current_phase": 7,
+  "current_phase": 8.5,
   "completed_phases": [
     -1,
     0,
@@ -12,7 +12,9 @@
     3,
     4,
     5,
-    6
+    6,
+    7,
+    8
   ],
   "scope": "L",
   "phase_2_mode": "condensed",
@@ -32,8 +34,8 @@
   },
   "last_updated": "2026-07-07T19:20:00+08:00",
   "project_shape": "fastapi-backend + vite-react-frontend + playwright-e2e",
-  "last_commit_sha": "ba71a2d",
-  "final_merge_sha": null,
+  "last_commit_sha": "da76107",
+  "final_merge_sha": "03ce212",
   "self_review_head": "ba71a2d36afd58ae7b8c54d9d3788d7593c05339",
   "sc_cycle_counts": {
     "_unscoped": {
