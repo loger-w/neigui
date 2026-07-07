@@ -675,12 +675,14 @@ def parse_oi_walls(
     if today_put_oi and static_put is None:
         warnings.append("static_wall_no_otm_candidate_put")
 
-    # Per-day OI snapshots (history oldest-first, then today) for the window
-    # first→last net-increase calculation.
-    daily_snapshots: list[tuple[dict[float, int], dict[float, int]]] = []
-    for day_rows in rows_history:
-        daily_snapshots.append(_per_side_oi(day_rows, contract_date, option_id))
-    daily_snapshots.append((today_call_oi, today_put_oi))  # include today
+    # net_increase = window first→last diff — only the FIRST history day needs
+    # aggregating (code-review CR4: aggregating every day wasted delta_window−1
+    # full _per_side_oi passes on a hot endpoint); today's maps already exist.
+    start_call_oi, start_put_oi = (
+        _per_side_oi(rows_history[0], contract_date, option_id)
+        if rows_history
+        else (today_call_oi, today_put_oi)
+    )
 
     partial_window = len(rows_history) < delta_window
     if partial_window:
@@ -689,8 +691,7 @@ def parse_oi_walls(
     # net_increase(K) = oi_end(K) − oi_start(K). Strikes not yet listed at
     # window start count from 0 → full OI counts as new money (design §1.2).
     def net_increase_for_side(side_key: str) -> dict[float, int]:
-        first_c, first_p = daily_snapshots[0]
-        start_map = first_c if side_key == "call" else first_p
+        start_map = start_call_oi if side_key == "call" else start_put_oi
         end_map = today_call_oi if side_key == "call" else today_put_oi
         return {K: end_map[K] - start_map.get(K, 0) for K in end_map}
 
