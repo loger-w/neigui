@@ -13,9 +13,13 @@
 ## From harness review(2026-07-06,12-agent 體檢;token 減負六項已於 mod/harness-token-slim 落地)
 
 - **[harness P0] Batch 1 強制層**(順序敏感):阻擋 hook 先補 pytest → PowerShell matcher + pattern 擴充(與上一條同件)→ 自我保護 hook(PreToolUse Write|Edit 守 hooks/settings/harness.json/.git/hooks/**agents/**,`ask` 不 deny;shell 面 pattern 同批補)→ pre_push fail-closed(git tracked 但缺檔 / 空 verify 需顯式 flag)→ `permissions.deny` 加 `Read(.env)`(Read 工具讀 .env 目前無人攔)
-- **[harness P1] Batch 2 一行級修正包**:auto-verify 移除 `ruff check --fix`(&& 順序也錯)、harness.json 加 ruff 插槽、鐵則 G 改「預設 + command 可覆寫」+ mod.md Phase 3 刪「同 /feat 慣例」誤導句、perf.md Phase 1 補 auto-verify 呼叫、feat.md Phase 6 infra_fail 已改引用(done)、4 agent location schema 統一 {file, section?} + 其餘三 agent 補 round≥2 cross-round 條款
+- **[harness P1] Batch 2 一行級修正包**(auto-verify 移除 `ruff check --fix` 與 harness.json ruff 插槽已於 2026-07-07 契約掃描落地):鐵則 G 改「預設 + command 可覆寫」+ mod.md Phase 3 刪「同 /feat 慣例」誤導句、perf.md Phase 1 補 auto-verify 呼叫、feat.md Phase 6 infra_fail 已改引用(done)、4 agent location schema 統一 {file, section?} + 其餘三 agent 補 round≥2 cross-round 條款
 - **[harness P2] Batch 3 剩餘**:`scripts/sync-harness-mirror.py`(--check/--fix,消 README cp 塊 + 文字清單漏列雙源)、Phase 6 deferred 證據追蹤(state.json `deferred_evidence` + harness-context 注入)、/chore 輕量入口(一頁內:升級 / 補測試 / docs / 研究腳本 + 分支政策)
 - **[harness P2] Batch 4 第二期**:`derive_phase_from_artifacts` advisory(附進 stop-audit block reason,不 auto-patch)、final_merge_sha 向 git log 驗真、SubagentStop spike(payload 可判 agent 身分?)後才立案 schema 機驗、條件式 e2e 進機讀 gate **需 user 裁決**(撞 pre_push「e2e 不在此跑」已拍板決策)
+
+## From 契約斷鏈掃描(2026-07-07)
+
+- **[harness] block-no-verify.py hooksPath 規則收窄待 user 核准**:掃描實測唯讀查詢 `git config core.hooksPath` 被誤攔;且現行 `(?:--\w+\s+)?` 的 `\w` 不含連字號 → **`git config --unset-all core.hooksPath` 完全沒被攔(真缺口,會拆掉 pre-push 防線)**。修法:rule 2 改為只攔 `--unset(-all)?`(設值形式 rule 1 已涵蓋、唯讀查詢放行)。9 條 pytest 已寫好(暫存 session scratchpad `test_block_no_verify.py`);auto-mode classifier 擋「自我修改安全 hook」,需 user 核准後套用 + 測試檔歸位 `~/.claude/hooks/tests/` + 鏡像同步。
 
 ## From /mod chip-bubble-intraday-overlay(2026-06-29)
 

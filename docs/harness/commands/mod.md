@@ -9,13 +9,13 @@
 
 ## Phases
 
-0. **Phase 0|工作區**:呼叫 `branch-lifecycle` 開工節(status 乾淨 + 主線同步 + `git switch -c mod/<slug>`)
+0. **Phase 0|工作區**:呼叫 `branch-lifecycle` 開工節(status 乾淨 + 主線同步 + `git switch -c mod/<slug>`)+ 建 artifact 目錄 `.claude/mod/<slug>/`(reviewer dispatch 是 fresh context,只吃檔案路徑 — 對話裡的表傳不進去)
 1. **Phase 1|摸清現況**(不能跳):
    - **grep 所有 caller**(含動態用法:template string / reflection / 字串拼接 / 外部 caller)
    - 跑現有測試,baseline **全綠**
    - 讀懂現有實作意圖(註解 / commit message / 為什麼這樣寫)
-   - 整理表:現況 vs 目標(行為 / signature / 對 caller 影響 / backward compat / migration)
-2. **Phase 2|聚焦 brainstorm**:呼叫 `superpowers:brainstorming`(遵循 skill 對話流程 — 一次一問)。產物落點為 `change-spec.md`(**user preference,顯式覆寫**該 skill 的 docs/superpowers/ 落點與「先 commit」要求,同 /feat 慣例)。聚焦四件事:
+   - 整理表:現況 vs 目標(行為 / signature / 對 caller 影響 / backward compat / migration),**落檔 `.claude/mod/<slug>/current-state.md`**(Phase 3 reviewer dispatch 的必要輸入)
+2. **Phase 2|聚焦 brainstorm**:呼叫 `superpowers:brainstorming`(遵循 skill 對話流程 — 一次一問)。產物落點為 `.claude/mod/<slug>/change-spec.md`(**user preference,顯式覆寫**該 skill 的 docs/superpowers/ 落點與「先 commit」要求,同 /feat 慣例)。聚焦四件事:
    - 改完的成功條件(可驗收;量化條件必附 unit + 量法,同 /feat Phase 0 SC gate)
    - **不能破壞的既有行為白名單**(列出來,這比新行為更重要)
    - Backward compat / migration 策略
@@ -23,7 +23,7 @@
 3. **Phase 3|Diff 級 spec**:寫 `change-spec.md`,逐檔列動什麼,**三類動作分開標記**:
    - 🔴 **行為改動**(預期會讓既有測試紅)/ 🟢 **新功能**(加新測試)/ 🔵 **純重構**(測試不該變)
    - 既有測試逐一標:該紅的 / 不該紅的;新測試清單
-   - Sub-agent 用 `change-spec-reviewer` agent type dispatch:傳 change-spec.md + Phase 1 現況表路徑(criteria / JSON schema 固化在 agent 定義)
+   - Sub-agent 用 `change-spec-reviewer` agent type dispatch:傳 change-spec.md + Phase 1 `current-state.md` 路徑(criteria / JSON schema 固化在 agent 定義)
    - **Max 2 輪;退出條件:無 P0/P1**(P2 記入 spec 註記)。2 輪後仍有 P0/P1 → 停下回報 user 三選一(縮 scope / 換做法 / 接受寫入 Known Risks)— 同 /feat 慣例
 4. **Phase 4|TDD + 分 commit**(順序 **🔵 → 🔴 → 🟢**:先重構讓地基乾淨,再改行為,最後加新東西):
    - 🔵 純重構:測試完全不動,改完該綠的還是綠

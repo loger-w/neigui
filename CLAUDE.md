@@ -47,13 +47,13 @@ scripts/git-hooks/   git pre-push 測試防線(core.hooksPath 指向此)
 | E2E visual baseline 更新 | `npm run test:update-snapshots`(或在 GitHub 跑 `e2e-update-snapshots` workflow) | `e2e/` |
 | Lint(Python) | `ruff check .`(line-length 100,target py312) | `backend/` |
 
-完成前要過的 gate(/feat /mod Phase 5 / `auto-verify` 一律套):`pytest -q`(backend)+ `npm test`(frontend vitest)+ `npm run build`(frontend,捕 TS error)+ **`npm test`(e2e,屬於下表「需要 e2e」的改動類型才必跑;不屬則可豁免並在 commit 註明)**。Build 過 ≠ 行為對,UI 改動還要走 chrome-devtools-mcp 真實截圖驗證。
+完成前要過的 gate(/feat Phase 5、/mod Phase 6 等自動化驗證階段,`auto-verify` 一律套):`pytest -q` + `ruff check .`(backend)+ `npm test`(frontend vitest)+ `npm run build`(frontend,捕 TS error)+ **`npm test`(e2e,屬於下表「需要 e2e」的改動類型才必跑;不屬則可豁免並在 commit 註明)**。Build 過 ≠ 行為對,UI 改動還要走 chrome-devtools-mcp 真實截圖驗證。
 
-驗證指令的**機器可讀來源** = `.claude/harness.json`(auto-verify 優先讀它、git pre-push 防線共用);改驗證指令改那裡,上表是人讀對照,兩邊要同步。
+驗證指令的**機器可讀來源** = `.claude/harness.json`(auto-verify 優先讀它、git pre-push 防線共用);改驗證指令改那裡,上表是人讀對照,兩邊要同步。**harness.json 只涵蓋無條件 gate**(pytest / ruff / vitest / build);E2E 刻意排除 — 條件跑(判準在 `e2e-conventions`)且 pre-push 跑不起,豁免與必跑由流程層把關。
 
 ### E2E 判準
 
-本次改動**要不要動 e2e、動哪個 spec 檔**(E# / O# / M# / N# / NTD# / L# / V#)、豁免類型、grey zone 預設「需要」、FinMind `@live` 規則 — 判準表已併入 skill `e2e-conventions`(2026-07-06 自本檔移入)。`/feat` / `/mod` **Phase 0 決定 e2e 歸屬前必讀該 skill**,結論寫進 `brainstorm.md` / `change-spec.md`,Phase 3 TDD 同步動 e2e spec。
+本次改動**要不要動 e2e、動哪個 spec 檔**(E# / O# / M# / N# / NTD# / L# / V#)、豁免類型、grey zone 預設「需要」、FinMind `@live` 規則 — 判準表已併入 skill `e2e-conventions`(2026-07-06 自本檔移入)。`/feat` Phase 0 / `/mod` Phase 2 **決定 e2e 歸屬前必讀該 skill**,結論寫進 `brainstorm.md` / `change-spec.md`,TDD 階段(/feat Phase 3 / /mod Phase 4)同步動 e2e spec。
 
 `.env` 需要 `FINMIND_TOKEN`(必填,否則 `FinMindClient.__init__` raise)。Optional:`FINMIND_RATE_LIMIT_PER_SEC`(code 預設 40;調 rate 不解決配額 — FinMind 真瓶頸是每小時 6000 requests,見 skill `finmind-conventions`)、`FRONTEND_ORIGIN`。
 
