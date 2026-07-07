@@ -1093,10 +1093,13 @@ def parse_institutional(
 
 
 def parse_foreign_total_net_series(rows_day: list[dict], limit: int = 20) -> list[dict]:
-    """外資 per-date call+put 全側淨部位 series(options-page-v2 SC-8 / R3a)。
+    """外資 per-date **delta 等效**淨部位 series(options-page-v2 SC-8 / R3a
+    + code-review CR1)。
 
-    foreign_history(correlation 用)只聚合 call 側,不能導出 total —
-    這裡對 raw rows_day 做 call_net + put_net 的 per-date 聚合。
+    delta 等效 = call_net − put_net(買 call / 賣 put 偏多;買 put / 賣 call
+    偏空)— 與 ``_aggregate_call_put_pair`` 的大戶 OI 換向規則一致。純
+    call_net + put_net 加總會把大買保護性 put 讀成偏多(方向相反),
+    溫度計判讀句「淨多/淨空」依賴此符號。
     Returns ascending ``[{date, foreign_total_net}]``(≤ limit)。
     """
     per_date: dict[str, int] = {}
@@ -1106,7 +1109,11 @@ def parse_foreign_total_net_series(rows_day: list[dict], limit: int = 20) -> lis
         if not d or _INSTITUTION_NAME_MAP.get(inst_raw) != "foreign":
             continue
         side = r.get("call_put") or r.get("put_call")
-        if side not in ("call", "買權", "put", "賣權"):
+        if side in ("call", "買權"):
+            sign = 1
+        elif side in ("put", "賣權"):
+            sign = -1
+        else:
             continue
         try:
             long_oi = int(
@@ -1119,7 +1126,7 @@ def parse_foreign_total_net_series(rows_day: list[dict], limit: int = 20) -> lis
             )
         except (TypeError, ValueError):
             continue
-        per_date[d] = per_date.get(d, 0) + long_oi - short_oi
+        per_date[d] = per_date.get(d, 0) + sign * (long_oi - short_oi)
     return [
         {"date": d, "foreign_total_net": v}
         for d, v in sorted(per_date.items())[-limit:]

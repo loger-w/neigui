@@ -12,11 +12,15 @@ interface Props {
   chip: ReturnType<typeof useOptionsChip>;
   lt: ReturnType<typeof useOptionsLargeTraders>;
   spot: OptionsSpot | null;
+  /** 週選 aggregate 註記透傳 NetTable(CR2) */
+  weeklyAggregate?: boolean;
 }
 
 /** 進階統計收合層(options-page-v2 SC-9)— 現四卡統計 + NET 對照表全數
  * 保留於此,預設收合;內容用 `hidden` attribute 保留 DOM(CLAUDE.md §3)。 */
-export function OptionsAdvancedPanel({ chip, lt, spot }: Props): ReactElement {
+export function OptionsAdvancedPanel({
+  chip, lt, spot, weeklyAggregate = false,
+}: Props): ReactElement {
   const [expanded, setExpanded] = useState(false);
   const { mp, ow, pcr, inst, refreshAll } = chip;
 
@@ -51,7 +55,7 @@ export function OptionsAdvancedPanel({ chip, lt, spot }: Props): ReactElement {
           />
         </div>
         <div className="mt-3">
-          <OptionsNetTable data={lt.data} />
+          <OptionsNetTable data={lt.data} weeklyAggregate={weeklyAggregate} />
         </div>
       </div>
     </section>

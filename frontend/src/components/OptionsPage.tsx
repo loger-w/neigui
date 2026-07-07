@@ -66,6 +66,8 @@ export function OptionsPage(): ReactElement {
     lt.noTradingDay || sv.noTradingDay || spot.noTradingDay || chip.anyNoTradingDay;
 
   const walls = chip.ow.data?.current ?? null;
+  // CR2 回復:週選的大戶 OI 是週三+週五 aggregate,免責註記傳給溫度計與 NET 表
+  const isWeekly = currentContract?.kind.startsWith("weekly") ?? false;
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -103,8 +105,11 @@ export function OptionsPage(): ReactElement {
         pcr={chip.pcr}
         retail={chip.retail}
         ff={chip.ff}
+        weeklyAggregate={isWeekly}
       />
-      <OptionsAdvancedPanel chip={chip} lt={lt} spot={spot.data} />
+      <OptionsAdvancedPanel
+        chip={chip} lt={lt} spot={spot.data} weeklyAggregate={isWeekly}
+      />
     </div>
   );
 }

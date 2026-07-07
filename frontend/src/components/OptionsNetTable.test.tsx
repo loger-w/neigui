@@ -45,4 +45,14 @@ describe("OptionsNetTable", () => {
     render(<OptionsNetTable data={null} />);
     expect(screen.queryByTestId("options-net-table")).toBeNull();
   });
+
+  it("weeklyAggregate 顯示週選 aggregate 免責註記(code-review CR2 回復)", () => {
+    render(<OptionsNetTable data={lt} weeklyAggregate />);
+    expect(screen.getByText(/週三選.*週五選共用/)).toBeTruthy();
+  });
+
+  it("非週選不顯示 aggregate 註記", () => {
+    render(<OptionsNetTable data={lt} />);
+    expect(screen.queryByText(/週三選.*週五選共用/)).toBeNull();
+  });
 });

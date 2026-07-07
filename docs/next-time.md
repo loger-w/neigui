@@ -16,6 +16,7 @@
 ## From /feat options-page-v2(2026-07-07)
 
 - **`parse_institutional` 的 `day_change` 欄位恆 0**(註解宣稱 caller 回填但從未發生;design.md KR-1):前端已改用 series 末兩點差,該欄位成死欄位 — 下次動 institutional payload 時移除(連動 options-types.ts + 測試)。觸發重評估:動 fetch_institutional 或 InstitutionalSide 型別時
+- **Phase 4 code-review P2 reuse 批次**(5 條,留待 /refactor):fmtSigned(options-range-svg vs OptionsNetTable,行為微異)、fmtPct ×3 卡片重複、距現價 % 計算(options-conclusion vs OptionsMaxPainCard,含 0.0005 門檻)、finmind_futures `_inst_by_date` vs parse_foreign_futures 聚合重複(可加 institutions 參數收斂)、RangeMapSvg spot 插入迴圈沿襲 StrikeLadder 舊寫法(loop-invariant 可 hoist)。觸發重評估:動任一相關檔或開 options 專屬 /refactor 時
 
 ## From /perf cold-start(2026-07-07)
 
