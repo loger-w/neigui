@@ -6,13 +6,9 @@
 
 ---
 
-## From harness 強制層 v3 第一期(2026-07-06)
-
-- **[harness] block-no-verify.py / safety-hooks.py 的 matcher 只有 Bash**:PowerShell 工具是繞過面(harness-push-gate.py 已覆蓋 `Bash|PowerShell`,舊兩個 hook 待補 matcher + tool_name 支援;PowerShell 語法的 pattern 也要重驗,如 `--%` stop-parsing token)
-
 ## From harness review(2026-07-06,12-agent 體檢;token 減負六項已於 mod/harness-token-slim 落地)
 
-- **[harness P0] Batch 1 強制層**(順序敏感):阻擋 hook 先補 pytest → PowerShell matcher + pattern 擴充(與上一條同件)→ 自我保護 hook(PreToolUse Write|Edit 守 hooks/settings/harness.json/.git/hooks/**agents/**,`ask` 不 deny;shell 面 pattern 同批補)→ pre_push fail-closed(git tracked 但缺檔 / 空 verify 需顯式 flag)→ `permissions.deny` 加 `Read(.env)`(Read 工具讀 .env 目前無人攔)
+- **[harness P0] Batch 1 強制層剩餘**(阻擋 hook pytest、PowerShell matcher + tool_name + PS pattern 已於 2026-07-07 落地):自我保護 hook(PreToolUse Write|Edit 守 hooks/settings/harness.json/.git/hooks/**agents/**,`ask` 不 deny;shell 面 pattern 同批補)→ pre_push fail-closed(git tracked 但缺檔 / 空 verify 需顯式 flag)→ **`permissions.deny` 加 `Read(**/.env)` 需 user 手動**(2026-07-07 classifier 擋 Claude 改 permissions 自身;user 在 `~/.claude/settings.json` 的 permissions 加 `"deny": ["Read(**/.env)", "Read(**/.env.*)"]` 即可)
 - **[harness P1] Batch 2 一行級修正包**(auto-verify 移除 `ruff check --fix` 與 harness.json ruff 插槽已於 2026-07-07 契約掃描落地):鐵則 G 改「預設 + command 可覆寫」+ mod.md Phase 3 刪「同 /feat 慣例」誤導句、perf.md Phase 1 補 auto-verify 呼叫、feat.md Phase 6 infra_fail 已改引用(done)、4 agent location schema 統一 {file, section?} + 其餘三 agent 補 round≥2 cross-round 條款
 - **[harness P2] Batch 3 剩餘**:`scripts/sync-harness-mirror.py`(--check/--fix,消 README cp 塊 + 文字清單漏列雙源)、Phase 6 deferred 證據追蹤(state.json `deferred_evidence` + harness-context 注入)、/chore 輕量入口(一頁內:升級 / 補測試 / docs / 研究腳本 + 分支政策)
 - **[harness P2] Batch 4 第二期**:`derive_phase_from_artifacts` advisory(附進 stop-audit block reason,不 auto-patch)、final_merge_sha 向 git log 驗真、SubagentStop spike(payload 可判 agent 身分?)後才立案 schema 機驗、條件式 e2e 進機讀 gate **需 user 裁決**(撞 pre_push「e2e 不在此跑」已拍板決策)

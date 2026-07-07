@@ -54,6 +54,30 @@ def test_hookspath_unset_all_blocked():
     assert run_hook("git config --unset-all core.hooksPath").returncode == 2
 
 
+# --- PowerShell 工具面(2026-07-06 backlog:matcher 只有 Bash 是繞過面) ---
+
+
+def test_powershell_no_verify_blocked():
+    assert (
+        run_hook("git commit --no-verify -m x", tool_name="PowerShell").returncode == 2
+    )
+
+
+def test_powershell_hookspath_set_blocked():
+    assert (
+        run_hook("git config core.hooksPath C:/tmp", tool_name="PowerShell").returncode
+        == 2
+    )
+
+
+def test_powershell_plain_commit_allowed():
+    assert run_hook('git commit -m "feat: x"', tool_name="PowerShell").returncode == 0
+
+
+def test_other_tool_ignored():
+    assert run_hook("git commit --no-verify -m x", tool_name="Write").returncode == 0
+
+
 # --- 既有行為不回歸(抽樣) ---
 
 

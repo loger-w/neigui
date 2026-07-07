@@ -187,7 +187,7 @@ def main() -> int:
         return 0
 
     tool_name = payload.get("tool_name") or payload.get("toolName") or ""
-    if tool_name != "Bash":
+    if tool_name not in ("Bash", "PowerShell"):
         return 0
 
     tool_input = payload.get("tool_input") or payload.get("toolInput") or {}
