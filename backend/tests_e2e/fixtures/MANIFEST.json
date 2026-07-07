@@ -14,5 +14,8 @@
   "TaiwanFuturesDaily_TX_2026-06-26.json":                                      {"dataset": "TaiwanFuturesDaily",                           "data_id": "TX"},
   "TaiwanOptionFinalSettlementPrice_TXO.json":                                  {"dataset": "TaiwanOptionFinalSettlementPrice",             "data_id": "TXO"},
   "TaiwanOptionInstitutionalInvestors_TXO_2026-06-26.json":                     {"dataset": "TaiwanOptionInstitutionalInvestors",           "data_id": "TXO"},
-  "TaiwanOptionInstitutionalInvestorsAfterHours_TXO_2026-06-26.json":           {"dataset": "TaiwanOptionInstitutionalInvestorsAfterHours", "data_id": "TXO"}
+  "TaiwanOptionInstitutionalInvestorsAfterHours_TXO_2026-06-26.json":           {"dataset": "TaiwanOptionInstitutionalInvestorsAfterHours", "data_id": "TXO"},
+  "TaiwanFuturesDaily_MTX_2026-05-26_2026-06-26.json":                          {"dataset": "TaiwanFuturesDaily",                           "data_id": "MTX"},
+  "TaiwanFuturesInstitutionalInvestors_MTX_2026-05-26_2026-06-26.json":         {"dataset": "TaiwanFuturesInstitutionalInvestors",          "data_id": "MTX"},
+  "TaiwanFuturesInstitutionalInvestors_TX_2026-05-26_2026-06-26.json":          {"dataset": "TaiwanFuturesInstitutionalInvestors",          "data_id": "TX"}
 }

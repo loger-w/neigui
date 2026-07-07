@@ -1092,6 +1092,40 @@ def parse_institutional(
     }
 
 
+def parse_foreign_total_net_series(rows_day: list[dict], limit: int = 20) -> list[dict]:
+    """外資 per-date call+put 全側淨部位 series(options-page-v2 SC-8 / R3a)。
+
+    foreign_history(correlation 用)只聚合 call 側,不能導出 total —
+    這裡對 raw rows_day 做 call_net + put_net 的 per-date 聚合。
+    Returns ascending ``[{date, foreign_total_net}]``(≤ limit)。
+    """
+    per_date: dict[str, int] = {}
+    for r in rows_day:
+        d = r.get("date", "")
+        inst_raw = r.get("institutional_investors") or r.get("institution", "")
+        if not d or _INSTITUTION_NAME_MAP.get(inst_raw) != "foreign":
+            continue
+        side = r.get("call_put") or r.get("put_call")
+        if side not in ("call", "買權", "put", "賣權"):
+            continue
+        try:
+            long_oi = int(
+                r.get("long_open_interest_balance_volume")
+                or r.get("buy_open_interest") or 0
+            )
+            short_oi = int(
+                r.get("short_open_interest_balance_volume")
+                or r.get("sell_open_interest") or 0
+            )
+        except (TypeError, ValueError):
+            continue
+        per_date[d] = per_date.get(d, 0) + long_oi - short_oi
+    return [
+        {"date": d, "foreign_total_net": v}
+        for d, v in sorted(per_date.items())[-limit:]
+    ]
+
+
 def _spearman_rho(xs: list[float], ys: list[float]) -> float:
     """Spearman rank correlation. Pure-python, no numpy dependency."""
     if len(xs) != len(ys) or len(xs) < 2:

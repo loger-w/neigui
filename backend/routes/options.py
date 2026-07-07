@@ -230,6 +230,34 @@ async def get_pcr(
     return out
 
 
+@router.get("/api/options/retail_mtx")
+async def get_retail_mtx(
+    request: Request,
+    date: str = Query(default=""),
+    refresh: bool = Query(default=False),
+) -> dict:
+    """options-page-v2 SC-4: 散戶小台多空比(溫度計列)。"""
+    d = date or _today_str()
+    out = await run_with_disconnect(request, get_finmind().fetch_retail_mtx(d, refresh))
+    if _is_stale_for_requested(out, d):
+        out = {**out, "no_trading_day": True}
+    return out
+
+
+@router.get("/api/options/foreign_futures")
+async def get_foreign_futures(
+    request: Request,
+    date: str = Query(default=""),
+    refresh: bool = Query(default=False),
+) -> dict:
+    """options-page-v2 SC-5: 外資台指期淨未平倉(外資格對照行)。"""
+    d = date or _today_str()
+    out = await run_with_disconnect(request, get_finmind().fetch_foreign_futures(d, refresh))
+    if _is_stale_for_requested(out, d):
+        out = {**out, "no_trading_day": True}
+    return out
+
+
 @router.get("/api/options/institutional")
 async def get_institutional(
     request: Request,

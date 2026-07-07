@@ -1346,6 +1346,85 @@ async def test_fetch_oi_walls_spot_missing_passes_none_not_zero(monkeypatch):
     assert "static_wall_no_otm_candidate_put" not in out["data_quality_warnings"]
 
 
+async def test_fetch_institutional_series_uses_call_plus_put(monkeypatch):
+    """options-page-v2 SC-8 / R3a:payload series = 外資 call+put 全側 per-date
+    聚合(foreign_history 只有 call 側,不能拿來導 total)。"""
+    from services.finmind import get_finmind
+
+    client = get_finmind()
+
+    def inst_row(day: str, name: str, side: str, long_oi: int, short_oi: int) -> dict:
+        return {
+            "date": day, "institutional_investors": name, "call_put": side,
+            "long_open_interest_balance_volume": long_oi,
+            "short_open_interest_balance_volume": short_oi,
+        }
+
+    rows_day = [
+        inst_row("2026-06-25", "外資", "買權", 100, 40),   # call_net +60
+        inst_row("2026-06-25", "外資", "賣權", 30, 80),    # put_net  −50 → total +10
+        inst_row("2026-06-26", "外資", "買權", 200, 50),   # call_net +150
+        inst_row("2026-06-26", "外資", "賣權", 20, 100),   # put_net  −80 → total +70
+        inst_row("2026-06-26", "自營商", "買權", 999, 0),  # non-foreign → series 不計
+    ]
+
+    async def fake_get(url, params):
+        if params.get("dataset") == "TaiwanOptionInstitutionalInvestors":
+            return rows_day
+        return []
+
+    async def fake_closes(end, refresh=False):
+        return {}
+
+    monkeypatch.setattr(client, "_get", fake_get)
+    monkeypatch.setattr(client, "fetch_tx_close_history", fake_closes)
+
+    out = await client.fetch_institutional("2026-06-26")
+    assert out["series"] == [
+        {"date": "2026-06-25", "foreign_total_net": 10},
+        {"date": "2026-06-26", "foreign_total_net": 70},
+    ]
+
+
+async def test_fetch_pcr_series_exposes_daily_pcr_tail(monkeypatch):
+    """options-page-v2 SC-8:pcr payload 加 series(≤20 日,asc)。"""
+    import services.trading_calendar as tc
+    from services.finmind import get_finmind
+
+    client = get_finmind()
+
+    async def fake_days(end, n):
+        return [date(2026, 6, 24), date(2026, 6, 25), date(2026, 6, 26)]
+
+    async def fake_window(dates, end_date, refresh=False):
+        return {
+            "2026-06-25": [
+                _option_row("202607", 21000, "call", oi=200, day="2026-06-25"),
+                _option_row("202607", 21000, "put", oi=300, day="2026-06-25"),
+            ],
+            "2026-06-26": [
+                _option_row("202607", 21000, "call", oi=100, day="2026-06-26"),
+                _option_row("202607", 21000, "put", oi=400, day="2026-06-26"),
+            ],
+        }
+
+    async def fake_closes(end, refresh=False):
+        return {}
+
+    monkeypatch.setattr(tc, "get_trading_days", fake_days)
+    monkeypatch.setattr(client, "fetch_taiwan_option_daily_window", fake_window)
+    monkeypatch.setattr(client, "fetch_tx_close_history", fake_closes)
+
+    out = await client.fetch_pcr(
+        scope="all_months", contract=None, date_str="2026-06-26",
+        lookback=250, high_pct=70.0, low_pct=30.0, refresh=False,
+    )
+    assert out["series"] == [
+        {"date": "2026-06-25", "pcr": 1.5},
+        {"date": "2026-06-26", "pcr": 4.0},
+    ]
+
+
 def test_parse_oi_walls_hit_rate_t_minus_1():
     """SC-6 / F3(該變:closes_by_date 改必要語意):settlement inside
     [put_wall, call_wall] computed on T-1,牆選擇以 T-1 close 為 spot。"""
