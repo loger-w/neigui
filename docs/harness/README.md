@@ -102,8 +102,8 @@
 `commands/`、`hooks/`、`skills/auto-verify.md`、`global-rules.md` 為鏡像,**不要直接改這裡** — 改 `~/.claude/` 原檔後執行:
 
 ```bash
-cp ~/.claude/commands/{feat,bug,mod,perf,refactor,goal}.md docs/harness/commands/
-cp ~/.claude/hooks/{block-no-verify,safety-hooks,format-on-edit,harness_lib,harness-context,harness-stop-audit,harness-push-gate}.py docs/harness/hooks/
+cp ~/.claude/commands/{feat,bug,mod,perf,refactor,auto}.md docs/harness/commands/
+cp ~/.claude/hooks/{block-no-verify,safety-hooks,format-on-edit,harness_lib,harness-context,harness-stop-audit,harness-push-gate,check_feat_tags}.py docs/harness/hooks/
 cp ~/.claude/hooks/tests/test_*.py docs/harness/hooks/tests/
 cp ~/.claude/skills/auto-verify/SKILL.md docs/harness/skills/auto-verify.md
 cp ~/.claude/skills/branch-lifecycle/SKILL.md docs/harness/skills/branch-lifecycle.md
