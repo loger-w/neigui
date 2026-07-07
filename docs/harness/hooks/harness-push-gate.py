@@ -19,13 +19,12 @@ SHELL_TOOLS = {"Bash", "PowerShell"}
 
 PUSH_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\bgit\b[^|;&]*\bpush\b"),
-    re.compile(r"\bgh\s+pr\s+merge\b"),
 ]
 
-FLOW_BRANCH_PUSH = re.compile(
+FLOW_BRANCH_PUSH: re.Pattern[str] = re.compile(
     r"^git\s+push\s+-u\s+origin\s+(?:feat|fix|mod|refactor|perf)/[a-z0-9][a-z0-9-]*$"
 )
-MERGE_PATTERN = re.compile(r"\bgh\s+pr\s+merge\b")
+MERGE_PATTERN: re.Pattern[str] = re.compile(r"\bgh\s+pr\s+merge\b")
 
 ASK_REASON = (
     "鐵則 H:push main / --force / 非流程分支 push 需 user 本人確認。"
@@ -42,28 +41,13 @@ def is_push(command: str) -> bool:
     return any(p.search(command) for p in PUSH_PATTERNS)
 
 
-def emit_ask(reason: str) -> None:
+def emit_decision(decision: str, reason: str) -> None:
     print(
         json.dumps(
             {
                 "hookSpecificOutput": {
                     "hookEventName": "PreToolUse",
-                    "permissionDecision": "ask",
-                    "permissionDecisionReason": reason,
-                }
-            },
-            ensure_ascii=False,
-        )
-    )
-
-
-def emit_allow(reason: str) -> None:
-    print(
-        json.dumps(
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": "PreToolUse",
-                    "permissionDecision": "allow",
+                    "permissionDecision": decision,
                     "permissionDecisionReason": reason,
                 }
             },
@@ -89,14 +73,16 @@ def main() -> int:
         if not isinstance(command, str) or not command:
             return 0
         if FLOW_BRANCH_PUSH.fullmatch(command.strip()):
-            emit_allow(ALLOW_REASON)
+            emit_decision("allow", ALLOW_REASON)
         elif MERGE_PATTERN.search(command):
-            emit_ask(MERGE_ASK_REASON)
+            emit_decision("ask", MERGE_ASK_REASON)
         elif is_push(command):
-            emit_ask(ASK_REASON)
+            emit_decision("ask", ASK_REASON)
         return 0
     except Exception:  # fail-closed(design §4 顯式決策):錯誤時仍要求確認
-        emit_ask("harness-push-gate 內部錯誤(fail-closed)— 仍需 user 確認。")
+        emit_decision(
+            "ask", "harness-push-gate 內部錯誤(fail-closed)— 仍需 user 確認。"
+        )
         return 0
 
 

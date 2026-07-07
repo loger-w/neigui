@@ -26,12 +26,12 @@
 2. **漂移檢查照舊**(`git merge-base --is-ancestor origin/main HEAD`;動了 → rebase main + 重跑 auto-verify)。**新增前置**:local main **領先** origin/main → 停下要求先推平(走鐵則 H 的 main push 確認)— 否則 PR merge 後 origin/main 與 local main 永久分岔。全 PR 模式下 main 只從 GitHub 拉,「領先未推」應逐步收斂為異常狀態。
 3. **Review 補齊**(新):
    - `/bug` `/refactor` `/perf`:跑 `/code-review`(medium 檔位)→ `superpowers:receiving-code-review` 逐條分類 → P0/P1 修完才進下一步(3 輪上限,超限依鐵則 F 回報)。P2 依 mod.md 既有輸出契約:慣例 / 風格類彙總計數,疑似行為級例外展開。
-   - `/feat` `/mod`:自評階段(/feat P4、/mod P5)後**有新 commit** → 只對增量 diff 補一輪 medium `/code-review`;無新 commit → 沿用自評結果,不重跑。判準:自評結束時把 HEAD sha 記進 state.json(`self_review_head`),收尾比對 `self_review_head..HEAD` 是否為空。
+   - `/feat` `/mod`:自評階段(/feat P4、/mod P5)後**有新 commit** → 只對增量 diff 補一輪 medium `/code-review`;無新 commit → 沿用自評結果,不重跑。判準:自評結束時記下當下 HEAD sha(/feat 寫入 state.json `self_review_head`;/mod 追記 change-spec.md 末尾同名欄位),收尾比對 `self_review_head..HEAD` 是否為空;欄位缺失(改版前在途 feature)保守視同有增量。
 4. `git push -u origin <prefix>/<slug>`(hook 對此格式放行,見 §4)。
 5. `gh pr create`,body 含:變更摘要、review 結果摘要(finding 數 + 分類)、驗證證據(測試數字 / 截圖路徑)、試用指引。
 6. **單一確認點**:回報 PR URL + review 摘要 + 試用指引後,**同一 turn 直接發出** `gh pr merge --rebase --delete-branch` — push-gate hook 的 ask 確認框就是「是否 merge」提示,user 可掛著慢慢試用:
    - **allow** → merge + 遠端/本地分支刪除一步完成 → `git switch main && git pull --ff-only`,收尾完成。
-   - **deny** → 流程停下收 feedback;修正後 push 更新同一個 PR,重新發 merge(確認點重來)。
+   - **deny** → 流程停下收 feedback;修正後 push 更新同一個 PR(沿用步驟 4 完整 push 形式,bare `git push` 會被 ask),重新發 merge(確認點重來)。
 7. **Fallback**:無遠端 / 離線 / `gh` 未認證 → 走原 local ff merge 路徑(`git switch main` + `git merge --ff-only` + `git branch -d`),回報註明 fallback 原因。
 
 ## 4. harness-push-gate hook 修改
@@ -76,6 +76,7 @@ Source of truth(`~/.claude/`):
 |---|---|
 | merge 確認 deny | 分支與 PR 保留,流程停下收 feedback |
 | 同名分支已有 open PR(`gh pr create` 失敗) | 沿用既有 PR(push 已更新它),直接進 merge 確認 |
+| push 成功但 `gh pr create` 失敗(認證過期 / 斷網) | 停下回報(遠端分支已在、無 PR),不走 local fallback;恢復後重跑 create |
 | rebase 衝突 / main 分岔 `--ff-only` 失敗 | 照舊停下回報,不自動解 |
 | `gh pr merge --rebase` 被 GitHub 拒(不可 rebase) | 停下回報,不自動改 merge 方式 |
 | 無遠端 / 離線 / gh 未認證 | local ff merge fallback,回報註明 |
