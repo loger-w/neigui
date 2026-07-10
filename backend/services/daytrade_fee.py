@@ -55,11 +55,17 @@ def _get_client() -> httpx.AsyncClient:
 
 
 async def aclose() -> None:
-    """lifespan shutdown 清理(對齊 finmind _client.close() 慣例)。"""
+    """lifespan shutdown 清理(對齊 finmind _client.close() 慣例)。
+
+    close 失敗也要把 singleton 歸 None(CR-2)— 殘留半關閉 client 會讓下次
+    _get_client() 拿到死連線池。
+    """
     global _client
     if _client is not None:
-        await _client.aclose()
-        _client = None
+        try:
+            await _client.aclose()
+        finally:
+            _client = None
 
 
 # ---------------------------------------------------------------- normalize
