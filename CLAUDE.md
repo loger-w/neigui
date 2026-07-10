@@ -161,6 +161,7 @@ User-facing changelog 在 `frontend/src/lib/changelog.ts`,前端 top bar 右側 
 | 情境 | Skill |
 |---|---|
 | 接 FinMind dataset / probe 腳本 / fan-out 設計 / 配額評估 / 成串 502/503 排查 / backend test 基建 | `finmind-conventions` |
+| 接 TWSE RWD / OpenAPI、TPEx OpenAPI 直抓端點 / 民國日期 / 月批次 cache / TPEx TLS 與無歷史限制 / 直抓 service 的 FAKE 層 | `twse-tpex-conventions` |
 | Market snapshot / EOD / breadth / sector aggregation / heatmap / universe filter | `market-pipeline` |
 | Cancel 鏈 / prd 502 / CancelledError / >30s endpoint / inflight dedup / 前端 fetch signal | `cancel-chain` |
 | **判斷改動要不要 e2e(Phase 0)** / 寫改 e2e spec / fixture rotation / :8000 與 --reload 驗證前檢查 | `e2e-conventions` |
