@@ -18,6 +18,7 @@ from routes.daytrade_fee import router as daytrade_fee_router
 from routes.market import router as market_router
 from routes.symbols import router as symbols_router
 from routes.options import router as options_router
+from services import daytrade_fee as df_mod
 
 load_dotenv()
 
@@ -48,8 +49,6 @@ async def lifespan(app: FastAPI):
             if fm_mod._client is not None:
                 await fm_mod._client.close()
         finally:
-            from services import daytrade_fee as df_mod
-
             await df_mod.aclose()
 
 
