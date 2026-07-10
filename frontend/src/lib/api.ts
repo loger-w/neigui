@@ -2,6 +2,7 @@ import type {
   ChipSummary, ChipBubbleData, ChipHistory, ChipBrokerHistory, ChipBrokersWindow,
   ChipIntraday,
 } from "./chip-data";
+import type { BorrowFeeData } from "./borrow-fee";
 
 const BASE = "/api";
 
@@ -208,6 +209,11 @@ export const api = {
     const params: Record<string, string> = { date, days: String(days) };
     if (refresh) params.refresh = "true";
     return get(`${BASE}/chip/${symbol}/brokers_window`, params, options);
+  },
+  daytradeFee(refresh?: boolean, options?: RequestOptions): Promise<BorrowFeeData> {
+    const params: Record<string, string> = {};
+    if (refresh) params.refresh = "true";
+    return get(`${BASE}/daytrade-fee`, params, options);
   },
   symbols(
     search: string, options?: RequestOptions,
