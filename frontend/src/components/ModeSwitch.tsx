@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 
-export type Mode = "equity" | "options" | "market";
+export type Mode = "equity" | "options" | "market" | "borrow";
 
 interface Props {
   value: Mode;
@@ -11,6 +11,7 @@ const MODES: Array<{ key: Mode; label: string }> = [
   { key: "equity",  label: "個股"  },
   { key: "options", label: "選擇權" },
   { key: "market",  label: "大盤"  },
+  { key: "borrow",  label: "券差"  },
 ];
 
 export function ModeSwitch({ value, onChange }: Props): ReactElement {

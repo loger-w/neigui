@@ -10,11 +10,12 @@ afterEach(() => {
 });
 
 describe("ModeSwitch", () => {
-  it("renders three modes", () => {
+  it("renders four modes", () => {
     render(<ModeSwitch value="equity" onChange={() => {}} />);
     expect(screen.getByRole("button", { name: "個股" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "選擇權" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "大盤" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "券差" })).toBeTruthy();
   });
 
   it("marks the active mode with aria-current=page", () => {
@@ -42,6 +43,23 @@ describe("ModeSwitch", () => {
     expect(
       screen.getByRole("button", { name: "選擇權" }).getAttribute("aria-current"),
     ).toBeNull();
+  });
+
+  it("marks 券差 as active when value is 'borrow'", () => {
+    render(<ModeSwitch value="borrow" onChange={() => {}} />);
+    expect(
+      screen.getByRole("button", { name: "券差" }).getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      screen.getByRole("button", { name: "個股" }).getAttribute("aria-current"),
+    ).toBeNull();
+  });
+
+  it("calls onChange('borrow') when 券差 clicked from equity", () => {
+    const spy = vi.fn();
+    render(<ModeSwitch value="equity" onChange={spy} />);
+    fireEvent.click(screen.getByRole("button", { name: "券差" }));
+    expect(spy).toHaveBeenCalledWith("borrow");
   });
 
   it("calls onChange when the other mode is clicked", () => {
