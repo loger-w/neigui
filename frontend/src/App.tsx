@@ -59,6 +59,10 @@ const MarketPage = lazy(() =>
   import("./components/MarketPage").then((m) => ({ default: m.MarketPage })),
 );
 
+const BorrowFeePage = lazy(() =>
+  import("./components/BorrowFeePage").then((m) => ({ default: m.BorrowFeePage })),
+);
+
 type Tab = "overview" | "bubble";
 
 function todayStr(): string {
@@ -470,7 +474,7 @@ export default function App() {
         >
           <OptionsPage />
         </Suspense>
-      ) : (
+      ) : mode === "market" ? (
         <Suspense
           fallback={
             <div className="flex-1 flex items-center justify-center text-ink-dim text-sm">
@@ -479,6 +483,18 @@ export default function App() {
           }
         >
           <MarketPage isActive={mode === "market"} onSymbolPick={handleSymbolPick} />
+        </Suspense>
+      ) : (
+        // 4-way ternary(market-pipeline 慣例:mode 層級不用 hidden,避免多頁同
+        // 時 mount 抓資料)。else 分支 = fallback 終點(design P2-5 已知行為變更)。
+        <Suspense
+          fallback={
+            <div className="flex-1 flex items-center justify-center text-ink-dim text-sm">
+              載入券差頁面...
+            </div>
+          }
+        >
+          <BorrowFeePage />
         </Suspense>
       )}
     </div>

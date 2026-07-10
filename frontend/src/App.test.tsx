@@ -19,6 +19,9 @@ vi.mock("./components/OptionsPage", () => ({
 vi.mock("./components/MarketPage", () => ({
   MarketPage: () => <div data-testid="market-page">market</div>,
 }));
+vi.mock("./components/BorrowFeePage", () => ({
+  BorrowFeePage: () => <div data-testid="borrow-fee-page">borrow</div>,
+}));
 vi.mock("./components/SymbolSearch", () => ({
   SymbolSearch: () => <div data-testid="symbol-search">search</div>,
 }));
@@ -98,14 +101,32 @@ describe("App mode persistence (SC-4)", () => {
     expect(screen.queryByTestId("market-page")).toBeNull();
   });
 
+  it("mounts BorrowFeePage when localStorage mode=borrow on cold start", async () => {
+    localStorage.setItem("mode", "borrow");
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.queryByTestId("borrow-fee-page")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("kline-chart")).toBeNull();
+    expect(screen.queryByTestId("market-page")).toBeNull();
+  });
+
+  it("clicking 券差 from equity writes localStorage and mounts BorrowFeePage", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "券差" }));
+    expect(localStorage.getItem("mode")).toBe("borrow");
+    await waitFor(() => {
+      expect(screen.queryByTestId("borrow-fee-page")).toBeTruthy();
+    });
+  });
+
   it("ignores invalid localStorage mode value and falls back to equity", () => {
     localStorage.setItem("mode", "INVALID" as string);
     render(<App />);
-    // 沒 explicit validate;`as Mode` cast 後直接設 state(view 不掛 equity/options/market 任一)
-    // 三元 fallback 走 MarketPage(因為非 equity 且非 options)。鎖目前真實行為,
-    // 提醒未來若加 validate,記得跟著改這個 test。
-    // 這條斷言鎖 "no equity content" 即可,避免 lazy MarketPage 在同步 render
-    // 還沒 resolve 也通過。
+    // 沒 explicit validate;`as Mode` cast 後直接設 state(view 不掛四 mode 任一)。
+    // 4-way 三元後 fallback 終點 = BorrowFeePage(design P2-5 已知行為變更,
+    // 原為 MarketPage)。鎖 "no equity content" 即可,避免 lazy page 在同步
+    // render 還沒 resolve 也通過;未來若加 validate 記得跟著改這個 test。
     expect(screen.queryByTestId("kline-chart")).toBeNull();
   });
 });
