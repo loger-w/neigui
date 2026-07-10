@@ -1,0 +1,20 @@
+{
+  "round": 1,
+  "date": "2026-07-11",
+  "shape": "web",
+  "environment": "真 backend(:8000,非 --reload,真打 TWSE/TPEx)+ vite dev(:5173)+ chrome-devtools MCP",
+  "results": [
+    {"sc": "SC-1", "status": "pass", "evidence": "SC-1_SC-2_SC-3_borrow-mode-real-data.png — mode 列四顆、券差 active(accent 底線)、v0.24.0 badge;點擊切換實測"},
+    {"sc": "SC-2", "status": "pass", "evidence": "同上 — 真實資料(as_of 2026-07-09)上市/上櫃合併、六欄、預設費率降序(7% 上限筆置頂)、同股多筆逐筆保留(南亞科)、月次數(群創 7)"},
+    {"sc": "SC-3", "status": "pass", "evidence": "同上 — ≥3.5% 費率 accent 標色,<3.5% 原色;全頁無方向性文案"},
+    {"sc": "SC-4", "status": "pass", "evidence": "真實非交易日態(週六):資料日 2026-07-09 badge + 「非交易日,顯示最近可得日」註記自然觸發;curl /api/daytrade-fee 確認 payload as_of 回退正確"},
+    {"sc": "SC-5", "status": "pass", "evidence": "SC-5_sort-by-shares-desc.png — 點「借券股數」標題 → 68,000 置頂降序,▼ 指示移欄"},
+    {"sc": "SC-6", "status": "subsumed", "evidence": "cache/refresh 語意由 pytest 鎖(test_fetch_month_caches_and_refresh_busts 等 6 測);UI refresh 鈕存在且可點"},
+    {"sc": "console/network", "status": "pass", "evidence": "console 僅 1 條 pre-existing favicon.ico 404(全站既有、非本 feature 引入);/api/daytrade-fee 200;ERR_ABORTED→200 為 StrictMode 雙 mount 預期 abort(cancel 鏈正常)"}
+  ],
+  "regression_samples": [
+    {"target": "options mode", "status": "pass", "evidence": "進頁 landing 完整渲染(結論列 + RangeMap 真資料 + 四指標)"},
+    {"target": "equity mode", "status": "pass", "evidence": "regression_equity-mode.png — 空狀態 + 控制列正常"}
+  ],
+  "notes": "TLS custom ssl context 於真 server 環境驗證通過(TPEx 286 rows 即時抓成功);今日為週六 → SC-4 的 NTD 態是真實觸發非造假"
+}

@@ -1,0 +1,15 @@
+{
+  "round": 1,
+  "verdict": "needs_revision",
+  "receiving_classification": [
+    {"id": "P0-1", "resolution": "accepted", "action": "design v2 §1.1:tpex 過去月 refresh 也回 cache(無 upstream 可重抓)+ 空回應不覆寫非空 cache;§4 加測試鎖"},
+    {"id": "P0-2", "resolution": "accepted", "action": "design v2 §1.1:改為 finmind.py _run_once 同構(shield + refcount)local 實作;§4 加並發 cancel 測試"},
+    {"id": "P1-1", "resolution": "accepted", "action": "design v2 §2:route catch 改 httpx.HTTPError 基類;§4 補 ReadError case"},
+    {"id": "P2-1", "resolution": "accepted", "action": "brainstorm.md SC-4 驗證欄回寫 amendment 對齊"},
+    {"id": "P2-2", "resolution": "accepted", "action": "design v2 §1.3:no_trading_day 無條件 as_of != target;pytest 補 date 給定 case"},
+    {"id": "P2-3", "resolution": "accepted", "action": "design v2 §2:main.py lifespan finally 補 daytrade_fee client close"},
+    {"id": "P2-4", "resolution": "accepted", "action": "design v2 §1.1 寫明 resolution:不做 backoff(低頻每日一發 + refresh 救濟)[auto-default],對應 spec §7"},
+    {"id": "P2-5", "resolution": "accepted", "action": "design v2 §4:App.test.tsx 補 borrow mount + persistence;§3.1 註明 invalid-mode fallback 終點變 BorrowFeePage"},
+    {"id": "P2-6", "resolution": "accepted", "action": "design v2 §1.1 寫明日粒度取捨 + Known Risks 註記(公告後當日需手動 refresh)"}
+  ]
+}

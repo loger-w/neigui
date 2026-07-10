@@ -1,0 +1,57 @@
+{
+  "slug": "daytrade-borrow-fee",
+  "start_sha": "0cffb4f574c73c171b96e0a506e4f83e027339f0",
+  "branch": "feat/daytrade-borrow-fee",
+  "worktree_path": null,
+  "current_phase": 8,
+  "completed_phases": [
+    -1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "scope": "L",
+  "phase_2_mode": "condensed",
+  "pending_review_rounds": {
+    "phase_1": 0,
+    "phase_2": 0,
+    "phase_4": 0
+  },
+  "blockers": [],
+  "phase_6_blocked_reason": null,
+  "scope_overrides": {
+    "goal_efficiency_mode": true
+  },
+  "last_updated": "2026-07-11T05:30:00+08:00",
+  "project_shape": "fastapi-backend + react-frontend + playwright-e2e",
+  "last_commit_sha": "be407b1",
+  "final_merge_sha": null,
+  "self_review_head": "be407b1c4f2184357dcc7180bfca999d9f3ab989",
+  "sc_cycle_counts": {
+    "_unscoped": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    }
+  },
+  "paused": null,
+  "auto_mode": {
+    "exit_condition": "Phase 8.5 完成且 pytest/ruff/vitest/build/e2e 全綠(e2e 由 AI 實際執行)",
+    "notes": [
+      "[auto-default: spec docs/specs/daytrade-borrow-fee/spec.md 為 user 拍板文件,brainstorm HARD-GATE 替代條件成立 | reason: /auto 契約]",
+      "user mid-turn 2026-07-11 拍板:券差改為最上層 mode tab(個股/選擇權/全市場並列),非 market mode 子 tab",
+      "local main 領先 origin/main 3 commits(0cffb4f/9129051/3021d62),收尾節先推平走鐵則 H 確認",
+      "[auto-default: Phase 3 main-agent TDD + wave batch | reason: 檔案鏈狀依賴非彼此獨立]"
+    ]
+  }
+}

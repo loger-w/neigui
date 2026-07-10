@@ -1,0 +1,10 @@
+{
+  "round": 2,
+  "verdict": "needs_revision",
+  "exit_note": "無 P0 且 P1=2 ≤ 2 → 達退出條件;三條全 accepted 且皆低成本,直接修入 v3 後進 Phase 2(不留 Known Risks、不重跑 round 3)",
+  "receiving_classification": [
+    {"id": "R2-1", "resolution": "accepted", "action": "partial 條件改 per-day:as_of 月 ≠ 當月 且 tpex rows 無 date == as_of → partial;加測試鎖 stale-cache 態"},
+    {"id": "R2-2", "resolution": "accepted", "action": "route 加 request: Request + run_with_disconnect wrap,對齊 chip/options/market 既有 pattern,P0-2 cancel 路徑 production 可達"},
+    {"id": "R2-3", "resolution": "accepted", "action": "§1.3 步驟 2 改寫為裸 gather 單一敘述(任一例外上拋 502;sibling 背景跑完只寫 cache 無副作用)"}
+  ]
+}

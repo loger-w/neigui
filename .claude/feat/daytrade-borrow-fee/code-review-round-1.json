@@ -1,0 +1,55 @@
+{
+  "round": 1,
+  "effort": "medium",
+  "scope": "git diff main...HEAD(spec amendment + wave1-5)",
+  "finders": 6,
+  "raw_candidates": 21,
+  "p0": [],
+  "p1": [],
+  "expanded_p2_behavior_like": [
+    {
+      "id": "CR-1",
+      "candidates": ["A1", "B4", "C3"],
+      "title": "main.py lifespan finally 內 runtime import 可能 mask 前段例外,且與 fm_mod top-level import 不一致",
+      "verify": "CONFIRMED(機制真實;實務上 module 已於 startup 經 routes import 載入,import 僅 sys.modules 綁定,風險低但 hoist 零成本)",
+      "resolution": "accepted",
+      "action": "import 提升至檔頭"
+    },
+    {
+      "id": "CR-2",
+      "candidates": ["C1"],
+      "title": "daytrade_fee.aclose() 例外時 _client 不歸 None,殘留半關閉 client",
+      "verify": "CONFIRMED(aclose 可拋;shutdown 路徑影響小但 try/finally 一行修)",
+      "resolution": "accepted",
+      "action": "aclose 改 try/finally 置 None"
+    },
+    {
+      "id": "CR-3",
+      "candidates": ["B2"],
+      "title": "invalid localStorage mode 的 fallback 從 MarketPage(isActive=false 不抓資料)變 BorrowFeePage(mount 即 fetch)",
+      "verify": "CONFIRMED(行為屬實)",
+      "resolution": "rejected_with_reason",
+      "reason": "design P2-5 已文件化的已知行為變更;garbage mode 僅手動竄改 localStorage 才出現,fetch 單發且有 backend cache;加 validate 屬行為改動應另拆"
+    },
+    {
+      "id": "CR-4",
+      "candidates": ["A2"],
+      "title": "DaytradeFeeTable row key 含 index,重排序時 React remount tr",
+      "verify": "CONFIRMED(機制真實)",
+      "resolution": "rejected_with_reason",
+      "reason": "rows 為純 td 無內部 state,remount 無狀態損失;同股同日多筆使自然 key 不唯一,index 摻入為正解;數十 rows 的 DOM churn 可忽略"
+    }
+  ],
+  "p2_summary": {
+    "count": 17,
+    "themes": [
+      "jsdom pragma ×3 — REFUTED(實證 pragma 在各檔第 2 行)",
+      "N4 assertion 搬移 / changelog pin — REFUTED(誤讀:market unmount 保留;版本釘本性隨 release 變)",
+      "refresh button JSX ×3 重複 — 真實但跨 App/OptionsHeader 既有檔,鐵則 B → 寫入 docs/next-time.md",
+      "sortRows 無 memo / any() 二次遍歷 / normalize try-except 重複 / hook 樣板重複 — rejected(YAGNI;數十 rows 量級;樣板為 spec 明文慣例)",
+      "4-way ternary altitude / exhaustiveness — rejected(mode ternary 為 market-pipeline skill 文件化慣例;exhaustiveness 由 vitest + e2e N1/N4 鎖)"
+    ]
+  },
+  "missing_from_spec_check": "對照 design.md v3 全節逐一核:EOD cache 語意/回退鏈/partial/no_trading_day/testid 契約皆有實作與測試;無 spec 未提及的副作用(唯一行為外溢 = CR-3,已為 design P2-5 文件化條目)",
+  "exit": "round 1 accepted=2 ≤ 5 且無 P0 → 單輪退場;fix 後全套測試須綠"
+}
