@@ -3,7 +3,7 @@
   "start_sha": "0cffb4f574c73c171b96e0a506e4f83e027339f0",
   "branch": "feat/daytrade-borrow-fee",
   "worktree_path": null,
-  "current_phase": 8,
+  "current_phase": 8.5,
   "completed_phases": [
     -1,
     0,
@@ -13,7 +13,8 @@
     4,
     5,
     6,
-    7
+    7,
+    8
   ],
   "scope": "L",
   "phase_2_mode": "condensed",
@@ -27,10 +28,10 @@
   "scope_overrides": {
     "goal_efficiency_mode": true
   },
-  "last_updated": "2026-07-11T05:30:00+08:00",
+  "last_updated": "2026-07-11T06:00:00+08:00",
   "project_shape": "fastapi-backend + react-frontend + playwright-e2e",
   "last_commit_sha": "be407b1",
-  "final_merge_sha": null,
+  "final_merge_sha": "afc0fb9b41c187e8126460b7d9d6f508e89a06f9",
   "self_review_head": "be407b1c4f2184357dcc7180bfca999d9f3ab989",
   "sc_cycle_counts": {
     "_unscoped": {
