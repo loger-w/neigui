@@ -1,4 +1,6 @@
-# 券差查詢 — 應付現股當日沖銷券差借券費率(market mode 新 tab)
+# 券差查詢 — 應付現股當日沖銷券差借券費率(最上層 mode 新 tab)
+
+> [amendment 2026-07-11: user 拍板頁面歸屬變更 — 不做 market mode 內子 tab,改為最上層 mode 切換列(個股/選擇權/大盤)並列的第 4 個 tab「券差」。App.tsx mode ternary 改 4-way(見 skill `market-pipeline`);route 對齊「每 router 一檔」慣屬改獨立 `routes/daytrade_fee.py` + `GET /api/daytrade-fee`(§5.1 原 `/api/market/daytrade-fee` 作廢)。§1「頁面歸屬」與 §4 白名單「market mode 既有 tabs 不變」語意不受影響 — market mode 完全不動反而更乾淨。]
 
 **Date**: 2026-07-08
 **Type**: brainstorm 產出 spec(實作走 `/feat`,本檔為 Phase 0 pre-reading)
