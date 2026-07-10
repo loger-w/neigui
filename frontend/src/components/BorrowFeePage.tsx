@@ -8,7 +8,7 @@ export function BorrowFeePage(): ReactElement {
   const { data, loading, error, refresh, noTradingDay } = useDaytradeFee();
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+    <div data-testid="borrow-fee-page" className="flex-1 min-h-0 flex flex-col overflow-hidden">
       <header className="shrink-0 px-4 sm:px-6 pt-5 pb-3 border-b border-line">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="text-2xl text-ink font-semibold shrink-0">券差查詢</h1>
