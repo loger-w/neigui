@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
 
 from routes.chip import router as chip_router
+from routes.daytrade_fee import router as daytrade_fee_router
 from routes.market import router as market_router
 from routes.symbols import router as symbols_router
 from routes.options import router as options_router
@@ -42,8 +43,14 @@ async def lifespan(app: FastAPI):
         await symbols_mod.shutdown_load_task()
     finally:
         # close 放 finally:shutdown 段的取消 / 例外不得跳過連線清理。
-        if fm_mod._client is not None:
-            await fm_mod._client.close()
+        # 巢狀 finally:兩個 client 各自清,任一炸不跳過另一個。
+        try:
+            if fm_mod._client is not None:
+                await fm_mod._client.close()
+        finally:
+            from services import daytrade_fee as df_mod
+
+            await df_mod.aclose()
 
 
 app = FastAPI(title="Chip Overview", version="0.1.0", lifespan=lifespan)
@@ -62,6 +69,7 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(chip_router)
+app.include_router(daytrade_fee_router)
 app.include_router(market_router, prefix="/api/market")
 app.include_router(symbols_router)
 app.include_router(options_router)

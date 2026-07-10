@@ -1,0 +1,23 @@
+[
+  {
+    "Date": "1150626",
+    "SecuritiesCompanyCode": "8069",
+    "CompanyName": "元太",
+    " LendingVolume": "25,000",
+    "LendingFee": "1.000"
+  },
+  {
+    "Date": "1150626",
+    "SecuritiesCompanyCode": "5483",
+    "CompanyName": "中美晶",
+    " LendingVolume": "3,000",
+    "LendingFee": "3.500"
+  },
+  {
+    "Date": "1150625",
+    "SecuritiesCompanyCode": "8069",
+    "CompanyName": "元太",
+    " LendingVolume": "1,000",
+    "LendingFee": "0.100"
+  }
+]
