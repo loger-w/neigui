@@ -1,0 +1,10 @@
+{
+  "round": 1,
+  "verdict": "pass",
+  "receiving_classification": [
+    {"id": "R1-1", "resolution": "accepted", "action": "PLAN Wave 2 明寫 from datetime import date as date_type + date_type.fromisoformat"},
+    {"id": "R1-2", "resolution": "accepted", "action": "test_daytrade_fee.py 自帶 module-local autouse reset(_client=None + _inflight.clear()),註明對齊 conftest fm._client 慣例"},
+    {"id": "R1-3", "resolution": "accepted", "action": "前後端各加 threshold==3.5 值鎖測試,註解互指"},
+    {"id": "R1-4", "resolution": "accepted", "action": "BorrowFeePage.test.tsx 也掛方向文案 queryByText null assertion"}
+  ]
+}
