@@ -40,6 +40,18 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.24.0",
+    date: "2026-07-11",
+    highlights: "新增「券差」頁:當沖券差借券費率每日總覽",
+    changes: [
+      {
+        kind: "feature",
+        scope: "global",
+        text: "頂部新增「券差」分頁:列出當日上市與上櫃的當沖券差借券費率,依費率高低排序,高費率標色提示,並附本月發生次數",
+      },
+    ],
+  },
+  {
     version: "0.23.0",
     date: "2026-07-07",
     highlights: "選擇權頁全面改版:先給結論、再給證據",

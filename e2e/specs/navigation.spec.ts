@@ -11,11 +11,17 @@ test.describe("navigation & persistence", () => {
     await installFixtureClock(page);
   });
 
-  test("N1: 三 mode toggle active style aria-current(SC-6 case 1)", async ({ page }) => {
+  test("N1: 四 mode toggle active style aria-current(SC-6 case 1)", async ({ page }) => {
     // 痛點:F10 — ModeSwitch 用 aria-current='page' (不是 data-state),
     // 改 attr name 雙端必雙改。本 test 鎖死 attr,refactor 立即抓。
+    // feat/daytrade-borrow-fee SC-1:mode 列第 4 顆「券差」納入迴圈。
     await page.goto("/");
-    for (const role of [ROLES.modeSwitchEquity, ROLES.modeSwitchOptions, ROLES.modeSwitchMarket]) {
+    for (const role of [
+      ROLES.modeSwitchEquity,
+      ROLES.modeSwitchOptions,
+      ROLES.modeSwitchMarket,
+      ROLES.modeSwitchBorrow,
+    ]) {
       const btn = page.getByRole(role.role, { name: role.name });
       await btn.click();
       await expect(btn).toHaveAttribute("aria-current", "page");
@@ -60,9 +66,14 @@ test.describe("navigation & persistence", () => {
     await page.getByRole(ROLES.modeSwitchMarket.role, { name: ROLES.modeSwitchMarket.name }).click();
     await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.optionsConclusion)).toHaveCount(0);
-    // (3) 切回 equity → assert market unmount
+    // (3) 切 borrow → assert market unmount(feat/daytrade-borrow-fee:4-way
+    //     ternary 的新末端分支也要進 unmount 鎖,防 hidden-div 復發)
+    await page.getByRole(ROLES.modeSwitchBorrow.role, { name: ROLES.modeSwitchBorrow.name }).click();
+    await expect(page.getByTestId(TESTIDS.borrowFeePage)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toHaveCount(0);
+    // (4) 切回 equity → assert borrow unmount
     await page.getByRole(ROLES.modeSwitchEquity.role, { name: ROLES.modeSwitchEquity.name }).click();
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toHaveCount(0);
+    await expect(page.getByTestId(TESTIDS.borrowFeePage)).toHaveCount(0);
   });
 });

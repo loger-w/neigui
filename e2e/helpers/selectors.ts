@@ -37,6 +37,10 @@ export const TESTIDS = {
   marketSectorAmountShare: "market-sector-amount-share",
   marketSectorVolRatio: "market-sector-vol-ratio",
   marketClassicToggle: "market-classic-toggle",
+  // borrow mode roots(feat/daytrade-borrow-fee)
+  borrowFeePage: "borrow-fee-page",
+  feeRow: "fee-row",
+  feeHigh: "fee-high",
 
   // 既有(component 內既有,不在 Wave 1 modify scope)
   refreshSpinner: "refresh-spinner",
@@ -53,6 +57,7 @@ export const ROLES = {
   modeSwitchEquity: { role: "button" as const, name: /^個股$/ },
   modeSwitchOptions: { role: "button" as const, name: /^選擇權$/ },
   modeSwitchMarket: { role: "button" as const, name: /^大盤$/ },
+  modeSwitchBorrow: { role: "button" as const, name: /^券差$/ },
   // active 用 aria-current='page'(F10 — 不是 data-state,Radix Tabs 已 drop)
   refresh: { role: "button" as const, name: "重新整理" },
   // RangeSelector.tsx:141 真實 aria-label(F15)
