@@ -1,11 +1,21 @@
-import type { ReactElement } from "react";
+import { useMemo, useState, type ReactElement } from "react";
 import { useDaytradeFee } from "../hooks/useDaytradeFee";
+import { BorrowFeeStockFilter } from "./BorrowFeeStockFilter";
 import { DaytradeFeeTable } from "./DaytradeFeeTable";
+import { distinctStocks, type StockOption } from "../lib/borrow-fee-utils";
 
 // 券差查詢 — 最上層「券差」mode 頁(App.tsx 4-way ternary + lazy)。
 // root 用 flex-1 min-h-0(App root 是 flex col;h-full 會下溢 nav 高度被裁切)。
 export function BorrowFeePage(): ReactElement {
   const { data, loading, error, refresh, noTradingDay } = useDaytradeFee();
+  const [selectedStock, setSelectedStock] = useState<StockOption | null>(null);
+
+  const stockOptions = useMemo(() => (data ? distinctStocks(data.rows) : []), [data]);
+  const rows = data
+    ? selectedStock
+      ? data.rows.filter((r) => r.stock_id === selectedStock.stock_id)
+      : data.rows
+    : [];
 
   return (
     <div data-testid="borrow-fee-page" className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -53,6 +63,16 @@ export function BorrowFeePage(): ReactElement {
         <p className="mt-2 text-xs text-ink-dim">
           證交所 / 櫃買中心標借公告之現股當日沖銷券差借券費率;法定上限 7%。
         </p>
+        {data && (
+          <div className="mt-3 max-w-xs">
+            <BorrowFeeStockFilter
+              options={stockOptions}
+              selected={selectedStock}
+              onSelect={setSelectedStock}
+              onClear={() => setSelectedStock(null)}
+            />
+          </div>
+        )}
       </header>
 
       {error && (
@@ -62,13 +82,19 @@ export function BorrowFeePage(): ReactElement {
       )}
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-3">
-        {data && data.rows.length > 0 ? (
+        {data && rows.length > 0 ? (
           <div className="max-w-4xl">
-            <DaytradeFeeTable rows={data.rows} monthCounts={data.month_counts} />
+            <DaytradeFeeTable rows={rows} monthCounts={data.month_counts} />
           </div>
         ) : (
           <div className="h-full flex items-center justify-center text-sm text-ink-dim">
-            {loading ? "載入中..." : error ? "" : "本月無券差資料"}
+            {loading
+              ? "載入中..."
+              : error
+                ? ""
+                : data && selectedStock
+                  ? "該檔今日無券差資料"
+                  : "本月無券差資料"}
           </div>
         )}
       </div>
