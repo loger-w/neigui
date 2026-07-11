@@ -1005,3 +1005,25 @@ async def test_fetch_chip_intraday_refresh_bypasses_cache():
 
     await client.fetch_chip_intraday("2330", "2026-06-26", refresh=True)
     assert mc.get.await_count == first_calls + 1
+
+
+async def test_stock_price_range_calls_taiwan_stock_price_dataset(monkeypatch):
+    # warrant-iv-drift SC-2:backfill 標的價缺口補抓的 dataset/參數契約鎖
+    from services.finmind import FinMindClient
+
+    client = FinMindClient()
+    captured = {}
+
+    async def fake_get(url: str, params: dict) -> list:
+        captured["params"] = params
+        return [{"date": "2026-07-09", "close": 91.0}]
+
+    monkeypatch.setattr(client, "_get", fake_get)
+    rows = await client.stock_price_range("8086", "2026-04-01", "2026-07-11")
+    assert rows[0]["close"] == 91.0
+    assert captured["params"] == {
+        "dataset": "TaiwanStockPrice",
+        "data_id": "8086",
+        "start_date": "2026-04-01",
+        "end_date": "2026-07-11",
+    }
