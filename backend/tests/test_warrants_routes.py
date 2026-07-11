@@ -113,3 +113,116 @@ def test_brokers_httpx_error_falls_to_central_handler(monkeypatch, client):
     r = client.get("/api/warrants/030012/brokers")
     assert r.status_code == 502
     assert r.json()["detail"] == {"error": "finmind_error"}
+
+
+# ---------------------------------------------------------------- iv-history(warrant-iv-drift)
+
+
+@pytest.fixture()
+def _reset_ivh(monkeypatch):
+    import services.warrant_iv_history as ivh
+
+    monkeypatch.setattr(ivh, "_drift_mem", None)
+    monkeypatch.setattr(ivh, "_rebuild_bg_task", None)
+    ivh._series_lru.clear()
+    ivh._inflight.clear()
+    return ivh
+
+
+def test_warrants_rows_carry_iv_drift(monkeypatch, client, _reset_ivh):
+    # SC-4:讀取時 merge iv_drift label(不烙進快照檔)
+    ivh = _reset_ivh
+    snap = {
+        "as_of_date": "2026-07-09",
+        "tpex_date": "2026-07-09",
+        "by_underlying": {"2330": [{"warrant_id": "030012", "name": "測試"}]},
+    }
+
+    async def fake_load(refresh: bool = False):
+        return snap
+
+    monkeypatch.setattr(ws, "_load_snapshot", fake_load)
+    monkeypatch.setattr(
+        ivh,
+        "_drift_mem",
+        {
+            "_cache_version": 1,
+            "built_from": [],
+            "drift": {"030012": {"label": "declining", "slope_bid": -0.002, "slope_ask": -0.001, "n_valid": 55}},
+        },
+    )
+    r = client.get("/api/warrants/2330")
+    assert r.status_code == 200
+    row = r.json()["warrants"][0]
+    assert row["iv_drift"] == "declining"
+    # 快照 mem 不得被就地變異(design R10)
+    assert "iv_drift" not in snap["by_underlying"]["2330"][0]
+
+
+def test_iv_history_ok_shape(monkeypatch, client, _reset_ivh):
+    ivh = _reset_ivh
+
+    async def fake(warrant_id: str, refresh: bool = False):
+        return {
+            "warrant_id": warrant_id,
+            "terms_approx_dates": ["2026-07-08"],
+            "series": [{"date": "2026-07-09", "iv_bid": 0.41, "iv_ask": 0.45}],
+            "drift": {"label": "stable", "slope_bid": 0.0, "slope_ask": 0.0, "n_valid": 30},
+        }
+
+    monkeypatch.setattr(ivh, "get_iv_history", fake)
+    r = client.get("/api/warrants/030012/iv-history")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["warrant_id"] == "030012"
+    assert body["series"][0]["iv_bid"] == 0.41
+    assert body["drift"]["label"] == "stable"
+
+
+def test_iv_history_unknown_warrant_404(monkeypatch, client, _reset_ivh):
+    ivh = _reset_ivh
+
+    async def fake(warrant_id: str, refresh: bool = False):
+        return None
+
+    monkeypatch.setattr(ivh, "get_iv_history", fake)
+    r = client.get("/api/warrants/999999/iv-history")
+    assert r.status_code == 404
+    assert r.json()["detail"] == {"error": "not_found"}
+
+
+def test_iv_history_bad_id_400(client):
+    r = client.get("/api/warrants/abc!/iv-history")
+    assert r.status_code == 400
+    assert r.json()["detail"] == {"error": "bad_symbol"}
+
+
+def test_iv_history_empty_archives_returns_200_empty_series(monkeypatch, client, _reset_ivh):
+    # SC-5 核心 edge:無 archive(冷啟動 / 新環境)→ 200 空 series 不炸
+    snap = {
+        "as_of_date": "2026-07-09",
+        "tpex_date": "2026-07-09",
+        "by_underlying": {"2330": [{"warrant_id": "030012", "name": "測試"}]},
+    }
+
+    async def fake_get_snapshot(refresh: bool = False):
+        return snap
+
+    monkeypatch.setattr(ws, "get_snapshot", fake_get_snapshot)
+    r = client.get("/api/warrants/030012/iv-history")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["series"] == []
+    assert body["drift"]["label"] == "insufficient"
+
+
+def test_iv_history_upstream_error_502(monkeypatch, client, _reset_ivh):
+    ivh = _reset_ivh
+
+    async def boom(warrant_id: str, refresh: bool = False):
+        raise httpx.ConnectError("twse down")
+
+    monkeypatch.setattr(ivh, "get_iv_history", boom)
+    r = client.get("/api/warrants/030012/iv-history")
+    assert r.status_code == 502
+    assert r.json()["detail"] == {"error": "warrant_upstream"}

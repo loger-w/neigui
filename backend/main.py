@@ -20,6 +20,7 @@ from routes.symbols import router as symbols_router
 from routes.options import router as options_router
 from routes.warrants import router as warrants_router
 from services import daytrade_fee as df_mod
+from services import warrant_iv_history as ivh_mod
 from services import warrant_quotes as wq_mod
 from services import warrants as ws_mod
 
@@ -42,23 +43,29 @@ async def lifespan(app: FastAPI):
     # perf/cold-start:kickoff 背景載入即 serve,不 await — 冷啟動 ready 時間
     # 與 FinMind fetch 脫鉤;第一發 /api/symbols/* 由 _ensure_loaded await 共用 task。
     symbols_mod.ensure_load_task()
+    # warrant IV 歷史 backfill(一次性補 60 交易日;FAKE / env 0 不啟動)
+    ivh_mod.ensure_backfill_task()
     yield
     try:
         await symbols_mod.shutdown_load_task()
     finally:
         # close 放 finally:shutdown 段的取消 / 例外不得跳過連線清理。
-        # 巢狀 finally:兩個 client 各自清,任一炸不跳過另一個。
+        # 巢狀 finally:各 client 各自清,任一炸不跳過另一個。
+        # ivh 最外層先收:背景 task cancel 要在其依賴的 client close 前。
         try:
-            if fm_mod._client is not None:
-                await fm_mod._client.close()
+            await ivh_mod.aclose()
         finally:
             try:
-                await df_mod.aclose()
+                if fm_mod._client is not None:
+                    await fm_mod._client.close()
             finally:
                 try:
-                    await ws_mod.aclose()
+                    await df_mod.aclose()
                 finally:
-                    await wq_mod.aclose()
+                    try:
+                        await ws_mod.aclose()
+                    finally:
+                        await wq_mod.aclose()
 
 
 app = FastAPI(title="Chip Overview", version="0.1.0", lifespan=lifespan)

@@ -26,6 +26,12 @@ def _reset_warrants_state(monkeypatch):
     monkeypatch.setattr(wq, "_client", None)
     wq._inflight.clear()
     wq._cooldown.clear()
+    import services.warrant_iv_history as ivh
+
+    monkeypatch.setattr(ivh, "_drift_mem", None)
+    monkeypatch.setattr(ivh, "_rebuild_bg_task", None)
+    ivh._series_lru.clear()
+    ivh._inflight.clear()
 
 
 async def test_warrants_snapshot_happy_path(client):
@@ -76,6 +82,38 @@ async def test_brokers_happy_path(client):
     assert body["data_date"] == "2026-06-25"  # FAKE_TODAY-1(impl-R4)
     assert body["rows"][0]["broker_name"] == "凱基-台北"
     assert body["rows"][0]["net"] == 800
+
+
+async def test_warrants_rows_carry_iv_drift(client):
+    # SC-4 contract:iv_drift 欄走 fixture → loader → drift 真計算路徑
+    r = await client.get("/api/warrants/2330")
+    assert r.status_code == 200
+    by_id = {w["warrant_id"]: w for w in r.json()["warrants"]}
+    assert by_id["030012"]["iv_drift"] == "declining"
+    assert by_id["030013"]["iv_drift"] == "stable"
+    assert by_id["030011"]["iv_drift"] == "insufficient"  # fixture 僅 5 日
+
+
+async def test_iv_history_contract(client):
+    # SC-5 contract:series 升冪 + drift 攤平 shape(前端 lib/api.ts 依賴)
+    r = await client.get("/api/warrants/030012/iv-history")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["warrant_id"] == "030012"
+    assert len(body["series"]) == 25
+    dates = [p["date"] for p in body["series"]]
+    assert dates == sorted(dates)
+    assert body["series"][-1]["date"] == "2026-06-26"  # FAKE_TODAY
+    assert body["series"][-1]["iv_bid"] == pytest.approx(0.35, abs=0.01)
+    assert body["drift"]["label"] == "declining"
+    assert set(body["drift"]) == {"label", "slope_bid", "slope_ask", "n_valid"}
+    assert body["terms_approx_dates"] == []
+
+
+async def test_iv_history_unknown_warrant_404(client):
+    r = await client.get("/api/warrants/039999/iv-history")
+    assert r.status_code == 404
+    assert r.json()["detail"]["error"] == "not_found"
 
 
 async def test_bad_symbol_400_both_paths(client):
