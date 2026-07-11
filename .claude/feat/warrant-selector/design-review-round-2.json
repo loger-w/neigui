@@ -1,0 +1,12 @@
+{
+  "round": 2,
+  "reviewer": "design-reviewer (agent a6326611e95e62d10)",
+  "summary": {"P0": 0, "P1": 1, "P2": 3},
+  "exit": "退出條件成立(無 P0 且 P1<=2);4 條全 accepted 並修入 design v3(未掛 Known Risks)",
+  "findings": [
+    {"id":"R2-1","severity":"P1","resolution":"accepted","fix":"_last_build_attempt + BUILD_RETRY_COOLDOWN_SEC=60 backoff,refresh 豁免;pytest 鎖空回後 60s 不重 build(design v3 §1.2)"},
+    {"id":"R2-2","severity":"P2","resolution":"accepted","fix":"brainstorm edge case #1 同步 R1 語意(amendment 標註)"},
+    {"id":"R2-3","severity":"P2","resolution":"accepted","fix":"warrant_id 套同一 regex 驗證(design v3 §1.5)"},
+    {"id":"R2-4","severity":"P2","resolution":"accepted","fix":"頂層 quote_date/time fallback:標的 tlong→批次 max tlong→null(design v3 §1.3)"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "round": 1,
+  "reviewer": "impl-spec-reviewer (agent a4002d6fdb2350e6b)",
+  "summary": {"P0": 0, "P1": 2, "P2": 6},
+  "exit": "退出條件成立(無 P0 且 P1<=2);8 條全 accepted 並修入 PLAN.md",
+  "findings": [
+    {"id":"R1","severity":"P1","resolution":"accepted","fix":"404 no_data 測試補進 wave2 清單"},
+    {"id":"R2","severity":"P1","resolution":"accepted","fix":"wave7 fixtures 必含 030012 的跨 wave 契約寫入"},
+    {"id":"R3","severity":"P2","resolution":"accepted","fix":"f-string _FINMIND_BASE(已 grep 驗證 codebase 實況)"},
+    {"id":"R4","severity":"P2","resolution":"accepted","fix":"data_date 取 rows 日期 + 多日 rows 過濾;fixture rows 日期 = FAKE_TODAY-1"},
+    {"id":"R5","severity":"P2","resolution":"accepted","fix":"put t=0 delta 階梯 -1 + 測試"},
+    {"id":"R6","severity":"P2","resolution":"accepted","fix":"13:35 inclusive 定案 + 邊界預期值"},
+    {"id":"R7","severity":"P2","resolution":"accepted","fix":"tpex_date 跨源日期不一致測試"},
+    {"id":"R8","severity":"P2","resolution":"accepted","fix":"refetchInterval false 分支測試"}
+  ]
+}
