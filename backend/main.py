@@ -18,7 +18,10 @@ from routes.daytrade_fee import router as daytrade_fee_router
 from routes.market import router as market_router
 from routes.symbols import router as symbols_router
 from routes.options import router as options_router
+from routes.warrants import router as warrants_router
 from services import daytrade_fee as df_mod
+from services import warrant_quotes as wq_mod
+from services import warrants as ws_mod
 
 load_dotenv()
 
@@ -49,7 +52,13 @@ async def lifespan(app: FastAPI):
             if fm_mod._client is not None:
                 await fm_mod._client.close()
         finally:
-            await df_mod.aclose()
+            try:
+                await df_mod.aclose()
+            finally:
+                try:
+                    await ws_mod.aclose()
+                finally:
+                    await wq_mod.aclose()
 
 
 app = FastAPI(title="Chip Overview", version="0.1.0", lifespan=lifespan)
@@ -72,6 +81,7 @@ app.include_router(daytrade_fee_router)
 app.include_router(market_router, prefix="/api/market")
 app.include_router(symbols_router)
 app.include_router(options_router)
+app.include_router(warrants_router)
 
 
 # /api/_meta/mode — Playwright globalSetup probe target(R2-P0-3 / F6)。

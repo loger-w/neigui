@@ -1,0 +1,28 @@
+{
+  "data": [
+    {
+      "date": "2026-06-25",
+      "stock_id": "030012",
+      "securities_trader": "凱基-台北",
+      "securities_trader_id": "9200",
+      "buy": 900,
+      "sell": 100
+    },
+    {
+      "date": "2026-06-25",
+      "stock_id": "030012",
+      "securities_trader": "元大-總公司",
+      "securities_trader_id": "9800",
+      "buy": 120,
+      "sell": 640
+    },
+    {
+      "date": "2026-06-25",
+      "stock_id": "030012",
+      "securities_trader": "富邦-建國",
+      "securities_trader_id": "9600",
+      "buy": 210,
+      "sell": 200
+    }
+  ]
+}

@@ -640,6 +640,20 @@ class FinMindClient:
         self._write_cache(cache_key, result)
         return result
 
+    async def fetch_warrant_trading_daily_report(self, warrant_id: str, date: str) -> list:
+        """權證分點報表(Sponsor;T+1 lag)— data_id 必填、end_date 必須留空
+        (官方 400 訊息明示單日單發;memory reference_finmind_warrant_dataset)。
+        FinMind start_date open-ended 可能回多日 rows,查詢日過濾由 caller
+        (services/warrant_brokers.py)負責。"""
+        return await self._get(
+            f"{_FINMIND_BASE}/data",
+            {
+                "dataset": "TaiwanStockWarrantTradingDailyReport",
+                "data_id": warrant_id,
+                "start_date": date,
+            },
+        )
+
     async def _safe_get_secid_agg(
         self,
         symbol: str,
