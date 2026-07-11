@@ -40,6 +40,23 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.27.0",
+    date: "2026-07-11",
+    highlights: "權證分頁可看發行商引波調整軌跡",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證表格新增「IV趨勢」欄:標記買賣價反解引波長期遞減或遞增的權證,平穩者不標",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證列展開可看近 60 個交易日的買價與賣價引波走勢圖,缺報價日以斷線呈現",
+      },
+    ],
+  },
+  {
     version: "0.26.0",
     date: "2026-07-11",
     highlights: "券差頁可查看單一標的",
