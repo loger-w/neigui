@@ -13,7 +13,7 @@ import re
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 
-from services import warrant_brokers, warrant_quotes, warrants
+from services import warrant_brokers, warrant_iv_history, warrant_quotes, warrants
 from utils.cancel import run_with_disconnect
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,22 @@ async def get_warrant_quotes(request: Request, stock_id: str, refresh: bool = Fa
     except httpx.HTTPError as exc:
         logger.warning("warrant quotes upstream error: %s", exc)
         raise HTTPException(status_code=502, detail={"error": "warrant_upstream"}) from exc
+
+
+@router.get("/api/warrants/{warrant_id}/iv-history")
+async def get_warrant_iv_history(request: Request, warrant_id: str, refresh: bool = False) -> dict:
+    _validate_id(warrant_id)
+    try:
+        payload = await run_with_disconnect(
+            request, warrant_iv_history.get_iv_history(warrant_id, refresh)
+        )
+    except httpx.HTTPError as exc:
+        # snapshot 冷 build 可觸 TWSE/TPEx 網路 — 同 warrants/quotes 自 catch(R9)
+        logger.warning("warrant iv-history upstream error: %s", exc)
+        raise HTTPException(status_code=502, detail={"error": "warrant_upstream"}) from exc
+    if payload is None:
+        raise HTTPException(status_code=404, detail={"error": "not_found"})
+    return payload
 
 
 @router.get("/api/warrants/{warrant_id}/brokers")
