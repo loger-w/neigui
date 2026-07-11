@@ -31,6 +31,7 @@ function term(over: Partial<WarrantTerm> = {}): WarrantTerm {
     eod_ask: 1.01,
     underlying_eod_close: 1000,
     iv_prev: 0.3,
+    iv_drift: null,
     ...over,
   };
 }

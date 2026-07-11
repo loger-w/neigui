@@ -31,6 +31,7 @@ function row(over: Partial<WarrantRow> = {}): WarrantRow {
     eod_ask: 1.01,
     underlying_eod_close: 100,
     iv_prev: 0.3,
+    iv_drift: null,
     price: 1.3,
     days_left: 18,
     best_bid_vol: 50,

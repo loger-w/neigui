@@ -4,7 +4,7 @@ import type {
 } from "./chip-data";
 import type { BorrowFeeData } from "./borrow-fee";
 import type {
-  WarrantBrokersPayload, WarrantQuotesPayload, WarrantsPayload,
+  WarrantBrokersPayload, WarrantIvHistoryPayload, WarrantQuotesPayload, WarrantsPayload,
 } from "./warrant-data";
 
 const BASE = "/api";
@@ -241,6 +241,13 @@ export const api = {
     const params: Record<string, string> = {};
     if (refresh) params.refresh = "true";
     return get(`${BASE}/warrants/${warrantId}/brokers`, params, options);
+  },
+  warrantIvHistory(
+    warrantId: string, refresh?: boolean, options?: RequestOptions,
+  ): Promise<WarrantIvHistoryPayload> {
+    const params: Record<string, string> = {};
+    if (refresh) params.refresh = "true";
+    return get(`${BASE}/warrants/${warrantId}/iv-history`, params, options);
   },
   symbols(
     search: string, options?: RequestOptions,

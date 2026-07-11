@@ -1,5 +1,7 @@
 // 權證選擇器型別 — 對 backend routes/warrants.py payload(snake_case 原樣)。
 
+export type IvDriftLabel = "declining" | "rising" | "stable" | "insufficient";
+
 export interface WarrantTerm {
   warrant_id: string;
   name: string;
@@ -17,6 +19,27 @@ export interface WarrantTerm {
   eod_ask: number | null;
   underlying_eod_close: number | null;
   iv_prev: number | null;
+  iv_drift: IvDriftLabel | null;
+}
+
+export interface WarrantIvPoint {
+  date: string;
+  iv_bid: number | null;
+  iv_ask: number | null;
+}
+
+export interface WarrantIvDrift {
+  label: IvDriftLabel;
+  slope_bid: number | null;
+  slope_ask: number | null;
+  n_valid: number;
+}
+
+export interface WarrantIvHistoryPayload {
+  warrant_id: string;
+  terms_approx_dates: string[];
+  series: WarrantIvPoint[];
+  drift: WarrantIvDrift;
 }
 
 export interface WarrantQuote {
