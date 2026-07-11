@@ -125,8 +125,12 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
   test("E10: 無權證標的空狀態(SC-7)", async ({ page }) => {
     // 痛點:2412 不在權證 fixture 的標的內 → 空 list → 繁中空狀態;
     // 若 backend 空標的誤回 404/500,這裡會看到 error 而非空狀態文案。
+    // 換標的用鍵盤 Enter(SymbolSearch 單一命中直選):dropdown option 在
+    // beforeEach 已載 2330 資料的頁面上持續重渲染,click retry 撞 detach
+    // (2026-07-11 冷 cache 實測 ×3);Enter 路徑不依賴 option 元素穩定性
     await page.getByPlaceholder(/搜尋代號/).fill("2412");
-    await page.getByRole("option").first().click();
+    await expect(page.getByRole("option")).toHaveCount(1);
+    await page.getByPlaceholder(/搜尋代號/).press("Enter");
     await page.getByRole("button", { name: /^權證$/ }).click();
     await expect(page.getByText("此標的無掛牌權證")).toBeVisible();
   });
