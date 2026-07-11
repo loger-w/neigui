@@ -17,7 +17,7 @@ import logging
 import os
 import ssl
 import time
-from datetime import timedelta
+from datetime import date as date_type, timedelta
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -181,8 +181,6 @@ def _iv_pair(
         return None, None
     if bid is not None and ask is not None and bid > ask:
         return None, None
-    from datetime import date as date_type
-
     t_years = (date_type.fromisoformat(ltd_iso) - date_type.fromisoformat(date_iso)).days / 365.0
     ivb = (
         implied_vol(bid / ratio, s, strike, t_years, RISK_FREE_RATE, kind)  # type: ignore[arg-type]
@@ -284,9 +282,10 @@ async def _rebuild_impl() -> dict:
     drift: dict[str, dict] = {}
     n = 0
     for wid in wids:
-        ivb_series = [(p["warrants"].get(wid) or {}).get("ivb") for _, p in loaded]
-        iva_series = [(p["warrants"].get(wid) or {}).get("iva") for _, p in loaded]
-        drift[wid] = flatten_drift(detect_drift(ivb_series, iva_series))
+        entries = [(p["warrants"].get(wid) or {}) for _, p in loaded]
+        drift[wid] = flatten_drift(
+            detect_drift([e.get("ivb") for e in entries], [e.get("iva") for e in entries])
+        )
         n += 1
         if n % DRIFT_YIELD_EVERY == 0:
             await asyncio.sleep(0)
@@ -353,10 +352,8 @@ async def _get_underlying_series(uid: str, wids: list[str], refresh: bool) -> di
         dates = [d for d, _ in loaded]
         by_wid: dict[str, list] = {}
         for wid in wids:
-            by_wid[wid] = [
-                ((p["warrants"].get(wid) or {}).get("ivb"), (p["warrants"].get(wid) or {}).get("iva"))
-                for _, p in loaded
-            ]
+            entries = [(p["warrants"].get(wid) or {}) for _, p in loaded]
+            by_wid[wid] = [(e.get("ivb"), e.get("iva")) for e in entries]
         built = {
             "latest": dates[-1] if dates else None,
             "gen": gen,
@@ -465,12 +462,16 @@ async def _fetch_underlying_close_range(
 # ---------------------------------------------------------------- SC-2 backfill
 
 
+def _backfill_days() -> int:
+    return int(os.getenv("WARRANT_IV_BACKFILL_DAYS", "60") or "60")
+
+
 def ensure_backfill_task() -> None:
     """lifespan 入口;FAKE / env 0 → no-op。全窗零交易日不自動重試(Known Risk R-5)。"""
     global _backfill_task
     if os.getenv("FAKE_FINMIND") == "1":
         return
-    if int(os.getenv("WARRANT_IV_BACKFILL_DAYS", "60") or "60") <= 0:
+    if _backfill_days() <= 0:
         return
     if _backfill_task is not None and not _backfill_task.done():
         return
@@ -488,7 +489,7 @@ async def _backfill_guarded() -> None:
 
 async def _backfill() -> None:
     """自 today-1 往回補交易日檔(R23);不依賴 _load_snapshot 入口(R19)。"""
-    days_target = int(os.getenv("WARRANT_IV_BACKFILL_DAYS", "60") or "60")
+    days_target = _backfill_days()
     if days_target <= 0:
         return
     terms_by_id: dict[str, dict] = {}
