@@ -40,6 +40,18 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.26.0",
+    date: "2026-07-11",
+    highlights: "券差頁可查看單一標的",
+    changes: [
+      {
+        kind: "feature",
+        scope: "global",
+        text: "券差頁新增標的篩選:輸入代號或從當日名單挑選,只看該檔當日券差,可一鍵清除回全表",
+      },
+    ],
+  },
+  {
     version: "0.25.0",
     date: "2026-07-11",
     highlights: "個股頁新增「權證」分頁:盤中挑權證",
