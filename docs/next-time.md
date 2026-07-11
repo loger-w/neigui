@@ -6,6 +6,11 @@
 
 ---
 
+## From /feat warrant-iv-drift(2026-07-11)
+
+- **forceRefreshRef pattern 已複製到第 19 個 hook**(useWarrantIvHistory 為最新;useDaytradeFee/useChipBubble/useBrokerHistory 等同構):抽共用 `useForceRefreshQuery` helper。觸發重評估:refresh 語意要改(如改帶參數)或第 20 個 hook 出現時
+- **tests/test_finmind_realtime.py 在機器高負載下 flaky**(真實 asyncio 短 sleep 0.02s + wait_for timeout=1.0;2026-07-11 全套跑兩輪各紅 15/8 個、單檔跑與後續全套皆綠):改假鐘或放寬 timeout。觸發重評估:CI 或平常開發再看到該檔紅時
+
 ## From /feat daytrade-borrow-fee(2026-07-11)
 
 - **「重新整理」按鈕 JSX 三份重複**(App.tsx / OptionsHeader.tsx / BorrowFeePage.tsx,含 SVG spinner + aria-busy + className 逐行同構):抽共用 `RefreshButton` 元件。觸發重評估:第四個複本出現、或改按鈕樣式/a11y 屬性時
