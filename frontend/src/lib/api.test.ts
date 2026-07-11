@@ -257,3 +257,26 @@ describe("api cache", () => {
     expect(__testCache.size).toBe(0);
   });
 });
+
+describe("noCache option(warrant quotes 輪詢不得吃 5 分鐘 module cache)", () => {
+  it("noCache: true 同 key 兩發都打 fetch,且不寫入 cache", async () => {
+    const fetchMock = mockFetch({ quotes: {} });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.warrantQuotes("2330");
+    await api.warrantQuotes("2330");
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(__testCache.size).toBe(0);
+  });
+
+  it("warrants(快照)仍走 module cache", async () => {
+    const fetchMock = mockFetch({ as_of_date: "2026-07-09", warrants: [] });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.warrants("2330");
+    await api.warrants("2330");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});

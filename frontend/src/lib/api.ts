@@ -3,6 +3,9 @@ import type {
   ChipIntraday,
 } from "./chip-data";
 import type { BorrowFeeData } from "./borrow-fee";
+import type {
+  WarrantBrokersPayload, WarrantQuotesPayload, WarrantsPayload,
+} from "./warrant-data";
 
 const BASE = "/api";
 
@@ -14,6 +17,8 @@ let _seqCounter = 0;
 
 export interface RequestOptions {
   signal?: AbortSignal;
+  /** 跳過 module cache 讀寫(warrant quotes 輪詢:15s 間隔不得吃 5 分 TTL)。 */
+  noCache?: boolean;
 }
 
 function cacheKey(path: string, params?: Record<string, string>): string {
@@ -37,7 +42,7 @@ async function get<T>(
 
   if (isRefresh) {
     _cache.delete(key);
-  } else {
+  } else if (!options?.noCache) {
     const cached = _cache.get(key);
     if (cached && Date.now() - cached.ts < CACHE_TTL) {
       return cached.data as T;
@@ -57,7 +62,7 @@ async function get<T>(
   }
   const data: T = await resp.json();
 
-  if (_seqMap.get(key) === seq) {
+  if (!options?.noCache && _seqMap.get(key) === seq) {
     _cache.set(key, { data, ts: Date.now(), seq });
     if (_cache.size > CACHE_MAX_ENTRIES) {
       const oldest = _cache.keys().next().value;
@@ -214,6 +219,28 @@ export const api = {
     const params: Record<string, string> = {};
     if (refresh) params.refresh = "true";
     return get(`${BASE}/daytrade-fee`, params, options);
+  },
+  warrants(
+    stockId: string, refresh?: boolean, options?: RequestOptions,
+  ): Promise<WarrantsPayload> {
+    const params: Record<string, string> = {};
+    if (refresh) params.refresh = "true";
+    return get(`${BASE}/warrants/${stockId}`, params, options);
+  },
+  warrantQuotes(
+    stockId: string, refresh?: boolean, options?: RequestOptions,
+  ): Promise<WarrantQuotesPayload> {
+    const params: Record<string, string> = {};
+    if (refresh) params.refresh = "true";
+    // 輪詢資料恆走 noCache(module cache TTL 5 分鐘會吞掉 15s 輪詢)
+    return get(`${BASE}/warrants/${stockId}/quotes`, params, { ...options, noCache: true });
+  },
+  warrantBrokers(
+    warrantId: string, refresh?: boolean, options?: RequestOptions,
+  ): Promise<WarrantBrokersPayload> {
+    const params: Record<string, string> = {};
+    if (refresh) params.refresh = "true";
+    return get(`${BASE}/warrants/${warrantId}/brokers`, params, options);
   },
   symbols(
     search: string, options?: RequestOptions,
