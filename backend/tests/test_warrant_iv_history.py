@@ -230,6 +230,13 @@ class TestWn1430Parse:
         body["stat"] = "error"
         assert ivh.parse_wn1430(body, "2026-07-09") == []
 
+    def test_parse_incomplete_fields_returns_empty_not_raise(self) -> None:
+        # CR-A1:欄位變體缺「最後賣價」時不得 ValueError 穿透逐日 catch
+        # (非 httpx 例外會中止整段 backfill,打破「單日壞不炸整段」)
+        fields = [f for f in WN1430_FIELDS if f.strip() != "最後賣價"]
+        row = WN1430_ROW[: len(fields)]
+        assert ivh.parse_wn1430(wn1430_body(fields, [row]), "2026-07-09") == []
+
 
 # ---------------------------------------------------------------- 序列組裝 / drift map
 

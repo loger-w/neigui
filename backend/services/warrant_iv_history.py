@@ -409,7 +409,10 @@ def parse_wn1430(body: dict, date_iso: str) -> list[dict]:
         return []
     for tb in body.get("tables") or []:
         fields = [str(f).strip() for f in tb.get("fields") or []]
-        if "代號" not in fields or "最後買價" not in fields:
+        # CR-A1:四欄名齊備才取表 — 缺任一欄的變體表 index 會 ValueError,
+        # 非 httpx 例外穿透 backfill 逐日 catch 會炸整段(降級為該日無 TPEx 列)
+        required = ("代號", "收盤", "最後買價", "最後賣價")
+        if any(name not in fields for name in required):
             continue
         idx_id = fields.index("代號")
         idx_close = fields.index("收盤")
