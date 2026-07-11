@@ -146,6 +146,30 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(detail).toContainText("800"); // net = buy 900 - sell 100
     await expect(detail).toContainText("資料日 = 2026-06-25");
   });
+
+  test("E12: IV趨勢欄 drift 標記(warrant-iv-drift SC-6)", async ({ page }) => {
+    // 痛點:iv_history fixture → loader → detect_drift → snapshot merge 全鏈
+    // 資料級 assertion(030012 遞減 / 030013 平穩顯示 —)— visibility-only
+    // 會被「全欄 —」蓋住(options-page-v2 事故同型)。
+    await page.getByRole("button", { name: /^權證$/ }).click();
+    const row12 = page.locator('[data-warrant-id="030012"]');
+    await expect(row12.getByTestId(TESTIDS.ivDriftLabel)).toHaveText("長期遞減");
+    const row13 = page.locator('[data-warrant-id="030013"]');
+    await expect(row13.getByTestId(TESTIDS.ivDriftLabel)).toHaveText("—");
+  });
+
+  test("E13: row 展開 IV 時序圖(warrant-iv-drift SC-7)", async ({ page }) => {
+    // 痛點:iv-history endpoint → hook → computeIvChart → svg path 全鏈;
+    // 鎖 path d 屬性非空(資料級),空 geometry 時 svg 不 render。
+    await page.getByRole("button", { name: /^權證$/ }).click();
+    const row12 = page.locator('[data-warrant-id="030012"]');
+    await row12.getByRole("button", { name: /展開分點/ }).click();
+    const chart = page.getByTestId(TESTIDS.warrantIvChart);
+    await expect(chart).toBeVisible();
+    const bidD = await chart.locator('path[data-side="bid"]').getAttribute("d");
+    expect(bidD).toMatch(/^M[\d.]+,[\d.]+L/); // 至少一段 M + L 連線
+    await expect(page.getByText("買價IV")).toBeVisible();
+  });
 });
 
 test.describe("equity mode — 泡泡圖提示", () => {
