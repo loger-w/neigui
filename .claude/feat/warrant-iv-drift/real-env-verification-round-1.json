@@ -1,0 +1,20 @@
+{
+  "round": 1,
+  "date": "2026-07-11",
+  "env": "真 backend(uvicorn :8000,FAKE 關)+ user vite dev server :5173 + chrome-devtools MCP",
+  "checks": [
+    { "sc": "SC-1/SC-2", "scenario": "真實 backfill 60 交易日(TWSE MI_INDEX + TPEx wn1430 + FinMind 缺口補抓)", "result": "60 day files(2026-04-15 → 07-09);颱風假 07-10 與端午 06-19 正確判空跳過(weekday warning 落 log);drift summary 35,787 檔權證", "evidence": "backend log + warrant_iv_history/ 檔數" },
+    { "sc": "SC-3", "scenario": "drift 門檻真實資料校準(design §5 校準條款)", "result": "rel 分布 n=26,248:0.15 → rising 18.3% 過鬆;定案 0.30/0.60 → declining 1.2% / rising 10.3%;rising 側 vol regime 混淆記 next-time", "evidence": "evidence/SC-3_threshold-calibration.txt" },
+    { "sc": "SC-3/R13/R25", "scenario": "rebuild 耗時實測(>60s 降階條款判定)", "result": "load 3.6s + 單側計算 9.2s → 全 rebuild 估 ~25s < 60s,不觸發降階(uvicorn 預設 root logger 只出 WARNING,INFO timing log 未入檔 — 以離線實測替代)", "evidence": "evidence/SC-3_threshold-calibration.txt 首行" },
+    { "sc": "SC-4", "scenario": "GET /api/warrants/2330 真實資料 merge", "result": "1,114 檔:declining 11 / rising 198 / stable 734 / insufficient 171,iv_drift 欄全列存在", "evidence": "curl 輸出(scratchpad w2330.json)" },
+    { "sc": "SC-5", "scenario": "iv-history happy + edges", "result": "happy(051343):60 點 series + drift declining + 60 approx dates;bad id `abc!` → 400 bad_symbol;unknown `abc1` → 404 not_found", "evidence": "evidence/SC-5_iv-history-happy-051343.json + backend log" },
+    { "sc": "SC-6", "scenario": "6442 光聖權證表(4 檔,1 declining)", "result": "IV趨勢欄呈現:080847 長期遞減、其餘 長期遞增;中性 ink 樣式", "evidence": "evidence/SC-6_iv-drift-column-6442.png" },
+    { "sc": "SC-7", "scenario": "展開 080847 IV 時序圖", "result": "60 日圖 + bid 實線/ask 虛線圖例 + 缺值日斷線(深價外反解失敗日,R24 真實驗證)+ 「歷史 IV 以現行條款近似」註記 + 分點明細並列;console 0 errors/warnings", "evidence": "evidence/SC-7_iv-chart-expanded-080847.png" },
+    { "sc": "SC-8", "scenario": "e2e", "result": "subsumed by Phase 5(equity.spec E12/E13 真 browser + FAKE backend 全鏈)", "evidence": "automated-verification-round-1.json" }
+  ],
+  "regression_sampled": [
+    "既有分點展開(080847 展開同列分點表正常,統一/國泰桃園 rows)",
+    "券差頁(session 開頁預設 mode 正常渲染)+ 快照基準日/最後更新列正常"
+  ],
+  "console": "0 errors / 0 warnings"
+}

@@ -1,0 +1,13 @@
+{
+  "round": 3,
+  "reviewer": "design-reviewer (agent ace841ea6524d2ecf)",
+  "date": "2026-07-11",
+  "summary": { "P0": 0, "P1": 1, "P2": 4, "accepted": 5, "rejected": 0, "exit": "無 P0 且 P1 ≤ 2 → Phase 1 收斂;5 條全折進 design v4" },
+  "findings": [
+    { "id": "R21", "severity": "P1", "location": "§3/§6 run_post_build × refresh=true", "problem": "refresh 每次重跑 _build_and_store → 每按一次重新整理就重跑 20-60s rebuild(輸入未變)", "resolution": "accepted — v4 archive_from_snapshot 回傳 wrote bool,run_post_build 僅 wrote=True 才 rebuild" },
+    { "id": "R22", "severity": "P2", "location": "§6 _run_once dedup join", "problem": "backfill 完成的 rebuild 觸發可 join 到早於其寫檔的 in-flight rebuild → 短窗結果 stale 至下一交易日", "resolution": "accepted — v4 rebuild 完成時比對開始/完成的檔集合,不一致同 key 內自我再跑一輪(max 1 次)" },
+    { "id": "R23", "severity": "P2", "location": "§4 backfill 起點", "problem": "backfill 自 today 起走與 daily archive 對今日檔雙寫者、terms_approx 誤標", "resolution": "accepted — v4 backfill 起點改 today-1,今日檔一律留給 daily 路徑;回看窗 +1" },
+    { "id": "R24", "severity": "P2", "location": "§5/§6 序列組裝洞語意", "problem": "檔存在但權證缺席時補 null 或略過未定,略過會壓縮 x index(R5 問題回歸)+ 圖表跳日", "resolution": "accepted — v4 明定日期軸 = 最近 60 檔日期集合,缺席補 {date, null, null};測試加中段缺席 case" },
+    { "id": "R25", "severity": "P2", "location": "§6 降階條款量測 + IO yield", "problem": "rebuild 無 timing log(>60s 判定不可重現);60 檔同步 parse 段無 yield", "resolution": "accepted — v4 rebuild 完成 logger.info 帶耗時(沿 _build_snapshot 樣板);load 迴圈每檔 sleep(0)" }
+  ]
+}

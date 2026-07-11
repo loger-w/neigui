@@ -1,0 +1,16 @@
+{
+  "round": 1,
+  "reviewer": "impl-spec-reviewer (agent a50c76a6eaca53b6b)",
+  "date": "2026-07-11",
+  "summary": { "P0": 0, "P1": 3, "P2": 5, "accepted": 8, "rejected": 0 },
+  "findings": [
+    { "id": "R1", "severity": "P1", "location": "wave1 theil_sen 簽名", "problem": "與 design §5 名稱/回傳不一致(theil_sen vs theil_sen_slope;float|None vs float)", "resolution": "accepted — 對齊 design:theil_sen_slope -> float;detect_side 的 MIN_VALID_POINTS gate 保證呼叫時 ≥2 有效點,不需 None 分支" },
+    { "id": "R2", "severity": "P1", "location": "wave3 routes 測試", "problem": "漏 SC-5 核心 edge:無 archive → 200 空 series", "resolution": "accepted — 補 test_iv_history_empty_archives_returns_200_empty_series" },
+    { "id": "R3", "severity": "P1", "location": "驗證 gate", "problem": "SC-7 的 DevTools MCP 截圖證據步驟缺席", "resolution": "accepted — gate 節補 chrome-devtools 截圖 SC-6/SC-7 → evidence/ + screenshots commit" },
+    { "id": "R4", "severity": "P2", "location": "wave2 ensure_post_build_task", "problem": "R21 chaining(archive False → 不 rebuild)未明寫、無測試", "resolution": "accepted — 補 chaining 句 + test_post_build_skips_rebuild_when_archive_false" },
+    { "id": "R5", "severity": "P2", "location": "wave2 aclose", "problem": "自持 httpx client 未列入 aclose", "resolution": "accepted — aclose 補關 client(沿 warrants.aclose 樣板)" },
+    { "id": "R6", "severity": "P2", "location": "wave2 FinMind 缺口補抓", "problem": "R16 無定案簽名(design 舊簽名已 stale)無測試", "resolution": "accepted — 補 _fetch_underlying_close_range(stock_ids, start, end) -> dict[str, dict[str, float]] + test_backfill_fills_underlying_close_gap_via_finmind" },
+    { "id": "R7", "severity": "P2", "location": "wave2 測試清單", "problem": "R12/R20/R22 併發條款零測試", "resolution": "accepted — 補 test_series_lru_discarded_on_generation_mismatch + test_rebuild_reruns_once_on_fileset_change;R20 靠 _run_once 既有樣板行為豁免(註明)" },
+    { "id": "R8", "severity": "P2", "location": "PLAN 全文", "problem": "changelog.ts VersionEntry(CLAUDE.md §7 MINOR bump)未列", "resolution": "accepted — wave5 補 changelog.ts 條目(寫前讀 changelog-conventions)" }
+  ]
+}

@@ -1,0 +1,7 @@
+load=3.2s compute(bid-side only)=8.4s n_valid_warrants=26248
+rel quantiles: p1=-0.344 p5=-0.111 p25=-0.011 p50=0.017 p75=0.098 p95=0.643 p99=1.235
+threshold=0.15 cons=0.6: declining=812 (3.1%) rising=4802 (18.3%)
+threshold=0.3 cons=0.6: declining=304 (1.2%) rising=2709 (10.3%)
+threshold=0.3 cons=0.7: declining=148 (0.6%) rising=2389 (9.1%)
+threshold=0.5 cons=0.6: declining=104 (0.4%) rising=1686 (6.4%)
+threshold=0.5 cons=0.7: declining=52 (0.2%) rising=1567 (6.0%)

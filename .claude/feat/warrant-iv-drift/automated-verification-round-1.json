@@ -1,0 +1,14 @@
+{
+  "round": 1,
+  "date": "2026-07-11",
+  "source": ".claude/harness.json verify 陣列 + e2e 條件 gate(e2e-conventions:本次屬需要 e2e 類型)",
+  "steps": [
+    { "step": "backend", "command": "python -m pytest -q", "cwd": "backend", "exit_code": 0, "result": "674 passed, 1 skipped" },
+    { "step": "backend-lint", "command": "ruff check .", "cwd": "backend", "exit_code": 0, "result": "All checks passed" },
+    { "step": "frontend-test", "command": "npm test", "cwd": "frontend", "exit_code": 0, "result": "78 files / 730 tests passed" },
+    { "step": "frontend-build", "command": "npm run build", "cwd": "frontend", "exit_code": 0, "result": "tsc -b + vite build 成功" },
+    { "step": "e2e", "command": "npm test(先清 e2e/.cache)", "cwd": "e2e", "exit_code": 0, "result": "33 passed, 2 skipped(@live/@visual 慣例跳過);含新 E12/E13" }
+  ],
+  "all_green": true,
+  "notes": "exit code 逐步獨立檢查(輸出重導檔案再讀,無管線假綠);tests/test_finmind_realtime.py 高負載 flaky 已記 docs/next-time.md(本輪綠)"
+}

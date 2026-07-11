@@ -1,0 +1,18 @@
+{
+  "round": 1,
+  "mode": "medium(8 finder angles 平行 dispatch;correctness=sonnet、cleanup=haiku;main agent 快篩)",
+  "date": "2026-07-11",
+  "summary": { "candidates": 13, "accepted": 4, "rejected": 6, "p2_summary": "simplification/altitude 風格類 3 條併入 rejected 統計(counter idiom / get_drift_map 職責 ×3 同根因收斂為 1 條 receiving)" },
+  "findings": [
+    { "id": "CR-A1", "severity": "P1", "focus": "implementation bug", "location": "services/warrant_iv_history.py parse_wn1430", "problem": "guard 只驗 代號/最後買價,無條件 index 收盤/最後賣價 → 欄位變體 ValueError 穿透逐日 httpx catch,整段 backfill 中止(打破「單日壞不炸整段」)", "verify": "main-agent 快篩 CONFIRMED(對 code 直讀驗證)", "resolution": "accepted — 紅測試先行,guard 收齊 4 欄名;缺欄 table 跳過(降級為該日無 TPEx 列)" },
+    { "id": "CR-E3", "severity": "P2", "focus": "efficiency", "location": "_iv_pair 函式內 import", "problem": "熱迴圈(天數×權證數)內重跑 import 語句", "resolution": "accepted — 移模組層(🔵 refactor)" },
+    { "id": "CR-S1", "severity": "P2", "focus": "simplification/efficiency", "location": "_rebuild_impl / _get_underlying_series", "problem": "每點 (p['warrants'].get(wid) or {}) 雙查", "resolution": "accepted — 單查改寫(🔵 refactor,最熱迴圈 dict lookup 減半)" },
+    { "id": "CR-ALT1", "severity": "P2", "focus": "simplification", "location": "ensure_backfill_task / _backfill", "problem": "WARRANT_IV_BACKFILL_DAYS 雙處解析", "resolution": "accepted — _backfill_days() helper(🔵 refactor)" },
+    { "id": "CR-REJ-1", "severity": "P2", "location": "_backfill s_range", "resolution": "rejected_with_reason — design R16 auto-default 已文件化『後續日新 gap 不重抓』,code 有註解" },
+    { "id": "CR-REJ-2", "severity": "P2", "location": "test counter dict", "resolution": "rejected_with_reason — 對齊 repo 既有 patch_upstream counter idiom" },
+    { "id": "CR-REJ-3", "severity": "P2", "location": "useWarrantIvHistory forceRefreshRef", "resolution": "rejected_with_reason — 18 hooks 全域重構 out of scope;記 docs/next-time.md" },
+    { "id": "CR-REJ-4", "severity": "P2", "location": "_fetch_underlying_close_range 循序", "resolution": "rejected_with_reason — 一次性 backfill 路徑,~15s 對 20min 牆鐘是噪音,平行錯誤處理複雜度不值" },
+    { "id": "CR-REJ-5", "severity": "P2", "location": "get_drift_map 重複 IO 窗口", "resolution": "rejected_with_reason — 窗口分鐘級、rebuild 完成即關閉;read_json miss + ≤90 檔 glob 為 ms 級" },
+    { "id": "CR-REJ-6", "severity": "P2", "location": "get_drift_map 職責混合(altitude ×3 同根因)", "resolution": "rejected_with_reason — lazy accessor 形狀 = design R1/R14/R18 三輪 review 定案(FAKE 供給鏈 + 冷啟路徑),搬 lifespan 已被 design 否決" }
+  ]
+}
