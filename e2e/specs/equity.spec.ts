@@ -87,6 +87,63 @@ test.describe("equity mode — mobile viewport", () => {
     expect(overflow).toBeLessThanOrEqual(0);
   });
 });
+test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
+  test.beforeEach(async ({ page }) => {
+    await installFixtureClock(page); // 凍 2026-06-26 13:30+08(盤中,輪詢不空轉)
+    await page.goto("/");
+    await page.getByPlaceholder(/搜尋代號/).fill("2330");
+    await page.getByRole("option").first().click();
+    await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
+  });
+
+  test("E8: 權證 tab 表格資料級 assertion(SC-1/SC-2)", async ({ page }) => {
+    // 痛點:visibility-only assertion 會被「卡片顯示 —」蓋住(2026-07-07
+    // options fixture 事故)— 這裡鎖具體數值:MIS fixture 的 030012 z=3.50
+    // 走完 normalize → 計算 → merge 全鏈才會出現在表格。
+    await page.getByRole("button", { name: /^權證$/ }).click();
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6); // 5 購 + 1 售;已到期 030099 濾掉
+    const row12 = page.locator('[data-warrant-id="030012"]');
+    await expect(row12).toContainText("3.50"); // MIS 現價(非 EOD 收盤 3.30)
+    await expect(row12).toContainText(/\d+\.\d%/); // IV / 價內外 % 有值(計算鏈非空)
+    await expect(page.getByText(/最後更新 13:30/)).toBeVisible(); // quotes 層到位
+    await expect(page.getByText(/快照基準日 2026-06-26/)).toBeVisible();
+  });
+
+  test("E9: 認售 toggle 篩選(SC-4)", async ({ page }) => {
+    // 痛點:client-side filter 全鏈(filterWarrants → 表格 re-render)。
+    // 認售在 fixture 只有 03001P 一檔,row 數 6 → 1 是 discriminative 訊號。
+    await page.getByRole("button", { name: /^權證$/ }).click();
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
+    await page.getByRole("button", { name: /^認售$/ }).click();
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(1);
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveAttribute(
+      "data-warrant-id",
+      "03001P",
+    );
+  });
+
+  test("E10: 無權證標的空狀態(SC-7)", async ({ page }) => {
+    // 痛點:2412 不在權證 fixture 的標的內 → 空 list → 繁中空狀態;
+    // 若 backend 空標的誤回 404/500,這裡會看到 error 而非空狀態文案。
+    await page.getByPlaceholder(/搜尋代號/).fill("2412");
+    await page.getByRole("option").first().click();
+    await page.getByRole("button", { name: /^權證$/ }).click();
+    await expect(page.getByText("此標的無掛牌權證")).toBeVisible();
+  });
+
+  test("E11: row 展開分點(SC-6,FinMind T+1 單發)", async ({ page }) => {
+    // 痛點:展開走 FakeFinMindClient MANIFEST 路徑(warrant_id 030012 與
+    // fixtures/warrants/ 快照對齊 — impl-R2 跨 wave 契約);資料日 = FAKE_TODAY-1。
+    await page.getByRole("button", { name: /^權證$/ }).click();
+    const row12 = page.locator('[data-warrant-id="030012"]');
+    await row12.getByRole("button", { name: /展開分點/ }).click();
+    const detail = page.getByTestId(TESTIDS.warrantBrokersDetail);
+    await expect(detail).toContainText("凱基-台北");
+    await expect(detail).toContainText("800"); // net = buy 900 - sell 100
+    await expect(detail).toContainText("資料日 = 2026-06-25");
+  });
+});
+
 test.describe("equity mode — 泡泡圖提示", () => {
   test("E7: 桌面泡泡圖顯示價格軸拖曳篩選提示", async ({ page }) => {
     // 痛點:Y 軸 brush 是隱形功能(只有 hover 游標線索),使用者不知道能拖曳

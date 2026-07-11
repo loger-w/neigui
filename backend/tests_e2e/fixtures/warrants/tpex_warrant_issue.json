@@ -1,0 +1,21 @@
+[
+ {
+  "Date": "1150626",
+  "Code": "72124U",
+  "Name": "宏捷科群益58售01",
+  "ListedDate": "20250819",
+  "ExpiryDate": "20260918",
+  "UnderlyingStockCode": "8086",
+  "UnderlyingStock": "宏捷科",
+  "Type": "認售",
+  "American/European": "歐式",
+  "CapPrice/Index": "    ",
+  "FloorPrice/Index": "    ",
+  "Reset": "N",
+  "LatestExercisePrice": "91.05",
+  " Latest ExerciseRatio": "0.162",
+  "InitialIssuance": "5000",
+  "Accum.Accum.Issuance": "0",
+  "Accum.CanceledWarrant": "0"
+ }
+]
