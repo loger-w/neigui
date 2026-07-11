@@ -1,0 +1,26 @@
+{
+  "round": 1,
+  "date": "2026-07-11(週六,盤後場景實測)",
+  "env": "真 backend(:8000,真打 TWSE/TPEx/MIS/FinMind)+ vite dev(:5173)+ Chrome DevTools MCP",
+  "api_evidence": [
+    {"case": "GET /api/warrants/2330(冷 build)", "result": "200,63s 冷 build,1114 檔權證,as_of=2026-07-09,iv_prev 893/1114 有值,無 no_trading_day key(R1)"},
+    {"case": "GET /api/warrants/2330(cache 命中)", "result": "200,0.23s"},
+    {"case": "GET /api/warrants/2330/quotes(真 MIS)", "result": "200,2.97s(11 批),盤後回 07-09 13:30 最後快照(『盤後也能選』實證);iv 841/leverage 841/差槓比 812/估價差 842/IV百分位 771 有值;標籤分布 fair 793 / expensive 30 / cheap 19(±10% 門檻有鑑別度)"},
+    {"case": "quotes cooldown 第二發", "result": "0.58s(未重打 MIS,含 400KB payload 傳輸)"},
+    {"case": "GET /api/warrants/030573/brokers(真 FinMind)", "result": "200,data_date=2026-07-09(T-1),真分點名 rows |net| 降序"},
+    {"case": "edge: bad symbol", "result": "400 {detail:{error:bad_symbol}}"},
+    {"case": "edge: 0050", "result": "200 有權證(意外發現 ETF 也有權證,正常列出)"}
+  ],
+  "ui_evidence": [
+    {"sc": "SC-1/SC-2", "file": "evidence/SC-1_SC-2_warrant-tab-table-2330.png", "note": "權證 tab + 1114 檔全欄位表格,差槓比升序,快照基準日/最後更新顯示"},
+    {"sc": "SC-4", "file": "evidence/SC-4_filter-put-only.png", "note": "認售 toggle → 1114 → 193 檔"},
+    {"sc": "SC-6", "file": "evidence/SC-6_broker-expand.png", "note": "row 展開分點,資料日 = 2026-07-09 T-1 標註,真實分點名"},
+    {"sc": "SC-7", "note": "subsumed by e2e E10(空狀態;真實市場幾乎所有標的皆有權證,UI 空狀態走 fake fixture 驗)"}
+  ],
+  "console": "0 errors / 0 warnings;1 issue 級 a11y 提示(input 無 name,已記 next-time)",
+  "findings_fixed": [
+    "分點表 React key 撞同名分點(彰銀×2)→ key 加 index + RTL 測試",
+    "SC-5 違規:accent 與 bull 同色值(#e85a4f),認購 badge/估價標籤用 accent = 多頭紅 → 全改零色相 ink 強度階 + className 鎖測試(紅先行)"
+  ],
+  "regression_sample": "既有功能抽驗:equity 籌碼總覽(搜尋 2330 後 K 線/面板正常載入,見截圖上半)+ e2e 全套 30 passed 覆蓋 options/market/navigation"
+}

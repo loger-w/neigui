@@ -1,0 +1,13 @@
+{
+  "round": 1,
+  "head": "9eae703",
+  "steps": [
+    {"step": "backend pytest", "command": "python -m pytest -q (backend/)", "exit_code": 0, "result": "627 passed, 1 skipped"},
+    {"step": "backend lint", "command": "ruff check . (backend/)", "exit_code": 0, "result": "All checks passed"},
+    {"step": "frontend vitest", "command": "npm test (frontend/)", "exit_code": 0, "result": "694 passed / 74 files"},
+    {"step": "frontend build", "command": "npm run build (frontend/)", "exit_code": 0, "result": "tsc -b + vite build 成功"},
+    {"step": "e2e", "command": "npm test (e2e/,清 .cache 後)", "exit_code": 0, "result": "run1: 29 passed + E10 flaky(冷 cache 首跑 retry 過);run2: 30 passed 全綠, 2 skipped(既有 M2/M3 fixture 待補,非本 feature)"}
+  ],
+  "e2e_verdict": "本改動屬 e2e 必跑類型(equity UI 新 tab + 新 endpoints),已實跑非豁免",
+  "all_green": true
+}

@@ -1,0 +1,53 @@
+{
+  "round": 1,
+  "effort": "medium",
+  "finders": 4,
+  "candidates": 16,
+  "summary": {
+    "P0": 0,
+    "P1": 0,
+    "P2_accepted": 2,
+    "no_change_needed": 1,
+    "rejected": 12,
+    "dedup": 1
+  },
+  "findings": [
+    {
+      "id": "CR-1",
+      "severity": "P2(行為級)",
+      "file": "backend/services/warrants.py + warrant_quotes.py",
+      "summary": "price basis 無 crossed-quote 防護(bid>ask 倒掛餵進 IV 反解)",
+      "verify": "CONFIRMED(讀碼:_warrant_price_basis/_price_basis 只查 not None)",
+      "resolution": "accepted",
+      "fix": "bid>ask → None;紅測試先行(兩模組各一)"
+    },
+    {
+      "id": "CR-2",
+      "severity": "P2",
+      "file": "backend/services/warrant_quotes.py",
+      "summary": "跨模組引用私有 warrants._parse_price",
+      "verify": "CONFIRMED",
+      "resolution": "accepted",
+      "fix": "local 複製 _parse_price(對齊 local-copy 慣例)"
+    },
+    {
+      "id": "CR-3",
+      "severity": "P2",
+      "file": "backend/services/warrants.py",
+      "summary": "_build_and_store 空回退路徑不回寫 _snapshot_mem(重啟後每請求多一次磁碟讀)",
+      "verify": "REFUTED(_load_snapshot 讀檔時已回寫 _snapshot_mem — 初判 CONFIRMED 是誤讀;lock test 已加並 mutation-verified)",
+      "resolution": "no_change_needed",
+      "fix": "無需修;test_stale_fallback_populates_mem_cache 轉為 lock test(mutation 抽驗:拿掉回填 → 紅 → 還原)"
+    }
+  ],
+  "p2_summary": {
+    "rejected_count": 12,
+    "themes": [
+      "local 複製 duplication ×5:撞 twse-tpex-conventions 明文慣例(_run_once/_ssl_context 同構 local 複製),rejected_with_reason",
+      "bid=0 falsy ×2(兩 finder 重複):TWSE tick 下限>0 無此上游狀態;除零防護正確,rejected",
+      "strike truthy:即為 moneyness 除零防護;iv 路徑由 implied_vol k<=0 守,rejected",
+      "風格類 ×4(filter 樣板/fmtPct 統一/hook boilerplate/error 常數):慣例一致或語意刻意,rejected"
+    ]
+  },
+  "exit": "單輪退場:accepted 2 <= 5、無 P0、fix 後 backend 593 全綠"
+}
