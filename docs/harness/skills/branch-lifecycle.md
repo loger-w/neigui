@@ -3,7 +3,7 @@ name: branch-lifecycle
 description: 分支生命週期單一 source of truth:開工(主線同步 + 開分支)與收尾(push → PR → review 補齊 → 單一確認 → auto-merge;離線 fallback local merge)。/feat /bug /mod /refactor /perf 的第一個 phase 與 Done 全過後呼叫。
 metadata:
   author: user
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # Branch Lifecycle
@@ -31,14 +31,14 @@ metadata:
 
 ## 收尾節(各 command Done 條件全過後、最終回報前呼叫)
 
-1. **Gate**:該 command 的 Done 條件全過 + auto-verify 全綠。沒過不准進收尾(收尾不是逃生門)。
+1. **Gate**:該 command 的 Done 條件全過 + auto-verify 全綠。沒過不准進收尾(收尾不是逃生門)。另跑 `git status --porcelain` 檢查**證據檔不得 untracked**(`docs/specs/<slug>/` 截圖、evidence 檔)— 有就先 commit 上分支再續(2026-07-11 兩度實證 merge 後才發現,被迫在 main 補尾巴 commit)。
 2. 在分支上 `git fetch origin` 檢查兩件事:
    - **origin/main 動了沒**(判準:`git merge-base --is-ancestor origin/main HEAD` 成立 = 未動):未動 → 續;**動了(漂移路徑)** → `git switch main` + `git pull --ff-only` → 切回分支 `git rebase main`(衝突 → `git rebase --abort` 停下回報)→ 在 rebase 後的分支上**重跑 auto-verify 自動化節**;紅 → 停下回報,分支保留。
    - **local main 領先 origin/main 沒**(判準:`git rev-list --count origin/main..main` > 0):領先 → 停下要求先推平(走鐵則 H 的 main push 確認)— 否則 PR merge 後 origin/main 與 local main 永久分岔。全 PR 模式下 main 只從 GitHub 拉,「領先未推」應收斂為異常狀態。
 3. **Review 補齊**(merge 前對完整 diff 的最終 code review;2026-07-07 拍板「補齊缺口不重跑」):
-   - /bug /refactor /perf:跑 `/code-review`(medium)→ `superpowers:receiving-code-review` 逐條分類 → P0/P1 修完才進步驟 4(3 輪上限,超限依鐵則 F 回報)。P2 彙總計數不逐條 receiving,疑似行為級例外展開(同 /mod Phase 5 輸出契約)。
+   - /bug /refactor /perf:跑 `/code-review`(medium)→ `superpowers:receiving-code-review` 逐條分類 → P0/P1 修完才進步驟 4(3 輪上限,超限依鐵則 F 回報)。P2 彙總計數不逐條 receiving,疑似行為級例外展開(同 /mod Phase 5 輸出契約);minimal-model finder 的 dispatch / 快篩紀律同 /feat Phase 4 步驟 1。
    - /feat /mod:讀自評結束時記錄的 `self_review_head`(/feat 在 state.json;/mod 在 change-spec.md 末尾)→ `git rev-list <self_review_head>..HEAD` 非空才對增量 diff 補一輪 medium `/code-review`;為空 → 沿用自評結果不重跑。**欄位缺失 / null**(2026-07-07 改版前已在途的 feature)→ 保守視同有增量,補跑一輪 medium(無法證明 diff 已被 review 過就 review),並順手回填欄位。
-4. `git push -u origin <prefix>/<slug>` — **單獨一條指令下**(push-gate 對此嚴格 fullmatch 格式放行;與其他指令串接、帶額外 flag 都會 fail-closed 跳確認)。
+4. `git push -u origin <prefix>/<slug>` — **單獨一條指令下**(push-gate 對此嚴格 fullmatch 格式放行;與其他指令串接、帶額外 flag 都會 fail-closed 跳確認)。Push 前確認無背景 dev server / e2e / browser 進程佔資源(`Get-Process python,node` 級檢查)。**pre-push 測試紅的 triage**:先單獨重跑紅檔 — 綠 = 負載型 flake(該測試記 `docs/next-time.md`),可重推**一次**;仍紅 = 真紅,回對應 phase,不准盲目重推(2026-07-07 / 07-11 兩度實證負載型 flake,不限 backend)。
 5. `gh pr create`,body 四段:變更摘要 / review 結果摘要(finding 數 + 分類)/ 驗證證據(測試數字、截圖路徑)/ 試用指引。同分支已有 open PR → push 已更新它,跳過 create。
 6. **單一確認點**:回報 PR URL + review 摘要 + 試用指引後,**同一 turn 直接發** `gh pr merge --rebase --delete-branch` — push-gate 的 ask 確認框就是「是否 merge」提示,user 可掛著慢慢試用:
    - **allow** → GitHub rebase merge + 遠端 / 本地分支刪除 → `git switch main` + `git pull --ff-only`,收尾完成。

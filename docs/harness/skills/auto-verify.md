@@ -3,7 +3,7 @@ name: auto-verify
 description: 跑「自動化驗證指令(tsc / vitest / pytest / ruff / build)」與「真實環境驗證(dev server + DevTools MCP + 截圖 / curl / CLI)」。在 /feat /bug /mod /refactor /perf 流程的「完成前 gate」階段呼叫,確認改動沒打壞既有測試與 build。先檢查專案形狀再選對應驗證指令來源,不硬跑 `cd frontend/` 撞牆。本 skill 是形狀偵測表與驗證方式表的唯一 source of truth(command 檔不重抄)。
 metadata:
   author: user
-  version: "2.2.0"
+  version: "2.3.0"
 ---
 
 # Auto-Verify
@@ -21,11 +21,13 @@ metadata:
 | 4 | `ruff check .` | `backend/` | 0 issues |
 | 5 | `npm run build` | `frontend/` | 成功 |
 
-**指令組來源優先序**:專案有 `.claude/harness.json` → 自動化驗證以其 `verify` 陣列為準(與 git pre-push hook 共用,單一 source of truth);沒有 → 用本 skill 的形狀對應表。
+**指令組來源優先序**:專案有 `.claude/harness.json` → 自動化驗證以其 `verify` 陣列為準(與 git pre-push hook 共用,單一 source of truth);沒有 → 用本 skill 的形狀對應表。**Stale 偵測**:verify 陣列任一 `cwd` 目錄不存在 → 整檔視為 stale(殘留模板),fallback 專案 CLAUDE.md / 形狀對應表,並提醒 user 修 harness.json — 不硬跑不存在的目錄(2026-07-11 copycat 實證)。
 
 **E2E 是 harness.json 之外的條件 gate**(刻意不入 verify 陣列 — 太慢,pre-push 不跑):有 Playwright e2e 的專案,verify 陣列全綠**不等於自動化驗證完成** — 還要依專案 e2e 判準(neigui:skill `e2e-conventions` 判準表)判定本次改動是否必跑 e2e;屬豁免類型 → commit message 註明(如 `[no-e2e: internal refactor]`)。
 
 任一步紅 → 停下修,套鐵則 F「失敗處理 3 次上限」(見 `~/.claude/CLAUDE.md`)。
+
+**驗證 / 長跑指令不得接管線後綴**(`| tail` / `| head` / `| grep` 等)— pipeline 會把 exit code 換成末端指令的,紅燈顯示成假綠燈(2026-07-11 copycat 兩度實證:ruff 紅著 commit、backfill 崩掉顯示成功)。要摘要就先重導到檔案再讀,或分開檢查 exit code(bash `$?` / PowerShell `$LASTEXITCODE`)。
 
 ## 非 monorepo 專案形狀對應
 
