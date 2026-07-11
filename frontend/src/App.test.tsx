@@ -22,6 +22,9 @@ vi.mock("./components/MarketPage", () => ({
 vi.mock("./components/BorrowFeePage", () => ({
   BorrowFeePage: () => <div data-testid="borrow-fee-page">borrow</div>,
 }));
+vi.mock("./components/WarrantSelector", () => ({
+  WarrantSelector: () => <div data-testid="warrant-selector">warrants</div>,
+}));
 vi.mock("./components/SymbolSearch", () => ({
   SymbolSearch: () => <div data-testid="symbol-search">search</div>,
 }));
