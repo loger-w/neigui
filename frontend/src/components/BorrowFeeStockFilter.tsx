@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Input } from "./ui/input";
 import { matchStockOptions, type StockOption } from "../lib/borrow-fee-utils";
+import { cn } from "../lib/utils";
 
 interface Props {
   options: StockOption[];
@@ -102,7 +103,7 @@ export function BorrowFeeStockFilter({
         aria-autocomplete="list"
         aria-expanded={showDropdown}
         data-testid="borrow-fee-stock-filter"
-        className={`bg-bg-deep border-line text-ink ${selected ? "pr-8" : ""}`}
+        className={cn("bg-bg-deep border-line text-ink", selected && "pr-8")}
       />
       {selected && (
         <button
@@ -133,9 +134,10 @@ export function BorrowFeeStockFilter({
                 aria-selected={active}
                 onMouseDown={() => handlePick(o)}
                 onMouseEnter={() => setHighlightIdx(i)}
-                className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 cursor-pointer ${
-                  active ? "bg-line-strong/40" : "hover:bg-line-strong/30"
-                }`}
+                className={cn(
+                  "w-full px-3 py-2 text-left text-sm flex items-center gap-2 cursor-pointer",
+                  active ? "bg-line-strong/40" : "hover:bg-line-strong/30",
+                )}
               >
                 <span className="text-ink font-medium">{o.stock_id}</span>
                 <span className="text-ink-muted flex-1 truncate">{o.name}</span>
