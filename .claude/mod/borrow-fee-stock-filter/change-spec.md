@@ -101,4 +101,6 @@
 
 - Round 1(change-spec-reviewer):R1 P1(SC-2 同股多筆無測試鎖)→ 已修 SC-2 + 逐檔表;R2/R3/R4 P2(null 態渲染、選定態編輯語意、匹配規則對齊範圍)→ 全數採納修入 §1/§2/§5。無殘留 P0/P1。
 
-self_review_head: (Phase 5 填)
+- Phase 5(/code-review medium,8 finder + 逐條核實):接受 1(cn() 慣例違規×2 處,已修 🔵 8518964);拒絕 8(effect 清 query 修法會反向引入 R3 bug、memo/closure 無真實成本、其餘為 spec 已拍板 auto-default 或既有 idiom)。無 P0/P1。
+
+self_review_head: 8518964f2dddc68faa4e22a245b903d9493555d8
