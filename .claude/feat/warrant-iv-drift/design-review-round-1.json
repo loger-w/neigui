@@ -1,0 +1,19 @@
+{
+  "round": 1,
+  "reviewer": "design-reviewer (agent aa4afe076d365e0f2)",
+  "date": "2026-07-11",
+  "summary": { "P0": 1, "P1": 3, "P2": 7, "accepted": 11, "rejected": 0 },
+  "findings": [
+    { "id": "R1", "severity": "P0", "location": "§7 FAKE + §6 merge", "problem": "FAKE 模式 drift summary 無任何觸發點(archive/backfill 兩入口皆 guard 掐斷)→ e2e iv_drift 全 None,E12 必紅", "resolution": "accepted — v2 改 drift map 讀取為 lazy accessor get_drift_map():mem 缺 → 讀檔 → 檔缺 → rebuild(FAKE 下 rebuild 走 fixture loader);建置後記 built marker 防空結果重複 rebuild" },
+    { "id": "R2", "severity": "P1", "location": "§3 archive 掛 _build_and_store 同步路徑", "problem": "_run_once 在最後 subscriber 斷線時 cancel task;快照已寫、archive 進行中被 cancel → 該日 archive 永久漏檔(存在即跳過 + fresh 不重 build)", "resolution": "accepted — v2 archive+rebuild 改 build 成功後 asyncio.create_task 獨立背景 task(模組級 handle,shutdown 收乾),不隨 request cancel;同時解 R11" },
+    { "id": "R3", "severity": "P1", "location": "§3 archive payload", "problem": "TPEx OpenAPI 落後日(tpex_date != as_of)時,前一交易日 TPEx 資料被寫進 as_of 檔名的 immutable archive → 序列日期錯位", "resolution": "accepted — v2 archive 時 snap['tpex_date'] != as_of → TPEx 列全數不寫入(該日 TPEx 權證缺席 = 序列洞,可自癒)" },
+    { "id": "R4", "severity": "P1", "location": "§6 SC-5 LRU key", "problem": "backfill 往回補檔不改最新檔日 → 短序列 cache 在 backfill 完成後不失效", "resolution": "accepted — v2 rebuild_drift_summary() 完成時同步清空序列 LRU" },
+    { "id": "R5", "severity": "P2", "location": "§5 rel 公式", "problem": "x 軸單位與跨度未定義,稀疏序列系統性低估窗口變化量", "resolution": "accepted — v2 明定 x = 窗口內交易日 index(含洞),rel = slope * (last_valid_x - first_valid_x) / median(valid)" },
+    { "id": "R6", "severity": "P2", "location": "§5 vs §6 drift shape", "problem": "detect_drift 巢狀 shape 與 summary/API 攤平 shape 轉換未定義(n_valid 收斂規則缺)", "resolution": "accepted — v2 明定攤平規則:n_valid = max(bid.n_valid, ask.n_valid)" },
+    { "id": "R7", "severity": "P2", "location": "§3/§6 檔案生命週期", "problem": "day files 無保留上限(~500MB/年);§1「全部」vs §6「最近 60 檔」矛盾", "resolution": "accepted — v2 統一讀取「最近 60 檔」;archive 寫入時 prune 至最新 90 檔" },
+    { "id": "R8", "severity": "P2", "location": "§3 倒掛處理", "problem": "「該側 None」無法歸屬單側,與 edge 2 及 _warrant_price_basis 語意不一致", "resolution": "accepted — v2 改「bid > ask 時 ivb/iva 皆 None」" },
+    { "id": "R9", "severity": "P2", "location": "§7 FAKE 注入層 + §4.1", "problem": "FAKE 注入 distilled 層偏離「fixture 存原始 upstream shape」慣例,wn1430 normalize 零 e2e 覆蓋", "resolution": "accepted — v2 標明偏離理由(backfill 在 FAKE 無意義);wn1430 normalize 補 pytest 原始 aaData 縮樣 fixture(含舊年份欄名變體)" },
+    { "id": "R10", "severity": "P2", "location": "§6 SC-4 merge", "problem": "merge 就地變異 _snapshot_mem 共享 dict,污染 in-memory cache", "resolution": "accepted — v2 回傳前 shallow copy({**w, \"iv_drift\": ...})" },
+    { "id": "R11", "severity": "P2", "location": "§3 同步路徑 CPU", "problem": "archive(2×IV 反解×30k)+ rebuild 同步掛每日首請求回應路徑,延遲增量未量化", "resolution": "accepted — 併入 R2 背景化解法" }
+  ]
+}

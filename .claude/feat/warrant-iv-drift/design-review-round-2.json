@@ -1,0 +1,17 @@
+{
+  "round": 2,
+  "reviewer": "design-reviewer (agent a38ccd8764b234596)",
+  "date": "2026-07-11",
+  "summary": { "P0": 1, "P1": 2, "P2": 6, "accepted": 9, "rejected": 0 },
+  "findings": [
+    { "id": "R12", "severity": "P0", "location": "§6 LRU × backfill 時序", "problem": "序列組裝 insert-after-clear race:backfill 補舊檔不改 LRU key(最新檔日),stale 短序列 clear 後重新入 cache 且無自然失效", "resolution": "accepted — v3 LRU 加 rebuild generation counter:組裝開始記 generation,insert 前比對不符即棄(照樣回應該次請求)" },
+    { "id": "R13", "severity": "P1", "location": "§5/§6 rebuild CPU", "problem": "rebuild ≈ 30k 權證 × 2 側 × ~1770 pairwise ≈ 1e8 級純 Python 運算(估 20-60s),迴圈無 yield → 背景 task 餓死 event loop", "resolution": "accepted — v3 rebuild 每 200 權證 await asyncio.sleep(0);量化估算入 design;Phase 5 實測 >60s 則降階(持續性檢定 O(n) 化 / pairwise 抽樣)寫入退場條款" },
+    { "id": "R14", "severity": "P1", "location": "§6 get_drift_map lazy rebuild", "problem": "cross-round 衝突:真實模式檔缺時把分鐘級 rebuild 放回 request 路徑且被 _run_once subscriber-cancel 連坐 → cancel thrash", "resolution": "accepted — v3 真實模式檔缺 → 回空 map + spawn 一次性背景 rebuild(run_post_build 同 pattern);FAKE(fixture 毫秒級)才同步現算" },
+    { "id": "R15", "severity": "P2", "location": "§4 非交易日判定", "problem": "transient 上游失敗與真非交易日在 _extract_mi_table 回值不可區分,誤判即永久序列洞", "resolution": "accepted — v3 空回 retry 一次(隔 5s)再判非交易日 + 平日空回 logger.warning;列 Known Risks" },
+    { "id": "R16", "severity": "P2", "location": "§4 標的價 S", "problem": "MI_INDEX 歷史 payload underlying_close 欄 probe 未逐欄驗,design 當已定事實且無 fallback", "resolution": "accepted — v3 Known Risks R-3 + fallback:TWSE 列該欄缺時併入 §4.2 FinMind per-underlying range 補抓" },
+    { "id": "R17", "severity": "P2", "location": "§3/§7 FAKE run_post_build", "problem": "FAKE 下 rebuild 會把 fixture 衍生 drift 檔寫進真 cache 目錄(built marker 固化 mem)", "resolution": "accepted — v3 FAKE 下 run_post_build 整個不 spawn;FAKE rebuild 只寫 mem 不落 latest.json" },
+    { "id": "R18", "severity": "P2", "location": "§3/§6 版本驗證", "problem": "day files / latest.json 讀取端版本檢查規則未定,版本欄形同裝飾", "resolution": "accepted — v3 明定:day file 版本不符 → 視同缺檔;latest.json 不符 → 走 rebuild" },
+    { "id": "R19", "severity": "P2", "location": "§4 流程 1", "problem": "backfill 依賴 _load_snapshot 可能 raise HTTPException(連假 404)→ task 靜默死亡", "resolution": "accepted(改採更乾淨解)— v3 backfill 脫鉤 snapshot 入口:直接自 clock.today() 往回 fetch 找交易日、terms 自抓;全窗零交易日 → logger.error 明確標示;列 Known Risks" },
+    { "id": "R20", "severity": "P2", "location": "§6 rebuild 觸發點", "problem": "三個觸發點只有 lazy 走 _run_once,可並發雙跑重 CPU rebuild", "resolution": "accepted — v3 三觸發點統一經同一 _run_once key 串行化" }
+  ]
+}

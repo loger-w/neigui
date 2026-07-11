@@ -1,0 +1,10 @@
+{
+  "round": 2,
+  "reviewer": "impl-spec-reviewer (agent a97f1632787a5421d)",
+  "date": "2026-07-11",
+  "summary": { "P0": 0, "P1": 0, "P2": 2, "accepted": 2, "rejected": 0, "exit": "無 P0 且 P1 ≤ 2 → Phase 2 收斂" },
+  "findings": [
+    { "id": "R1", "severity": "P2", "location": "wave2 命名", "problem": "ensure_post_build_task 與 design 的 run_post_build 命名/spawn 責任不一致", "resolution": "accepted — PLAN 註明 ensure_post_build_task = run_post_build 的 spawn 入口封裝" },
+    { "id": "R2", "severity": "P2", "location": "驗證 gate", "problem": "rebuild timing log 讀數未列 Phase 6 證據 → 降階條款無人執行", "resolution": "accepted — gate 節補 timing log 讀數入 evidence + >60s 降階處置" }
+  ]
+}
