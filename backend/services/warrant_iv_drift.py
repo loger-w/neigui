@@ -11,7 +11,10 @@ import statistics
 from typing import Literal
 
 MIN_VALID_POINTS = 20  # 有效點門檻(60 日窗)
-REL_CHANGE_THRESHOLD = 0.15  # 窗口相對變化 |slope*span/median| 門檻
+# 窗口相對變化 |slope*span/median| 門檻。2026-07-11 真實 60 日資料校準
+# (n=26,248;rel 中位數 +0.017、p95 +0.643):0.15 讓 rising 標到 18% 全是
+# 市場 vol regime 噪音;0.30 → declining 1.2% / rising 10.3%。
+REL_CHANGE_THRESHOLD = 0.30
 CONSISTENCY_MIN = 0.60  # 方向持續性:同號 pairwise 斜率占比
 
 DriftLabel = Literal["declining", "rising", "stable", "insufficient"]
