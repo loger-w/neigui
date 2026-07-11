@@ -1,0 +1,22 @@
+[
+ {
+  "Date": "1150626",
+  "SecuritiesCompanyCode": "72124U",
+  "CompanyName": "宏捷科群益58售01",
+  "Close": "0.31",
+  "Change": "0.01",
+  "Open": "0.30",
+  "High": "0.32",
+  "Low": "0.29",
+  "Average": "0.30",
+  "TradingShares": "5,000",
+  "TransactionAmount": "1,550",
+  "TransactionNumber": "3",
+  "LatestBidPrice": "0.30",
+  "LatesAskPrice": "0.32",
+  "Capitals": "",
+  "NextReferencePrice": "0.31",
+  "NextLimitUp": "0.34",
+  "NextLimitDown": "0.28"
+ }
+]

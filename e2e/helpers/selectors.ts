@@ -41,6 +41,11 @@ export const TESTIDS = {
   borrowFeePage: "borrow-fee-page",
   feeRow: "fee-row",
   feeHigh: "fee-high",
+  // equity 權證 tab(feat/warrant-selector)
+  warrantRow: "warrant-row",
+  warrantKindBadge: "warrant-kind-badge",
+  mispricingLabel: "mispricing-label",
+  warrantBrokersDetail: "warrant-brokers-detail",
 
   // 既有(component 內既有,不在 Wave 1 modify scope)
   refreshSpinner: "refresh-spinner",
