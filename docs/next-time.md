@@ -8,6 +8,8 @@
 
 ## From /feat warrant-iv-drift(2026-07-11)
 
+- **IV drift「rising」側受市場 vol regime 混淆**(2026-07-11 真實 60 日校準:市場整體 IV 上行 → rel 右尾肥,常數 0.30 下 rising 仍標 10.3%;declining 側 1.2% 選擇性 OK):要更乾淨需 cross-sectional de-mean(rel 減去全市場中位數),屬 detect 演算法 design amend。觸發重評估:user 反映 rising 標記太多、或市場轉入 IV 下行 regime 換 declining 側爆量時
+
 - **forceRefreshRef pattern 已複製到第 19 個 hook**(useWarrantIvHistory 為最新;useDaytradeFee/useChipBubble/useBrokerHistory 等同構):抽共用 `useForceRefreshQuery` helper。觸發重評估:refresh 語意要改(如改帶參數)或第 20 個 hook 出現時
 - **tests/test_finmind_realtime.py 在機器高負載下 flaky**(真實 asyncio 短 sleep 0.02s + wait_for timeout=1.0;2026-07-11 全套跑兩輪各紅 15/8 個、單檔跑與後續全套皆綠):改假鐘或放寬 timeout。觸發重評估:CI 或平常開發再看到該檔紅時
 
