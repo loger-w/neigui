@@ -3,22 +3,48 @@
   "start_sha": "cba70069632506ad9301c413121c204851d37cbc",
   "branch": "feat/warrant-selector",
   "worktree_path": null,
-  "current_phase": 8,
-  "completed_phases": [-1, 0, 1, 2, 3, 4, 5, 6, 7],
+  "current_phase": 8.5,
+  "completed_phases": [
+    -1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
   "scope": "L",
   "phase_2_mode": "condensed",
-  "pending_review_rounds": { "phase_1": 0, "phase_2": 0, "phase_4": 0 },
+  "pending_review_rounds": {
+    "phase_1": 0,
+    "phase_2": 0,
+    "phase_4": 0
+  },
   "blockers": [],
   "phase_6_blocked_reason": null,
-  "scope_overrides": { "goal_efficiency_mode": true },
+  "scope_overrides": {
+    "goal_efficiency_mode": true
+  },
   "phase_3_impl_mode": "main-agent-tdd [auto-default: wave 間契約緊密(pricing→snapshot→quotes→routes)且 fixture shape 依賴本 session spike 實測 | reason: subagent fresh context 傳遞成本 > 收益]",
-  "last_updated": "2026-07-11T14:40:00+08:00",
+  "last_updated": "2026-07-11T14:55:00+08:00",
   "project_shape": "fastapi-backend + react-frontend + playwright-e2e",
   "last_commit_sha": "a12b773",
-  "final_merge_sha": null,
-  "self_review_head": "9eae703111254425f2036d21c7ab47844d4812da",
+  "final_merge_sha": "6c91007",
+  "self_review_head": "9eae703111254425f2036d21c7ab47844d4812da(增量 9eae703..HEAD 補 review 0 findings)",
   "sc_cycle_counts": {
-    "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 }
+    "_unscoped": {
+      "phase_1": 0,
+      "phase_2": 0,
+      "phase_3": 0,
+      "phase_4": 0,
+      "phase_5": 0,
+      "phase_6": 0,
+      "phase_7": 0,
+      "total": 0
+    }
   },
   "paused": null
 }

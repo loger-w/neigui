@@ -24,3 +24,8 @@ description: 前端版面與響應式慣例。新增含文字的元件 / SVG ren
 ## 驗證截圖
 
 - **devtools MCP 截圖 close-up 用 PIL crop 整頁截圖,不用 `body.style.zoom`**:zoom 會污染 useContainerSize 量測(ResizeObserver 以 zoom 後幾何重排,拍完 reset 也可能留下爆版 layout)。Trigger:real-env 要 panel 級 close-up 證據時。
+
+## 色彩語意(2026-07-11 /feat warrant-selector 沉澱)
+
+- **`--color-accent` 與 `--color-bull` 同色值(#e85a4f)**:accent 用於「互動態」(active tab / hover / focus)是全站慣例沒問題;但**資料標籤 / badge / 數值標色(非互動態)禁用 accent** — 視覺上就是多頭紅,撞「紅綠保留多空」鐵則。中性強調改用 ink 強度階(text-ink / text-ink-muted / text-ink-dim)+ 實底(bg-ink/10)vs 框線(border-line-strong)區分,零色相。regression lock 寫法:`expect(el.className).not.toMatch(/accent|bull|bear/)`(WarrantSelector.test.tsx 是樣板)。Trigger:新增任何資料 badge / 標籤 / 分級標色時。
+- **列表 React key 勿用顯示名稱**:FinMind 分點同名可重複(彰銀買賣各一列,real-env 實測)→ key 帶 index 或穩定 id。Trigger:render 上游回傳的列表資料時。
