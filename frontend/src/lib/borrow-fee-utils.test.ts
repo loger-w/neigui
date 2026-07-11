@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { FEE_HIGHLIGHT_THRESHOLD, type BorrowFeeRow } from "./borrow-fee";
-import { formatFee, formatShares, sortRows } from "./borrow-fee-utils";
+import {
+  distinctStocks,
+  formatFee,
+  formatShares,
+  matchStockOptions,
+  sortRows,
+  type StockOption,
+} from "./borrow-fee-utils";
 
 const row = (sid: string, shares: number, fee: number): BorrowFeeRow => ({
   market: "twse",
@@ -58,6 +65,50 @@ describe("format", () => {
     expect(formatFee(3.5)).toBe("3.50%");
     expect(formatFee(0.717)).toBe("0.72%");
     expect(formatFee(7)).toBe("7.00%");
+  });
+});
+
+describe("distinctStocks", () => {
+  it("同股多筆去重取首見 name/market,代號升冪", () => {
+    const rows = [
+      row("8046", 3000, 3.5),
+      row("2434", 21000, 2.619),
+      row("8046", 5000, 2.0),
+    ];
+    expect(distinctStocks(rows)).toEqual([
+      { stock_id: "2434", name: "n2434", market: "twse" },
+      { stock_id: "8046", name: "n8046", market: "twse" },
+    ]);
+  });
+
+  it("空 rows 回空陣列", () => {
+    expect(distinctStocks([])).toEqual([]);
+  });
+});
+
+describe("matchStockOptions", () => {
+  const options: StockOption[] = [
+    { stock_id: "2434", name: "統懋", market: "twse" },
+    { stock_id: "5483", name: "中美晶", market: "tpex" },
+    { stock_id: "8046", name: "南電", market: "twse" },
+  ];
+
+  it("空 query 回全部候選(不沿用 SymbolSearch 20 筆 cap;change-spec R4)", () => {
+    expect(matchStockOptions(options, "")).toEqual(options);
+    expect(matchStockOptions(options, "  ")).toEqual(options);
+  });
+
+  it("代號 prefix 匹配", () => {
+    expect(matchStockOptions(options, "80").map((o) => o.stock_id)).toEqual(["8046"]);
+    expect(matchStockOptions(options, "046")).toEqual([]);
+  });
+
+  it("名稱 substring 匹配", () => {
+    expect(matchStockOptions(options, "中美").map((o) => o.stock_id)).toEqual(["5483"]);
+  });
+
+  it("無匹配回空陣列", () => {
+    expect(matchStockOptions(options, "9999")).toEqual([]);
   });
 });
 

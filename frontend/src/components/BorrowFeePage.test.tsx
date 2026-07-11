@@ -90,3 +90,78 @@ describe("BorrowFeePage", () => {
     expect(screen.queryByText(/軋空|回補|做多|做空|賣壓|買點/)).toBeNull();
   });
 });
+
+// 單檔篩選(change-spec SC-2/3/5):mock 含同股 2 筆(R1 — 防「只回首筆」
+// 的錯誤 filter 假綠),assert 選定後 row 數 = 該股筆數且他股為 0。
+const MULTI: BorrowFeeData = {
+  as_of_date: "2026-06-26",
+  rows: [
+    {
+      market: "twse", stock_id: "8046", name: "南電",
+      lending_shares: 3000, fee_rate: 3.5, date: "2026-06-26",
+    },
+    {
+      market: "twse", stock_id: "8046", name: "南電",
+      lending_shares: 5000, fee_rate: 2.0, date: "2026-06-26",
+    },
+    {
+      market: "twse", stock_id: "2434", name: "統懋",
+      lending_shares: 21000, fee_rate: 2.619, date: "2026-06-26",
+    },
+  ],
+  month_counts: { "8046": 2, "2434": 1 },
+};
+
+const pickStock = (query: string) => {
+  const input = screen.getByTestId("borrow-fee-stock-filter");
+  fireEvent.change(input, { target: { value: query } });
+  fireEvent.mouseDown(screen.getByRole("option"));
+  return input;
+};
+
+describe("BorrowFeePage 單檔篩選", () => {
+  it("選定標的後只顯示該檔當日全部筆數(同股多筆全列)", () => {
+    hookState.data = MULTI;
+    render(<BorrowFeePage />);
+    expect(screen.getAllByTestId("fee-row").length).toBe(3);
+    pickStock("8046");
+    const rows = screen.getAllByTestId("fee-row");
+    expect(rows.length).toBe(2);
+    expect(rows.every((r) => r.getAttribute("data-stock-id") === "8046")).toBe(true);
+  });
+
+  it("清除鈕回全表", () => {
+    hookState.data = MULTI;
+    render(<BorrowFeePage />);
+    pickStock("8046");
+    fireEvent.click(screen.getByTestId("stock-filter-clear"));
+    expect(screen.getAllByTestId("fee-row").length).toBe(3);
+  });
+
+  it("選定態下編輯輸入即回全表(R3)", () => {
+    hookState.data = MULTI;
+    render(<BorrowFeePage />);
+    const input = pickStock("8046");
+    fireEvent.change(input, { target: { value: "24" } });
+    expect(screen.getAllByTestId("fee-row").length).toBe(3);
+  });
+
+  it("filter 態 0 rows 顯示「該檔今日無券差資料」(SC-5:refresh 後標的消失)", () => {
+    hookState.data = MULTI;
+    const { rerender } = render(<BorrowFeePage />);
+    pickStock("8046");
+    hookState.data = {
+      ...MULTI,
+      rows: MULTI.rows.filter((r) => r.stock_id !== "8046"),
+    };
+    rerender(<BorrowFeePage />);
+    expect(screen.getByText("該檔今日無券差資料")).toBeTruthy();
+    expect(screen.getByTestId("stock-filter-clear")).toBeTruthy();
+  });
+
+  it("data null 時不渲染篩選器(R2)", () => {
+    hookState.data = null;
+    render(<BorrowFeePage />);
+    expect(screen.queryByTestId("borrow-fee-stock-filter")).toBeNull();
+  });
+});
