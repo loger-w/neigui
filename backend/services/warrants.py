@@ -192,6 +192,8 @@ def normalize_tpex_issue_row(row: dict) -> dict | None:
             "kind": "call" if "購" in str(_row_get(row, "Type")) else "put",
             "strike": _parse_price(_row_get(row, "LatestExercisePrice")),
             "exercise_ratio": ratio,
+            # 標的代號:warrant_iv_history backfill 補標的價缺口用(additive)
+            "underlying_id": (str(_row_get(row, "UnderlyingStockCode") or "").strip() or None),
             # TPEx issue 無最後交易日欄 — 以 ExpiryDate 近似(差約 2 交易日)
             "last_trading_date": expiry,
             "maturity_date": expiry,
@@ -217,8 +219,11 @@ def _read_fixture(name: str) -> Any:
     return payload  # 檔缺 = None,caller 視同空(e2e-conventions)
 
 
-async def _fetch_mi_index(date_iso: str, type_code: str) -> list:
-    """回 MI_INDEX 20 欄表的 raw rows;FAKE 模式無視 date(fixture 對齊 FAKE_TODAY)。"""
+async def fetch_mi_index(date_iso: str, type_code: str) -> list:
+    """回 MI_INDEX 20 欄表的 raw rows;FAKE 模式無視 date(fixture 對齊 FAKE_TODAY)。
+
+    公開:warrant_iv_history backfill 以歷史 date 回溯共用(帶 date 參數可回溯 ≥3 年)。
+    """
     if os.getenv("FAKE_FINMIND") == "1":
         payload = _read_fixture(f"mi_index_{type_code}.json")
         return _extract_mi_table(payload) if isinstance(payload, dict) else []
@@ -230,7 +235,7 @@ async def _fetch_mi_index(date_iso: str, type_code: str) -> list:
     return _extract_mi_table(resp.json())
 
 
-async def _fetch_t187ap37() -> list:
+async def fetch_t187ap37() -> list:
     if os.getenv("FAKE_FINMIND") == "1":
         return _read_fixture("t187ap37_L.json") or []
     resp = await _get_client().get(T187AP37_URL)
@@ -254,7 +259,7 @@ async def _fetch_tpex_close() -> list:
     return resp.json()
 
 
-async def _fetch_tpex_issue() -> list:
+async def fetch_tpex_issue() -> list:
     if os.getenv("FAKE_FINMIND") == "1":
         return _read_fixture("tpex_warrant_issue.json") or []
     resp = await _get_client().get(TPEX_ISSUE_URL)
@@ -302,8 +307,8 @@ async def _build_snapshot() -> dict:
     put_rows: list = []
     for i in range(SNAPSHOT_LOOKBACK_DAYS):
         d = (today - timedelta(days=i)).isoformat()
-        call_rows = await _fetch_mi_index(d, "0999")
-        put_rows = await _fetch_mi_index(d, "0999P")
+        call_rows = await fetch_mi_index(d, "0999")
+        put_rows = await fetch_mi_index(d, "0999P")
         if call_rows or put_rows:
             as_of = d
             break
@@ -317,7 +322,7 @@ async def _build_snapshot() -> dict:
         }
 
     terms_by_id: dict[str, dict] = {}
-    for raw in await _fetch_t187ap37():
+    for raw in await fetch_t187ap37():
         t = normalize_twse_terms_row(raw)
         if t is not None:
             terms_by_id[t["warrant_id"]] = t
@@ -328,7 +333,7 @@ async def _build_snapshot() -> dict:
         if c is not None:
             tclose_by_id[c["stock_id"]] = c
     issue_by_id: dict[str, dict] = {}
-    for raw in await _fetch_tpex_issue():
+    for raw in await fetch_tpex_issue():
         t = normalize_tpex_issue_row(raw)
         if t is not None:
             issue_by_id[t["warrant_id"]] = t
@@ -449,6 +454,11 @@ async def _build_and_store() -> dict:
                 raise HTTPException(status_code=404, detail={"error": "no_data"})
         atomic_write_json(chip_cache_dir() / SNAPSHOT_FILE, snap)
         _snapshot_mem = snap
+        # 函式內 local import:warrant_iv_history 模組層 import 本模組(fetch 共用),
+        # 反向只能延後綁定避免循環;spawn 的是獨立背景 task,不掛回應路徑(design R2)。
+        from services import warrant_iv_history as ivh
+
+        ivh.ensure_post_build_task(snap)
         return snap
     finally:
         _last_build_attempt = _monotonic()
@@ -475,10 +485,33 @@ async def _load_snapshot(refresh: bool) -> dict:
     return await _run_once("snapshot_build", _build_and_store)
 
 
+async def get_snapshot(refresh: bool = False) -> dict:
+    """公開快照入口(warrant_iv_history 的 iv-history 查 underlying 用)。"""
+    return await _load_snapshot(refresh)
+
+
+def find_warrant_underlying(snap: dict, warrant_id: str) -> str | None:
+    for uid, rows in snap["by_underlying"].items():
+        for w in rows:
+            if w["warrant_id"] == warrant_id:
+                return uid
+    return None
+
+
 async def get_underlying_warrants(stock_id: str, refresh: bool = False) -> dict:
-    """該標的全部權證(上市+上櫃 union;空 list = 無掛牌權證,SC-7)。"""
+    """該標的全部權證(上市+上櫃 union;空 list = 無掛牌權證,SC-7)。
+
+    每列讀取時 merge iv_drift label(shallow copy,不變異 _snapshot_mem 共享
+    dict — design R10;merge 不烙進快照檔,backfill 完成即時生效)。
+    """
     snap = await _load_snapshot(refresh)
+    from services import warrant_iv_history as ivh  # local import,同 _build_and_store
+
+    drift_map = await ivh.get_drift_map()
     return {
         "as_of_date": snap["as_of_date"],
-        "warrants": snap["by_underlying"].get(stock_id, []),
+        "warrants": [
+            {**w, "iv_drift": (drift_map.get(w["warrant_id"]) or {}).get("label")}
+            for w in snap["by_underlying"].get(stock_id, [])
+        ],
     }

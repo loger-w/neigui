@@ -19,11 +19,22 @@ from utils.cache import atomic_write_json, chip_cache_dir, read_json
 
 @pytest.fixture(autouse=True)
 def _reset_warrants_state(monkeypatch):
-    """module-level state reset 慣例(同 test_daytrade_fee)。"""
+    """module-level state reset 慣例(同 test_daytrade_fee)。
+
+    test-infra:post-build archive(warrant-iv-drift)在本檔一律 no-op —
+    本檔測快照邏輯,archive/drift 供給鏈由 test_warrant_iv_history 覆蓋;
+    不 no-op 會在每測試殘留 pending background task。
+    """
+    from services import warrant_iv_history as ivh
+
     monkeypatch.setattr(ws, "_client", None)
     monkeypatch.setattr(ws, "_snapshot_mem", None)
     monkeypatch.setattr(ws, "_last_build_attempt", None)
     ws._inflight.clear()
+    monkeypatch.setattr(ivh, "ensure_post_build_task", lambda snap: None)
+    monkeypatch.setattr(ivh, "_drift_mem", None)
+    ivh._series_lru.clear()
+    ivh._inflight.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -144,11 +155,11 @@ def patch_upstream(
         counter["issue"] += 1
         return issue or []
 
-    monkeypatch.setattr(ws, "_fetch_mi_index", fake_mi)
-    monkeypatch.setattr(ws, "_fetch_t187ap37", fake_terms)
+    monkeypatch.setattr(ws, "fetch_mi_index", fake_mi)
+    monkeypatch.setattr(ws, "fetch_t187ap37", fake_terms)
     monkeypatch.setattr(ws, "_fetch_tpex_quts", fake_quts)
     monkeypatch.setattr(ws, "_fetch_tpex_close", fake_tclose)
-    monkeypatch.setattr(ws, "_fetch_tpex_issue", fake_issue)
+    monkeypatch.setattr(ws, "fetch_tpex_issue", fake_issue)
     return counter
 
 

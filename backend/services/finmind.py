@@ -654,6 +654,19 @@ class FinMindClient:
             },
         )
 
+    async def stock_price_range(self, symbol: str, start_date: str, end_date: str) -> list:
+        """TaiwanStockPrice 區間原始 rows — warrant_iv_history backfill 的
+        TPEx 權證標的價缺口補抓(per-underlying range 一次,design v4 §4.2)。"""
+        return await self._get(
+            f"{_FINMIND_BASE}/data",
+            {
+                "dataset": "TaiwanStockPrice",
+                "data_id": symbol,
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+        )
+
     async def _safe_get_secid_agg(
         self,
         symbol: str,
