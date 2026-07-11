@@ -38,6 +38,22 @@ test.describe("borrow fee mode", () => {
     await expect(page.getByTestId(TESTIDS.feeHigh)).toHaveCount(2);
   });
 
+  test("BF3: 單檔篩選 — 選定只剩該檔、清除回全表(mod/borrow-fee-stock-filter SC-2/3)", async ({ page }) => {
+    // 痛點:client-side filter 的資料級 assertion — 只驗 UI visible 蓋不住
+    // 「filter 全空 / 全不過濾」兩種 silent 壞法;鎖選定後 row 數與
+    // data-stock-id 全等,再鎖清除後回到原 row 數。
+    const rows = page.getByTestId(TESTIDS.feeRow);
+    await expect(rows.first()).toBeVisible();
+    const fullCount = await rows.count();
+    const filter = page.getByTestId(TESTIDS.borrowFeeStockFilter);
+    await filter.fill("8046");
+    await page.getByRole("option", { name: /8046/ }).click();
+    await expect(rows).toHaveCount(1);
+    expect(await rows.first().getAttribute("data-stock-id")).toBe("8046");
+    await page.getByTestId(TESTIDS.stockFilterClear).click();
+    await expect(rows).toHaveCount(fullCount);
+  });
+
   test("BF2: reload 後 borrow mode 持久化(SC-1)", async ({ page }) => {
     // 痛點:App.tsx useState init 讀 localStorage('mode');新 mode 值 'borrow'
     // 必須通過同一條持久化路徑(N2 只鎖 options,新枚舉值要自己的鎖)。

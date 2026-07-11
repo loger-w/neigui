@@ -41,6 +41,9 @@ export const TESTIDS = {
   borrowFeePage: "borrow-fee-page",
   feeRow: "fee-row",
   feeHigh: "fee-high",
+  // 券差單檔篩選(mod/borrow-fee-stock-filter)
+  borrowFeeStockFilter: "borrow-fee-stock-filter",
+  stockFilterClear: "stock-filter-clear",
   // equity 權證 tab(feat/warrant-selector)
   warrantRow: "warrant-row",
   warrantKindBadge: "warrant-kind-badge",
