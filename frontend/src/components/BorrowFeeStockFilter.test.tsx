@@ -42,10 +42,10 @@ describe("BorrowFeeStockFilter", () => {
     fireEvent.focus(getInput());
     const opts = screen.getAllByRole("option");
     expect(opts.length).toBe(3);
-    expect(opts[0].textContent).toContain("2434");
-    expect(opts[0].textContent).toContain("統懋");
-    expect(opts[0].textContent).toContain("上市");
-    expect(opts[1].textContent).toContain("上櫃");
+    expect(opts[0]?.textContent).toContain("2434");
+    expect(opts[0]?.textContent).toContain("統懋");
+    expect(opts[0]?.textContent).toContain("上市");
+    expect(opts[1]?.textContent).toContain("上櫃");
   });
 
   it("輸入代號 prefix / 名稱 substring 過濾候選", () => {
