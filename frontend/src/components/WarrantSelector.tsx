@@ -30,9 +30,10 @@ function fmtVol(price: number | null | undefined, vol: number | null | undefined
 }
 
 const MISPRICING_TEXT = { cheap: "偏便宜", fair: "合理", expensive: "偏貴" } as const;
-// SC-5:中性色階 — 偏便宜 accent / 合理 dim / 偏貴 ink+邊框強調;無紅綠(多空保留)
+// SC-5:中性色階,零色相 — accent 與 bull 同色值(#e85a4f,real-env 2026-07-11
+// 實測),資料標籤用 accent 即是多頭紅。兩端用「實底 vs 框線」+ ink 強度區分。
 const MISPRICING_CLASS = {
-  cheap: "text-accent border-accent/40",
+  cheap: "text-ink border-line-strong bg-ink/10",
   fair: "text-ink-dim border-transparent",
   expensive: "text-ink border-line-strong",
 } as const;
@@ -362,9 +363,10 @@ function RowPair({
           <span
             data-testid="warrant-kind-badge"
             className={cn(
+              // SC-5:認購/認售不用紅綠(accent==bull 同色值)— 實底 vs 框線區分
               "inline-block px-1.5 py-px border text-[0.7rem]",
               r.kind === "call"
-                ? "text-accent border-accent/40 bg-accent/10"
+                ? "text-ink border-line-strong bg-ink/10"
                 : "text-ink-muted border-line-strong",
             )}
           >
@@ -439,8 +441,10 @@ function RowPair({
                       </tr>
                     </thead>
                     <tbody>
-                      {brokersHook.data.rows.map((b) => (
-                        <tr key={b.broker_name} className="text-ink-muted">
+                      {/* key 帶 index:真實 FinMind 分點同名可重複(彰銀買賣
+                          兩列,2026-07-11 real-env 實測)— 純名字 key 會撞 */}
+                      {brokersHook.data.rows.map((b, i) => (
+                        <tr key={`${b.broker_name}-${i}`} className="text-ink-muted">
                           <td className="pr-4">{b.broker_name}</td>
                           <td className="pr-4 text-right">{b.buy}</td>
                           <td className="pr-4 text-right">{b.sell}</td>

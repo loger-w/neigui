@@ -149,6 +149,11 @@ describe("WarrantSelector", () => {
     const labels = screen.getAllByTestId("mispricing-label");
     expect(labels.map((l) => l.textContent)).toContain("合理");
     expect(labels.map((l) => l.textContent)).toContain("偏貴");
+    // real-env 2026-07-11:--color-accent 與 --color-bull 同色值(#e85a4f)—
+    // 資料標籤(非互動態)用 accent 即是多頭紅,SC-5 鎖死不得出現
+    for (const el of [...badges, ...labels]) {
+      expect(el.className).not.toMatch(/accent|bull|bear/);
+    }
   });
 
   it("嚴禁方向性文案(SC-5)", async () => {
@@ -222,6 +227,23 @@ describe("WarrantSelector", () => {
     await waitFor(() => expect(qSpy).toHaveBeenCalledTimes(2));
     expect(qSpy.mock.calls[1]?.[1]).toBe(true); // refresh=true 跳 cooldown
     expect(wSpy.mock.calls.length).toBe(wCalls); // 快照層不重抓
+  });
+
+  it("同名分點兩列都 render(real-env 2026-07-11:彰銀買賣各一列)", async () => {
+    mockApis(THREE, THREE_QUOTES);
+    vi.spyOn(api, "warrantBrokers").mockResolvedValue({
+      data_date: "2026-07-09",
+      rows: [
+        { broker_name: "彰銀", buy: 30000, sell: 0, net: 30000 },
+        { broker_name: "彰銀", buy: 0, sell: 30000, net: -30000 },
+      ],
+    });
+    render(<WarrantSelector symbol="2330" active={true} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
+    fireEvent.click(screen.getAllByRole("button", { name: /展開分點/ })[0]!);
+    await waitFor(() => expect(screen.getAllByText("彰銀")).toHaveLength(2));
   });
 
   it("展開列的分點表滾動內容在 row 下方(within 收斂 scope)", async () => {
