@@ -181,6 +181,11 @@ class TestNormalize:
         assert ws._row_get({"Latest ExerciseRatio": "0.05"}, "Latest ExerciseRatio") == "0.05"
         assert ws._row_get({}, "Latest ExerciseRatio") is None
 
+    def test_price_basis_rejects_crossed_quote(self) -> None:
+        # code-review CR-1:bid > ask 倒掛報價不得餵進 IV 反解 → None
+        assert ws._warrant_price_basis(None, 5.25, 5.10) is None
+        assert ws._warrant_price_basis(None, 1.20, 1.30) == pytest.approx(1.25)
+
     def test_parse_price_dirty_values(self) -> None:
         assert ws._parse_price("1,130.00") == pytest.approx(1130.0)
         assert ws._parse_price("") is None
@@ -440,6 +445,19 @@ class TestCache:
         p2 = await ws.get_underlying_warrants("6781")  # backoff 內 → 直接 stale
         assert p2["warrants"]
         assert counter2["mi"] == 0  # backoff 期間零 upstream hit
+
+    async def test_stale_fallback_populates_mem_cache(self, monkeypatch) -> None:
+        # code-review CR-3:空回退回檔案 cache 時要回寫 _snapshot_mem,
+        # 否則重啟後每請求多一次磁碟讀
+        default_upstream(monkeypatch)
+        await ws.get_underlying_warrants("6781")
+        # 模擬重啟 + 跨日 + upstream 全空 → 走「空回不覆寫」回退
+        monkeypatch.setattr(ws, "_snapshot_mem", None)
+        monkeypatch.setattr(clock, "today", lambda: date_type(2026, 7, 12))
+        patch_upstream(monkeypatch)
+        payload = await ws.get_underlying_warrants("6781")
+        assert payload["warrants"]
+        assert ws._snapshot_mem is not None  # mem 已回填
 
     async def test_concurrent_requests_single_build(self, monkeypatch) -> None:
         # R3:併發首請求合流單次 build

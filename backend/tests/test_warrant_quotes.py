@@ -120,6 +120,14 @@ class TestParseMisRow:
         assert q["quote_date"] == "2026-07-10"
         assert q["quote_time"] == "13:30"
 
+    def test_crossed_quote_mid_rejected(self) -> None:
+        # code-review CR-1:z 缺、bid > ask 倒掛 → P 為 None(不算 mid)
+        q = wq._parse_mis_row(
+            mis_row(z="-", a="5.10_-_-_-_-_", b="5.25_-_-_-_-_")
+        )
+        assert q is not None
+        assert wq._price_basis(q) is None
+
     def test_no_trade_and_placeholders(self) -> None:
         q = wq._parse_mis_row(mis_row(z="-", a="-", b="-", f="-", g="-"))
         assert q is not None

@@ -283,10 +283,14 @@ async def _run_once(key: str, coro_fn: Callable[[], Awaitable[Any]]) -> Any:
 
 
 def _warrant_price_basis(close: float | None, bid: float | None, ask: float | None) -> float | None:
-    """定價基準 P:有成交用收盤,零成交用 mid,皆無 → None(edge case 2)。"""
+    """定價基準 P:有成交用收盤,零成交用 mid,皆無 → None(edge case 2)。
+
+    bid > ask(倒掛,stale 快照可見)→ None:倒掛 mid 餵進 IV 反解會產出
+    無旗標的錯誤 iv_prev(code-review CR-1)。
+    """
     if close is not None:
         return close
-    if bid is not None and ask is not None:
+    if bid is not None and ask is not None and bid <= ask:
         return (bid + ask) / 2.0
     return None
 

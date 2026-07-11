@@ -113,6 +113,20 @@ async def _fetch_mis_raw(ex_ch: str) -> list:
     return body.get("msgArray") or []
 
 
+def _parse_price(v: Any) -> float | None:
+    """MIS `-` 佔位 / 空字串 → None(warrants._parse_price 同構 local 複製
+    — 不跨模組引私有,code-review CR-2;local-copy 慣例同 _run_once)。"""
+    if v is None:
+        return None
+    s = str(v).strip()
+    if not s or s in ("---", "-"):
+        return None
+    try:
+        return float(s.replace(",", ""))
+    except ValueError:
+        return None
+
+
 def _first_of(raw: Any) -> float | None:
     """五檔 `_` 分隔字串取第一檔;`-` 佔位、尾綴 `_` 容忍(spec §2.4 髒點)。"""
     if raw is None:
@@ -120,7 +134,7 @@ def _first_of(raw: Any) -> float | None:
     parts = [p for p in str(raw).strip().split("_") if p]
     if not parts:
         return None
-    return warrants._parse_price(parts[0])
+    return _parse_price(parts[0])
 
 
 def _parse_mis_row(m: dict) -> dict | None:
@@ -131,7 +145,7 @@ def _parse_mis_row(m: dict) -> dict | None:
         bid_vol = _first_of(m.get("g"))
         return {
             "code": str(m["c"]).strip(),
-            "z": warrants._parse_price(m.get("z")),
+            "z": _parse_price(m.get("z")),
             "bid": _first_of(m.get("b")),
             "ask": _first_of(m.get("a")),
             "bid_vol": int(bid_vol) if bid_vol is not None else None,
@@ -153,7 +167,8 @@ def _price_basis(q: dict | None) -> float | None:
         return None
     if q["z"] is not None:
         return q["z"]
-    if q["bid"] is not None and q["ask"] is not None:
+    # bid > ask 倒掛不算 mid(code-review CR-1,同 warrants._warrant_price_basis)
+    if q["bid"] is not None and q["ask"] is not None and q["bid"] <= q["ask"]:
         return (q["bid"] + q["ask"]) / 2.0
     return None
 
