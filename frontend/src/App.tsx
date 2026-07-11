@@ -63,7 +63,11 @@ const BorrowFeePage = lazy(() =>
   import("./components/BorrowFeePage").then((m) => ({ default: m.BorrowFeePage })),
 );
 
-type Tab = "overview" | "bubble";
+const WarrantSelector = lazy(() =>
+  import("./components/WarrantSelector").then((m) => ({ default: m.WarrantSelector })),
+);
+
+type Tab = "overview" | "bubble" | "warrants";
 
 function todayStr(): string {
   const d = new Date();
@@ -375,6 +379,17 @@ export default function App() {
           >
             泡泡圖
           </button>
+          <button
+            type="button"
+            onClick={() => setTab("warrants")}
+            className={`px-4 py-2 pointer-coarse:min-h-11 text-sm transition-colors cursor-pointer ${
+              tab === "warrants"
+                ? "text-accent border-b-2 border-accent font-medium"
+                : "text-ink-dim hover:text-ink"
+            }`}
+          >
+            權證
+          </button>
         </div>
       </header>
 
@@ -460,6 +475,19 @@ export default function App() {
               onJumpToOverview={handleJumpToOverview}
               loading={bubbleHook.loading && !!symbol}
             />
+          </Suspense>
+        </div>
+        <div hidden={tab !== "warrants"} className="h-full">
+          <Suspense
+            fallback={
+              <div className="h-full flex items-center justify-center text-ink-dim text-sm">
+                載入權證選擇器...
+              </div>
+            }
+          >
+            {/* active gate:hidden 保 DOM 但 tab 未開不抓(hooks enabled=false);
+                權證 hooks 掛元件內部,不進全域 refresh(重整鈕只刷 quotes,R11) */}
+            <WarrantSelector symbol={symbol} active={tab === "warrants"} />
           </Suspense>
         </div>
       </div>

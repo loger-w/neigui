@@ -40,6 +40,28 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.25.0",
+    date: "2026-07-11",
+    highlights: "個股頁新增「權證」分頁:盤中挑權證",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "個股頁新增「權證」分頁:列出該股全部上市上櫃權證,交易時段自動更新報價,收盤後顯示最後行情",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證表格提供估價參考:理論價與估價差(偏貴/合理/偏便宜)、同標的隱含波動率百分位",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證可依認購認售、剩餘天數、價內外、估價差等條件篩選,預設以差槓比排序;點列可展開分點買賣超(前一交易日資料)",
+      },
+    ],
+  },
+  {
     version: "0.24.0",
     date: "2026-07-11",
     highlights: "新增「券差」頁:當沖券差借券費率每日總覽",
