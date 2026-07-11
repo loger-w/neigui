@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useWarrants } from "../hooks/useWarrants";
 import { useWarrantQuotes } from "../hooks/useWarrantQuotes";
 import { useWarrantBrokers } from "../hooks/useWarrantBrokers";
+import { WarrantIvHistory } from "./WarrantIvHistory";
 import type { WarrantRow } from "../lib/warrant-data";
 import {
   DEFAULT_FILTERS,
@@ -30,6 +31,9 @@ function fmtVol(price: number | null | undefined, vol: number | null | undefined
 }
 
 const MISPRICING_TEXT = { cheap: "偏便宜", fair: "合理", expensive: "偏貴" } as const;
+// IV 趨勢中性文案(warrant-iv-drift SC-6):只陳述統計事實,stable/insufficient
+// 顯示 —(全表多數 stable,標出來是噪音);嚴禁「惡意」等指控性文字。
+const DRIFT_TEXT: Record<string, string> = { declining: "長期遞減", rising: "長期遞增" };
 // SC-5:中性色階,零色相 — accent 與 bull 同色值(#e85a4f,real-env 2026-07-11
 // 實測),資料標籤用 accent 即是多頭紅。兩端用「實底 vs 框線」+ ink 強度區分。
 const MISPRICING_CLASS = {
@@ -59,6 +63,7 @@ const HEADERS: SortableHeader[] = [
   { key: "theo_price", label: "理論價" },
   { key: "mispricing_pct", label: "估價差" },
   { key: "iv_percentile", label: "IV百分位" },
+  { key: null, label: "IV趨勢" },
   { key: "leverage", label: "實質槓桿" },
   { key: "spread_ratio", label: "價差比" },
   { key: "spread_lev_ratio", label: "差槓比" },
@@ -412,6 +417,11 @@ function RowPair({
         <td className="px-2 py-1 text-right text-ink-muted">
           {r.iv_percentile == null ? "—" : r.iv_percentile.toFixed(0)}
         </td>
+        <td className="px-2 py-1 text-right">
+          <span data-testid="iv-drift-label" className="text-ink-muted">
+            {(r.iv_drift && DRIFT_TEXT[r.iv_drift]) || "—"}
+          </span>
+        </td>
         <td className="px-2 py-1 text-right text-ink-muted">{fmt(r.leverage, 2)}</td>
         <td className="px-2 py-1 text-right text-ink-muted">{fmtPct(r.spread_ratio)}</td>
         <td className={cn("px-2 py-1 text-right", slrClass)}>
@@ -420,7 +430,10 @@ function RowPair({
       </tr>
       {expanded && (
         <tr className="border-b border-line bg-bg-deep/50">
-          <td colSpan={HEADERS.length + 1} className="px-8 py-2">
+          <td colSpan={HEADERS.length + 1} className="px-8 py-2 space-y-3">
+            <div className="text-xs">
+              <WarrantIvHistory warrantId={r.warrant_id} />
+            </div>
             <div data-testid="warrant-brokers-detail" className="text-xs">
               {brokersHook?.loading ? (
                 <span className="text-ink-dim">載入分點資料...</span>

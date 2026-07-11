@@ -77,6 +77,15 @@ function mockApis(
     data_date: "2026-07-09",
     rows: [{ broker_name: "凱基-台北", buy: 900, sell: 100, net: 800 }],
   });
+  vi.spyOn(api, "warrantIvHistory").mockResolvedValue({
+    warrant_id: "030013",
+    terms_approx_dates: [],
+    series: [
+      { date: "2026-07-08", iv_bid: 0.42, iv_ask: 0.46 },
+      { date: "2026-07-09", iv_bid: 0.41, iv_ask: 0.45 },
+    ],
+    drift: { label: "stable", slope_bid: 0.0, slope_ask: 0.0, n_valid: 25 },
+  });
 }
 
 beforeEach(() => vi.restoreAllMocks());
@@ -245,6 +254,55 @@ describe("WarrantSelector", () => {
     await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
     fireEvent.click(screen.getAllByRole("button", { name: /展開分點/ })[0]!);
     await waitFor(() => expect(screen.getAllByText("彰銀")).toHaveLength(2));
+  });
+
+  it("IV趨勢欄:label 對映中性文案,stable/null 顯示 —(SC-6)", async () => {
+    mockApis(
+      [
+        term({ iv_drift: "declining" }),
+        term({ warrant_id: "030013", name: "台積元大58購02", iv_drift: "rising" }),
+        term({ warrant_id: "03001P", name: "台積富邦57售01", kind: "put", iv_drift: "stable" }),
+      ],
+      THREE_QUOTES,
+    );
+    render(<WarrantSelector symbol="2330" active={true} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
+    const headerTexts = screen
+      .getAllByRole("columnheader")
+      .map((th) => (th.textContent ?? "").replace(/ [↑↓]$/, ""));
+    expect(headerTexts).toContain("IV趨勢");
+    const cells = screen.getAllByTestId("iv-drift-label");
+    expect(cells).toHaveLength(3);
+    const byRow = new Map(
+      screen
+        .getAllByTestId("warrant-row")
+        .map((r) => [
+          r.getAttribute("data-warrant-id"),
+          within(r).getByTestId("iv-drift-label").textContent,
+        ]),
+    );
+    expect(byRow.get("030012")).toBe("長期遞減");
+    expect(byRow.get("030013")).toBe("長期遞增");
+    expect(byRow.get("03001P")).toBe("—"); // stable 不標,降表格噪音
+    // 中性鐵則:不用紅綠方向色、不用指控性文案
+    for (const el of cells) expect(el.className).not.toMatch(/accent|bull|bear/);
+    expect(screen.queryByText(/惡意|坑殺|亂調/)).toBeNull();
+  });
+
+  it("row 展開 lazy 抓 IV 歷史並渲染時序圖(SC-7)", async () => {
+    mockApis(THREE, THREE_QUOTES);
+    const ivSpy = vi.spyOn(api, "warrantIvHistory");
+    render(<WarrantSelector symbol="2330" active={true} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
+    expect(ivSpy).not.toHaveBeenCalled(); // 未展開不抓
+    fireEvent.click(screen.getAllByRole("button", { name: /展開分點/ })[0]!);
+    await waitFor(() => expect(screen.getByTestId("warrant-iv-chart")).toBeTruthy());
+    expect(ivSpy).toHaveBeenCalledTimes(1);
+    expect(ivSpy.mock.calls[0]?.[0]).toBe("030013"); // 排序後首列
   });
 
   it("展開列的分點表滾動內容在 row 下方(within 收斂 scope)", async () => {
