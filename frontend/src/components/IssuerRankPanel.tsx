@@ -45,7 +45,8 @@ export function IssuerRankPanel() {
         <div className="px-4 pb-2 space-y-1.5">
           <div className="text-ink-dim">
             以最近 {data?.built_from_days ?? "—"} 個交易日的收盤報價推算(兩週買一 IV
-            標準差 / 價差比 / 降波占比,權重對齊 TWSE 評等方向)— 非官方盤中口徑,僅供排序參考
+            標準差 / 價差比 / 降波占比,權重對齊 TWSE 評等方向)— 非官方盤中口徑,僅供排序參考;
+            未按價內外/天期分層,發行檔數多、深價外占比高的發行商指標天然偏高,跨規模比較請保留
           </div>
           {loading && !data ? (
             <div className="text-ink-dim py-1">載入中...</div>
