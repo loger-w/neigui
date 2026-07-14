@@ -514,8 +514,9 @@ async def get_underlying_warrants(stock_id: str, refresh: bool = False) -> dict:
     issuer_map = wi.get_issuer_map_cached()
     tier_by_issuer = wi.get_issuer_tier_cached()
 
-    def _issuer_fields(wid: str) -> dict:
-        info = issuer_map.get(wid)
+    def _issuer_fields(w: dict) -> dict:
+        # 舊代號殘留防護:對映標的 ≠ 現行權證標的 → null(代號跨年回收)
+        info = wi.resolve_issuer(issuer_map, w["warrant_id"], w.get("underlying_id"))
         if not info:
             return {"issuer_name": None, "issuer_tier": None}
         return {
@@ -529,7 +530,7 @@ async def get_underlying_warrants(stock_id: str, refresh: bool = False) -> dict:
             {
                 **w,
                 "iv_drift": (drift_map.get(w["warrant_id"]) or {}).get("label"),
-                **_issuer_fields(w["warrant_id"]),
+                **_issuer_fields(w),
             }
             for w in snap["by_underlying"].get(stock_id, [])
         ],

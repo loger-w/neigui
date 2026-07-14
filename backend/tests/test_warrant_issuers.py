@@ -170,9 +170,9 @@ def test_short_name_keeps_unrecognized():
 async def test_issuer_map_merges_both_markets(monkeypatch):
     patch_fetch(monkeypatch)
     m = await wi.get_issuer_map()
-    assert m["074888"] == {"issuer_id": "5380", "issuer_name": "第一金"}
-    assert m["030012"] == {"issuer_id": "9200", "issuer_name": "凱基"}
-    assert m["730208"] == {"issuer_id": "5380", "issuer_name": "第一金"}
+    assert m["074888"] == {"issuer_id": "5380", "issuer_name": "第一金", "underlying_id": "1802"}
+    assert m["030012"] == {"issuer_id": "9200", "issuer_name": "凱基", "underlying_id": "6781"}
+    assert m["730208"] == {"issuer_id": "5380", "issuer_name": "第一金", "underlying_id": "5289"}
 
 
 async def test_issuer_map_tpex_short_name_wins(monkeypatch):
@@ -537,3 +537,61 @@ async def test_issuer_map_shortens_tpex_full_names(monkeypatch):
     patch_fetch(monkeypatch, tpex=tpex_full)
     m = await wi.get_issuer_map()
     assert m["730999"]["issuer_name"] == "台新"
+
+
+# ---------------------------------------------------------------- 代號回收防護(Phase 7 real-env)
+
+
+DUP_ROWS = [
+    {
+        "出表日期": "1150713",
+        "發行人代號": "9800",
+        "發行人名稱": "元大證券股份有限公司",
+        "權證代號": "051372",
+        "名稱": "威盛元大43購11",
+        "標的代號": "2388",
+        "標的名稱": "威盛",
+        "申請發行日期": "1140108",
+    },
+    {
+        "出表日期": "1150713",
+        "發行人代號": "9500",
+        "發行人名稱": "兆豐證券股份有限公司",
+        "權證代號": "051372",
+        "名稱": "台積電兆豐59購01",
+        "標的代號": "2330",
+        "標的名稱": "台積電",
+        "申請發行日期": "1150301",
+    },
+]
+
+
+async def test_issuer_map_recycled_code_picks_latest(monkeypatch):
+    """權證代號跨年回收(real-env 實證 36_L 1,967 個重複代號)—
+    同 wid 取申請發行日期最新的一列。"""
+    patch_fetch(monkeypatch, twse=DUP_ROWS, tpex=[])
+    m = await wi.get_issuer_map()
+    assert m["051372"]["issuer_name"] == "兆豐"
+    assert m["051372"]["underlying_id"] == "2330"
+
+
+async def test_issuer_map_carries_underlying_for_guard(monkeypatch):
+    patch_fetch(monkeypatch)
+    m = await wi.get_issuer_map()
+    assert m["030012"]["underlying_id"] == "6781"
+
+
+def test_rank_skips_underlying_mismatch():
+    """map 殘留舊代號(現行權證未入 36_L)→ 標的不符不得計入該發行商。"""
+    imap = issuer_map_two()
+    for v in imap.values():
+        v["underlying_id"] = "2330"
+    imap["AAA001"] = {"issuer_id": "5380", "issuer_name": "第一金", "underlying_id": "9999"}
+    wids_a = [f"AAA{i:03d}" for i in range(1, 6)]
+    archives = make_archives({w: STABLE for w in wids_a})
+    terms = {w: {"last_trading_date": "2026-12-30", "underlying_id": "2330"} for w in wids_a}
+    out = wi.compute_issuer_rank(
+        archives, {w: {"label": "stable"} for w in wids_a}, terms, imap
+    )
+    by_id = {r["issuer_id"]: r for r in out["issuers"]}
+    assert by_id["5380"]["n_warrants"] == 4  # AAA001 標的不符被擋
