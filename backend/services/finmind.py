@@ -654,6 +654,14 @@ class FinMindClient:
             },
         )
 
+    async def stock_price_universe_day(self, date: str) -> list:
+        """TaiwanStockPrice date-only 全市場單日 — warrant_flow day dump
+        (design warrant-broker-flow v3 §2.3;無 data_id,單日一發 ~44k rows)。"""
+        return await self._get(
+            f"{_FINMIND_BASE}/data",
+            {"dataset": "TaiwanStockPrice", "start_date": date, "end_date": date},
+        )
+
     async def stock_price_range(self, symbol: str, start_date: str, end_date: str) -> list:
         """TaiwanStockPrice 區間原始 rows — warrant_iv_history backfill 的
         TPEx 權證標的價缺口補抓(per-underlying range 一次,design v4 §4.2)。"""

@@ -1,0 +1,386 @@
+"""權證買賣超分點聚合 — 標的層級 flow(design .claude/feat/warrant-broker-flow/design.md v3)。
+
+資料流:條款快照(權證→標的)→ TaiwanStockPrice date-only 全市場 dump 篩有量
+→ 依成交金額 cap 200(spike L-2 校準)→ 可得性 probe → fan-out 分點報表
+→ 三層聚合(summary / per-branch top15 / per-warrant)→ per (stock, date) cache。
+
+候選日自適應(spike L-1):從 today 起往前試,報表未上料以 probe 一發偵測,
+不依賴「當晚幾點上料」的未知時點。
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+from datetime import date as date_type, timedelta
+from typing import Any, Awaitable, Callable
+
+import httpx
+from fastapi import HTTPException
+
+from services import clock, warrants
+from utils.cache import atomic_write_json, chip_cache_dir, read_json
+
+logger = logging.getLogger(__name__)
+
+_CACHE_VERSION = 1
+FLOW_CAP = 200  # spike L-2:cap 200 最壞覆蓋 95.69%(2330);文案由 payload analyzed 插值
+FLOW_LOOKBACK_DAYS = 10  # R8:春節級連假也要能回退到最近交易日
+_PRICE_DAY_KEEP_KEYS = ("stock_id", "Trading_money")
+_DUMP_RETAIN_DAYS = 7
+_RESULT_RETAIN_DAYS = 30
+# 與 Phase 0 spike 腳本同一口徑(memory reference_finmind_warrant_dataset 代號區間);
+# 含字尾字母的 6 碼牛熊/展延證天然命中,71 等非權證 prefix 排除(R10)
+_WARRANT_PREFIXES = ("03", "04", "05", "06", "07", "08", "09", "72", "73", "74")
+
+_inflight: dict[str, dict[str, Any]] = {}
+
+
+def get_finmind():
+    """per-module wrap(finmind-conventions):test 可獨立 monkeypatch。"""
+    from services.finmind import get_finmind as _real
+
+    return _real()
+
+
+async def _run_once(key: str, coro_fn: Callable[[], Awaitable[Any]]) -> Any:
+    """Inflight dedup(subscriber refcount + shield)— warrants.py 同構。"""
+    entry = _inflight.get(key)
+    if entry is None:
+        entry = {"task": asyncio.ensure_future(coro_fn()), "refs": 0}
+        _inflight[key] = entry
+    entry["refs"] += 1
+    try:
+        return await asyncio.shield(entry["task"])
+    finally:
+        entry["refs"] -= 1
+        if entry["refs"] == 0:
+            if not entry["task"].done():
+                entry["task"].cancel()
+            _inflight.pop(key, None)
+
+
+# ---------------------------------------------------------------- dates / caches
+
+
+def _candidate_dates(date_param: str | None) -> list[str]:
+    """起點(date 參數或 today,自適應含 T+0)往前的非週末日,取 FLOW_LOOKBACK_DAYS 個。"""
+    d = date_type.fromisoformat(date_param) if date_param else clock.today()
+    dates: list[str] = []
+    while len(dates) < FLOW_LOOKBACK_DAYS:
+        if d.weekday() < 5:
+            dates.append(d.isoformat())
+        d -= timedelta(days=1)
+    return dates
+
+
+def _result_cache_path(stock_id: str, d: str):
+    return chip_cache_dir() / f"warrant_flow_{stock_id}_{d}.json"
+
+
+def _dump_cache_path(d: str):
+    return chip_cache_dir() / f"flow_prices_{d}.json"
+
+
+def _read_versioned(path) -> dict | None:
+    payload = read_json(path)
+    if not isinstance(payload, dict) or payload.get("_cache_version") != _CACHE_VERSION:
+        return None
+    return payload
+
+
+def _cleanup_flow_caches(today: date_type) -> int:
+    """刪過期 flow_prices_*(>7 天)/ warrant_flow_*(>30 天);單次 iterdir,
+    失敗 skip(Windows 檔案佔用)— _cleanup_stale_window_files 慣例。"""
+    dump_floor = (today - timedelta(days=_DUMP_RETAIN_DAYS)).isoformat()
+    result_floor = (today - timedelta(days=_RESULT_RETAIN_DAYS)).isoformat()
+    removed = 0
+    for p in chip_cache_dir().iterdir():
+        if p.suffix != ".json":
+            continue
+        stem = p.stem
+        stale = (stem.startswith("flow_prices_") and stem.rsplit("_", 1)[-1] < dump_floor) or (
+            stem.startswith("warrant_flow_") and stem.rsplit("_", 1)[-1] < result_floor
+        )
+        if not stale:
+            continue
+        try:
+            p.unlink()
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
+# ---------------------------------------------------------------- fetch
+
+
+def _fake_price_day(d: str) -> list[dict]:
+    """FAKE 分支:fixtures/warrants/ 子目錄直讀(不進 MANIFEST _store,避免汙染
+    market_breadth 的 FAKE per-day loop — design §2.3),以 D 過濾模擬 date-only 語意。"""
+    payload = read_json(warrants._fixtures_dir() / "warrants" / "price_day.json")
+    rows = payload if isinstance(payload, list) else []
+    return [r for r in rows if r.get("date") == d]
+
+
+async def _fetch_price_day(d: str, refresh: bool) -> list[dict]:
+    """TaiwanStockPrice date-only 全市場 dump,per-date cache + 跨 stock dedup。
+
+    獨立 cache prefix(flow_prices_)— market_breadth 的 cleanup 會刪非當前
+    window 的 breadth_prices_*,共用必互踩(design R5/R7)。
+    """
+    if os.getenv("FAKE_FINMIND") == "1":
+        return _fake_price_day(d)
+    if not refresh:
+        cached = _read_versioned(_dump_cache_path(d))
+        if cached is not None:
+            return cached.get("rows", [])
+
+    async def _do_fetch() -> list[dict]:
+        rows = await get_finmind().stock_price_universe_day(d)
+        trimmed = [{k: r[k] for k in _PRICE_DAY_KEEP_KEYS if k in r} for r in rows]
+        # R15:D ≥ today−1 的空 dump 不落 cache(當日稍晚上料 + ingestion 跨午夜緩衝)
+        recent_floor = (clock.today() - timedelta(days=1)).isoformat()
+        if trimmed or d < recent_floor:
+            atomic_write_json(
+                _dump_cache_path(d), {"_cache_version": _CACHE_VERSION, "rows": trimmed}
+            )
+        return trimmed
+
+    # R14:dedup key 帶 refresh 旗標(market_breadth F2 precedent),refresh 請求
+    # 不得 join 到 cache-read 路徑的 in-flight task
+    return await _run_once(f"flow_prices_{d}_r{int(refresh)}", _do_fetch)
+
+
+async def _fetch_report(wid: str, d: str) -> list[dict]:
+    """分點報表單檔;FinMind start_date open-ended 回多日 rows → 只留查詢日。"""
+    raw = await get_finmind().fetch_warrant_trading_daily_report(wid, d)
+    return [r for r in raw if r.get("date") == d]
+
+
+# ---------------------------------------------------------------- aggregate
+
+
+def _aggregate(
+    reports: dict[str, list[dict]],
+    winfo: dict[str, dict],
+    money: dict[str, float],
+) -> dict:
+    """三層聚合(spec §3)。金額 = price × 股數,輸出四捨五入到分(2 位)。"""
+    summary = {
+        "call": {"buy_value": 0.0, "sell_value": 0.0},
+        "put": {"buy_value": 0.0, "sell_value": 0.0},
+    }
+    branches: dict[str, dict] = {}
+    per_warrant: dict[str, list[float]] = {wid: [0.0, 0.0] for wid in reports}
+    for wid, rows in reports.items():
+        kind = winfo[wid]["kind"]
+        name = winfo[wid]["name"]
+        for r in rows:
+            try:
+                price = float(r["price"])
+                buy = int(r["buy"])
+                sell = int(r["sell"])
+                tid = str(r["securities_trader_id"])
+                tname = str(r["securities_trader"])
+            except (KeyError, TypeError, ValueError):
+                logger.warning("skip bad warrant flow row: %r", r)
+                continue
+            bv, sv = price * buy, price * sell
+            summary[kind]["buy_value"] += bv
+            summary[kind]["sell_value"] += sv
+            per_warrant[wid][0] += bv
+            per_warrant[wid][1] += sv
+            b = branches.setdefault(
+                tid,
+                {
+                    "broker_id": tid,
+                    "broker_name": tname,
+                    "buy_value": 0.0,
+                    "sell_value": 0.0,
+                    "warrants": {},
+                },
+            )
+            b["buy_value"] += bv
+            b["sell_value"] += sv
+            w = b["warrants"].setdefault(
+                wid,
+                {
+                    "warrant_id": wid,
+                    "name": name,
+                    "kind": kind,
+                    "buy_value": 0.0,
+                    "sell_value": 0.0,
+                },
+            )
+            w["buy_value"] += bv
+            w["sell_value"] += sv
+
+    for side in summary.values():
+        side["buy_value"] = round(side["buy_value"], 2)
+        side["sell_value"] = round(side["sell_value"], 2)
+
+    finalized: list[dict] = []
+    for b in branches.values():
+        rows = []
+        for w in b["warrants"].values():
+            w["buy_value"] = round(w["buy_value"], 2)
+            w["sell_value"] = round(w["sell_value"], 2)
+            w["net_value"] = round(w["buy_value"] - w["sell_value"], 2)
+            rows.append(w)
+        rows.sort(key=lambda w: -abs(w["net_value"]))
+        buy_v = round(b["buy_value"], 2)
+        sell_v = round(b["sell_value"], 2)
+        finalized.append(
+            {
+                "broker_id": b["broker_id"],
+                "broker_name": b["broker_name"],
+                "buy_value": buy_v,
+                "sell_value": sell_v,
+                "net_value": round(buy_v - sell_v, 2),
+                "warrants": rows,
+            }
+        )
+    top_buy = sorted((b for b in finalized if b["net_value"] > 0), key=lambda b: -b["net_value"])[
+        :15
+    ]
+    top_sell = sorted((b for b in finalized if b["net_value"] < 0), key=lambda b: b["net_value"])[
+        :15
+    ]
+    warrant_rows = [
+        {
+            "warrant_id": wid,
+            "name": winfo[wid]["name"],
+            "kind": winfo[wid]["kind"],
+            "trading_money": money.get(wid, 0.0),
+            "net_value": round(per_warrant[wid][0] - per_warrant[wid][1], 2),
+        }
+        for wid in reports
+    ]
+    warrant_rows.sort(key=lambda w: -w["trading_money"])
+    return {
+        "summary": summary,
+        "top_buy_branches": top_buy,
+        "top_sell_branches": top_sell,
+        "warrants": warrant_rows,
+    }
+
+
+def _empty_payload(reason: str, as_of: str | None, unmapped: int) -> dict:
+    """空 payload 鍵恆齊全(design §2.2b);no_trading_day 由 get_flow 統一貼。"""
+    return {
+        "as_of_date": as_of,
+        "truncated": False,
+        "total_traded": 0,
+        "analyzed": 0,
+        "unmapped_count": unmapped,
+        "empty_reason": reason,
+        "summary": {
+            "call": {"buy_value": 0.0, "sell_value": 0.0},
+            "put": {"buy_value": 0.0, "sell_value": 0.0},
+        },
+        "top_buy_branches": [],
+        "top_sell_branches": [],
+        "warrants": [],
+    }
+
+
+# ---------------------------------------------------------------- orchestration
+
+
+def _is_warrant_shaped(stock_id: str) -> bool:
+    return len(stock_id) == 6 and stock_id[:2] in _WARRANT_PREFIXES
+
+
+async def get_flow(stock_id: str, date: str | None = None, refresh: bool = False) -> dict:
+    """標的權證買賣超分點聚合(route 入口)。"""
+
+    async def _impl() -> dict:
+        try:
+            snap = await warrants.get_snapshot()
+        except (httpx.HTTPError, HTTPException) as exc:
+            # R16:快照層錯誤(含其 404 no_data)一律 warrant_upstream —
+            # no_data 碼專屬「候選日耗盡」單一語意
+            logger.warning("warrant flow snapshot unavailable: %s", exc)
+            raise HTTPException(status_code=502, detail={"error": "warrant_upstream"}) from exc
+        wlist = snap.get("by_underlying", {}).get(stock_id, [])
+        if not wlist:
+            return _empty_payload("no_warrants", None, 0)
+
+        winfo = {w["warrant_id"]: w for w in wlist}
+        mapped_all = {w["warrant_id"] for rows in snap["by_underlying"].values() for w in rows}
+
+        for d in _candidate_dates(date):
+            if not refresh:
+                cached = _read_versioned(_result_cache_path(stock_id, d))
+                if cached is not None:
+                    cached.pop("_cache_version", None)
+                    return cached
+            dump = await _fetch_price_day(d, refresh)
+            if not dump:
+                continue
+            traded: list[tuple[str, float]] = []
+            unmapped = 0
+            for r in dump:
+                sid = str(r.get("stock_id", ""))
+                m = r.get("Trading_money") or 0
+                if m <= 0:
+                    continue
+                if sid in winfo:
+                    traded.append((sid, float(m)))
+                elif _is_warrant_shaped(sid) and sid not in mapped_all:
+                    unmapped += 1
+            if unmapped:
+                logger.info(
+                    "warrant flow %s %s: %d traded warrants unmapped", stock_id, d, unmapped
+                )
+            if not traded:
+                payload = _empty_payload("no_volume", d, unmapped)
+                atomic_write_json(
+                    _result_cache_path(stock_id, d),
+                    {**payload, "_cache_version": _CACHE_VERSION},
+                )
+                return payload
+            traded.sort(key=lambda t: -t[1])
+            total = len(traded)
+            analyzed = traded[:FLOW_CAP]
+            # 可得性 probe:top-1 一發,0 rows = 報表未上料 → 下一候選日
+            top_wid = analyzed[0][0]
+            probe_rows = await _fetch_report(top_wid, d)
+            if not probe_rows:
+                continue
+            reports: dict[str, list[dict]] = {top_wid: probe_rows}
+            rest = [wid for wid, _ in analyzed[1:]]
+            try:
+                async with asyncio.TaskGroup() as tg:
+                    tasks = {wid: tg.create_task(_fetch_report(wid, d)) for wid in rest}
+            except* httpx.HTTPError as eg:
+                # 整包放棄(不 cache 部分結果);TaskGroup 已取消 siblings
+                raise eg.exceptions[0] from None
+            for wid, task in tasks.items():
+                reports[wid] = task.result()
+            payload = {
+                "as_of_date": d,
+                "truncated": total > FLOW_CAP,
+                "total_traded": total,
+                "analyzed": len(analyzed),
+                "unmapped_count": unmapped,
+                "empty_reason": None,
+                **_aggregate(reports, winfo, dict(analyzed)),
+            }
+            atomic_write_json(
+                _result_cache_path(stock_id, d),
+                {**payload, "_cache_version": _CACHE_VERSION},
+            )
+            removed = _cleanup_flow_caches(clock.today())
+            if removed:
+                logger.info("warrant flow cache cleanup removed %d files", removed)
+            return payload
+        raise HTTPException(status_code=404, detail={"error": "no_data"})
+
+    result = await _run_once(f"flow_{stock_id}_{date or 'latest'}_{int(refresh)}", _impl)
+    if date is not None and result.get("as_of_date") not in (None, date):
+        # flag 不烙進 cache(同 cache entry 服務預設與顯式 date 查詢)— impl-R5
+        result = {**result, "no_trading_day": True}
+    return result
