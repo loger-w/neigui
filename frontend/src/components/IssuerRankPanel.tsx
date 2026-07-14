@@ -44,9 +44,9 @@ export function IssuerRankPanel() {
       {open && (
         <div className="px-4 pb-2 space-y-1.5">
           <div className="text-ink-dim">
-            以最近 {data?.built_from_days ?? "—"} 個交易日的收盤報價推算(兩週買一 IV
-            標準差 / 價差比 / 降波占比,權重對齊 TWSE 評等方向)— 非官方盤中口徑,僅供排序參考;
-            未按價內外/天期分層,發行檔數多、深價外占比高的發行商指標天然偏高,跨規模比較請保留
+            以最近 {data?.built_from_days ?? "—"} 個交易日的收盤報價推算,三指標於
+            (價內外 × 天期)層內取分位後聚合(低 = 佳,權重對齊 TWSE 評等方向;
+            樣本不足 5 檔的層不計分)— 非官方盤中口徑,僅供排序參考;懸停欄位可見原始中位數
           </div>
           {loading && !data ? (
             <div className="text-ink-dim py-1">載入中...</div>
@@ -71,9 +71,9 @@ export function IssuerRankPanel() {
                   <th scope="col" className="pr-4 text-right font-normal">排名</th>
                   <th scope="col" className="pr-4 text-left font-normal">發行商</th>
                   <th scope="col" className="pr-4 text-left font-normal">評級</th>
-                  <th scope="col" className="pr-4 text-right font-normal">兩週IV波動</th>
-                  <th scope="col" className="pr-4 text-right font-normal">價差比</th>
-                  <th scope="col" className="pr-4 text-right font-normal">降波占比</th>
+                  <th scope="col" className="pr-4 text-right font-normal">IV分位</th>
+                  <th scope="col" className="pr-4 text-right font-normal">價差分位</th>
+                  <th scope="col" className="pr-4 text-right font-normal">降波分位</th>
                   <th scope="col" className="pr-4 text-right font-normal">計分/總檔數</th>
                 </tr>
               </thead>
@@ -83,10 +83,19 @@ export function IssuerRankPanel() {
                     <td className="pr-4 text-right text-ink">{r.rank ?? "—"}</td>
                     <td className="pr-4">{r.issuer_name}</td>
                     <td className="pr-4">{tierBadge(r)}</td>
-                    <td className="pr-4 text-right">{pct(r.iv_std_median)}</td>
-                    <td className="pr-4 text-right">{pct(r.spread_median)}</td>
-                    <td className="pr-4 text-right">{pct(r.declining_share, 0)}</td>
-                    <td className="pr-4 text-right text-ink-dim">
+                    <td className="pr-4 text-right" title={`原始中位數 ${pct(r.iv_std_median)}`}>
+                      {pct(r.iv_score)}
+                    </td>
+                    <td className="pr-4 text-right" title={`原始中位數 ${pct(r.spread_median)}`}>
+                      {pct(r.spread_score)}
+                    </td>
+                    <td className="pr-4 text-right" title={`原始占比 ${pct(r.declining_share, 0)}`}>
+                      {pct(r.declining_score)}
+                    </td>
+                    <td
+                      className="pr-4 text-right text-ink-dim"
+                      title={`覆蓋 ${r.n_strata} 層`}
+                    >
                       {r.n_scored}/{r.n_warrants}
                     </td>
                   </tr>
