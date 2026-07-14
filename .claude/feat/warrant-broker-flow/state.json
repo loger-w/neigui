@@ -1,0 +1,38 @@
+{
+  "slug": "warrant-broker-flow",
+  "start_sha": "47742b49c79e6cda759878e6d9c79f10b7ea918c",
+  "branch": "feat/warrant-broker-flow",
+  "worktree_path": null,
+  "current_phase": 8,
+  "completed_phases": [-1, 0, 1, 2, 3, 4, 5, 6, 7],
+  "phase_3_impl_mode": "main-agent inline TDD [auto-default: 檔間耦合高(payload 契約串前後端)+ fixture 跨檔一致性約束多,subagent fan-out 的 fresh-context 成本 > 收益;wave 順序 backend→frontend→e2e]",
+  "scope": "L",
+  "phase_2_mode": "condensed",
+  "pending_review_rounds": { "phase_1": 0, "phase_2": 0, "phase_4": 0 },
+  "blockers": [
+    "local main ahead of origin/main by 1 commit (47742b4) at kickoff — main push is a must-stop item under /auto; resolve at closing per 鐵則 H"
+  ],
+  "phase_6_blocked_reason": null,
+  "scope_overrides": { "goal_efficiency_mode": true },
+  "waves": {
+    "wave1": "backend: services/warrant_flow.py + finmind.py + routes/warrants.py + tests/test_warrant_flow.py — SC-6 SC-7 SC-8",
+    "wave2": "backend e2e: fixtures(price_day + 報表×2 + MANIFEST + 030012 price 欄)+ tests_e2e/test_api_warrants.py — SC-8 contract",
+    "wave3": "frontend data 層: lib/warrant-flow-data.ts + lib/api.ts + hooks/useWarrantFlow.ts — SC-1(gate)",
+    "wave4": "frontend UI: components/WarrantFlowPanel.tsx + App.tsx tab — SC-1 SC-2 SC-3 SC-4 SC-5 SC-6 SC-7",
+    "wave5": "e2e specs: equity.spec.ts E# + no-trading-day.spec.ts NTD# — SC-1 SC-3 SC-8"
+  },
+  "last_updated": "2026-07-14T12:10:00+08:00",
+  "project_shape": "fastapi-backend + react-vite-frontend + playwright-e2e",
+  "last_commit_sha": "4dc2166f7b7233909d3a8b671bd2e5661223a6d2",
+  "final_merge_sha": null,
+  "self_review_head": "4dc2166f7b7233909d3a8b671bd2e5661223a6d2",
+  "artifact_commit": null,
+  "sc_cycle_counts": {
+    "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 }
+  },
+  "paused": null,
+  "auto_mode": {
+    "exit_condition": "Phase 8.5 done AND pytest/ruff/vitest/build/e2e all green (e2e actually executed)",
+    "spec_source": "docs/specs/warrant-broker-flow/spec.md (user-approved 2026-07-11)"
+  }
+}

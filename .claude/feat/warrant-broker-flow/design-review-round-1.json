@@ -1,0 +1,21 @@
+{
+  "round": 1,
+  "design_version_reviewed": "v1",
+  "verdict": "0 P0 / 4 P1 / 9 P2",
+  "receiving_summary": "13/13 accepted(皆契約缺口或未收斂決策,無風格類);全數落地於 design v2",
+  "findings": [
+    {"id": "R1", "severity": "P1", "problem": "空狀態 payload shape 不完整(as_of_date 無值、集合欄 optional 未定)", "resolution": "accepted — v2 §2.2b 空 payload 兩態完整表格;no_warrants as_of_date=null 且 UI 不 render badge"},
+    {"id": "R2", "severity": "P1", "problem": "e2e fixture 與 probe 單點矛盾(top-1 權證缺報表 fixture → 恆 404)", "resolution": "accepted — v2 §2.3/§4 fixture 存活約束 + _note 互引"},
+    {"id": "R3", "severity": "P1", "problem": "per-warrant cache 開放決策被靜默略過", "resolution": "accepted — v2 §2.1 顯式收斂:不做,四點理由 + TaskGroup 止損,[auto-default] 標注"},
+    {"id": "R4", "severity": "P1", "problem": "FAKE _fetch_price_day 無 date 過濾語意,錯日資料靠 probe 單點補救", "resolution": "accepted — v2 §2.3 FAKE 以 D 過濾 row.date,對齊真實 date-only 語意"},
+    {"id": "R5", "severity": "P2", "problem": "flow_prices_* 無 retention", "resolution": "accepted — v2 _cleanup_flow_caches:dump 7d / result 30d"},
+    {"id": "R6", "severity": "P2", "problem": "gather 首錯不取消 siblings,白燒配額", "resolution": "accepted — v2 asyncio.TaskGroup"},
+    {"id": "R7", "severity": "P2", "problem": "day dump 跨 stock 併發重複抓", "resolution": "accepted — v2 _fetch_price_day 內部 _run_once(flow_prices_{D})"},
+    {"id": "R8", "severity": "P2", "problem": "lookback 5 春節不夠 + no_data 前端無文案", "resolution": "accepted — v2 FLOW_LOOKBACK_DAYS=10 + §3.2 no_data 專屬繁中文案"},
+    {"id": "R9", "severity": "P2", "problem": "truncated 文案硬編 200 與 FLOW_CAP 雙源", "resolution": "accepted — v2 插值 {analyzed};brainstorm SC-6 同步 amendment"},
+    {"id": "R10", "severity": "P2", "problem": "unmapped heuristic 口徑未鎖(prefix 邊界無測試)", "resolution": "accepted — v2 _WARRANT_PREFIXES 常數 + 測項 3 prefix 邊界 case"},
+    {"id": "R11", "severity": "P2", "problem": "changelog.ts 與 SC-9 截圖無落點", "resolution": "accepted — v2 §3.1 changelog 列 + §5 驗證產出節"},
+    {"id": "R12", "severity": "P2", "problem": "refresh=true 是否及於 day-dump cache 未定", "resolution": "accepted — v2 refresh 全量語意 + 測項 6"},
+    {"id": "R13", "severity": "P2", "problem": "noTradingDay 恆 false dead field 未註記", "resolution": "accepted — v2 §3.1 hook 註記 + §4 NTD# 驗證口徑改 badge"}
+  ]
+}

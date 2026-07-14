@@ -1,0 +1,12 @@
+{
+  "round": 2,
+  "design_version_reviewed": "v2",
+  "verdict": "0 P0 / 1 P1 / 4 P2 — 達退出條件(無 P0、P1 ≤ 2);5 條全 accepted 並即刻落 v3(不留 Known Risks 掛帳)",
+  "findings": [
+    {"id": "R14", "severity": "P1", "problem": "day-dump inner dedup key 不含 refresh 旗標,refresh 請求可 join cache-read in-flight task(R7×R12 交互洞)", "resolution": "accepted — v3 key 改 flow_prices_{D}_r{int(refresh)}(market_breadth F2 precedent)+ 測項 6 併發 case"},
+    {"id": "R15", "severity": "P2", "problem": "『D<today 空 ⇒ 非交易日』隱性假設 FinMind 上料不跨午夜", "resolution": "accepted — v3 空 dump 只在 D < today−1 落 cache + Known Risks 註記"},
+    {"id": "R16", "severity": "P2", "problem": "快照層 404 no_data 與候選日耗盡 404 no_data 同碼雙語意", "resolution": "accepted — v3 快照層 HTTPException(404) 重包 502 warrant_upstream"},
+    {"id": "R17", "severity": "P2", "problem": "§2.2b『鍵恆齊全』表漏 no_trading_day 欄", "resolution": "accepted — v3 表補一列(no_warrants 恆缺席;no_volume 沿 §2.4)"},
+    {"id": "R18", "severity": "P2", "problem": "R2 存活約束防了檔案缺、沒防日期錯(表現同為 probe 0 rows)", "resolution": "accepted — v3 fixture 日期一致性約束 + pytest assert"}
+  ]
+}
