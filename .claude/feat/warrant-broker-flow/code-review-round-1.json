@@ -1,0 +1,32 @@
+{
+  "round": 1,
+  "effort": "medium",
+  "scope": "git diff main...HEAD(wave1-5,22 檔 +1916)",
+  "finders": "8 angles(A/B/C/reuse/simplification/efficiency/altitude/conventions)共 21 candidates;>10 → group-dedup 收斂本檔",
+  "quick_screen": "main-agent 機械快篩:type hints 缺漏 grep 證實(40/78/82/86 行);mapped_all 位於 cache-check 前證實;到期權證『計入 unmapped_count』證實(finder C 的『無訊號』說法 REFUTED,finder A 版本正確);A/C 到期權證條目同機制 dedup",
+  "expanded_findings": [
+    {"id": "CR-1", "severity": "P2(行為級,展開)", "source": "A-1/C-1 dedup", "summary": "對映用當下快照查歷史候選日:權證在 (d, as_of] 間到期 → 成交入 unmapped_count 不入統計", "resolution": "accepted_as_known_risk — 預設查詢 d≈as_of 零影響;快照歷史化 v1 out of scope;design Known Risks + next-time 落檔"},
+    {"id": "CR-2", "severity": "P2(效能)", "source": "efficiency-1", "summary": "mapped_all(~38k)在 result-cache 命中熱路徑也重建", "resolution": "accepted → fixed:延後到首個非空 dump 才建(lazy)"},
+    {"id": "CR-3", "severity": "P2(時序)", "source": "efficiency-2", "summary": "_aggregate 純 Python 58k 列同步跑佔 event loop 單 tick", "resolution": "accepted → fixed:asyncio.to_thread(純函式無共享狀態)"},
+    {"id": "CR-4", "severity": "P2(慣例,機械證實)", "source": "conventions 1-4", "summary": "4 處 type hints 缺漏(CLAUDE.md §2 無例外條款)", "resolution": "accepted → fixed:Path 回傳 ×2、FinMindClient(TYPE_CHECKING)、path: Path"},
+    {"id": "CR-5", "severity": "P2(顯示正確性 footgun)", "source": "simplification-4", "summary": "『formatValue 吃 abs、caller 補負號』隱含約定散在兩處", "resolution": "accepted → fixed:formatNet helper 收斂 + 單測"}
+  ],
+  "p2_summary": {
+    "rejected_with_reason": [
+      "A-2 probe 未上料窗口不落 cache 重打:by design(晚間上料自癒;成本 1 req/query 有界)",
+      "A-3 forceRefreshRef 時序 race:pattern 級(20 hooks 同構),歸 next-time 的 useForceRefreshQuery 收割,不在本 feature 單改一份",
+      "C-2 unmapped_count UI 不顯示:brainstorm [auto-default] 已文件化決策(全市場口徑無法歸屬)",
+      "simplification-1 抽 _try_candidate_date:新鮮已測 code 的可讀性偏好,收益<重工風險",
+      "simplification-3 top15 鏡像 sorted:顯式且有測試鎖,非 bug 溫床",
+      "efficiency-3 cleanup 無節流:只跑在冷聚合(200 req 網路 >> 1 iterdir),premature;next-time 記觸發條件"
+    ],
+    "deferred_to_next_time": [
+      "altitude-1 tab 鈕樣板第 4 份複本",
+      "altitude-2 forceRefreshRef 第 20 hook 門檻觸發(entry 已更新)",
+      "reuse-1/2/3 _run_once×3 / _candidate_dates×2 / date 驗證×2 收斂"
+    ],
+    "fixed_inline": ["simplification-2 _write_result_cache helper(順手,兩處樣板)"]
+  },
+  "missing_from_spec_check": "design.md 交叉核對:to_thread(§2.1 未提,聚合成本 spec 無條款 — 補進 code 註解)、其餘機制皆 spec 內;無 spec 未提之副作用",
+  "exit": "round 1 accepted ≤ 5 且無 P0 且 fix 後測試全綠 → 單輪退場"
+}

@@ -1,0 +1,22 @@
+{
+  "round": 1,
+  "date": "2026-07-14",
+  "env": "本機 dev(uvicorn :8000 無 --reload + vite :5173),真 FinMind Sponsor token,2330 真資料",
+  "evidence": [
+    {"sc": "SC-1", "how": "DevTools MCP 實操:切「權證分點」tab → 進度文案「彙整分點資料中,首次載入約需數秒...」出現於 a11y snapshot;冷 fan-out 後資料到位", "artifact": "transcript snapshot + subsumed by e2e E14"},
+    {"sc": "SC-2", "how": "badge「資料日 07-13」+ 認購買/賣 1.57億、認售買/賣 92萬 四數字", "artifact": "docs/specs/warrant-broker-flow/screenshots/SC-2_SC-3_wide-summary-top15.png"},
+    {"sc": "SC-3", "how": "買超/賣超 15 大並排(紅/綠 bar + 金額)+ 點「富邦」展開權證明細;窄 560px 疊直", "artifact": "SC-2_SC-3_wide…png + SC-3_broker-expanded-detail.png + SC-3_narrow-stacked.png"},
+    {"sc": "SC-4", "how": "明細表成交金額降序(589→532→529 萬…)+ 五欄齊全", "artifact": "wide 截圖"},
+    {"sc": "SC-5", "how": "買超欄紅(bull)/賣超欄綠(bear);認購/認售 badge 中性框線;無方向性文案", "artifact": "wide 截圖(視覺)+ vitest 色彩 binding assert"},
+    {"sc": "SC-6", "how": "真資料 485 檔有量 > cap 200 → 註記「僅統計成交金額前 200 檔權證」實顯", "artifact": "wide 截圖"},
+    {"sc": "SC-7", "how": "subsumed by vitest 兩文案 + e2e(FAKE 2412 no_warrants contract);真環境未逐標的重拍", "artifact": "subsumed"},
+    {"sc": "SC-8", "how": "warm(result cache 命中+T+0 自適應探測)2.43s;refresh=true 全量重燒 9.45s / 201 requests;subsumed by pytest 測項 4-9 + NTD2", "artifact": "curl time_total 記錄"}
+  ],
+  "console": "唯一 error = favicon.ico 404(既有,與 feature 無關);/flow 200,零 feature 錯誤",
+  "latency": {"cold_refresh_s": 9.45, "warm_s": 2.43, "prd_30s_risk": "9.45s << 30s Vercel 上限,cap 200 安全"},
+  "quota": "冷 fan-out 201 req ≈ 3.4%/hr;spike + 驗證全日合計 < 10%",
+  "findings": [
+    {"id": "RE-1", "severity": "P1(product,需 user 拍板)", "summary": "分點報表全分點覆蓋 ⇒ 守恆:單一權證跨全分點 net ≡ 0(API 實測 200 檔全 0.0)、summary 買==賣(diff 0.0)。spec §3 的 per-warrant「分點淨買賣超」欄與 summary 四數字按拍板公式實作正確,但數學上恆退化 — 分點層 top15 net(核心價值)不受影響且有效", "disposition": "不自行換口徑(對外契約 + SC 改寫 = 方向性抉擇,無拍板文件)→ spec §3 加註 + next-time 候選替代口徑 + 總結報告頭條;PR merge 確認點 = user 天然裁決點"},
+    {"id": "RE-2", "severity": "P2", "summary": "warm 路徑 2.4s 偏高:每次查詢為 T+0 自適應付 1 個當日 dump request(44k rows 傳輸)", "disposition": "設計取捨(T+0 晚間上料自動吃到);next-time 記「當日空 dump 短 TTL cache」優化候選"}
+  ]
+}

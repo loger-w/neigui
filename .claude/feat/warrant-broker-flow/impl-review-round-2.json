@@ -1,0 +1,9 @@
+{
+  "round": 2,
+  "mode": "condensed",
+  "verdict": "0 P0 / 0 P1 / 2 P2 — 達退出條件;2 條 P2 accepted 即刻收編",
+  "findings": [
+    {"id": "R2-1", "severity": "P2", "problem": "NTD# UI 級斷言與 E1 重複(FAKE_TODAY=週五,回退是 happy path),零資訊量", "resolution": "accepted(選項 b)— NTD# 改 API 級:?date=2026-06-27 斷 no_trading_day:true + as_of_date 06-25"},
+    {"id": "R2-2", "severity": "P2", "problem": "_VALID_DATE regex 擋不住 2026-13-99 → _candidate_dates fromisoformat 500", "resolution": "accepted — _validate_date 補 fromisoformat try/except + bad_date sub-case"}
+  ]
+}

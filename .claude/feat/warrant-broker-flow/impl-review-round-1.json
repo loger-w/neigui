@@ -1,0 +1,12 @@
+{
+  "round": 1,
+  "mode": "condensed",
+  "verdict": "0 P0 / 3 P1 / 2 P2 — P1 > 2,修正後跑 round 2",
+  "findings": [
+    {"id": "impl-R1", "severity": "P1", "problem": "PLAN 砍掉 design 的 formatValue 改直用 fmtAmount,但 fmtAmount 負值掉「元」分支,賣超欄格式跑不通", "resolution": "accepted — formatValue = fmtAmount(abs) 薄 wrap 保留(design 對齊 + DRY 委派)+ 負值測試"},
+    {"id": "impl-R2", "severity": "P1", "problem": "stock_price_universe_day 宣稱間接覆蓋不成立(stub client + FAKE 繞過),URL/params 零覆蓋", "resolution": "accepted — 加 request-shape 直測(monkeypatch _get 捕 params)"},
+    {"id": "impl-R3", "severity": "P1", "problem": "design R16 快照錯誤轉包 warrant_upstream 無紅測試", "resolution": "accepted — B4 測項 12(httpx + HTTPException(404) 兩 case + FinMind 層放行)"},
+    {"id": "impl-R4", "severity": "P2", "problem": "E1 斷言凱基淨買只約束單 fixture,跨 fixture 聚合可能翻向", "resolution": "accepted — 跨 fixture 同 broker 淨向一致約束 + B4 聚合 assert"},
+    {"id": "impl-R5", "severity": "P2", "problem": "no_volume 空態 + 顯式 date 的 no_trading_day 落點模糊", "resolution": "accepted — flag 由 get_flow 回傳前統一貼 + 測項 9 sub-case"}
+  ]
+}
