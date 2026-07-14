@@ -511,12 +511,18 @@ async def get_underlying_warrants(stock_id: str, refresh: bool = False) -> dict:
     drift_map = await ivh.get_drift_map()
     # 熱路徑鐵則(change-spec R1):issuer 只走 sync cached accessor(miss → 空 map
     # + 背景 fetch),quotes 15s 輪詢鏈不得因 36_L/36_O 上游增加延遲或故障面
-    issuer_map = wi.get_issuer_map_cached()
+    issuer_tables = {
+        "map": wi.get_issuer_map_cached(),  # 先呼叫:載 mem,lexicon 隨之可用
+        "by_name": wi.get_issuer_lexicon_cached(),
+    }
     tier_by_issuer = wi.get_issuer_tier_cached()
 
     def _issuer_fields(w: dict) -> dict:
-        # 舊代號殘留防護:對映標的 ≠ 現行權證標的 → null(代號跨年回收)
-        info = wi.resolve_issuer(issuer_map, w["warrant_id"], w.get("underlying_id"))
+        # 三層解析:官方對映(標的相符)→ 權證名稱解析 → null(代號跨年回收
+        # + 36_L 年度表覆蓋缺口,real-env 防護)
+        info = wi.resolve_issuer(
+            issuer_tables, w["warrant_id"], w.get("underlying_id"), w.get("name")
+        )
         if not info:
             return {"issuer_name": None, "issuer_tier": None}
         return {

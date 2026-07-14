@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import ssl
 import statistics
 import time
@@ -30,7 +31,7 @@ from utils.cache import atomic_write_json, chip_cache_dir, read_json
 
 logger = logging.getLogger(__name__)
 
-_CACHE_VERSION = 1
+_CACHE_VERSION = 2  # v2:payload 增 by_name lexicon(名稱解析 fallback)
 MAP_FILE = "warrant_issuer_map_latest.json"
 RANK_FILE = "warrant_issuer_rank_latest.json"
 MAP_TTL_DAYS = 7  # 權證每週掛牌,月級太久(change-spec R7)
@@ -45,6 +46,10 @@ T187AP36_URL = "https://openapi.twse.com.tw/v1/opendata/t187ap36_L"
 MOPSFIN_36O_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap36_O"
 # 全稱裁剪字尾(長在前,依序試):裁不動保留原字串,不硬編猜測表
 _NAME_SUFFIXES = ("綜合證券股份有限公司", "證券股份有限公司", "股份有限公司")
+# 名稱解析 fallback 的 in-name 變體:canonical 簡稱在權證名內常縮兩字
+# (永豐金→永豐、群益金鼎→群益,由前二字裁切覆蓋);中國信託→中信是唯一
+# 前二字救不了的顯式 alias(2026-07-14 real-env)
+_NAME_ALIASES: dict[str, tuple[str, ...]] = {"中國信託": ("中信",)}
 
 MAP_RETRY_COOLDOWN_SEC = 60.0  # 兩源全失敗後的重試 backoff(同 warrants R2-1)
 
@@ -181,20 +186,53 @@ def _build_map_from_rows(twse_rows: list, tpex_rows: list) -> dict[str, dict]:
             "issuer_name": name_by_issuer[iid],
             "underlying_id": str(_row_get(row, "標的代號") or "").strip() or None,
         }
-    return out
+    # by_name lexicon:{canonical 簡稱: issuer_id},名稱解析 fallback 用
+    # (36_L 是年度表,新申請權證未入表 → real-env 覆蓋率僅 ~23%,fallback 必要)
+    return {"map": out, "by_name": {name_by_issuer[i]: i for i in name_by_issuer}}
+
+
+def _as_tables(obj: dict) -> dict:
+    """向後相容:純 wid map(測試/舊呼叫)→ 包成 tables shape。"""
+    if "map" in obj and "by_name" in obj:
+        return obj
+    return {"map": obj, "by_name": {}}
+
+
+def _resolve_by_name(by_name: dict[str, str], name: str) -> dict | None:
+    """權證簡稱解析:{標的}{發行商}{年月碼}{購|售}{序號} — 以 lookahead 錨定
+    「年月碼+購/售」防標的名含發行商字樣誤中(統一 1216 × 統一證券)。"""
+    best: tuple[int, str, str] | None = None  # (變體長, canonical, iid)
+    for canonical, iid in by_name.items():
+        variants = {canonical, canonical[:2], *_NAME_ALIASES.get(canonical, ())}
+        for v in variants:
+            if len(v) < 2:
+                continue
+            if re.search(re.escape(v) + r"(?=[0-9A-Z]{2}[購售])", name) and (
+                best is None or len(v) > best[0]
+            ):
+                best = (len(v), canonical, iid)
+    if best is None:
+        return None
+    return {"issuer_id": best[2], "issuer_name": best[1]}
 
 
 def resolve_issuer(
-    issuer_map: dict[str, dict], wid: str, underlying_id: str | None
+    tables: dict, wid: str, underlying_id: str | None, name: str | None = None
 ) -> dict | None:
-    """取對映 + 舊代號殘留防護:map 標的與現行權證標的不符 → 視同無對映。"""
-    info = issuer_map.get(wid)
-    if info is None:
+    """三層解析:官方對映(標的相符)→ 名稱解析 fallback → None。
+
+    舊代號殘留防護:map 標的與現行權證標的不符(代號跨年回收且現行未入表)
+    → 不用官方對映,改走名稱解析。
+    """
+    t = _as_tables(tables)
+    info = t["map"].get(wid)
+    if info is not None:
+        mapped_uid = info.get("underlying_id")
+        if not (mapped_uid and underlying_id and mapped_uid != underlying_id):
+            return info
+    if not name:
         return None
-    mapped_uid = info.get("underlying_id")
-    if mapped_uid and underlying_id and mapped_uid != underlying_id:
-        return None
-    return info
+    return _resolve_by_name(t["by_name"], name)
 
 
 def _map_is_fresh(payload: Any) -> bool:
@@ -220,20 +258,20 @@ async def _build_map() -> dict[str, dict]:
         tpex_rows = await _fetch_tpex_rows()
     except (httpx.HTTPError, ValueError):
         logger.exception("issuer map: TPEx mopsfin_t187ap36_O fetch failed")
-    built = _build_map_from_rows(twse_rows, tpex_rows)
-    if not built:
+    tables = _build_map_from_rows(twse_rows, tpex_rows)
+    if not tables["map"]:
         return {}  # _last_map_attempt 留著 → 60s cooldown 生效
     _last_map_attempt = None  # 成功:解除 backoff
     payload = {
         "_cache_version": _CACHE_VERSION,
         "fetched_on": clock.today().isoformat(),
-        "map": built,
+        **tables,
     }
     global _map_mem
     _map_mem = payload
     if os.getenv("FAKE_FINMIND") != "1":
         atomic_write_json(chip_cache_dir() / MAP_FILE, payload)
-    return built
+    return tables["map"]
 
 
 async def get_issuer_map(refresh: bool = False) -> dict[str, dict]:
@@ -276,15 +314,15 @@ def get_issuer_map_cached() -> dict[str, dict]:
     if os.getenv("FAKE_FINMIND") == "1":
         if _map_mem is not None:
             return _map_mem["map"]
-        built = _build_map_from_rows(
+        tables = _build_map_from_rows(
             _read_fixture("t187ap36_L.json") or [], _read_fixture("mopsfin_t187ap36_O.json") or []
         )
         _map_mem = {
             "_cache_version": _CACHE_VERSION,
             "fetched_on": clock.today().isoformat(),
-            "map": built,
+            **tables,
         }
-        return built
+        return tables["map"]
     if _map_mem is None:
         payload = read_json(chip_cache_dir() / MAP_FILE)
         if isinstance(payload, dict) and payload.get("_cache_version") == _CACHE_VERSION:
@@ -295,6 +333,14 @@ def get_issuer_map_cached() -> dict[str, dict]:
         return _map_mem["map"]
     _spawn_map_bg()
     return {}
+
+
+def get_issuer_lexicon_cached() -> dict[str, str]:
+    """{canonical 簡稱: issuer_id} — 名稱解析 fallback 用;隨 _map_mem 生命週期,
+    呼叫前先走 get_issuer_map_cached()(它負責載 mem),此處零 IO。"""
+    if _map_mem is None:
+        return {}
+    return _map_mem.get("by_name") or {}
 
 
 async def _map_bg() -> None:
@@ -353,19 +399,16 @@ def compute_issuer_rank(
     for _, payload in window:
         seen_wids.update(payload["warrants"].keys())
 
-    mapped = [w for w in seen_wids if w in issuer_map]
-    if seen_wids:
-        logger.info(
-            "issuer rank: archive wid coverage %d/%d (%.1f%%)",
-            len(mapped), len(seen_wids), 100.0 * len(mapped) / len(seen_wids),
-        )
-
     by_issuer: dict[str, dict] = {}
-    for wid in mapped:
+    attributed = 0
+    for wid in seen_wids:
         term = terms_by_wid.get(wid)
-        info = resolve_issuer(issuer_map, wid, (term or {}).get("underlying_id"))
+        info = resolve_issuer(
+            issuer_map, wid, (term or {}).get("underlying_id"), (term or {}).get("name")
+        )
         if info is None:
-            continue  # 舊代號殘留:標的不符不得計入(real-env 防護)
+            continue  # 無對映且名稱解析不中(或舊代號殘留標的不符)
+        attributed += 1
         agg = by_issuer.setdefault(
             info["issuer_id"],
             {"issuer_name": info["issuer_name"], "wids": [], "scored": []},
@@ -386,6 +429,12 @@ def compute_issuer_rank(
         agg["scored"].append(
             {"wid": wid, "iv_std": iv_std, "spread": spread,
              "label": (drift_map.get(wid) or {}).get("label")}
+        )
+
+    if seen_wids:
+        logger.info(
+            "issuer rank: archive wid coverage %d/%d (%.1f%%)",
+            attributed, len(seen_wids), 100.0 * attributed / len(seen_wids),
         )
 
     issuers: list[dict] = []

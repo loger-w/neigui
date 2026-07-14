@@ -595,3 +595,63 @@ def test_rank_skips_underlying_mismatch():
     )
     by_id = {r["issuer_id"]: r for r in out["issuers"]}
     assert by_id["5380"]["n_warrants"] == 4  # AAA001 標的不符被擋
+
+
+# ---------------------------------------------------------------- 名稱解析 fallback(Phase 7 real-env:36_L 年度表覆蓋率僅 ~23%)
+
+
+NAME_TABLES = {
+    "map": {},
+    "by_name": {
+        "凱基": "9200", "元大": "9800", "永豐金": "9600A", "統一": "9A00",
+        "中國信託": "9C00", "群益金鼎": "9100", "第一金": "5380",
+    },
+}
+
+
+def test_resolve_by_name_basic():
+    info = wi.resolve_issuer(NAME_TABLES, "062728", "2330", "台積電凱基61購03")
+    assert info == {"issuer_id": "9200", "issuer_name": "凱基"}
+
+
+def test_resolve_by_name_two_char_variant():
+    """簡稱在權證名內常縮兩字(永豐金→永豐、群益金鼎→群益、第一金→第一)。"""
+    assert wi.resolve_issuer(NAME_TABLES, "x", "2330", "台積電永豐77購02")["issuer_id"] == "9600A"
+    assert wi.resolve_issuer(NAME_TABLES, "x", "2330", "宜鼎群益58售01")["issuer_id"] == "9100"
+    assert wi.resolve_issuer(NAME_TABLES, "x", "1802", "台玻第一49購01")["issuer_id"] == "5380"
+
+
+def test_resolve_by_name_zhongxin_alias():
+    """中國信託在權證名內是「中信」(前二字裁切救不了,唯一顯式 alias)。"""
+    assert wi.resolve_issuer(NAME_TABLES, "x", "2330", "台積電中信61購01")["issuer_id"] == "9C00"
+
+
+def test_resolve_by_name_underlying_shares_issuer_prefix():
+    """標的名含發行商字樣(統一 1216 × 統一證券)→ 取「年月+購/售」前的那個。"""
+    info = wi.resolve_issuer(NAME_TABLES, "x", "1216", "統一統一61購01")
+    assert info["issuer_id"] == "9A00"
+
+
+def test_resolve_by_name_no_match_null():
+    assert wi.resolve_issuer(NAME_TABLES, "x", "2330", "台積電怪商61購01") is None
+
+
+def test_resolve_map_wins_over_name():
+    """36 表有對映且標的相符 → 官方對映優先於名稱解析。"""
+    tables = {
+        "map": {"062728": {"issuer_id": "9999", "issuer_name": "官方", "underlying_id": "2330"}},
+        "by_name": NAME_TABLES["by_name"],
+    }
+    assert wi.resolve_issuer(tables, "062728", "2330", "台積電凱基61購03")["issuer_id"] == "9999"
+
+
+def test_resolve_stale_map_falls_back_to_name():
+    """舊代號殘留(標的不符)→ 改走名稱解析而非直接 null。"""
+    tables = {
+        "map": {"051372": {"issuer_id": "9800", "issuer_name": "元大", "underlying_id": "2388"}},
+        "by_name": NAME_TABLES["by_name"],
+    }
+    info = wi.resolve_issuer(tables, "051372", "2330", "台積電兆豐59購01")
+    assert info is None  # 兆豐不在 lexicon → null;lexicon 有就會命中
+    tables["by_name"]["兆豐"] = "9500"
+    assert wi.resolve_issuer(tables, "051372", "2330", "台積電兆豐59購01")["issuer_id"] == "9500"
