@@ -517,3 +517,23 @@ def test_rank_small_sample_composite_clamped():
     by_id = {r["issuer_id"]: r for r in out["issuers"]}
     c = by_id["7777"]["composite"]
     assert c is not None and 0.0 <= c <= 1.0
+
+
+async def test_issuer_map_shortens_tpex_full_names(monkeypatch):
+    """TPEx 發行人名稱不保證是簡稱(2026-07-14 real-env 實證:台新/群益全稱)—
+    兩源一律過 _short_issuer_name(對已簡稱者冪等)。"""
+    tpex_full = [
+        {
+            "Date": "1150106",
+            "發行人代號": "9B00",
+            "發行人名稱": "台新綜合證券股份有限公司",
+            "權證代號": "730999",
+            "名稱": "測試台新48購01",
+            "標的代號": "5289",
+            "標的名稱": "測試",
+            "申請發行日期": "1140212",
+        },
+    ]
+    patch_fetch(monkeypatch, tpex=tpex_full)
+    m = await wi.get_issuer_map()
+    assert m["730999"]["issuer_name"] == "台新"
