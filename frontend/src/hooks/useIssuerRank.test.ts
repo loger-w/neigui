@@ -14,6 +14,7 @@ import { makeQueryWrapper } from "../test-utils/query-wrapper";
 const mk = (over?: Partial<IssuerRankPayload>): IssuerRankPayload => ({
   as_of_date: "2026-07-10",
   built_from_days: 10,
+  n_strata_total: 9,
   issuers: [
     {
       issuer_id: "9800",
@@ -23,6 +24,10 @@ const mk = (over?: Partial<IssuerRankPayload>): IssuerRankPayload => ({
       iv_std_median: 0.008,
       spread_median: 0.021,
       declining_share: 0.05,
+      iv_score: 0.25,
+      spread_score: 0.31,
+      declining_score: 0.42,
+      n_strata: 8,
       composite: 0.12,
       rank: 1,
       tier: "front",
