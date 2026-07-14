@@ -711,3 +711,23 @@ async def test_get_issuer_rank_wires_lexicon(monkeypatch):
     assert out is not None
     by_id = {r["issuer_id"]: r for r in out["issuers"]}
     assert by_id["9200"]["n_scored"] == 5  # 全靠名稱解析(map 無這些 wid)
+
+
+async def test_map_cooldown_disk_fallback_syncs_lexicon(monkeypatch):
+    """cooldown 內走磁碟 fallback 也要回填 _map_mem — lexicon 不得與 map 脫鉤
+    (增量 review CONFIRMED:脫鉤時 rank 期間名稱解析靜默失效)。"""
+    patch_fetch(monkeypatch)
+    await wi.get_issuer_map()
+    p = chip_cache_dir() / wi.MAP_FILE
+    payload = read_json(p)
+    payload["fetched_on"] = "2026-07-01"  # 過期
+    from utils.cache import atomic_write_json
+
+    atomic_write_json(p, payload)
+    monkeypatch.setattr(wi, "_map_mem", None)
+    monkeypatch.setattr(wi, "_last_map_attempt", wi._monotonic())  # 模擬近期失敗
+    m = await wi.get_issuer_map()
+    assert "074888" in m  # 磁碟 stale fallback 生效
+    lex = wi.get_issuer_lexicon_cached()
+    assert lex != {}  # lexicon 同步(修前:_map_mem None → {})
+    assert "凱基" in lex

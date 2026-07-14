@@ -292,6 +292,7 @@ async def get_issuer_map(refresh: bool = False) -> dict[str, dict]:
             and _monotonic() - _last_map_attempt < MAP_RETRY_COOLDOWN_SEC
         ):
             if isinstance(payload, dict) and payload.get("_cache_version") == _CACHE_VERSION:
+                _map_mem = payload  # 回填 mem:lexicon 不得與 map 脫鉤(增量 review)
                 return payload["map"]
             return {}
     return await _run_once("issuer_map", _build_map)
