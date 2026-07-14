@@ -83,5 +83,15 @@
     "dataset": "TaiwanStockWarrantTradingDailyReport",
     "data_id": "030012",
     "_note": "warrant-selector SC-6 分點展開;rows 日期 = FAKE_TODAY-1 (2026-06-25 Thu, impl-R4)"
+  },
+  "TaiwanStockWarrantTradingDailyReport_030011.json": {
+    "dataset": "TaiwanStockWarrantTradingDailyReport",
+    "data_id": "030011",
+    "_note": "warrant-broker-flow:flow fan-out probe 存活檔(price_day top-1);rows 日期 = 2026-06-25(R18:須等於 price_day.json 日期)"
+  },
+  "TaiwanStockWarrantTradingDailyReport_03001P.json": {
+    "dataset": "TaiwanStockWarrantTradingDailyReport",
+    "data_id": "03001P",
+    "_note": "warrant-broker-flow:put summary 驗證;rows 日期 = 2026-06-25(R18)"
   }
 }

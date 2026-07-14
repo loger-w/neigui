@@ -1,0 +1,7 @@
+{
+  "data": [
+    {"date": "2026-06-25", "stock_id": "030011", "securities_trader": "凱基-台北", "securities_trader_id": "9200", "price": 2.0, "buy": 1500, "sell": 0},
+    {"date": "2026-06-25", "stock_id": "030011", "securities_trader": "元大-總公司", "securities_trader_id": "9800", "price": 2.0, "buy": 0, "sell": 700},
+    {"date": "2026-06-25", "stock_id": "030011", "securities_trader": "富邦-建國", "securities_trader_id": "9600", "price": 1.9, "buy": 300, "sell": 250}
+  ]
+}
