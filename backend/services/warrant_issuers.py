@@ -152,12 +152,9 @@ async def _fetch_tpex_rows() -> list:
 def _build_map_from_rows(twse_rows: list, tpex_rows: list) -> dict[str, dict]:
     """兩市場合併:issuer_id 為 join key,名稱 TPEx 簡稱優先、否則 TWSE 裁剪(R7)。"""
     name_by_issuer: dict[str, str] = {}
-    for row in tpex_rows:  # TPEx 先寫(簡稱)
-        iid = str(_row_get(row, "發行人代號") or "").strip()
-        name = str(_row_get(row, "發行人名稱") or "").strip()
-        if iid and name:
-            name_by_issuer.setdefault(iid, name)
-    for row in twse_rows:
+    # 兩源一律過 _short_issuer_name(冪等):TPEx 名稱不保證是簡稱
+    # (2026-07-14 real-env:台新/群益回全稱),TPEx 先寫維持簡稱優先語義
+    for row in list(tpex_rows) + list(twse_rows):
         iid = str(_row_get(row, "發行人代號") or "").strip()
         name = str(_row_get(row, "發行人名稱") or "").strip()
         if iid and name:
