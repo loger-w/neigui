@@ -478,6 +478,34 @@ async def test_exhausted_candidates_404(monkeypatch):
     assert len(stub.dump_calls) == wf.FLOW_LOOKBACK_DAYS
 
 
+# ---------------------------------------------------------------- fixture 一致性(R18 + impl-R4)
+
+
+def test_e2e_fixture_consistency():
+    """price_day 與各報表 fixture 的日期必須一致(日期錯與檔案缺對 probe 表現
+    相同 = 0 rows,難 debug);凱基-台北 跨 fixture 聚合後必須淨買(E1 斷言存活)。"""
+    from pathlib import Path
+
+    fixtures = Path(__file__).resolve().parents[1] / "tests_e2e" / "fixtures"
+    price_day = fixtures / "warrants" / "price_day.json"
+    if not price_day.exists():
+        pytest.skip("price_day fixture not present")
+    rows = json.loads(price_day.read_text(encoding="utf-8"))["data"]
+    days = {r["date"] for r in rows}
+    assert len(days) == 1
+    d = days.pop()
+    kaiji_net = 0.0
+    for wid in ("030011", "030012", "03001P"):
+        f = fixtures / f"TaiwanStockWarrantTradingDailyReport_{wid}.json"
+        assert f.exists(), f"有量 mapped 權證 {wid} 缺報表 fixture(R2 存活約束)"
+        report_rows = json.loads(f.read_text(encoding="utf-8"))["data"]
+        assert all(r["date"] == d for r in report_rows), f"{wid} fixture 日期 != {d}(R18)"
+        for r in report_rows:
+            if r["securities_trader_id"] == "9200":
+                kaiji_net += r["price"] * (r["buy"] - r["sell"])
+    assert kaiji_net > 0, "凱基-台北 跨 fixture 聚合須淨買(impl-R4)"
+
+
 # ---------------------------------------------------------------- B1:request shape 直測(impl-R2)
 
 

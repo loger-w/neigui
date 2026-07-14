@@ -120,7 +120,10 @@ def _fake_price_day(d: str) -> list[dict]:
     """FAKE 分支:fixtures/warrants/ 子目錄直讀(不進 MANIFEST _store,避免汙染
     market_breadth 的 FAKE per-day loop — design §2.3),以 D 過濾模擬 date-only 語意。"""
     payload = read_json(warrants._fixtures_dir() / "warrants" / "price_day.json")
-    rows = payload if isinstance(payload, list) else []
+    if isinstance(payload, dict):
+        rows = payload.get("data") or []
+    else:
+        rows = payload or []
     return [r for r in rows if r.get("date") == d]
 
 

@@ -1,0 +1,13 @@
+{
+  "_note": "warrant-broker-flow SC-8:TaiwanStockPrice date-only 全市場 dump 縮樣(rows 日期 = FAKE_TODAY−1 = 2026-06-25;flow 候選日 06-26 空 → 回退)。R2/R18 存活約束:Trading_money 最大的 mapped 權證 030011 必有報表 fixture TaiwanStockWarrantTradingDailyReport_030011.json;有量 mapped = 030011/030012/03001P 各配報表 fixture(日期同 2026-06-25);030013/030014/030015 = 0 不配。03998B = unmapped 牛熊形狀(unmapped_count=1);2330 = 4 碼普通股不計。impl-R4:同 broker 淨向跨 fixture 一致(凱基恆淨買、元大恆淨賣)。",
+  "data": [
+    {"date": "2026-06-25", "stock_id": "030011", "Trading_Volume": 2500000, "Trading_money": 5000000},
+    {"date": "2026-06-25", "stock_id": "030012", "Trading_Volume": 2400000, "Trading_money": 3000000},
+    {"date": "2026-06-25", "stock_id": "03001P", "Trading_Volume": 2000000, "Trading_money": 1200000},
+    {"date": "2026-06-25", "stock_id": "030013", "Trading_Volume": 0, "Trading_money": 0},
+    {"date": "2026-06-25", "stock_id": "030014", "Trading_Volume": 0, "Trading_money": 0},
+    {"date": "2026-06-25", "stock_id": "030015", "Trading_Volume": 0, "Trading_money": 0},
+    {"date": "2026-06-25", "stock_id": "2330", "Trading_Volume": 30000000, "Trading_money": 80000000},
+    {"date": "2026-06-25", "stock_id": "03998B", "Trading_Volume": 500000, "Trading_money": 600000}
+  ]
+}

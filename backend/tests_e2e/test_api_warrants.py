@@ -32,6 +32,9 @@ def _reset_warrants_state(monkeypatch):
     monkeypatch.setattr(ivh, "_rebuild_bg_task", None)
     ivh._series_lru.clear()
     ivh._inflight.clear()
+    import services.warrant_flow as wfl
+
+    wfl._inflight.clear()
 
 
 async def test_warrants_snapshot_happy_path(client):
@@ -114,6 +117,61 @@ async def test_iv_history_unknown_warrant_404(client):
     r = await client.get("/api/warrants/039999/iv-history")
     assert r.status_code == 404
     assert r.json()["detail"]["error"] == "not_found"
+
+
+async def test_flow_happy_path_shape_and_values(client):
+    # SC-8 contract:FAKE 候選日 06-26(dump 空)→ 回退 06-25;probe + fan-out
+    # 走 MANIFEST fixtures 真日期過濾路徑(資料級 assertion,防 visibility 假綠)
+    r = await client.get("/api/warrants/2330/flow")
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body) >= {
+        "as_of_date", "truncated", "total_traded", "analyzed", "unmapped_count",
+        "empty_reason", "summary", "top_buy_branches", "top_sell_branches", "warrants",
+    }
+    assert body["as_of_date"] == "2026-06-25"  # FAKE_TODAY−1(06-26 dump 空回退)
+    assert "no_trading_day" not in body  # 預設查詢無 flag(design §2.4)
+    assert body["total_traded"] == 3 and body["analyzed"] == 3
+    assert body["truncated"] is False
+    assert body["unmapped_count"] == 1  # 03998B 牛熊形狀
+    assert body["empty_reason"] is None
+    # 聚合數值(fixtures 手算:凱基 4080−120、元大 144−2268)
+    assert body["summary"]["call"] == {"buy_value": 5046.0, "sell_value": 3003.0}
+    assert body["summary"]["put"] == {"buy_value": 400.0, "sell_value": 100.0}
+    top_buy = body["top_buy_branches"]
+    assert top_buy[0]["broker_name"] == "凱基-台北"
+    assert top_buy[0]["net_value"] == 3960.0
+    assert [w["warrant_id"] for w in top_buy[0]["warrants"]] == ["030011", "030012"]
+    assert body["top_sell_branches"][0]["broker_name"] == "元大-總公司"
+    assert body["top_sell_branches"][0]["net_value"] == -2124.0
+    assert [w["warrant_id"] for w in body["warrants"]] == ["030011", "030012", "03001P"]
+    assert body["warrants"][0]["trading_money"] == 5000000
+    assert body["warrants"][0]["kind"] == "call"
+
+
+async def test_flow_explicit_date_no_trading_day(client):
+    # 顯式 date 落週六 → 回退 + flag(NTD# e2e 同口徑;SC-8)
+    r = await client.get("/api/warrants/2330/flow", params={"date": "2026-06-27"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["as_of_date"] == "2026-06-25"
+    assert body["no_trading_day"] is True
+
+
+async def test_flow_no_warrants_empty(client):
+    r = await client.get("/api/warrants/2412/flow")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["empty_reason"] == "no_warrants"
+    assert body["as_of_date"] is None
+    assert body["warrants"] == [] and body["top_buy_branches"] == []
+
+
+async def test_flow_bad_date_400(client):
+    for bad in ("2026/06/25", "2026-13-99"):
+        r = await client.get("/api/warrants/2330/flow", params={"date": bad})
+        assert r.status_code == 400
+        assert r.json()["detail"]["error"] == "bad_date"
 
 
 async def test_bad_symbol_400_both_paths(client):
