@@ -655,3 +655,59 @@ def test_resolve_stale_map_falls_back_to_name():
     assert info is None  # 兆豐不在 lexicon → null;lexicon 有就會命中
     tables["by_name"]["兆豐"] = "9500"
     assert wi.resolve_issuer(tables, "051372", "2330", "台積電兆豐59購01")["issuer_id"] == "9500"
+
+
+def test_rank_uses_name_fallback_for_unmapped():
+    """rank 與 merge 同一套三層解析:map 無對映、terms 有名稱 → 名稱解析計入。"""
+    wids = [f"NNN{i:03d}" for i in range(1, 6)]
+    archives = make_archives({w: STABLE for w in wids})
+    terms = {
+        w: {"last_trading_date": "2026-12-30", "underlying_id": "2330",
+            "name": f"台積電凱基61購{i:02d}"}
+        for i, w in enumerate(wids, 1)
+    }
+    tables = {"map": {}, "by_name": {"凱基": "9200"}}
+    out = wi.compute_issuer_rank(archives, {w: {"label": "stable"} for w in wids}, terms, tables)
+    by_id = {r["issuer_id"]: r for r in out["issuers"]}
+    assert by_id["9200"]["n_scored"] == 5
+    assert by_id["9200"]["issuer_name"] == "凱基"
+
+
+async def test_get_issuer_rank_wires_lexicon(monkeypatch):
+    """接線層:get_issuer_rank 必須把 by_name lexicon 傳進 compute(rank 與
+    merge 同一套解析;漏接 = 排行樣本缺 36_L 覆蓋缺口那批)。"""
+    from services import warrant_iv_history as ivh
+    from services import warrants as ws
+
+    patch_fetch(monkeypatch, twse=[], tpex=[
+        {
+            "Date": "1150106", "發行人代號": "9200", "發行人名稱": "凱基",
+            "權證代號": "999999", "名稱": "無關", "標的代號": "1101",
+            "申請發行日期": "1140212",
+        },
+    ])
+    wids = [f"NNN{i:03d}" for i in range(1, 6)]
+
+    async def fake_archives(limit):
+        return make_archives({w: STABLE for w in wids})
+
+    async def fake_drift():
+        return {w: {"label": "stable"} for w in wids}
+
+    async def fake_snapshot(refresh=False):
+        return {
+            "as_of_date": "2026-07-10",
+            "by_underlying": {"2330": [
+                {"warrant_id": w, "last_trading_date": "2026-12-30",
+                 "underlying_id": "2330", "name": f"台積電凱基61購{i:02d}"}
+                for i, w in enumerate(wids, 1)
+            ]},
+        }
+
+    monkeypatch.setattr(ivh, "load_recent_archives", fake_archives)
+    monkeypatch.setattr(ivh, "get_drift_map", fake_drift)
+    monkeypatch.setattr(ws, "get_snapshot", fake_snapshot)
+    out = await wi.get_issuer_rank()
+    assert out is not None
+    by_id = {r["issuer_id"]: r for r in out["issuers"]}
+    assert by_id["9200"]["n_scored"] == 5  # 全靠名稱解析(map 無這些 wid)

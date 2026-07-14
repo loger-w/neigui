@@ -540,7 +540,9 @@ async def get_issuer_rank(refresh: bool = False) -> dict | None:
         }
         drift = await ivh.get_drift_map()
         imap = await get_issuer_map()
-        result = compute_issuer_rank(archives, drift, terms_by_wid, imap)
+        # rank 與 merge 同一套三層解析:lexicon 隨 _map_mem(get_issuer_map 已載)
+        tables = {"map": imap, "by_name": get_issuer_lexicon_cached()}
+        result = compute_issuer_rank(archives, drift, terms_by_wid, tables)
         if not any(r["n_scored"] for r in result["issuers"]):
             return None  # 全市場 n_scored=0 → not ready(R4)
         global _rank_mem
