@@ -18,6 +18,7 @@ import logging
 import os
 import ssl
 import statistics
+import time
 from datetime import date as date_type
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -45,11 +46,16 @@ MOPSFIN_36O_URL = "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap36_O"
 # 全稱裁剪字尾(長在前,依序試):裁不動保留原字串,不硬編猜測表
 _NAME_SUFFIXES = ("綜合證券股份有限公司", "證券股份有限公司", "股份有限公司")
 
+MAP_RETRY_COOLDOWN_SEC = 60.0  # 兩源全失敗後的重試 backoff(同 warrants R2-1)
+
 _client: httpx.AsyncClient | None = None
 _inflight: dict[str, dict[str, Any]] = {}
-_map_mem: dict | None = None  # {"_cache_version", "fetched_on", "map"}
+_map_mem: dict | None = None  # {"_cache_version", "fetched_on", "map"}(可為 stale)
 _rank_mem: dict | None = None  # compute_issuer_rank 輸出 + "_cache_version"
+_rank_disk_checked = False  # tier accessor negative marker(檔缺不重複掃磁碟)
 _map_bg_task: asyncio.Task | None = None
+_last_map_attempt: float | None = None  # 失敗 build 時間戳;成功清 None
+_monotonic = time.monotonic  # 測試以 monkeypatch 換假鐘
 
 
 # ---------------------------------------------------------------- local 複製 helpers
@@ -178,6 +184,8 @@ def _map_is_fresh(payload: Any) -> bool:
 
 
 async def _build_map() -> dict[str, dict]:
+    global _last_map_attempt
+    _last_map_attempt = _monotonic()
     twse_rows: list = []
     tpex_rows: list = []
     try:
@@ -190,7 +198,8 @@ async def _build_map() -> dict[str, dict]:
         logger.exception("issuer map: TPEx mopsfin_t187ap36_O fetch failed")
     built = _build_map_from_rows(twse_rows, tpex_rows)
     if not built:
-        return {}
+        return {}  # _last_map_attempt 留著 → 60s cooldown 生效
+    _last_map_attempt = None  # 成功:解除 backoff
     payload = {
         "_cache_version": _CACHE_VERSION,
         "fetched_on": clock.today().isoformat(),
@@ -213,18 +222,36 @@ async def get_issuer_map(refresh: bool = False) -> dict[str, dict]:
         if _map_is_fresh(payload):
             _map_mem = payload
             return payload["map"]
+        # build backoff:上次失敗 60s 內不重打上游;有過期舊 map 就先用
+        if (
+            _last_map_attempt is not None
+            and _monotonic() - _last_map_attempt < MAP_RETRY_COOLDOWN_SEC
+        ):
+            if isinstance(payload, dict) and payload.get("_cache_version") == _CACHE_VERSION:
+                return payload["map"]
+            return {}
     return await _run_once("issuer_map", _build_map)
 
 
+def _spawn_map_bg() -> None:
+    """背景刷新(cooldown 閘門:失敗後 60s 內不重排,防輪詢放大成重試風暴)。"""
+    global _map_bg_task
+    if _last_map_attempt is not None and _monotonic() - _last_map_attempt < MAP_RETRY_COOLDOWN_SEC:
+        return
+    if _map_bg_task is None or _map_bg_task.done():
+        _map_bg_task = asyncio.ensure_future(_map_bg())
+
+
 def get_issuer_map_cached() -> dict[str, dict]:
-    """sync accessor(SC-4 熱路徑):mem → 檔 → 空 map + 背景 fetch。
+    """sync accessor(SC-4 熱路徑):mem → 檔(stale 亦可用)→ 空 map + 背景 fetch。
 
     絕不同步 await 上游 — quotes 15s 輪詢鏈經 get_underlying_warrants 走到這裡。
+    stale-while-revalidate:過期對照先端出(發行人對映幾乎不變),背景刷新。
     """
-    global _map_mem, _map_bg_task
-    if _map_mem is not None and _map_is_fresh(_map_mem):
-        return _map_mem["map"]
+    global _map_mem
     if os.getenv("FAKE_FINMIND") == "1":
+        if _map_mem is not None:
+            return _map_mem["map"]
         built = _build_map_from_rows(
             _read_fixture("t187ap36_L.json") or [], _read_fixture("mopsfin_t187ap36_O.json") or []
         )
@@ -234,12 +261,15 @@ def get_issuer_map_cached() -> dict[str, dict]:
             "map": built,
         }
         return built
-    payload = read_json(chip_cache_dir() / MAP_FILE)
-    if _map_is_fresh(payload):
-        _map_mem = payload
-        return payload["map"]
-    if _map_bg_task is None or _map_bg_task.done():
-        _map_bg_task = asyncio.ensure_future(_map_bg())
+    if _map_mem is None:
+        payload = read_json(chip_cache_dir() / MAP_FILE)
+        if isinstance(payload, dict) and payload.get("_cache_version") == _CACHE_VERSION:
+            _map_mem = payload  # 過期也先收 mem(下方判斷是否需背景刷新)
+    if _map_mem is not None:
+        if not _map_is_fresh(_map_mem):
+            _spawn_map_bg()
+        return _map_mem["map"]
+    _spawn_map_bg()
     return {}
 
 
@@ -280,7 +310,8 @@ def _warrant_metrics(
 def _normalize(value: float, lo: float, hi: float) -> float:
     if hi == lo:  # R2-2:退化 → 0,不產 NaN
         return 0.0
-    return (value - lo) / (hi - lo)
+    # clamp:小樣本者用合格集 bounds 正規化可能越界,composite 鎖 [0,1]
+    return min(1.0, max(0.0, (value - lo) / (hi - lo)))
 
 
 def compute_issuer_rank(
@@ -448,11 +479,16 @@ def get_issuer_tier_cached() -> dict[str, str]:
     """sync accessor(selector 列 merge 用):{issuer_id: tier};rank 未 build → {}。
 
     不 spawn 背景 build(rank 計算重,由面板 endpoint 需求驅動)。
+    磁碟只掃一次:命中回寫 _rank_mem、miss 記 negative marker —
+    這條在 quotes 15s 輪詢熱路徑上,不得每 request 阻塞 IO(review 修正批)。
     """
+    global _rank_mem, _rank_disk_checked
     payload = _rank_mem
-    if payload is None:
+    if payload is None and not _rank_disk_checked:
+        _rank_disk_checked = True
         disk = read_json(chip_cache_dir() / RANK_FILE)
         if isinstance(disk, dict) and disk.get("_cache_version") == _CACHE_VERSION:
+            _rank_mem = disk
             payload = disk
     if not isinstance(payload, dict):
         return {}

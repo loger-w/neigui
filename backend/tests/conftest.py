@@ -51,6 +51,31 @@ def _reset_finmind_singleton_and_env(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
+def _reset_warrant_issuers(monkeypatch):
+    """warrant_issuers module state reset + fetch 斷網。
+
+    get_underlying_warrants 的 issuer merge 會在 cache miss 時 spawn 背景
+    fetch(真網路)— ~30 個既有 unit tests 間接經過這條鏈,不斷網會造成
+    非決定性測試汙染(pending task GC 警告 / CI 無網環境 60s timeout)。
+    test-local monkeypatch 可覆寫這裡的 stub(fixture 順序保證)。
+    """
+    import services.warrant_issuers as wi
+
+    monkeypatch.setattr(wi, "_map_mem", None)
+    monkeypatch.setattr(wi, "_rank_mem", None)
+    monkeypatch.setattr(wi, "_rank_disk_checked", False)
+    monkeypatch.setattr(wi, "_map_bg_task", None)
+    monkeypatch.setattr(wi, "_last_map_attempt", None)
+    wi._inflight.clear()
+
+    async def _no_network() -> list:
+        return []
+
+    monkeypatch.setattr(wi, "_fetch_twse_rows", _no_network)
+    monkeypatch.setattr(wi, "_fetch_tpex_rows", _no_network)
+
+
+@pytest.fixture(autouse=True)
 def _reset_symbols_load_task(monkeypatch):
     """symbols 共用載入 task 殘留會綁死舊 event loop(bare TestClient 每請求
     各開一個 loop),跨測試 await 到它會 hang / RuntimeError — 每測試起點清空。"""

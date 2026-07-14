@@ -98,3 +98,15 @@ describe("IssuerRankPanel", () => {
     expect(screen.queryByText(/做多|做空|買進|賣出|建議|推薦/)).toBeNull();
   });
 });
+
+describe("IssuerRankPanel review 修正批(Phase 5)", () => {
+  it("非預期 error 不裸拋 code,顯示繁中 fallback(CLAUDE.md §3)", async () => {
+    vi.spyOn(api, "issuerRank").mockRejectedValue(new Error("warrant_upstream"));
+    render(<IssuerRankPanel />, { wrapper: makeQueryWrapper() });
+    fireEvent.click(screen.getByRole("button", { name: /發行商排行/ }));
+    await waitFor(() => expect(screen.getByText(/排行載入失敗/)).toBeTruthy(), {
+      timeout: 5000,
+    });
+    expect(screen.queryByText("warrant_upstream")).toBeNull();
+  });
+});

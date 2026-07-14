@@ -1,19 +1,12 @@
 import { useState } from "react";
 import { useIssuerRank } from "../hooks/useIssuerRank";
 import type { IssuerRankRow } from "../lib/warrant-data";
+import { TIER_CLASS, TIER_TEXT } from "../lib/warrant-utils";
 import { cn } from "../lib/utils";
 
 // 發行商信任排行(warrant-selector-enhance SC-5)。
 // 收合預設:排行計算在 backend lazy build,展開才觸發(enabled gate)。
 // 文案鐵則:中性陳述,不用「推薦/建議」;不得自稱官方評等(僅對齊其權重方向)。
-
-const TIER_TEXT = { front: "前段", mid: "中段", back: "後段" } as const;
-// 同 selector SC-5:不用紅綠,tier 以實底/框線 + ink 強度區分
-const TIER_CLASS = {
-  front: "text-ink border-line-strong bg-ink/10",
-  mid: "text-ink-muted border-line-strong",
-  back: "text-ink-dim border-line",
-} as const;
 
 function pct(v: number | null, digits = 1): string {
   return v == null ? "—" : `${(v * 100).toFixed(digits)}%`;
@@ -57,10 +50,11 @@ export function IssuerRankPanel() {
           {loading && !data ? (
             <div className="text-ink-dim py-1">載入中...</div>
           ) : error ? (
-            <div className="text-accent py-1">
+            // 錯誤文案一律繁中(CLAUDE.md §3);原始 code 收在 title 供除錯
+            <div className="text-accent py-1" title={error}>
               {error === "issuer_rank_not_ready"
                 ? "排行資料尚未就緒(需累積 IV 歷史,約兩週)"
-                : error}
+                : "排行載入失敗,請稍後重試"}
               <button
                 type="button"
                 onClick={refresh}
