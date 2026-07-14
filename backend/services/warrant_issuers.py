@@ -31,7 +31,8 @@ from utils.cache import atomic_write_json, chip_cache_dir, read_json
 
 logger = logging.getLogger(__name__)
 
-_CACHE_VERSION = 2  # v2:payload 增 by_name lexicon(名稱解析 fallback)
+_CACHE_VERSION = 2  # map 用。v2:payload 增 by_name lexicon(名稱解析 fallback)
+_RANK_CACHE_VERSION = 2  # rank 用,與 map 拆分:rank 演算法改版 bump 不連坐 MAP_FILE
 MAP_FILE = "warrant_issuer_map_latest.json"
 RANK_FILE = "warrant_issuer_rank_latest.json"
 MAP_TTL_DAYS = 7  # 權證每週掛牌,月級太久(change-spec R7)
@@ -499,7 +500,7 @@ def compute_issuer_rank(
 
     issuers.sort(key=lambda r: (r["rank"] is None, r["rank"] or 0, r["issuer_id"]))
     return {
-        "_cache_version": _CACHE_VERSION,
+        "_cache_version": _RANK_CACHE_VERSION,
         "as_of_date": as_of,
         "built_from_days": len(window),
         "issuers": issuers,
@@ -522,7 +523,7 @@ async def get_issuer_rank(refresh: bool = False) -> dict | None:
         payload = read_json(chip_cache_dir() / RANK_FILE)
         if (
             isinstance(payload, dict)
-            and payload.get("_cache_version") == _CACHE_VERSION
+            and payload.get("_cache_version") == _RANK_CACHE_VERSION
             and payload.get("as_of_date") == latest
         ):
             _rank_mem = payload
@@ -567,7 +568,7 @@ def get_issuer_tier_cached() -> dict[str, str]:
     if payload is None and not _rank_disk_checked:
         _rank_disk_checked = True
         disk = read_json(chip_cache_dir() / RANK_FILE)
-        if isinstance(disk, dict) and disk.get("_cache_version") == _CACHE_VERSION:
+        if isinstance(disk, dict) and disk.get("_cache_version") == _RANK_CACHE_VERSION:
             _rank_mem = disk
             payload = disk
     if not isinstance(payload, dict):
