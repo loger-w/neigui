@@ -25,6 +25,11 @@ vi.mock("./components/BorrowFeePage", () => ({
 vi.mock("./components/WarrantSelector", () => ({
   WarrantSelector: () => <div data-testid="warrant-selector">warrants</div>,
 }));
+vi.mock("./components/WarrantFlowPanel", () => ({
+  WarrantFlowPanel: ({ active }: { active: boolean }) => (
+    <div data-testid="warrant-flow-panel" data-active={String(active)}>flow</div>
+  ),
+}));
 vi.mock("./components/SymbolSearch", () => ({
   SymbolSearch: () => <div data-testid="symbol-search">search</div>,
 }));
@@ -121,6 +126,18 @@ describe("App mode persistence (SC-4)", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("borrow-fee-page")).toBeTruthy();
     });
+  });
+
+  it("權證分點 tab:點擊切換 mount panel 並帶 active(SC-1)", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "權證分點" }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("warrant-flow-panel")).toBeTruthy();
+    });
+    expect(screen.getByTestId("warrant-flow-panel").getAttribute("data-active")).toBe("true");
+    // 切回總覽:hidden 保 DOM(active gate 停止 fetch),panel 仍 mounted
+    fireEvent.click(screen.getByRole("button", { name: "籌碼總覽" }));
+    expect(screen.getByTestId("warrant-flow-panel").getAttribute("data-active")).toBe("false");
   });
 
   it("ignores invalid localStorage mode value and falls back to equity", () => {
