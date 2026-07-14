@@ -40,6 +40,18 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.28.0",
+    date: "2026-07-14",
+    highlights: "個股新增「權證分點」分頁,看哪些分點在買賣這檔股票的權證",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "個股新增「權證分點」分頁:彙整該股全部有成交權證的分點買賣金額,列出淨買超與淨賣超前 15 大分點,點分點可展開它進出的權證明細;附認購/認售成交概況與權證明細表,並標示資料日(分點資料為盤後隔日公布)",
+      },
+    ],
+  },
+  {
     version: "0.27.0",
     date: "2026-07-11",
     highlights: "權證分頁可看發行商引波調整軌跡",
