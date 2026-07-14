@@ -67,7 +67,11 @@ const WarrantSelector = lazy(() =>
   import("./components/WarrantSelector").then((m) => ({ default: m.WarrantSelector })),
 );
 
-type Tab = "overview" | "bubble" | "warrants";
+const WarrantFlowPanel = lazy(() =>
+  import("./components/WarrantFlowPanel").then((m) => ({ default: m.WarrantFlowPanel })),
+);
+
+type Tab = "overview" | "bubble" | "warrants" | "warrant-flow";
 
 function todayStr(): string {
   const d = new Date();
@@ -390,6 +394,17 @@ export default function App() {
           >
             權證
           </button>
+          <button
+            type="button"
+            onClick={() => setTab("warrant-flow")}
+            className={`px-4 py-2 pointer-coarse:min-h-11 text-sm transition-colors cursor-pointer ${
+              tab === "warrant-flow"
+                ? "text-accent border-b-2 border-accent font-medium"
+                : "text-ink-dim hover:text-ink"
+            }`}
+          >
+            權證分點
+          </button>
         </div>
       </header>
 
@@ -488,6 +503,19 @@ export default function App() {
             {/* active gate:hidden 保 DOM 但 tab 未開不抓(hooks enabled=false);
                 權證 hooks 掛元件內部,不進全域 refresh(重整鈕只刷 quotes,R11) */}
             <WarrantSelector symbol={symbol} active={tab === "warrants"} />
+          </Suspense>
+        </div>
+        <div hidden={tab !== "warrant-flow"} className="h-full">
+          <Suspense
+            fallback={
+              <div className="h-full flex items-center justify-center text-ink-dim text-sm">
+                載入權證分點元件...
+              </div>
+            }
+          >
+            {/* SC-1 active gate:切到 tab 才發請求(useWarrantFlow enabled);
+                分點 hook 掛元件內部,同 WarrantSelector 不進全域 refresh */}
+            <WarrantFlowPanel symbol={symbol} active={tab === "warrant-flow"} />
           </Suspense>
         </div>
       </div>
