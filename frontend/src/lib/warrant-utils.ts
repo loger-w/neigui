@@ -18,6 +18,9 @@ export interface WarrantFilters {
   mispricingMin: number | null;
   mispricingMax: number | null;
   ivPctlMax: number | null;
+  spreadRatioMax: number | null;
+  slrMax: number | null;
+  minAskPrice: number | null;
 }
 
 export const DEFAULT_FILTERS: WarrantFilters = {
@@ -29,7 +32,51 @@ export const DEFAULT_FILTERS: WarrantFilters = {
   mispricingMin: null,
   mispricingMax: null,
   ivPctlMax: null,
+  spreadRatioMax: null,
+  slrMax: null,
+  minAskPrice: null,
 };
+
+export interface WarrantPreset {
+  label: string;
+  /** 門檻是時代的函數:preset 必附來源與時點,UI 標注(change-spec SC-6)。 */
+  source: string;
+  asOf: string; // YYYY-MM
+  filters: Partial<WarrantFilters>;
+}
+
+export const WARRANT_PRESETS: Record<"swing", WarrantPreset> = {
+  swing: {
+    label: "波段",
+    source: "元大智慧搜尋預設 + 權證小哥差槓比",
+    asOf: "2026-07",
+    filters: {
+      minDaysLeft: 60,
+      moneynessMin: -0.3, // 價外 30%
+      moneynessMax: 0.05, // 價內 5%
+      spreadRatioMax: 0.025,
+      slrMax: 0.3,
+      minAskPrice: 0.6,
+      requireBidVol: true,
+    },
+  },
+};
+
+/** ≈ 法規「到期前 15 個交易日可僅申報買進」的日曆日 proxy(change-spec SC-8)。 */
+export const EXIT_CLIFF_DAYS = 21;
+
+export function isExitCliff(daysLeft: number | null | undefined): boolean {
+  return daysLeft != null && daysLeft <= EXIT_CLIFF_DAYS;
+}
+
+/** 委賣消失 + 委買仍在 = 近售罄(庫存 <10 張只掛買);懸崖區內抑制 —
+ * 近到期發行商可合法只買,不可誤判(change-spec SC-9 confounder)。 */
+export function isNearSoldOut(r: WarrantRow): boolean {
+  if (isExitCliff(r.days_left)) return false;
+  const askGone = r.best_ask == null || r.best_ask === 0;
+  const bidAlive = r.best_bid != null && r.best_bid > 0;
+  return askGone && bidAlive;
+}
 
 // 啟用中的 filter 對 null/undefined 欄位一律剔除(SC-4:選了條件就只看
 // 有值的列);未啟用(null/false)不剔。
@@ -59,6 +106,15 @@ export function filterWarrants(rows: WarrantRow[], f: WarrantFilters): WarrantRo
       return false;
     }
     if (f.ivPctlMax !== null && (r.iv_percentile == null || r.iv_percentile > f.ivPctlMax)) {
+      return false;
+    }
+    if (f.spreadRatioMax !== null && (r.spread_ratio == null || r.spread_ratio > f.spreadRatioMax)) {
+      return false;
+    }
+    if (f.slrMax !== null && (r.spread_lev_ratio == null || r.spread_lev_ratio > f.slrMax)) {
+      return false;
+    }
+    if (f.minAskPrice !== null && (r.best_ask == null || r.best_ask < f.minAskPrice)) {
       return false;
     }
     return true;
