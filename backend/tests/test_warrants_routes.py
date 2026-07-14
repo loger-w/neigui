@@ -226,3 +226,126 @@ def test_iv_history_upstream_error_502(monkeypatch, client, _reset_ivh):
     r = client.get("/api/warrants/030012/iv-history")
     assert r.status_code == 502
     assert r.json()["detail"] == {"error": "warrant_upstream"}
+
+
+# ---------------------------------------------------------------- issuers rank(warrant-selector-enhance)
+
+
+@pytest.fixture()
+def _reset_wi(monkeypatch):
+    import services.warrant_issuers as wi
+
+    monkeypatch.setattr(wi, "_map_mem", None)
+    monkeypatch.setattr(wi, "_rank_mem", None)
+    monkeypatch.setattr(wi, "_map_bg_task", None)
+    wi._inflight.clear()
+    return wi
+
+
+def test_issuer_rank_ok_shape(monkeypatch, client, _reset_wi):
+    wi = _reset_wi
+    payload = {
+        "_cache_version": 1,
+        "as_of_date": "2026-07-10",
+        "built_from_days": 10,
+        "issuers": [
+            {
+                "issuer_id": "9200", "issuer_name": "凱基", "n_warrants": 5,
+                "n_scored": 5, "iv_std_median": 0.01, "spread_median": 0.04,
+                "declining_share": 0.2, "composite": 0.1, "rank": 1, "tier": "front",
+            }
+        ],
+    }
+
+    async def fake(refresh: bool = False):
+        return payload
+
+    monkeypatch.setattr(wi, "get_issuer_rank", fake)
+    r = client.get("/api/warrants/issuers/rank")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["as_of_date"] == "2026-07-10"
+    assert body["issuers"][0]["tier"] == "front"
+
+
+def test_issuer_rank_not_ready_503(monkeypatch, client, _reset_wi):
+    wi = _reset_wi
+
+    async def fake(refresh: bool = False):
+        return None
+
+    monkeypatch.setattr(wi, "get_issuer_rank", fake)
+    r = client.get("/api/warrants/issuers/rank")
+    assert r.status_code == 503
+    assert r.json()["detail"] == {"error": "issuer_rank_not_ready"}
+
+
+def test_issuer_rank_upstream_error_502(monkeypatch, client, _reset_wi):
+    wi = _reset_wi
+
+    async def boom(refresh: bool = False):
+        raise httpx.ConnectError("twse down")
+
+    monkeypatch.setattr(wi, "get_issuer_rank", boom)
+    r = client.get("/api/warrants/issuers/rank")
+    assert r.status_code == 502
+    assert r.json()["detail"] == {"error": "warrant_upstream"}
+
+
+def test_warrants_rows_carry_issuer_fields(monkeypatch, client, _reset_wi):
+    # SC-4:讀取時 merge issuer_name / issuer_tier(不烙快照、不 await 上游)
+    wi = _reset_wi
+    snap = {
+        "as_of_date": "2026-07-09",
+        "tpex_date": "2026-07-09",
+        "by_underlying": {"2330": [{"warrant_id": "030012", "name": "測試"}]},
+    }
+
+    async def fake_load(refresh: bool = False):
+        return snap
+
+    monkeypatch.setattr(ws, "_load_snapshot", fake_load)
+    monkeypatch.setattr(
+        wi,
+        "_map_mem",
+        {
+            "_cache_version": 1,
+            "fetched_on": "2026-07-14",
+            "map": {"030012": {"issuer_id": "9200", "issuer_name": "凱基"}},
+        },
+    )
+    monkeypatch.setattr(
+        wi,
+        "_rank_mem",
+        {
+            "_cache_version": 1,
+            "as_of_date": "2026-07-10",
+            "built_from_days": 10,
+            "issuers": [{"issuer_id": "9200", "tier": "front"}],
+        },
+    )
+    r = client.get("/api/warrants/2330")
+    assert r.status_code == 200
+    row = r.json()["warrants"][0]
+    assert row["issuer_name"] == "凱基"
+    assert row["issuer_tier"] == "front"
+    assert "issuer_name" not in snap["by_underlying"]["2330"][0]
+
+
+def test_warrants_rows_issuer_null_safe(monkeypatch, client, _reset_wi):
+    # 對照 miss → null,不炸(SC-4;背景 task 由 accessor spawn,不阻塞)
+    snap = {
+        "as_of_date": "2026-07-09",
+        "tpex_date": "2026-07-09",
+        "by_underlying": {"2330": [{"warrant_id": "999999", "name": "測試"}]},
+    }
+
+    async def fake_load(refresh: bool = False):
+        return snap
+
+    monkeypatch.setattr(ws, "_load_snapshot", fake_load)
+    r = client.get("/api/warrants/2330")
+    assert r.status_code == 200
+    row = r.json()["warrants"][0]
+    assert row["issuer_name"] is None
+    assert row["issuer_tier"] is None

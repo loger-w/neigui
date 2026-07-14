@@ -181,3 +181,36 @@ async def test_bad_symbol_400_both_paths(client):
     r = await client.get("/api/warrants/0300123456789/brokers")
     assert r.status_code == 400
     assert r.json()["detail"]["error"] == "bad_symbol"
+
+
+# ---------------------------------------------------------------- issuers rank(warrant-selector-enhance SC-3/SC-4)
+
+
+async def test_issuer_rank_contract(client):
+    r = await client.get("/api/warrants/issuers/rank")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["as_of_date"] == "2026-06-26"  # 最新 FAKE archive 日
+    assert body["built_from_days"] == 10
+    ids = {i["issuer_id"]: i for i in body["issuers"]}
+    # FAKE 36_L:030011 凱基 / 030012 元大 / 030013 富邦,各 1 檔 → 樣本 <5
+    assert len(ids) == 3
+    # 030011(凱基 9200)ivb 兩週窗僅 5 有效點 <8 → 不計分(SC-2 排除規則實跑)
+    assert ids["9200"]["n_scored"] == 0
+    assert ids["9200"]["iv_std_median"] is None
+    # 元大 9800 / 富邦 9600 各 1 檔計分
+    assert ids["9800"]["n_scored"] == 1
+    assert ids["9800"]["iv_std_median"] is not None
+    assert ids["9600"]["n_scored"] == 1
+    for row in body["issuers"]:
+        assert row["rank"] is None and row["tier"] is None  # n_scored<5 → 不評級(R4)
+
+
+async def test_warrants_rows_carry_issuer_name(client):
+    r = await client.get("/api/warrants/2330")
+    assert r.status_code == 200
+    rows = {w["warrant_id"]: w for w in r.json()["warrants"]}
+    assert rows["030012"]["issuer_name"] == "元大"
+    assert rows["030011"]["issuer_name"] == "凱基"
+    # rank 未達評級門檻 → tier null(不炸)
+    assert rows["030012"]["issuer_tier"] is None

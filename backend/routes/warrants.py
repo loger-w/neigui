@@ -14,7 +14,14 @@ from datetime import date
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 
-from services import warrant_brokers, warrant_flow, warrant_iv_history, warrant_quotes, warrants
+from services import (
+    warrant_brokers,
+    warrant_flow,
+    warrant_issuers,
+    warrant_iv_history,
+    warrant_quotes,
+    warrants,
+)
 from utils.cancel import run_with_disconnect
 
 logger = logging.getLogger(__name__)
@@ -39,6 +46,20 @@ def _validate_date(value: str) -> None:
         date.fromisoformat(value)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail={"error": "bad_date"}) from exc
+
+
+@router.get("/api/warrants/issuers/rank")
+async def get_issuer_rank(request: Request, refresh: bool = False) -> dict:
+    """發行商信任排行(兩段 literal path,置於 /{stock_id} 前防未來歧義)。"""
+    try:
+        payload = await run_with_disconnect(request, warrant_issuers.get_issuer_rank(refresh))
+    except httpx.HTTPError as exc:
+        # 冷 build 可觸 TWSE/TPEx 網路 — 同 warrants 自 catch(R9)
+        logger.warning("issuer rank upstream error: %s", exc)
+        raise HTTPException(status_code=502, detail={"error": "warrant_upstream"}) from exc
+    if payload is None:
+        raise HTTPException(status_code=503, detail={"error": "issuer_rank_not_ready"})
+    return payload
 
 
 @router.get("/api/warrants/{stock_id}")
