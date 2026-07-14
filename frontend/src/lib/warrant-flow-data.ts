@@ -63,3 +63,9 @@ export function barRatio(value: number, max: number): number {
 export function formatValue(v: number): string {
   return fmtAmount(Math.abs(v));
 }
+
+/** 淨值格式:帶負號的 formatValue。「formatValue 吃 abs、caller 補負號」的
+ * 隱含約定收斂到單一 helper,與 netClass 配套(code-review round 1)。 */
+export function formatNet(v: number): string {
+  return `${v < 0 ? "-" : ""}${formatValue(v)}`;
+}

@@ -1,6 +1,6 @@
 // warrant-flow-data 純函式(design §3.1;bar 比例與金額格式)
 import { describe, expect, it } from "vitest";
-import { barRatio, formatValue } from "./warrant-flow-data";
+import { barRatio, formatNet, formatValue } from "./warrant-flow-data";
 
 describe("barRatio", () => {
   it("max <= 0 回 0(除零防禦)", () => {
@@ -33,5 +33,13 @@ describe("formatValue", () => {
   it("負值以 abs 縮寫(impl-R1:方向由色彩表達,不出現 -X,XXX 元)", () => {
     expect(formatValue(-234_560_000)).toBe("2.35 億");
     expect(formatValue(-5_046_000)).toBe("504 萬");
+  });
+});
+
+describe("formatNet", () => {
+  it("負值帶負號、正值不帶(淨值顯示唯一入口)", () => {
+    expect(formatNet(-5_046_000)).toBe("-504 萬");
+    expect(formatNet(5_046_000)).toBe("504 萬");
+    expect(formatNet(0)).toBe("0 元");
   });
 });
