@@ -62,6 +62,14 @@ export const WARRANT_PRESETS: Record<"swing", WarrantPreset> = {
   },
 };
 
+// 發行商 tier 顯示常數(selector 列 + IssuerRankPanel 共用;中性色階不用紅綠)
+export const TIER_TEXT: Record<string, string> = { front: "前段", mid: "中段", back: "後段" };
+export const TIER_CLASS: Record<string, string> = {
+  front: "text-ink border-line-strong bg-ink/10",
+  mid: "text-ink-muted border-line-strong",
+  back: "text-ink-dim border-line",
+};
+
 /** ≈ 法規「到期前 15 個交易日可僅申報買進」的日曆日 proxy(change-spec SC-8)。 */
 export const EXIT_CLIFF_DAYS = 21;
 

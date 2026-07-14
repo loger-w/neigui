@@ -23,7 +23,9 @@ def _reset_state(monkeypatch):
     monkeypatch.setattr(wi, "_client", None)
     monkeypatch.setattr(wi, "_map_mem", None)
     monkeypatch.setattr(wi, "_rank_mem", None)
+    monkeypatch.setattr(wi, "_rank_disk_checked", False)
     monkeypatch.setattr(wi, "_map_bg_task", None)
+    monkeypatch.setattr(wi, "_last_map_attempt", None)
     wi._inflight.clear()
 
 
@@ -420,3 +422,98 @@ def test_rank_tier_terciles():
     out = wi.compute_issuer_rank(archives, drift, make_terms(list(ivb_by_wid)), imap)
     tiers = [r["tier"] for r in sorted(out["issuers"], key=lambda r: r["rank"])]
     assert tiers == ["front", "front", "mid", "mid", "back", "back"]
+
+
+# ---------------------------------------------------------------- review 修正批(Phase 5)
+
+
+def test_cached_accessor_serves_stale_while_revalidating(monkeypatch):
+    """過期 map 檔 → 先端出舊對照 + 背景刷新,不得回空(stale-while-revalidate)。"""
+    patch_fetch(monkeypatch)
+    from utils.cache import atomic_write_json
+
+    async def run():
+        await wi.get_issuer_map()
+        p = chip_cache_dir() / wi.MAP_FILE
+        payload = read_json(p)
+        payload["fetched_on"] = "2026-07-01"  # 13 天前 → stale
+        atomic_write_json(p, payload)
+        wi._map_mem = None
+        got = wi.get_issuer_map_cached()
+        assert got != {}  # 舊資料仍可用
+        assert "074888" in got
+        assert wi._map_bg_task is not None  # 背景刷新已排
+        await wi._map_bg_task
+
+    asyncio.run(run())
+
+
+async def test_map_build_backoff_after_total_failure(monkeypatch):
+    """兩源全失敗後 60s 內不重打上游(自傷式 rate-limit 防護)。"""
+    calls = {"n": 0}
+
+    async def failing():
+        calls["n"] += 1
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(wi, "_fetch_twse_rows", failing)
+    monkeypatch.setattr(wi, "_fetch_tpex_rows", failing)
+    assert await wi.get_issuer_map() == {}
+    n_after_first = calls["n"]
+    assert await wi.get_issuer_map() == {}  # cooldown 內:不再 fetch
+    assert calls["n"] == n_after_first
+
+
+def test_tier_cached_writes_back_mem(monkeypatch):
+    """disk 命中 → 回寫 _rank_mem,第二次呼叫零磁碟 IO(熱路徑防重複讀)。"""
+    from utils.cache import atomic_write_json
+
+    atomic_write_json(
+        chip_cache_dir() / wi.RANK_FILE,
+        {
+            "_cache_version": wi._CACHE_VERSION,
+            "as_of_date": "2026-07-10",
+            "built_from_days": 10,
+            "issuers": [{"issuer_id": "9800", "tier": "front"}],
+        },
+    )
+    assert wi.get_issuer_tier_cached() == {"9800": "front"}
+    assert wi._rank_mem is not None  # 回寫
+
+    def boom(path):
+        raise AssertionError("second call must not hit disk")
+
+    monkeypatch.setattr(wi, "read_json", boom)
+    assert wi.get_issuer_tier_cached() == {"9800": "front"}
+
+
+def test_tier_cached_negative_marker(monkeypatch):
+    """檔缺 → 首次記 negative marker,後續呼叫不重複掃磁碟。"""
+    assert wi.get_issuer_tier_cached() == {}
+    reads = {"n": 0}
+    real = wi.read_json
+
+    def counting(path):
+        reads["n"] += 1
+        return real(path)
+
+    monkeypatch.setattr(wi, "read_json", counting)
+    assert wi.get_issuer_tier_cached() == {}
+    assert reads["n"] == 0
+
+
+def test_rank_small_sample_composite_clamped():
+    """小樣本者以合格集 bounds 正規化,越界 clamp [0,1] — composite 不得爆界。"""
+    imap = issuer_map_two()
+    imap["CCC001"] = {"issuer_id": "7777", "issuer_name": "極端值"}
+    wids_a = [f"AAA{i:03d}" for i in range(1, 6)]
+    wids_b = [f"BBB{i:03d}" for i in range(1, 6)]
+    extreme = [0.1, 0.9, 0.1, 0.9, 0.1, 0.9, 0.1, 0.9, 0.1, 0.9]  # std 遠超合格集 max
+    archives = make_archives(
+        {**{w: STABLE for w in wids_a}, **{w: VOLATILE for w in wids_b}, "CCC001": extreme}
+    )
+    drift = {w: {"label": "stable"} for w in wids_a + wids_b + ["CCC001"]}
+    out = wi.compute_issuer_rank(archives, drift, make_terms(wids_a + wids_b + ["CCC001"]), imap)
+    by_id = {r["issuer_id"]: r for r in out["issuers"]}
+    c = by_id["7777"]["composite"]
+    assert c is not None and 0.0 <= c <= 1.0

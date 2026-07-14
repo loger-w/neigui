@@ -468,3 +468,51 @@ describe("WarrantSelector 分點欄手動載入(SC-10)", () => {
     expect(flowSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("WarrantSelector review 修正批(Phase 5)", () => {
+  it("flow 已載入後切換 symbol,不得自動抓新標的(白名單 6:不自動燒配額)", async () => {
+    mockApis([term()], {});
+    const flowSpy = vi.spyOn(api, "warrantFlow").mockResolvedValue(flowPayload());
+    const { rerender } = render(<WarrantSelector symbol="2330" active />, {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
+    fireEvent.click(screen.getByTestId("flow-load-btn"));
+    await waitFor(() => expect(flowSpy).toHaveBeenCalledTimes(1));
+    rerender(<WarrantSelector symbol="2317" active />);
+    // 切標的的 render 週期內 flowEnabled 殘留 true 會對 2317 開火 — 等一拍再驗
+    await new Promise((r) => setTimeout(r, 50));
+    expect(flowSpy).toHaveBeenCalledTimes(1);
+    expect(flowSpy.mock.calls.every((c) => c[0] === "2330")).toBe(true);
+  });
+
+  it("篩選 input 打字值不被無關 filter 變更沖掉(uncontrolled+epoch 機制)", async () => {
+    // 「-」「0.」badInput 中間態 jsdom 一律 sanitize 成 "",controlled/uncontrolled
+    // 不可分辨 → 該情境由 Phase 7 真實環境(DevTools)驗;這裡鎖 epoch 機制:
+    // 無關 state 變更(kind toggle)不 remount、preset 才 remount 同步
+    mockApis([term()], {});
+    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
+    const days = screen.getByLabelText("剩餘天數下限") as HTMLInputElement;
+    fireEvent.change(days, { target: { value: "45" } });
+    fireEvent.click(screen.getByRole("button", { name: "認購" })); // 無關 filter 變更
+    expect((screen.getByLabelText("剩餘天數下限") as HTMLInputElement).value).toBe("45");
+    fireEvent.click(screen.getByTestId("preset-swing")); // preset → epoch remount 覆寫
+    expect((screen.getByLabelText("剩餘天數下限") as HTMLInputElement).value).toBe("60");
+  });
+
+  it("preset 套用後 input 反映值;再切 symbol 篩選歸零且 input 清空", async () => {
+    mockApis([term()], {});
+    const { rerender } = render(<WarrantSelector symbol="2330" active />, {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
+    fireEvent.click(screen.getByTestId("preset-swing"));
+    const daysInput = screen.getByLabelText("剩餘天數下限") as HTMLInputElement;
+    expect(daysInput.value).toBe("60");
+    rerender(<WarrantSelector symbol="2317" active />);
+    await waitFor(() =>
+      expect((screen.getByLabelText("剩餘天數下限") as HTMLInputElement).value).toBe(""),
+    );
+  });
+});

@@ -9,6 +9,8 @@ import type { WarrantRow } from "../lib/warrant-data";
 import { formatNet } from "../lib/warrant-flow-data";
 import {
   DEFAULT_FILTERS,
+  TIER_CLASS,
+  TIER_TEXT,
   WARRANT_PRESETS,
   filterWarrants,
   isExitCliff,
@@ -40,13 +42,6 @@ const MISPRICING_TEXT = { cheap: "偏便宜", fair: "合理", expensive: "偏貴
 // IV 趨勢中性文案(warrant-iv-drift SC-6):只陳述統計事實,stable/insufficient
 // 顯示 —(全表多數 stable,標出來是噪音);嚴禁「惡意」等指控性文字。
 const DRIFT_TEXT: Record<string, string> = { declining: "長期遞減", rising: "長期遞增" };
-// 發行商 tier(backend composite 三分位)— 同 SC-5 中性色階,不用紅綠
-const TIER_TEXT: Record<string, string> = { front: "前段", mid: "中段", back: "後段" };
-const TIER_CLASS: Record<string, string> = {
-  front: "text-ink border-line-strong bg-ink/10",
-  mid: "text-ink-muted border-line-strong",
-  back: "text-ink-dim border-line",
-};
 // SC-5:中性色階,零色相 — accent 與 bull 同色值(#e85a4f,real-env 2026-07-11
 // 實測),資料標籤用 accent 即是多頭紅。兩端用「實底 vs 框線」+ ink 強度區分。
 const MISPRICING_CLASS = {
@@ -108,15 +103,21 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const brokersHook = useWarrantBrokers(expandedId);
   // 分點欄手動載入(SC-10):預設不 fetch(瀏覽多標的不燒 FinMind 配額);
-  // 共 queryKey ["warrant-flow", symbol] — 分點 tab 抓過即 cache 命中直接顯示
-  const [flowEnabled, setFlowEnabled] = useState(false);
-  const flowHook = useWarrantFlow(symbol, active && flowEnabled);
+  // 共 queryKey ["warrant-flow", symbol] — 分點 tab 抓過即 cache 命中直接顯示。
+  // 記「按下載入時的 symbol」而非 boolean:換標的的同一個 render 週期
+  // flowSymbol ≠ 新 symbol 即失效,不會在 reset effect 前對新標的開火
+  // (boolean + effect 重置有一拍 race,review 修正批紅測試鎖住)
+  const [flowSymbol, setFlowSymbol] = useState<string | null>(null);
+  const flowHook = useWarrantFlow(symbol, active && flowSymbol === symbol);
+  // 篩選 input 用 defaultValue + epoch remount:controlled value 會沖掉
+  // 「-」「0.」等打字中間態;preset / 換標的靠 epoch 重掛同步顯示值
+  const [filterEpoch, setFilterEpoch] = useState(0);
 
-  // 換標的:展開列與篩選歸零(舊標的殘留會誤導);分點載入回到手動
+  // 換標的:展開列與篩選歸零(舊標的殘留會誤導)
   useEffect(() => {
     setExpandedId(null);
     setFilters(DEFAULT_FILTERS);
-    setFlowEnabled(false);
+    setFilterEpoch((e) => e + 1);
   }, [symbol]);
 
   const flowNetByWid = useMemo(() => {
@@ -171,8 +172,11 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* 狀態列 + 篩選列 */}
-      <div className="shrink-0 px-4 py-2 border-b border-line flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+      {/* 狀態列 + 篩選列(key=epoch:preset/換標的時 remount 讓 defaultValue 生效) */}
+      <div
+        key={filterEpoch}
+        className="shrink-0 px-4 py-2 border-b border-line flex flex-wrap items-center gap-x-4 gap-y-2 text-xs"
+      >
         <span className="text-ink-dim">
           {warrantsHook.asOfDate && `快照基準日 ${warrantsHook.asOfDate}`}
           {quotesHook.quoteTime && `・最後更新 ${quotesHook.quoteTime}`}
@@ -189,7 +193,10 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
         <button
           type="button"
           data-testid="preset-swing"
-          onClick={() => setFilters({ ...DEFAULT_FILTERS, ...WARRANT_PRESETS.swing.filters })}
+          onClick={() => {
+            setFilters({ ...DEFAULT_FILTERS, ...WARRANT_PRESETS.swing.filters });
+            setFilterEpoch((e) => e + 1);
+          }}
           title={`一鍵套用:${WARRANT_PRESETS.swing.source}(${WARRANT_PRESETS.swing.asOf});套用後可再手動調整`}
           className="px-2 py-1 pointer-coarse:min-h-11 border border-line text-ink-muted hover:text-ink hover:border-accent transition-colors cursor-pointer"
         >
@@ -224,7 +231,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             type="number"
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="剩餘天數下限"
-            value={numVal(filters.minDaysLeft)}
+            defaultValue={numVal(filters.minDaysLeft)}
             onChange={(e) =>
               setFilters((f) => ({ ...f, minDaysLeft: numOrNull(e.target.value) }))
             }
@@ -237,7 +244,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="價內外下限(%)"
             placeholder="min"
-            value={pctVal(filters.moneynessMin)}
+            defaultValue={pctVal(filters.moneynessMin)}
             onChange={(e) => {
               const n = numOrNull(e.target.value);
               setFilters((f) => ({ ...f, moneynessMin: n == null ? null : n / 100 }));
@@ -249,7 +256,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="價內外上限(%)"
             placeholder="max"
-            value={pctVal(filters.moneynessMax)}
+            defaultValue={pctVal(filters.moneynessMax)}
             onChange={(e) => {
               const n = numOrNull(e.target.value);
               setFilters((f) => ({ ...f, moneynessMax: n == null ? null : n / 100 }));
@@ -263,7 +270,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="估價差下限(%)"
             placeholder="min"
-            value={pctVal(filters.mispricingMin)}
+            defaultValue={pctVal(filters.mispricingMin)}
             onChange={(e) => {
               const n = numOrNull(e.target.value);
               setFilters((f) => ({ ...f, mispricingMin: n == null ? null : n / 100 }));
@@ -275,7 +282,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="估價差上限(%)"
             placeholder="max"
-            value={pctVal(filters.mispricingMax)}
+            defaultValue={pctVal(filters.mispricingMax)}
             onChange={(e) => {
               const n = numOrNull(e.target.value);
               setFilters((f) => ({ ...f, mispricingMax: n == null ? null : n / 100 }));
@@ -288,7 +295,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             type="number"
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="IV百分位上限"
-            value={numVal(filters.ivPctlMax)}
+            defaultValue={numVal(filters.ivPctlMax)}
             onChange={(e) =>
               setFilters((f) => ({ ...f, ivPctlMax: numOrNull(e.target.value) }))
             }
@@ -300,7 +307,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             type="number"
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="價差比上限(%)"
-            value={pctVal(filters.spreadRatioMax)}
+            defaultValue={pctVal(filters.spreadRatioMax)}
             onChange={(e) => {
               const n = numOrNull(e.target.value);
               setFilters((f) => ({ ...f, spreadRatioMax: n == null ? null : n / 100 }));
@@ -313,7 +320,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             type="number"
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="差槓比上限"
-            value={numVal(filters.slrMax)}
+            defaultValue={numVal(filters.slrMax)}
             onChange={(e) => setFilters((f) => ({ ...f, slrMax: numOrNull(e.target.value) }))}
           />
         </label>
@@ -323,7 +330,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             type="number"
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="委賣價下限"
-            value={numVal(filters.minAskPrice)}
+            defaultValue={numVal(filters.minAskPrice)}
             onChange={(e) =>
               setFilters((f) => ({ ...f, minAskPrice: numOrNull(e.target.value) }))
             }
@@ -395,7 +402,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
                     <button
                       type="button"
                       data-testid="flow-load-btn"
-                      onClick={() => setFlowEnabled(true)}
+                      onClick={() => setFlowSymbol(symbol)}
                       disabled={flowHook.loading}
                       aria-label="載入分點買賣超"
                       title="手動載入:首次會掃描該標的全部權證的分點報表(T+1)"
