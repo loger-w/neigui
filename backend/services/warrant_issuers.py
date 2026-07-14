@@ -1,10 +1,12 @@
 """權證發行商對照 + 信任排行 — TWSE t187ap36_L / TPEx mopsfin_t187ap36_O。
 
 對照層:兩市場發行人對照表(零配額)→ {wid: {issuer_id, issuer_name}},7 天級 cache。
-排行層:iv_history 最近兩週 archive → per-issuer 三指標(兩週 bid-IV std 中位數 /
-價差比中位數 / declining 占比),對齊 TWSE 評等 30/20/20 相對權重(歸一 3/7·2/7·2/7;
-官方「週轉率 30%」係成交活躍度非造市品質,捨棄;「買一金額 20%」archive 無掛單金額,
-以 declining_share 替代)。收盤報價 proxy,非官方盤中口徑(change-spec SC-2)。
+排行層(v2 條款分層,issuer-rank-strata):per-warrant 指標(兩週 bid-IV std /
+價差比 / declining)在 (moneyness band × 天期 band) 層內取 midrank percentile
+(低者佳),發行商分數 = 旗下計分檔 pctl 平均(天然按層內檔數加權),composite
+沿 TWSE 評等相對權重 3/7·2/7·2/7(官方「週轉率 30%」係成交活躍度非造市品質,
+捨棄;「買一金額 20%」archive 無掛單金額,以 declining 替代)。層內樣本 <5 的
+層整層不計分。收盤報價 proxy,非官方盤中口徑(issuer-rank-strata change-spec §1)。
 
 熱路徑鐵則(change-spec R1):get_underlying_warrants 的 merge 只走 sync cached
 accessor(mem/檔 → 空 map + 背景 fetch),絕不同步 await 上游。
@@ -32,7 +34,7 @@ from utils.cache import atomic_write_json, chip_cache_dir, read_json
 logger = logging.getLogger(__name__)
 
 _CACHE_VERSION = 2  # map 用。v2:payload 增 by_name lexicon(名稱解析 fallback)
-_RANK_CACHE_VERSION = 2  # rank 用,與 map 拆分:rank 演算法改版 bump 不連坐 MAP_FILE
+_RANK_CACHE_VERSION = 3  # rank 用,與 map 拆分。v3:條款分層聚合(issuer-rank-strata)
 MAP_FILE = "warrant_issuer_map_latest.json"
 RANK_FILE = "warrant_issuer_rank_latest.json"
 MAP_TTL_DAYS = 7  # 權證每週掛牌,月級太久(change-spec R7)
@@ -40,6 +42,7 @@ TWO_WEEK_FILES = 10  # 官方「兩週」proxy:最近 10 個交易日檔
 MIN_IVB_POINTS = 8  # 兩週窗有效 ivb 點門檻(容忍 2 洞)
 MIN_SPREAD_DAYS = 8  # spread 有效日門檻(沿同一容忍度,R5)
 MIN_SAMPLE_FOR_TIER = 5  # n_scored 低於此 → rank/tier=null(R4)
+MIN_STRATUM_SAMPLE = 5  # 層內全市場計分檔數低於此 → 整層不計分(v2 §1.2)
 CLIFF_CALENDAR_DAYS = 21  # ≈ 法規 15 交易日(無交易日曆基建,日曆日 proxy)
 W_IV, W_SPREAD, W_DECLINING = 3 / 7, 2 / 7, 2 / 7  # 歸一權重(R3-2)
 _UA = "Mozilla/5.0 (neigui-backend)"
@@ -381,11 +384,76 @@ def _warrant_metrics(
     return iv_std, spread
 
 
-def _normalize(value: float, lo: float, hi: float) -> float:
-    if hi == lo:  # R2-2:退化 → 0,不產 NaN
-        return 0.0
-    # clamp:小樣本者用合格集 bounds 正規化可能越界,composite 鎖 [0,1]
-    return min(1.0, max(0.0, (value - lo) / (hi - lo)))
+def _m_band(m: float) -> str:
+    """moneyness 帶(正 = 價內;邊界含等號規則 = change-spec §1.1)。"""
+    if m <= -0.20:
+        return "deep_otm"
+    if m <= -0.05:
+        return "otm"
+    if m < 0.05:
+        return "atm"
+    if m <= 0.20:
+        return "itm"
+    return "deep_itm"
+
+
+def _t_band(days: int) -> str:
+    if days < 60:
+        return "near"
+    if days <= 180:
+        return "mid"
+    return "far"
+
+
+def _stratum_of(
+    term: dict | None, s_ref: float | None, as_of_date: date_type | None
+) -> str | None:
+    """(moneyness band × 天期 band) 層 key;條款 / s 缺 → None(不計分)。
+
+    moneyness 分向公式對齊 warrant_quotes._compute_row(call/put 正規化)。
+    """
+    if term is None or s_ref is None or s_ref <= 0 or as_of_date is None:
+        return None
+    strike = term.get("strike")
+    kind = term.get("kind")
+    ltd_raw = term.get("last_trading_date")
+    if not isinstance(strike, (int, float)) or strike <= 0 or kind not in ("call", "put"):
+        return None
+    try:
+        ltd = date_type.fromisoformat(ltd_raw or "")
+    except ValueError:
+        return None
+    m = (s_ref - strike) / strike if kind == "call" else (strike - s_ref) / strike
+    return f"{_m_band(m)}|{_t_band((ltd - as_of_date).days)}"
+
+
+def _latest_s(wid: str, window: list[tuple[str, dict]]) -> float | None:
+    """窗內由新到舊第一個非 null 標的收盤(單日 TPEx 落後不整檔 unclassifiable)。"""
+    for _, payload in reversed(window):
+        entry = payload["warrants"].get(wid)
+        if entry:
+            s = entry.get("s")
+            if isinstance(s, (int, float)) and s > 0:
+                return float(s)
+    return None
+
+
+def _midrank_pctls(values: list[float]) -> list[float]:
+    """midrank percentile:pctl=(midrank−0.5)/n ∈ (0,1),低者佳;tie 取平均名次
+    (binary 輸入退化為「相對層基率的線性分數」,三指標同一套機制)。"""
+    n = len(values)
+    order = sorted(range(n), key=lambda i: values[i])
+    out = [0.0] * n
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        pctl = ((i + j) / 2 + 0.5) / n  # 1-based midrank=(i+j)/2+1,−0.5 化簡
+        for k in range(i, j + 1):
+            out[order[k]] = pctl
+        i = j + 1
+    return out
 
 
 def compute_issuer_rank(
@@ -394,7 +462,10 @@ def compute_issuer_rank(
     terms_by_wid: dict[str, dict],
     issuer_map: dict[str, dict],
 ) -> dict:
-    """純函式零 IO。輸出 {"as_of_date", "built_from_days", "issuers": [...]}。"""
+    """純函式零 IO。v2:層內 midrank percentile 後聚合(module docstring / §1)。
+
+    輸出 {"as_of_date", "built_from_days", "n_strata_total", "issuers": [...]}。
+    """
     window = archives[-TWO_WEEK_FILES:]
     as_of = window[-1][0] if window else None
     as_of_date = date_type.fromisoformat(as_of) if as_of else None
@@ -404,6 +475,7 @@ def compute_issuer_rank(
         seen_wids.update(payload["warrants"].keys())
 
     by_issuer: dict[str, dict] = {}
+    scored: list[dict] = []  # 計分檔:{"iid","stratum","iv_std","spread","label"}
     attributed = 0
     for wid in seen_wids:
         term = terms_by_wid.get(wid)
@@ -414,8 +486,7 @@ def compute_issuer_rank(
             continue  # 無對映且名稱解析不中(或舊代號殘留標的不符)
         attributed += 1
         agg = by_issuer.setdefault(
-            info["issuer_id"],
-            {"issuer_name": info["issuer_name"], "wids": [], "scored": []},
+            info["issuer_id"], {"issuer_name": info["issuer_name"], "wids": []}
         )
         agg["wids"].append(wid)
 
@@ -430,31 +501,73 @@ def compute_issuer_rank(
         iv_std, spread = _warrant_metrics(wid, window)
         if iv_std is None:
             continue  # 兩週窗有效點不足 → 不計分
-        agg["scored"].append(
-            {"wid": wid, "iv_std": iv_std, "spread": spread,
+        stratum = _stratum_of(term, _latest_s(wid, window), as_of_date)
+        if stratum is None:
+            continue  # unclassifiable(條款缺 / 全窗無 s)→ 不計分(v2 §1.2)
+        scored.append(
+            {"iid": info["issuer_id"], "stratum": stratum,
+             "iv_std": iv_std, "spread": spread,
              "label": (drift_map.get(wid) or {}).get("label")}
         )
 
+    # 層門檻:全市場計分檔 <MIN_STRATUM_SAMPLE 的層整層剔除(不入 n_scored)
+    stratum_counts: dict[str, int] = {}
+    for e in scored:
+        stratum_counts[e["stratum"]] = stratum_counts.get(e["stratum"], 0) + 1
+    valid_strata = {k for k, c in stratum_counts.items() if c >= MIN_STRATUM_SAMPLE}
+    scored = [e for e in scored if e["stratum"] in valid_strata]
+
+    # 層內 midrank pctl:iv 全員;spread / declining 各在有值子集上算
+    for stratum in valid_strata:
+        members = [e for e in scored if e["stratum"] == stratum]
+        for e, p in zip(members, _midrank_pctls([m["iv_std"] for m in members])):
+            e["iv_pctl"] = p
+        with_spread = [e for e in members if e["spread"] is not None]
+        for e, p in zip(with_spread, _midrank_pctls([m["spread"] for m in with_spread])):
+            e["spread_pctl"] = p
+        labeled = [e for e in members if e["label"] and e["label"] != "insufficient"]
+        binaries = [1.0 if e["label"] == "declining" else 0.0 for e in labeled]
+        for e, p in zip(labeled, _midrank_pctls(binaries)):
+            e["declining_pctl"] = p
+
     if seen_wids:
         logger.info(
-            "issuer rank: archive wid coverage %d/%d (%.1f%%)",
+            "issuer rank: archive wid coverage %d/%d (%.1f%%), strata valid %d/%d",
             attributed, len(seen_wids), 100.0 * attributed / len(seen_wids),
+            len(valid_strata), len(stratum_counts),
         )
+
+    scored_by_iid: dict[str, list[dict]] = {}
+    for e in scored:
+        scored_by_iid.setdefault(e["iid"], []).append(e)
 
     issuers: list[dict] = []
     for iid, agg in by_issuer.items():
-        scored = agg["scored"]
-        n_scored = len(scored)
+        entries = scored_by_iid.get(iid, [])
+        n_scored = len(entries)
         iv_std_median = spread_median = declining_share = None
+        iv_score = spread_score = declining_score = None
         if n_scored:
-            iv_std_median = statistics.median(s["iv_std"] for s in scored)
-            spreads = [s["spread"] for s in scored if s["spread"] is not None]
+            iv_std_median = statistics.median(e["iv_std"] for e in entries)
+            spreads = [e["spread"] for e in entries if e["spread"] is not None]
             spread_median = statistics.median(spreads) if spreads else None
-            labeled = [s for s in scored if s["label"] and s["label"] != "insufficient"]
+            labeled = [e for e in entries if e["label"] and e["label"] != "insufficient"]
             if labeled:
                 declining_share = sum(
-                    1 for s in labeled if s["label"] == "declining"
+                    1 for e in labeled if e["label"] == "declining"
                 ) / len(labeled)
+            # 發行商分數 = 旗下計分檔 pctl 平均(天然按層內檔數加權,§1.4)
+            iv_score = statistics.fmean(e["iv_pctl"] for e in entries)
+            spread_pctls = [e["spread_pctl"] for e in entries if "spread_pctl" in e]
+            spread_score = statistics.fmean(spread_pctls) if spread_pctls else None
+            decl_pctls = [e["declining_pctl"] for e in entries if "declining_pctl" in e]
+            declining_score = statistics.fmean(decl_pctls) if decl_pctls else None
+        composite = None
+        if iv_score is not None and spread_score is not None and declining_score is not None:
+            # 三分數已在 [0,1],不再跨發行商 min-max;任一 null → composite null
+            composite = (
+                W_IV * iv_score + W_SPREAD * spread_score + W_DECLINING * declining_score
+            )
         issuers.append(
             {
                 "issuer_id": iid,
@@ -464,34 +577,22 @@ def compute_issuer_rank(
                 "iv_std_median": iv_std_median,
                 "spread_median": spread_median,
                 "declining_share": declining_share,
-                "composite": None,
+                "iv_score": iv_score,
+                "spread_score": spread_score,
+                "declining_score": declining_score,
+                "n_strata": len({e["stratum"] for e in entries}),
+                "composite": composite,
                 "rank": None,
                 "tier": None,
             }
         )
 
-    def _complete(r: dict) -> bool:
-        return (
-            r["iv_std_median"] is not None
-            and r["spread_median"] is not None
-            and r["declining_share"] is not None
-        )
-
-    eligible = [r for r in issuers if r["n_scored"] >= MIN_SAMPLE_FOR_TIER and _complete(r)]
-    if eligible:
-        bounds = {
-            key: (min(r[key] for r in eligible), max(r[key] for r in eligible))
-            for key in ("iv_std_median", "spread_median", "declining_share")
-        }
-        for r in issuers:  # n_scored<5 者照公式算 composite,但不入 rank/tier(R4)
-            if not _complete(r):
-                continue
-            r["composite"] = (
-                W_IV * _normalize(r["iv_std_median"], *bounds["iv_std_median"])
-                + W_SPREAD * _normalize(r["spread_median"], *bounds["spread_median"])
-                + W_DECLINING * _normalize(r["declining_share"], *bounds["declining_share"])
-            )
-        ranked = sorted(eligible, key=lambda r: (r["composite"], r["issuer_id"]))
+    eligible = [
+        r for r in issuers
+        if r["n_scored"] >= MIN_SAMPLE_FOR_TIER and r["composite"] is not None
+    ]
+    ranked = sorted(eligible, key=lambda r: (r["composite"], r["issuer_id"]))
+    if ranked:
         n = len(ranked)
         cut1, cut2 = -(-n // 3), -(-2 * n // 3)  # ceil 三分位
         for i, r in enumerate(ranked):
@@ -503,6 +604,7 @@ def compute_issuer_rank(
         "_cache_version": _RANK_CACHE_VERSION,
         "as_of_date": as_of,
         "built_from_days": len(window),
+        "n_strata_total": len(valid_strata),
         "issuers": issuers,
     }
 

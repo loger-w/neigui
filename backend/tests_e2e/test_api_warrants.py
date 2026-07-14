@@ -183,34 +183,50 @@ async def test_bad_symbol_400_both_paths(client):
     assert r.json()["detail"]["error"] == "bad_symbol"
 
 
-# ---------------------------------------------------------------- issuers rank(warrant-selector-enhance SC-3/SC-4)
+# ---------------------------------------------------------------- issuers rank(issuer-rank-strata v2)
 
 
 async def test_issuer_rank_contract(client):
+    """v2 分層 contract:2317 七檔(元大 ×5 / 凱基 ×2)構成唯一有效層 otm|far;
+    2330 側 itm|mid / atm|mid 各 1 檔 <5 → 整層不計分(change-spec SC-5 手算)。"""
     r = await client.get("/api/warrants/issuers/rank")
     assert r.status_code == 200
     body = r.json()
     assert body["as_of_date"] == "2026-06-26"  # 最新 FAKE archive 日
     assert body["built_from_days"] == 10
+    assert body["n_strata_total"] == 1
     ids = {i["issuer_id"]: i for i in body["issuers"]}
-    # FAKE 36_L:030011 凱基 / 030012 元大 / 030013 富邦,各 1 檔 → 樣本 <5
-    assert len(ids) == 3
-    # 030011(凱基 9200)ivb 兩週窗僅 5 有效點 <8 → 不計分(SC-2 排除規則實跑)
-    assert ids["9200"]["n_scored"] == 0
-    assert ids["9200"]["iv_std_median"] is None
-    # 元大 9800 / 富邦 9600 各 1 檔計分
-    assert ids["9800"]["n_scored"] == 1
-    assert ids["9800"]["iv_std_median"] is not None
-    assert ids["9600"]["n_scored"] == 1
-    for row in body["issuers"]:
-        assert row["rank"] is None and row["tier"] is None  # n_scored<5 → 不評級(R4)
+    assert len(ids) == 3  # iv_history 出現過的 wid 才入:凱基/元大/富邦
+    yd = ids["9800"]  # 元大:030012(層剔除)+ 040001-05(otm|far 計分)
+    assert yd["n_warrants"] == 6
+    assert yd["n_scored"] == 5
+    assert yd["n_strata"] == 1
+    assert yd["rank"] == 1 and yd["tier"] == "front"
+    # 層內 7 檔:元大 δ 最小的 5 檔 → iv pctl ranks 1-5 → mean=(0.5+..+4.5)/7/5
+    assert yd["iv_score"] == pytest.approx(2.5 / 7)
+    assert yd["spread_score"] == pytest.approx(2.5 / 7)
+    assert yd["declining_score"] == pytest.approx(0.5)  # 全層 stable tie
+    kg = ids["9200"]  # 凱基:030011 sparse(<8 點)+ 040006/07 計分 → n_scored=2
+    assert kg["n_warrants"] == 3
+    assert kg["n_scored"] == 2
+    assert kg["rank"] is None and kg["tier"] is None  # n_scored<5 → 不評級(R4)
+    assert kg["iv_score"] == pytest.approx(6 / 7)  # ranks 6,7 → mean 0.857
+    fb = ids["9600"]  # 富邦:030013 所在層樣本不足 → 不計分
+    assert fb["n_scored"] == 0
+    assert fb["iv_std_median"] is None and fb["composite"] is None
 
 
 async def test_warrants_rows_carry_issuer_name(client):
+    # order-independent(R4):同測試內先 build rank,tier 才會 merge 到列;
+    # conftest 逐測試清 _rank_mem,不依賴其他測試先跑過 rank endpoint。
+    r = await client.get("/api/warrants/issuers/rank")
+    assert r.status_code == 200
     r = await client.get("/api/warrants/2330")
     assert r.status_code == 200
     rows = {w["warrant_id"]: w for w in r.json()["warrants"]}
     assert rows["030012"]["issuer_name"] == "元大"
     assert rows["030011"]["issuer_name"] == "凱基"
-    # rank 未達評級門檻 → tier null(不炸)
-    assert rows["030012"]["issuer_tier"] is None
+    # 元大達評級門檻(2317 五檔)→ tier merge 到 2330 的元大列
+    assert rows["030012"]["issuer_tier"] == "front"
+    # 富邦 n_scored=0 → tier null(不炸)
+    assert rows["030013"]["issuer_tier"] is None

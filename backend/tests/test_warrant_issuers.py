@@ -89,8 +89,14 @@ def patch_fetch(monkeypatch, twse=None, tpex=None):
     monkeypatch.setattr(wi, "_fetch_tpex_rows", fake_fetch_tpex)
 
 
-def make_archives(ivb_by_wid: dict[str, list], *, base_day: int = 1, ba: dict | None = None):
-    """依 wid→ivb 序列建 [(date, payload)];b/a 預設健康(0.5/0.52)。"""
+def make_archives(
+    ivb_by_wid: dict[str, list],
+    *,
+    base_day: int = 1,
+    ba: dict | None = None,
+    s_map: dict | None = None,
+):
+    """依 wid→ivb 序列建 [(date, payload)];b/a 預設健康(0.5/0.52),s 預設 100。"""
     n_days = max(len(v) for v in ivb_by_wid.values())
     out = []
     for i in range(n_days):
@@ -99,16 +105,21 @@ def make_archives(ivb_by_wid: dict[str, list], *, base_day: int = 1, ba: dict | 
         for wid, series in ivb_by_wid.items():
             if i < len(series):
                 pair = (ba or {}).get(wid, (0.5, 0.52))
+                s = (s_map or {}).get(wid, 100.0)
                 warrants[wid] = {
-                    "b": pair[0], "a": pair[1], "c": 0.51, "s": 100.0,
+                    "b": pair[0], "a": pair[1], "c": 0.51, "s": s,
                     "ivb": series[i], "iva": series[i],
                 }
         out.append((d, {"_cache_version": 1, "date": d, "warrants": warrants}))
     return out
 
 
-def make_terms(wids: list[str], ltd: str = "2026-12-30") -> dict:
-    return {w: {"last_trading_date": ltd} for w in wids}
+def make_terms(
+    wids: list[str], ltd: str = "2026-12-30", strike: float = 90.0, kind: str = "call"
+) -> dict:
+    """v2 分層需要 strike/kind:預設 strike 90 × s 100 → m=+0.111(itm 帶)、
+    ltd 2026-12-30 − as_of 2026-07-10 = 173 日(mid 帶)→ 全檔同層 itm|mid。"""
+    return {w: {"last_trading_date": ltd, "strike": strike, "kind": kind} for w in wids}
 
 
 STABLE = [0.30, 0.31, 0.30, 0.31, 0.30, 0.31, 0.30, 0.31, 0.30, 0.31]
@@ -269,22 +280,32 @@ def test_cached_accessor_bg_failure_swallowed(monkeypatch):
 
 
 def test_rank_stable_issuer_wins():
-    """known-answer:一穩一波動 → 穩者 rank 1。"""
+    """known-answer(SC-1b 同組合一家較差 → 排後):一穩一波動同層 → 穩者 rank 1。
+
+    層 itm|mid 10 檔:穩 5 檔 iv_std tie(midrank 3 → pctl 0.25)、波動 5 檔
+    tie(midrank 8 → 0.75);spread 全同 → 0.5;declining 0/5 vs 5/5 → 0.25/0.75。
+    """
     out = rank_two_issuers()
     by_id = {r["issuer_id"]: r for r in out["issuers"]}
     assert by_id["5380"]["rank"] == 1
     assert by_id["9200"]["rank"] == 2
     assert by_id["5380"]["iv_std_median"] < by_id["9200"]["iv_std_median"]
+    assert by_id["5380"]["iv_score"] == pytest.approx(0.25)
+    assert by_id["9200"]["iv_score"] == pytest.approx(0.75)
+    assert by_id["5380"]["spread_score"] == pytest.approx(0.5)
+    assert by_id["5380"]["composite"] == pytest.approx((3 * 0.25 + 2 * 0.5 + 2 * 0.25) / 7)
 
 
 def test_rank_payload_shape():
     out = rank_two_issuers()
     assert out["as_of_date"] == "2026-07-10"  # 最新 archive 日
     assert out["built_from_days"] == 10
+    assert out["n_strata_total"] == 1  # 全檔同層 itm|mid
     r = out["issuers"][0]
     for key in (
         "issuer_id", "issuer_name", "n_warrants", "n_scored",
         "iv_std_median", "spread_median", "declining_share",
+        "iv_score", "spread_score", "declining_score", "n_strata",
         "composite", "rank", "tier",
     ):
         assert key in r
@@ -372,14 +393,15 @@ def test_rank_small_sample_no_tier():
     assert {by_id["5380"]["rank"], by_id["9200"]["rank"]} == {1, 2}
 
 
-def test_rank_degenerate_minmax_no_nan():
-    """全體同值指標 → 正規化 0,composite 不得為 NaN(R2-2)。"""
+def test_rank_degenerate_all_equal_neutral():
+    """全體同值指標 → 層內全 tie,pctl 一律 0.5 → composite=0.5(中性),
+    不得為 NaN(v1 R2-2 的 min-max 退化分支由 midrank 天然取代)。"""
     out = rank_two_issuers(a_series=STABLE, b_series=STABLE, drift={
         **{f"AAA{i:03d}": {"label": "stable"} for i in range(1, 6)},
         **{f"BBB{i:03d}": {"label": "stable"} for i in range(1, 6)},
     })
     for r in out["issuers"]:
-        assert r["composite"] == 0.0
+        assert r["composite"] == pytest.approx(0.5)
         assert r["composite"] == r["composite"]  # not NaN
 
 
@@ -422,6 +444,154 @@ def test_rank_tier_terciles():
     out = wi.compute_issuer_rank(archives, drift, make_terms(list(ivb_by_wid)), imap)
     tiers = [r["tier"] for r in sorted(out["issuers"], key=lambda r: r["rank"])]
     assert tiers == ["front", "front", "mid", "mid", "back", "back"]
+
+
+# ---------------------------------------------------------------- v2 分層(issuer-rank-strata SC-1)
+
+
+def _mk_terms(spec: dict[str, tuple[float, str]], ltd: str = "2026-12-30") -> dict:
+    """{wid: (strike, kind)} → terms dict(s=100 基準下自選 moneyness 帶)。"""
+    return {
+        w: {"last_trading_date": ltd, "strike": k[0], "kind": k[1]} for w, k in spec.items()
+    }
+
+
+def test_midrank_pctl_handles_ties():
+    """(c) midrank 手算:[1,2,2,3,4] → [0.1, 0.4, 0.4, 0.7, 0.9]。"""
+    assert wi._midrank_pctls([1.0, 2.0, 2.0, 3.0, 4.0]) == pytest.approx(
+        [0.1, 0.4, 0.4, 0.7, 0.9]
+    )
+
+
+def test_rank_mix_invariance():
+    """(a) 層內品質相同、組合結構不同(一家全 deep_otm、一家全 atm)→
+    composite 相近,排名不因組合分高下 — v1 未分層偏差的直接反例。"""
+    imap: dict[str, dict] = {}
+    ivb_by_wid: dict[str, list] = {}
+    drift: dict[str, dict] = {}
+    terms_spec: dict[str, tuple[float, str]] = {}
+    for i in range(1, 6):
+        wd, wa = f"DEEP{i:02d}", f"ATMW{i:02d}"
+        imap[wd] = {"issuer_id": "8001", "issuer_name": "深價外商"}
+        imap[wa] = {"issuer_id": "8002", "issuer_name": "價平商"}
+        # 深價外商 ivb 水位與振幅都大(raw std 大),價平商小 — v1 會分高下
+        ivb_by_wid[wd] = [0.8 + (0.02 * i if j % 2 else 0.0) for j in range(10)]
+        ivb_by_wid[wa] = [0.3 + (0.002 * i if j % 2 else 0.0) for j in range(10)]
+        terms_spec[wd] = (130.0, "call")  # m=(100-130)/130=-0.231 → deep_otm
+        terms_spec[wa] = (100.0, "call")  # m=0 → atm
+        drift[wd] = {"label": "stable"}
+        drift[wa] = {"label": "stable"}
+    out = wi.compute_issuer_rank(
+        make_archives(ivb_by_wid), drift, _mk_terms(terms_spec), imap
+    )
+    by_id = {r["issuer_id"]: r for r in out["issuers"]}
+    # 各自層內 rank 1-5 → iv_score 皆 0.5;raw 中位數差 10 倍以上(v1 必分高下)
+    assert by_id["8001"]["iv_std_median"] > by_id["8002"]["iv_std_median"] * 5
+    assert abs(by_id["8001"]["composite"] - by_id["8002"]["composite"]) < 0.02
+    assert out["n_strata_total"] == 2
+
+
+def test_rank_small_stratum_not_scored():
+    """(e) 層 <5 檔整層不計分:4 檔 itm + 5 檔 atm → n_scored=5、n_strata=1。"""
+    wids_itm = [f"ITM{i:02d}" for i in range(1, 5)]  # 4 檔 → 層樣本不足
+    wids_atm = [f"ATM{i:02d}" for i in range(1, 6)]  # 5 檔 → 有效層
+    imap = {w: {"issuer_id": "8001", "issuer_name": "單一商"} for w in wids_itm + wids_atm}
+    terms = {
+        **_mk_terms({w: (90.0, "call") for w in wids_itm}),
+        **_mk_terms({w: (100.0, "call") for w in wids_atm}),
+    }
+    ivb = {w: STABLE for w in wids_itm + wids_atm}
+    drift = {w: {"label": "stable"} for w in wids_itm + wids_atm}
+    out = wi.compute_issuer_rank(make_archives(ivb), drift, terms, imap)
+    r = out["issuers"][0]
+    assert r["n_warrants"] == 9
+    assert r["n_scored"] == 5
+    assert r["n_strata"] == 1
+    assert out["n_strata_total"] == 1
+
+
+def test_rank_unclassifiable_not_scored():
+    """(f) 無 s / 無 strike / strike=0 → unclassifiable 不計分,不炸。"""
+    wids_ok = [f"OKW{i:02d}" for i in range(1, 6)]
+    bad = ["NOS001", "NOK001", "ZKS001"]
+    imap = {w: {"issuer_id": "8001", "issuer_name": "單一商"} for w in wids_ok + bad}
+    terms = _mk_terms({w: (100.0, "call") for w in wids_ok})
+    terms["NOS001"] = {"last_trading_date": "2026-12-30", "strike": 100.0, "kind": "call"}
+    terms["NOK001"] = {"last_trading_date": "2026-12-30"}  # 無 strike/kind
+    terms["ZKS001"] = {"last_trading_date": "2026-12-30", "strike": 0.0, "kind": "call"}
+    ivb = {w: STABLE for w in wids_ok + bad}
+    out = wi.compute_issuer_rank(
+        make_archives(ivb, s_map={"NOS001": None}),  # 全窗無 s
+        {w: {"label": "stable"} for w in wids_ok + bad},
+        terms,
+        imap,
+    )
+    r = out["issuers"][0]
+    assert r["n_warrants"] == 8
+    assert r["n_scored"] == 5
+
+
+def test_rank_declining_binary_midrank():
+    """(d) binary declining 的 midrank:層內 3 穩 2 降 → 0.3 / 0.8。"""
+    wids_a = [f"STB{i:02d}" for i in range(1, 4)]  # 3 檔 stable(甲商)
+    wids_b = [f"DCL{i:02d}" for i in range(1, 3)]  # 2 檔 declining(乙商)
+    imap = {
+        **{w: {"issuer_id": "8001", "issuer_name": "甲"} for w in wids_a},
+        **{w: {"issuer_id": "8002", "issuer_name": "乙"} for w in wids_b},
+    }
+    drift = {
+        **{w: {"label": "stable"} for w in wids_a},
+        **{w: {"label": "declining"} for w in wids_b},
+    }
+    terms = _mk_terms({w: (100.0, "call") for w in wids_a + wids_b})
+    out = wi.compute_issuer_rank(
+        make_archives({w: STABLE for w in wids_a + wids_b}), drift, terms, imap
+    )
+    by_id = {r["issuer_id"]: r for r in out["issuers"]}
+    assert by_id["8001"]["declining_share"] == 0.0
+    assert by_id["8002"]["declining_share"] == 1.0
+    assert by_id["8001"]["declining_score"] == pytest.approx(0.3)
+    assert by_id["8002"]["declining_score"] == pytest.approx(0.8)
+
+
+def test_rank_composite_null_without_labeled():
+    """(g) 旗下無 labeled 檔 → declining_score null → composite null(傳播)。"""
+    wids = [f"INS{i:02d}" for i in range(1, 6)]
+    imap = {w: {"issuer_id": "8001", "issuer_name": "無標商"} for w in wids}
+    out = wi.compute_issuer_rank(
+        make_archives({w: STABLE for w in wids}),
+        {w: {"label": "insufficient"} for w in wids},
+        _mk_terms({w: (100.0, "call") for w in wids}),
+        imap,
+    )
+    r = out["issuers"][0]
+    assert r["iv_score"] is not None
+    assert r["declining_score"] is None
+    assert r["composite"] is None
+    assert r["rank"] is None
+
+
+def test_rank_spread_subset_single_neutral():
+    """(h) 層內僅 1 檔有有效 b/a → 該檔 spread pctl=0.5(中性),不偏袒。"""
+    wids = [f"SPD{i:02d}" for i in range(1, 6)]
+    imap = {w: {"issuer_id": "8001", "issuer_name": "單一商"} for w in wids}
+    ba = {w: (0.0, 0.52) for w in wids[1:]}  # b=0 → spread 無效,只留第 1 檔
+    out = wi.compute_issuer_rank(
+        make_archives({w: STABLE for w in wids}, ba=ba),
+        {w: {"label": "stable"} for w in wids},
+        _mk_terms({w: (100.0, "call") for w in wids}),
+        imap,
+    )
+    r = out["issuers"][0]
+    assert r["spread_score"] == pytest.approx(0.5)
+
+
+def test_rank_version_bumped():
+    """RANK payload 版本 = 3(v2 分層;MAP 版本不動)。"""
+    out = rank_two_issuers()
+    assert wi._RANK_CACHE_VERSION == 3
+    assert out["_cache_version"] == 3
+    assert wi._CACHE_VERSION == 2  # map 不連坐
 
 
 # ---------------------------------------------------------------- review 修正批(Phase 5)
@@ -503,7 +673,7 @@ def test_tier_cached_negative_marker(monkeypatch):
 
 
 def test_rank_small_sample_composite_clamped():
-    """小樣本者以合格集 bounds 正規化,越界 clamp [0,1] — composite 不得爆界。"""
+    """極端值權證只會拿層內最末 pctl(<1)— composite 天然落 [0,1] 不爆界。"""
     imap = issuer_map_two()
     imap["CCC001"] = {"issuer_id": "7777", "issuer_name": "極端值"}
     wids_a = [f"AAA{i:03d}" for i in range(1, 6)]
@@ -589,7 +759,11 @@ def test_rank_skips_underlying_mismatch():
     imap["AAA001"] = {"issuer_id": "5380", "issuer_name": "第一金", "underlying_id": "9999"}
     wids_a = [f"AAA{i:03d}" for i in range(1, 6)]
     archives = make_archives({w: STABLE for w in wids_a})
-    terms = {w: {"last_trading_date": "2026-12-30", "underlying_id": "2330"} for w in wids_a}
+    terms = {
+        w: {"last_trading_date": "2026-12-30", "underlying_id": "2330",
+            "strike": 90.0, "kind": "call"}
+        for w in wids_a
+    }
     out = wi.compute_issuer_rank(
         archives, {w: {"label": "stable"} for w in wids_a}, terms, imap
     )
@@ -663,7 +837,7 @@ def test_rank_uses_name_fallback_for_unmapped():
     archives = make_archives({w: STABLE for w in wids})
     terms = {
         w: {"last_trading_date": "2026-12-30", "underlying_id": "2330",
-            "name": f"台積電凱基61購{i:02d}"}
+            "name": f"台積電凱基61購{i:02d}", "strike": 90.0, "kind": "call"}
         for i, w in enumerate(wids, 1)
     }
     tables = {"map": {}, "by_name": {"凱基": "9200"}}
@@ -699,7 +873,8 @@ async def test_get_issuer_rank_wires_lexicon(monkeypatch):
             "as_of_date": "2026-07-10",
             "by_underlying": {"2330": [
                 {"warrant_id": w, "last_trading_date": "2026-12-30",
-                 "underlying_id": "2330", "name": f"台積電凱基61購{i:02d}"}
+                 "underlying_id": "2330", "name": f"台積電凱基61購{i:02d}",
+                 "strike": 90.0, "kind": "call"}
                 for i, w in enumerate(wids, 1)
             ]},
         }
