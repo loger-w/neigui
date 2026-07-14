@@ -5,9 +5,13 @@ import { describe, expect, it } from "vitest";
 import type { WarrantRow } from "./warrant-data";
 import {
   DEFAULT_FILTERS,
+  EXIT_CLIFF_DAYS,
   QUOTES_REFETCH_MS,
+  WARRANT_PRESETS,
   filterWarrants,
+  isExitCliff,
   isMarketOpen,
+  isNearSoldOut,
   mergeWarrantRows,
   quotesRefetchInterval,
   sortWarrants,
@@ -178,5 +182,101 @@ describe("mergeWarrantRows", () => {
     expect(merged[0]?.quote_time).toBe("13:30");
     expect(merged[1]?.price).toBeUndefined();
     expect(merged[1]?.name).toBe("測試");
+  });
+});
+
+// ---------------------------------------------------------------- warrant-selector-enhance(SC-6~SC-9)
+
+describe("filterWarrants 新篩選鍵(SC-7)", () => {
+  it("spreadRatioMax:啟用時剔除超標與 null", () => {
+    const rows = [
+      row({ spread_ratio: 0.01 }),
+      row({ warrant_id: "030013", spread_ratio: 0.05 }),
+      row({ warrant_id: "030014", spread_ratio: null }),
+    ];
+    const out = filterWarrants(rows, { ...DEFAULT_FILTERS, spreadRatioMax: 0.025 });
+    expect(out.map((r) => r.warrant_id)).toEqual(["030012"]);
+  });
+
+  it("slrMax:啟用時剔除超標與 null", () => {
+    const rows = [
+      row({ spread_lev_ratio: 0.2 }),
+      row({ warrant_id: "030013", spread_lev_ratio: 0.5 }),
+      row({ warrant_id: "030014", spread_lev_ratio: null }),
+    ];
+    const out = filterWarrants(rows, { ...DEFAULT_FILTERS, slrMax: 0.3 });
+    expect(out.map((r) => r.warrant_id)).toEqual(["030012"]);
+  });
+
+  it("minAskPrice:啟用時剔除低於門檻與 null", () => {
+    const rows = [
+      row({ best_ask: 0.8 }),
+      row({ warrant_id: "030013", best_ask: 0.4 }),
+      row({ warrant_id: "030014", best_ask: null }),
+    ];
+    const out = filterWarrants(rows, { ...DEFAULT_FILTERS, minAskPrice: 0.6 });
+    expect(out.map((r) => r.warrant_id)).toEqual(["030012"]);
+  });
+
+  it("未啟用(null)不剔除任何列", () => {
+    const rows = [row({ spread_ratio: null, spread_lev_ratio: null, best_ask: null })];
+    expect(filterWarrants(rows, DEFAULT_FILTERS)).toHaveLength(1);
+  });
+});
+
+describe("WARRANT_PRESETS 波段 preset(SC-6)", () => {
+  it("swing preset 六鍵值正確(元大 2026-07 live + 權證小哥 2022)", () => {
+    const p = WARRANT_PRESETS.swing;
+    expect(p.filters.minDaysLeft).toBe(60);
+    expect(p.filters.moneynessMin).toBe(-0.3);
+    expect(p.filters.moneynessMax).toBe(0.05);
+    expect(p.filters.spreadRatioMax).toBe(0.025);
+    expect(p.filters.slrMax).toBe(0.3);
+    expect(p.filters.minAskPrice).toBe(0.6);
+    expect(p.filters.requireBidVol).toBe(true);
+  });
+
+  it("preset 帶來源與日期標注(門檻是時代的函數,不 hardcode 無出處)", () => {
+    const p = WARRANT_PRESETS.swing;
+    expect(p.source.length).toBeGreaterThan(0);
+    expect(p.asOf).toMatch(/^\d{4}-\d{2}$/);
+  });
+
+  it("套用 = DEFAULT_FILTERS spread preset.filters,不鎖其他鍵", () => {
+    const applied = { ...DEFAULT_FILTERS, ...WARRANT_PRESETS.swing.filters };
+    expect(applied.kind).toBe("all");
+    expect(applied.ivPctlMax).toBeNull();
+  });
+});
+
+describe("isExitCliff 出場懸崖(SC-8)", () => {
+  it("days_left <= 21 → true(≈法規 15 交易日)", () => {
+    expect(EXIT_CLIFF_DAYS).toBe(21);
+    expect(isExitCliff(21)).toBe(true);
+    expect(isExitCliff(1)).toBe(true);
+  });
+
+  it("days_left > 21 或 null → false", () => {
+    expect(isExitCliff(22)).toBe(false);
+    expect(isExitCliff(null)).toBe(false);
+    expect(isExitCliff(undefined)).toBe(false);
+  });
+});
+
+describe("isNearSoldOut 近售罄(SC-9)", () => {
+  it("委賣消失 + 委買仍在 → true", () => {
+    expect(isNearSoldOut(row({ best_ask: null, best_bid: 0.99, days_left: 60 }))).toBe(true);
+    expect(isNearSoldOut(row({ best_ask: 0, best_bid: 0.99, days_left: 60 }))).toBe(true);
+  });
+
+  it("懸崖區內抑制(近到期可合法只買,confounder)", () => {
+    expect(isNearSoldOut(row({ best_ask: null, best_bid: 0.99, days_left: 10 }))).toBe(false);
+  });
+
+  it("委賣正常在 / 無 quotes 資料 → false", () => {
+    expect(isNearSoldOut(row({ best_ask: 1.01, best_bid: 0.99, days_left: 60 }))).toBe(false);
+    expect(
+      isNearSoldOut(row({ best_ask: undefined, best_bid: undefined, days_left: undefined })),
+    ).toBe(false);
   });
 });
