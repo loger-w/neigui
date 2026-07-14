@@ -246,8 +246,9 @@ def _map_is_fresh(payload: Any) -> bool:
 
 
 async def _build_map() -> dict[str, dict]:
+    """失敗才記 _last_map_attempt(cooldown 只擋「失敗後重試」;建置進行中的
+    並發呼叫走 _run_once 合流,不得被 cooldown 誤擋 — real-env 503 實證)。"""
     global _last_map_attempt
-    _last_map_attempt = _monotonic()
     twse_rows: list = []
     tpex_rows: list = []
     try:
@@ -260,7 +261,8 @@ async def _build_map() -> dict[str, dict]:
         logger.exception("issuer map: TPEx mopsfin_t187ap36_O fetch failed")
     tables = _build_map_from_rows(twse_rows, tpex_rows)
     if not tables["map"]:
-        return {}  # _last_map_attempt 留著 → 60s cooldown 生效
+        _last_map_attempt = _monotonic()  # 失敗:60s cooldown 生效
+        return {}
     _last_map_attempt = None  # 成功:解除 backoff
     payload = {
         "_cache_version": _CACHE_VERSION,
