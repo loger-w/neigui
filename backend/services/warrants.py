@@ -505,13 +505,32 @@ async def get_underlying_warrants(stock_id: str, refresh: bool = False) -> dict:
     dict — design R10;merge 不烙進快照檔,backfill 完成即時生效)。
     """
     snap = await _load_snapshot(refresh)
-    from services import warrant_iv_history as ivh  # local import,同 _build_and_store
+    from services import warrant_issuers as wi  # local import,同 _build_and_store
+    from services import warrant_iv_history as ivh
 
     drift_map = await ivh.get_drift_map()
+    # 熱路徑鐵則(change-spec R1):issuer 只走 sync cached accessor(miss → 空 map
+    # + 背景 fetch),quotes 15s 輪詢鏈不得因 36_L/36_O 上游增加延遲或故障面
+    issuer_map = wi.get_issuer_map_cached()
+    tier_by_issuer = wi.get_issuer_tier_cached()
+
+    def _issuer_fields(wid: str) -> dict:
+        info = issuer_map.get(wid)
+        if not info:
+            return {"issuer_name": None, "issuer_tier": None}
+        return {
+            "issuer_name": info["issuer_name"],
+            "issuer_tier": tier_by_issuer.get(info["issuer_id"]),
+        }
+
     return {
         "as_of_date": snap["as_of_date"],
         "warrants": [
-            {**w, "iv_drift": (drift_map.get(w["warrant_id"]) or {}).get("label")}
+            {
+                **w,
+                "iv_drift": (drift_map.get(w["warrant_id"]) or {}).get("label"),
+                **_issuer_fields(w["warrant_id"]),
+            }
             for w in snap["by_underlying"].get(stock_id, [])
         ],
     }

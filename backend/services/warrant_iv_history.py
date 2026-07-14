@@ -156,6 +156,12 @@ async def _load_day_archives(dates: list[str] | None = None) -> list[tuple[str, 
     return out
 
 
+async def load_recent_archives(limit: int) -> list[tuple[str, dict]]:
+    """公開 accessor:最近 limit 個日檔 [(date, payload)] 升冪(warrant_issuers 用;
+    跨模組不吃私有函式 — twse-tpex-conventions)。"""
+    return await _load_day_archives(_list_day_dates(limit))
+
+
 def _prune_history() -> None:
     files = sorted(_history_dir().glob("*.json"))
     for p in files[:-PRUNE_KEEP]:
