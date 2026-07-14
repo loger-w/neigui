@@ -52,6 +52,10 @@ export const TESTIDS = {
   // 權證 IV 趨勢(feat/warrant-iv-drift)
   ivDriftLabel: "iv-drift-label",
   warrantIvChart: "warrant-iv-chart",
+  // 權證挑選強化(mod/warrant-selector-enhance)
+  issuerCell: "issuer-cell",
+  issuerRankPanel: "issuer-rank-panel",
+  presetSwing: "preset-swing",
   // 權證分點 tab(feat/warrant-broker-flow)
   warrantFlowPanel: "warrant-flow-panel",
   flowDateBadge: "flow-date-badge",
