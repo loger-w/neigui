@@ -52,6 +52,12 @@ export const TESTIDS = {
   // 權證 IV 趨勢(feat/warrant-iv-drift)
   ivDriftLabel: "iv-drift-label",
   warrantIvChart: "warrant-iv-chart",
+  // 權證分點 tab(feat/warrant-broker-flow)
+  warrantFlowPanel: "warrant-flow-panel",
+  flowDateBadge: "flow-date-badge",
+  flowBuyCol: "flow-buy-col",
+  flowSellCol: "flow-sell-col",
+  flowWarrantTable: "flow-warrant-table",
 
   // 既有(component 內既有,不在 Wave 1 modify scope)
   refreshSpinner: "refresh-spinner",

@@ -6,6 +6,17 @@ import { test, expect } from "@playwright/test";
 import { installFixtureClock } from "../helpers/clock.ts";
 import { TESTIDS } from "../helpers/selectors.ts";
 
+test("NTD2: warrant flow 顯式週六 date → no_trading_day flag + 回退資料日(warrant-broker-flow SC-8)", async ({ request }) => {
+  // 痛點:flow 的 no_trading_day 只在顯式 date 且回退時出現(design §2.4);
+  // UI 不帶 date 參數(badge 口徑由 E14 覆蓋)→ 此分支只能 API 級驗,
+  // 若 flag 條款或回退鏈壞掉,前端 hook 的 noTradingDay 契約欄位跟著失真。
+  const resp = await request.get("/api/warrants/2330/flow?date=2026-06-27");
+  expect(resp.status()).toBe(200);
+  const body = await resp.json();
+  expect(body.no_trading_day).toBe(true);
+  expect(body.as_of_date).toBe("2026-06-25");
+});
+
 test("NTD1: options page 選 Sat 日期 → 顯示無交易日", async ({ page }) => {
   // 痛點:Backend Sat date → no_trading_day:true,frontend useOptionsXxx
   // hook 暴露 noTradingDay boolean → OptionsMaxPainCard 顯示「無交易日」。
