@@ -14,10 +14,14 @@ import asyncio
 import logging
 import os
 from datetime import date as date_type, timedelta
-from typing import Any, Awaitable, Callable
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 import httpx
 from fastapi import HTTPException
+
+if TYPE_CHECKING:
+    from services.finmind import FinMindClient
 
 from services import clock, warrants
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
@@ -37,7 +41,7 @@ _WARRANT_PREFIXES = ("03", "04", "05", "06", "07", "08", "09", "72", "73", "74")
 _inflight: dict[str, dict[str, Any]] = {}
 
 
-def get_finmind():
+def get_finmind() -> "FinMindClient":
     """per-module wrap(finmind-conventions):test 可獨立 monkeypatch。"""
     from services.finmind import get_finmind as _real
 
@@ -75,15 +79,21 @@ def _candidate_dates(date_param: str | None) -> list[str]:
     return dates
 
 
-def _result_cache_path(stock_id: str, d: str):
+def _result_cache_path(stock_id: str, d: str) -> Path:
     return chip_cache_dir() / f"warrant_flow_{stock_id}_{d}.json"
 
 
-def _dump_cache_path(d: str):
+def _dump_cache_path(d: str) -> Path:
     return chip_cache_dir() / f"flow_prices_{d}.json"
 
 
-def _read_versioned(path) -> dict | None:
+def _write_result_cache(stock_id: str, d: str, payload: dict) -> None:
+    atomic_write_json(
+        _result_cache_path(stock_id, d), {**payload, "_cache_version": _CACHE_VERSION}
+    )
+
+
+def _read_versioned(path: Path) -> dict | None:
     payload = read_json(path)
     if not isinstance(payload, dict) or payload.get("_cache_version") != _CACHE_VERSION:
         return None
@@ -312,7 +322,9 @@ async def get_flow(stock_id: str, date: str | None = None, refresh: bool = False
             return _empty_payload("no_warrants", None, 0)
 
         winfo = {w["warrant_id"]: w for w in wlist}
-        mapped_all = {w["warrant_id"] for rows in snap["by_underlying"].values() for w in rows}
+        # 全市場 mapped set(~38k)延後到首個非空 dump 才建 — cache-hit 熱路徑
+        # 不付 O(全快照) 掃描(code-review round 1 efficiency)
+        mapped_all: set[str] | None = None
 
         for d in _candidate_dates(date):
             if not refresh:
@@ -323,6 +335,11 @@ async def get_flow(stock_id: str, date: str | None = None, refresh: bool = False
             dump = await _fetch_price_day(d, refresh)
             if not dump:
                 continue
+            if mapped_all is None:
+                mapped_all = {
+                    w["warrant_id"] for rows in snap["by_underlying"].values() for w in rows
+                }
+            mapped = mapped_all  # narrowed 別名(pyright 迴圈 back-edge 不保narrowing)
             traded: list[tuple[str, float]] = []
             unmapped = 0
             for r in dump:
@@ -332,7 +349,7 @@ async def get_flow(stock_id: str, date: str | None = None, refresh: bool = False
                     continue
                 if sid in winfo:
                     traded.append((sid, float(m)))
-                elif _is_warrant_shaped(sid) and sid not in mapped_all:
+                elif _is_warrant_shaped(sid) and sid not in mapped:
                     unmapped += 1
             if unmapped:
                 logger.info(
@@ -340,10 +357,7 @@ async def get_flow(stock_id: str, date: str | None = None, refresh: bool = False
                 )
             if not traded:
                 payload = _empty_payload("no_volume", d, unmapped)
-                atomic_write_json(
-                    _result_cache_path(stock_id, d),
-                    {**payload, "_cache_version": _CACHE_VERSION},
-                )
+                _write_result_cache(stock_id, d, payload)
                 return payload
             traded.sort(key=lambda t: -t[1])
             total = len(traded)
@@ -363,6 +377,10 @@ async def get_flow(stock_id: str, date: str | None = None, refresh: bool = False
                 raise eg.exceptions[0] from None
             for wid, task in tasks.items():
                 reports[wid] = task.result()
+            # 聚合是純 Python 迴圈(cap 200 × 熱門權證 ~290 rows ≈ 58k 列),
+            # 丟 to_thread 讓 event loop 不被單 tick 佔滿(market-pipeline
+            # hot-path 教訓;純函式無共享狀態,thread 安全)
+            aggregated = await asyncio.to_thread(_aggregate, reports, winfo, dict(analyzed))
             payload = {
                 "as_of_date": d,
                 "truncated": total > FLOW_CAP,
@@ -370,12 +388,9 @@ async def get_flow(stock_id: str, date: str | None = None, refresh: bool = False
                 "analyzed": len(analyzed),
                 "unmapped_count": unmapped,
                 "empty_reason": None,
-                **_aggregate(reports, winfo, dict(analyzed)),
+                **aggregated,
             }
-            atomic_write_json(
-                _result_cache_path(stock_id, d),
-                {**payload, "_cache_version": _CACHE_VERSION},
-            )
+            _write_result_cache(stock_id, d, payload)
             removed = _cleanup_flow_caches(clock.today())
             if removed:
                 logger.info("warrant flow cache cleanup removed %d files", removed)

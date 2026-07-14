@@ -10,8 +10,15 @@
 
 - **IV drift「rising」側受市場 vol regime 混淆**(2026-07-11 真實 60 日校準:市場整體 IV 上行 → rel 右尾肥,常數 0.30 下 rising 仍標 10.3%;declining 側 1.2% 選擇性 OK):要更乾淨需 cross-sectional de-mean(rel 減去全市場中位數),屬 detect 演算法 design amend。觸發重評估:user 反映 rising 標記太多、或市場轉入 IV 下行 regime 換 declining 側爆量時
 
-- **forceRefreshRef pattern 已複製到第 19 個 hook**(useWarrantIvHistory 為最新;useDaytradeFee/useChipBubble/useBrokerHistory 等同構):抽共用 `useForceRefreshQuery` helper。觸發重評估:refresh 語意要改(如改帶參數)或第 20 個 hook 出現時
+- **forceRefreshRef pattern 已複製到第 20 個 hook — 門檻已觸發**(2026-07-14 useWarrantFlow 為第 20 個;原訂「第 20 個出現時重評估」):建議開專屬 /refactor 抽共用 `useForceRefreshQuery` helper(順帶收斂 code-review 指出的 ref 時序 race:refresh 旗標可能被非 refresh 的 in-flight fetch 提前消費 — pattern 級,20 個 hook 同病)。觸發重評估:已觸發,下次 /refactor 排程時收割
 - **tests/test_finmind_realtime.py 在機器高負載下 flaky**(真實 asyncio 短 sleep 0.02s + wait_for timeout=1.0;2026-07-11 全套跑兩輪各紅 15/8 個、單檔跑與後續全套皆綠):改假鐘或放寬 timeout。觸發重評估:CI 或平常開發再看到該檔紅時
+
+## From /feat warrant-broker-flow(2026-07-14)
+
+- **equity tab 鈕樣板第 4 份複本**(App.tsx overview/bubble/warrants/warrant-flow 四個 button + hidden div 逐字同構):抽 tab config array + map render。觸發重評估:第 5 個 equity tab 出現、或改 tab 共通樣式/a11y 時
+- **backend「候選日回退 + inflight dedup + date 驗證」三組近親複本**:`_run_once` 第 3 份(warrants/market_breadth/warrant_flow,行為已分歧 — refcount vs 無)、`_candidate_dates` 第 2 份(warrant_brokers 起點 today−1/5 天 vs warrant_flow today/10 天)、date query 驗證 2 處不同步(routes/warrants regex+fromisoformat vs routes/daytrade_fee 僅 fromisoformat)。抽共用時三組一起收。觸發重評估:任一組要出第 3+ 份複本、或修其中一份的 bug 時
+- **flow 對映用「當下快照」查歷史候選日**:權證在 (d, 快照 as_of] 間到期下市 → 該權證當日成交不入統計、計入 unmapped_count(訊號在但不歸屬)。預設查詢(d = 快照 as_of)零影響;顯式舊 date / 深度回退才失真。修法 = 快照歷史化(per-date terms archive),v1 out of scope。觸發重評估:user 用顯式 date 查歷史流向、或 unmapped_count 異常飆高時
+- **`_cleanup_flow_caches` 每次冷聚合跑一次全目錄 iterdir**:目前冷聚合本身 200 req 網路成本 >> 1 次 iterdir,不值得節流;cache 目錄檔案數若破萬再加 last-cleanup 時戳門檻。觸發重評估:chip cache 目錄檔案數 >5k 或 real-env 量到 cleanup 佔時
 
 ## From /feat daytrade-borrow-fee(2026-07-11)
 

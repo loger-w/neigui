@@ -3,6 +3,7 @@ import { useWarrantFlow } from "../hooks/useWarrantFlow";
 import { useContainerSize } from "../hooks/useContainerSize";
 import {
   barRatio,
+  formatNet,
   formatValue,
   type WarrantFlowBranch,
   type WarrantFlowPayload,
@@ -211,8 +212,7 @@ function FlowBody({
                     data-testid="flow-warrant-net"
                     className={cn("px-2 py-1 text-right tabular-nums", netClass(w.net_value))}
                   >
-                    {w.net_value < 0 ? "-" : ""}
-                    {formatValue(w.net_value)}
+                    {formatNet(w.net_value)}
                   </td>
                 </tr>
               ))}
@@ -306,8 +306,7 @@ function BranchColumn({
                                 netClass(w.net_value),
                               )}
                             >
-                              {w.net_value < 0 ? "-" : ""}
-                              {formatValue(w.net_value)}
+                              {formatNet(w.net_value)}
                             </td>
                           </tr>
                         ))}
