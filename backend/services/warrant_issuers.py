@@ -150,7 +150,12 @@ async def _fetch_tpex_rows() -> list:
 
 
 def _build_map_from_rows(twse_rows: list, tpex_rows: list) -> dict[str, dict]:
-    """兩市場合併:issuer_id 為 join key,名稱 TPEx 簡稱優先、否則 TWSE 裁剪(R7)。"""
+    """兩市場合併:issuer_id 為 join key,名稱 TPEx 簡稱優先、否則 TWSE 裁剪(R7)。
+
+    權證代號跨年回收(real-env 實證 36_L 1,967 個重複代號)→ 同 wid 取
+    申請發行日期最新;並帶 underlying_id 供 merge/計分端做「舊代號殘留」
+    比對防護(現行權證未入表時,舊列標的必不符 → 視同無對映)。
+    """
     name_by_issuer: dict[str, str] = {}
     # 兩源一律過 _short_issuer_name(冪等):TPEx 名稱不保證是簡稱
     # (2026-07-14 real-env:台新/群益回全稱),TPEx 先寫維持簡稱優先語義
@@ -160,14 +165,36 @@ def _build_map_from_rows(twse_rows: list, tpex_rows: list) -> dict[str, dict]:
         if iid and name:
             name_by_issuer.setdefault(iid, _short_issuer_name(name))
 
+    best_date: dict[str, str] = {}
     out: dict[str, dict] = {}
     for row in list(tpex_rows) + list(twse_rows):
         wid = str(_row_get(row, "權證代號") or "").strip()
         iid = str(_row_get(row, "發行人代號") or "").strip()
         if not wid or not iid or iid not in name_by_issuer:
             continue
-        out[wid] = {"issuer_id": iid, "issuer_name": name_by_issuer[iid]}
+        applied = str(_row_get(row, "申請發行日期") or "").strip()  # 民國緊湊,同長可比序
+        if wid in out and applied <= best_date.get(wid, ""):
+            continue
+        best_date[wid] = applied
+        out[wid] = {
+            "issuer_id": iid,
+            "issuer_name": name_by_issuer[iid],
+            "underlying_id": str(_row_get(row, "標的代號") or "").strip() or None,
+        }
     return out
+
+
+def resolve_issuer(
+    issuer_map: dict[str, dict], wid: str, underlying_id: str | None
+) -> dict | None:
+    """取對映 + 舊代號殘留防護:map 標的與現行權證標的不符 → 視同無對映。"""
+    info = issuer_map.get(wid)
+    if info is None:
+        return None
+    mapped_uid = info.get("underlying_id")
+    if mapped_uid and underlying_id and mapped_uid != underlying_id:
+        return None
+    return info
 
 
 def _map_is_fresh(payload: Any) -> bool:
@@ -335,14 +362,16 @@ def compute_issuer_rank(
 
     by_issuer: dict[str, dict] = {}
     for wid in mapped:
-        info = issuer_map[wid]
+        term = terms_by_wid.get(wid)
+        info = resolve_issuer(issuer_map, wid, (term or {}).get("underlying_id"))
+        if info is None:
+            continue  # 舊代號殘留:標的不符不得計入(real-env 防護)
         agg = by_issuer.setdefault(
             info["issuer_id"],
             {"issuer_name": info["issuer_name"], "wids": [], "scored": []},
         )
         agg["wids"].append(wid)
 
-        term = terms_by_wid.get(wid)
         if as_of_date is not None and term and term.get("last_trading_date"):
             try:
                 ltd = date_type.fromisoformat(term["last_trading_date"])
