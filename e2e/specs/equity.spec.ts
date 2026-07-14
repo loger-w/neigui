@@ -122,6 +122,26 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     );
   });
 
+  test("E14: 權證分點 tab 資料級 assertion + 展開明細(warrant-broker-flow SC-1/SC-2/SC-3)", async ({ page }) => {
+    // 痛點:flow 聚合鏈(snapshot 對映 → price_day dump 篩量 → probe →
+    // fan-out → 金額聚合)任一環空轉都會讓面板只剩空殼;鎖分點名 + 具體
+    // 金額(030011 凱基 3000 + 030012 凱基 960 = 3960 元)防 visibility 假綠。
+    await page.getByRole("button", { name: /^權證分點$/ }).click();
+    await expect(page.getByTestId(TESTIDS.flowDateBadge)).toContainText("06-25"); // FAKE_TODAY−1 回退
+    const buyCol = page.getByTestId(TESTIDS.flowBuyCol);
+    await expect(buyCol).toContainText("凱基-台北");
+    await expect(buyCol).toContainText("3,960 元"); // 淨買超金額(fixtures 手算)
+    await expect(page.getByTestId(TESTIDS.flowSellCol)).toContainText("元大-總公司");
+    // 展開分點 → 權證明細(payload 內嵌,零額外 API)
+    await buyCol.getByRole("button", { name: /展開 凱基-台北/ }).click();
+    await expect(buyCol).toContainText("030011");
+    await expect(buyCol).toContainText("台積凱基61購01");
+    // 明細表金額降序首列 = 030011(5,000,000)
+    await expect(
+      page.getByTestId(TESTIDS.flowWarrantTable).getByTestId("flow-warrant-row").first(),
+    ).toHaveAttribute("data-warrant-id", "030011");
+  });
+
   test("E10: 無權證標的空狀態(SC-7)", async ({ page }) => {
     // 痛點:2412 不在權證 fixture 的標的內 → 空 list → 繁中空狀態;
     // 若 backend 空標的誤回 404/500,這裡會看到 error 而非空狀態文案。
