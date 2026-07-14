@@ -2,11 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useWarrants } from "../hooks/useWarrants";
 import { useWarrantQuotes } from "../hooks/useWarrantQuotes";
 import { useWarrantBrokers } from "../hooks/useWarrantBrokers";
+import { useWarrantFlow } from "../hooks/useWarrantFlow";
 import { WarrantIvHistory } from "./WarrantIvHistory";
+import { IssuerRankPanel } from "./IssuerRankPanel";
 import type { WarrantRow } from "../lib/warrant-data";
+import { formatNet } from "../lib/warrant-flow-data";
 import {
   DEFAULT_FILTERS,
+  WARRANT_PRESETS,
   filterWarrants,
+  isExitCliff,
+  isNearSoldOut,
   mergeWarrantRows,
   sortWarrants,
   type WarrantFilters,
@@ -34,6 +40,13 @@ const MISPRICING_TEXT = { cheap: "偏便宜", fair: "合理", expensive: "偏貴
 // IV 趨勢中性文案(warrant-iv-drift SC-6):只陳述統計事實,stable/insufficient
 // 顯示 —(全表多數 stable,標出來是噪音);嚴禁「惡意」等指控性文字。
 const DRIFT_TEXT: Record<string, string> = { declining: "長期遞減", rising: "長期遞增" };
+// 發行商 tier(backend composite 三分位)— 同 SC-5 中性色階,不用紅綠
+const TIER_TEXT: Record<string, string> = { front: "前段", mid: "中段", back: "後段" };
+const TIER_CLASS: Record<string, string> = {
+  front: "text-ink border-line-strong bg-ink/10",
+  mid: "text-ink-muted border-line-strong",
+  back: "text-ink-dim border-line",
+};
 // SC-5:中性色階,零色相 — accent 與 bull 同色值(#e85a4f,real-env 2026-07-11
 // 實測),資料標籤用 accent 即是多頭紅。兩端用「實底 vs 框線」+ ink 強度區分。
 const MISPRICING_CLASS = {
@@ -52,6 +65,7 @@ const HEADERS: SortableHeader[] = [
   { key: null, label: "名稱" },
   { key: null, label: "類型" },
   { key: null, label: "市場" },
+  { key: null, label: "發行商" },
   { key: "strike", label: "履約價" },
   { key: "moneyness", label: "價內外" },
   { key: "days_left", label: "剩餘天數" },
@@ -76,6 +90,15 @@ function numOrNull(s: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// controlled input 顯示值:null → 空字串;小數比率 → % 整數避免浮點尾巴
+function numVal(v: number | null): string {
+  return v == null ? "" : String(v);
+}
+
+function pctVal(v: number | null): string {
+  return v == null ? "" : String(Math.round(v * 1000) / 10);
+}
+
 export function WarrantSelector({ symbol, active }: { symbol: string; active: boolean }) {
   const warrantsHook = useWarrants(symbol, active);
   const quotesHook = useWarrantQuotes(symbol, active);
@@ -84,12 +107,24 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const brokersHook = useWarrantBrokers(expandedId);
+  // 分點欄手動載入(SC-10):預設不 fetch(瀏覽多標的不燒 FinMind 配額);
+  // 共 queryKey ["warrant-flow", symbol] — 分點 tab 抓過即 cache 命中直接顯示
+  const [flowEnabled, setFlowEnabled] = useState(false);
+  const flowHook = useWarrantFlow(symbol, active && flowEnabled);
 
-  // 換標的:展開列與篩選歸零(舊標的殘留會誤導)
+  // 換標的:展開列與篩選歸零(舊標的殘留會誤導);分點載入回到手動
   useEffect(() => {
     setExpandedId(null);
     setFilters(DEFAULT_FILTERS);
+    setFlowEnabled(false);
   }, [symbol]);
+
+  const flowNetByWid = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const w of flowHook.data?.warrants ?? []) out[w.warrant_id] = w.net_value;
+    return out;
+  }, [flowHook.data]);
+  const flowLoaded = flowHook.data != null;
 
   const rows: WarrantRow[] = useMemo(() => {
     const terms = warrantsHook.data?.warrants ?? [];
@@ -151,6 +186,15 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
         >
           重新整理
         </button>
+        <button
+          type="button"
+          data-testid="preset-swing"
+          onClick={() => setFilters({ ...DEFAULT_FILTERS, ...WARRANT_PRESETS.swing.filters })}
+          title={`一鍵套用:${WARRANT_PRESETS.swing.source}(${WARRANT_PRESETS.swing.asOf});套用後可再手動調整`}
+          className="px-2 py-1 pointer-coarse:min-h-11 border border-line text-ink-muted hover:text-ink hover:border-accent transition-colors cursor-pointer"
+        >
+          {WARRANT_PRESETS.swing.label} preset
+        </button>
         <div className="inline-flex items-stretch" role="group" aria-label="類型篩選">
           {(
             [
@@ -180,6 +224,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             type="number"
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="剩餘天數下限"
+            value={numVal(filters.minDaysLeft)}
             onChange={(e) =>
               setFilters((f) => ({ ...f, minDaysLeft: numOrNull(e.target.value) }))
             }
@@ -192,6 +237,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="價內外下限(%)"
             placeholder="min"
+            value={pctVal(filters.moneynessMin)}
             onChange={(e) => {
               const n = numOrNull(e.target.value);
               setFilters((f) => ({ ...f, moneynessMin: n == null ? null : n / 100 }));
@@ -203,6 +249,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="價內外上限(%)"
             placeholder="max"
+            value={pctVal(filters.moneynessMax)}
             onChange={(e) => {
               const n = numOrNull(e.target.value);
               setFilters((f) => ({ ...f, moneynessMax: n == null ? null : n / 100 }));
@@ -216,6 +263,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="估價差下限(%)"
             placeholder="min"
+            value={pctVal(filters.mispricingMin)}
             onChange={(e) => {
               const n = numOrNull(e.target.value);
               setFilters((f) => ({ ...f, mispricingMin: n == null ? null : n / 100 }));
@@ -227,6 +275,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="估價差上限(%)"
             placeholder="max"
+            value={pctVal(filters.mispricingMax)}
             onChange={(e) => {
               const n = numOrNull(e.target.value);
               setFilters((f) => ({ ...f, mispricingMax: n == null ? null : n / 100 }));
@@ -239,8 +288,44 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             type="number"
             className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
             aria-label="IV百分位上限"
+            value={numVal(filters.ivPctlMax)}
             onChange={(e) =>
               setFilters((f) => ({ ...f, ivPctlMax: numOrNull(e.target.value) }))
+            }
+          />
+        </label>
+        <label className="inline-flex items-center gap-1 text-ink-muted">
+          價差比% ≤
+          <input
+            type="number"
+            className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
+            aria-label="價差比上限(%)"
+            value={pctVal(filters.spreadRatioMax)}
+            onChange={(e) => {
+              const n = numOrNull(e.target.value);
+              setFilters((f) => ({ ...f, spreadRatioMax: n == null ? null : n / 100 }));
+            }}
+          />
+        </label>
+        <label className="inline-flex items-center gap-1 text-ink-muted">
+          差槓比 ≤
+          <input
+            type="number"
+            className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
+            aria-label="差槓比上限"
+            value={numVal(filters.slrMax)}
+            onChange={(e) => setFilters((f) => ({ ...f, slrMax: numOrNull(e.target.value) }))}
+          />
+        </label>
+        <label className="inline-flex items-center gap-1 text-ink-muted">
+          委賣價 ≥
+          <input
+            type="number"
+            className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
+            aria-label="委賣價下限"
+            value={numVal(filters.minAskPrice)}
+            onChange={(e) =>
+              setFilters((f) => ({ ...f, minAskPrice: numOrNull(e.target.value) }))
             }
           />
         </label>
@@ -261,6 +346,8 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
           </span>
         )}
       </div>
+
+      <IssuerRankPanel />
 
       {error && (
         <div className="shrink-0 px-4 py-2 text-sm text-accent bg-accent/[0.06] border-b border-line">
@@ -301,6 +388,23 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
                     )}
                   </th>
                 ))}
+                <th scope="col" className="px-2 py-1.5 text-right font-normal">
+                  {flowLoaded ? (
+                    "分點買賣超"
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid="flow-load-btn"
+                      onClick={() => setFlowEnabled(true)}
+                      disabled={flowHook.loading}
+                      aria-label="載入分點買賣超"
+                      title="手動載入:首次會掃描該標的全部權證的分點報表(T+1)"
+                      className="px-1.5 py-0.5 border border-line text-ink-dim hover:text-ink hover:border-accent disabled:opacity-50 cursor-pointer transition-colors"
+                    >
+                      {flowHook.loading ? "載入中..." : "載入分點"}
+                    </button>
+                  )}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -314,6 +418,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
                   }
                   slrClass={slrClass(r.spread_lev_ratio)}
                   brokersHook={expandedId === r.warrant_id ? brokersHook : null}
+                  flowNet={flowLoaded ? (flowNetByWid[r.warrant_id] ?? null) : undefined}
                 />
               ))}
             </tbody>
@@ -330,12 +435,15 @@ function RowPair({
   onToggle,
   slrClass,
   brokersHook,
+  flowNet,
 }: {
   row: WarrantRow;
   expanded: boolean;
   onToggle: () => void;
   slrClass: string;
   brokersHook: ReturnType<typeof useWarrantBrokers> | null;
+  /** undefined = flow 未載入(顯示 —);null = 已載入但該檔當日無分點成交 */
+  flowNet: number | null | undefined;
 }) {
   return (
     <>
@@ -381,16 +489,59 @@ function RowPair({
         <td className="px-2 py-1 text-right text-ink-dim">
           {r.market === "twse" ? "上市" : "上櫃"}
         </td>
+        <td data-testid="issuer-cell" className="px-2 py-1 text-left">
+          {r.issuer_name ? (
+            <span className="inline-flex items-center gap-1">
+              <span className="text-ink-muted">{r.issuer_name}</span>
+              {r.issuer_tier && (
+                <span
+                  className={cn(
+                    "inline-block px-1 border text-[0.7rem]",
+                    TIER_CLASS[r.issuer_tier],
+                  )}
+                >
+                  {TIER_TEXT[r.issuer_tier]}
+                </span>
+              )}
+            </span>
+          ) : (
+            "—"
+          )}
+        </td>
         <td className="px-2 py-1 text-right text-ink-muted">{fmt(r.strike)}</td>
         <td className="px-2 py-1 text-right text-ink-muted">{fmtPct(r.moneyness)}</td>
-        <td className="px-2 py-1 text-right text-ink-muted">{r.days_left ?? "—"}</td>
+        <td className="px-2 py-1 text-right text-ink-muted">
+          <span className="inline-flex items-center gap-1">
+            {r.days_left ?? "—"}
+            {isExitCliff(r.days_left) && (
+              <span
+                data-testid="cliff-badge"
+                title="距最後交易日 ≤21 日曆日;法規:到期前 15 個交易日發行商可僅申報買進(出場品質懸崖)"
+                className="inline-block px-1 border border-line-strong text-ink text-[0.7rem]"
+              >
+                近到期
+              </span>
+            )}
+          </span>
+        </td>
         <td className="px-2 py-1 text-right text-ink-dim">{fmt(r.exercise_ratio, 4)}</td>
         <td className="px-2 py-1 text-right text-ink font-medium">{fmt(r.price)}</td>
         <td className="px-2 py-1 text-right text-ink-muted">
           {fmtVol(r.best_bid, r.best_bid_vol)}
         </td>
         <td className="px-2 py-1 text-right text-ink-muted">
-          {fmtVol(r.best_ask, r.best_ask_vol)}
+          <span className="inline-flex items-center gap-1">
+            {fmtVol(r.best_ask, r.best_ask_vol)}
+            {isNearSoldOut(r) && (
+              <span
+                data-testid="soldout-badge"
+                title="委賣掛單消失且委買仍在:發行商庫存不足 10 張時僅掛委買,報價可能與標的脫鉤"
+                className="inline-block px-1 border border-line-strong text-ink bg-ink/10 text-[0.7rem]"
+              >
+                近售罄
+              </span>
+            )}
+          </span>
         </td>
         <td className="px-2 py-1 text-right text-ink-muted">
           {r.iv == null ? "—" : `${(r.iv * 100).toFixed(1)}%`}
@@ -427,10 +578,13 @@ function RowPair({
         <td className={cn("px-2 py-1 text-right", slrClass)}>
           {fmt(r.spread_lev_ratio, 4)}
         </td>
+        <td data-testid="flow-net-cell" className="px-2 py-1 text-right text-ink-muted">
+          {flowNet === undefined ? "—" : flowNet === null ? "無成交" : formatNet(flowNet)}
+        </td>
       </tr>
       {expanded && (
         <tr className="border-b border-line bg-bg-deep/50">
-          <td colSpan={HEADERS.length + 1} className="px-8 py-2 space-y-3">
+          <td colSpan={HEADERS.length + 2} className="px-8 py-2 space-y-3">
             <div className="text-xs">
               <WarrantIvHistory warrantId={r.warrant_id} />
             </div>

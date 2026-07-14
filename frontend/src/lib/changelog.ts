@@ -40,6 +40,38 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.29.0",
+    date: "2026-07-14",
+    highlights: "權證挑選升級:發行商排行、一鍵波段篩選、近到期與近售罄警示",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證頁新增「發行商排行」:比較各發行商的隱波穩定度、買賣價差與降波占比(收盤資料推算,展開即看)",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證列表每檔標注發行商與評級(前段/中段/後段)",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "新增「波段」一鍵篩選組合(附門檻來源標注),並可依價差比、差槓比、委賣價篩選",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "近到期(出場品質下降)與近售罄(委賣消失)的權證加上警示標記",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證列表可手動載入各檔的分點買賣超,和分點分頁共用同一份資料",
+      },
+    ],
+  },
+  {
     version: "0.28.0",
     date: "2026-07-14",
     highlights: "個股新增「權證分點」分頁,看哪些分點在買賣這檔股票的權證",
