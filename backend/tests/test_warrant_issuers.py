@@ -371,6 +371,10 @@ def test_rank_spread_day_guards():
     by_id = {r["issuer_id"]: r for r in out["issuers"]}
     assert by_id["5380"]["spread_median"] == pytest.approx((0.52 - 0.5) / 0.5)
     assert by_id["9200"]["spread_median"] is None
+    # spread 路徑的 null 傳播與 declining 路徑對稱(Phase 5 review 補鎖)
+    assert by_id["9200"]["spread_score"] is None
+    assert by_id["9200"]["composite"] is None
+    assert by_id["9200"]["rank"] is None
 
 
 def test_rank_small_sample_no_tier():
