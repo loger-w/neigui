@@ -40,6 +40,23 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.30.0",
+    date: "2026-07-14",
+    highlights: "發行商排行更公平:同類權證互比,不再被產品組合拉偏",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "發行商排行改為「同類互比」:每檔權證先與同價位區間、同到期區間的權證比較,再彙總成發行商排名 — 主打深價外或短天期產品的大型發行商不再因產品組合吃虧",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "排行表格改列各發行商在同類比較中的相對位置(數字越低越好),滑鼠懸停可見原始數值",
+      },
+    ],
+  },
+  {
     version: "0.29.0",
     date: "2026-07-14",
     highlights: "權證挑選升級:發行商排行、一鍵波段篩選、近到期與近售罄警示",
