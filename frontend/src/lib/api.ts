@@ -6,6 +6,7 @@ import type { BorrowFeeData } from "./borrow-fee";
 import type {
   WarrantBrokersPayload, WarrantIvHistoryPayload, WarrantQuotesPayload, WarrantsPayload,
 } from "./warrant-data";
+import type { WarrantFlowPayload } from "./warrant-flow-data";
 
 const BASE = "/api";
 
@@ -241,6 +242,13 @@ export const api = {
     const params: Record<string, string> = {};
     if (refresh) params.refresh = "true";
     return get(`${BASE}/warrants/${warrantId}/brokers`, params, options);
+  },
+  warrantFlow(
+    stockId: string, refresh?: boolean, options?: RequestOptions,
+  ): Promise<WarrantFlowPayload> {
+    const params: Record<string, string> = {};
+    if (refresh) params.refresh = "true";
+    return get(`${BASE}/warrants/${stockId}/flow`, params, options);
   },
   warrantIvHistory(
     warrantId: string, refresh?: boolean, options?: RequestOptions,
