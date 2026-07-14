@@ -471,7 +471,7 @@ def test_tier_cached_writes_back_mem(monkeypatch):
     atomic_write_json(
         chip_cache_dir() / wi.RANK_FILE,
         {
-            "_cache_version": wi._CACHE_VERSION,
+            "_cache_version": wi._RANK_CACHE_VERSION,
             "as_of_date": "2026-07-10",
             "built_from_days": 10,
             "issuers": [{"issuer_id": "9800", "tier": "front"}],

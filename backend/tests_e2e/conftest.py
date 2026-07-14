@@ -30,6 +30,17 @@ def _e2e_env(monkeypatch, tmp_path):
     import routes.symbols as symbols_mod
 
     monkeypatch.setattr(symbols_mod, "_load_task", None)
+    # warrant_issuers module state 跨測試殘留會讓 tier/rank 斷言 test-order
+    # dependent(先打過 rank endpoint 的測試留下 _rank_mem)— 逐測試清乾淨,
+    # 需要 rank 狀態的測試自己在測試內先 GET /issuers/rank(order-independent)。
+    import services.warrant_issuers as wi
+
+    monkeypatch.setattr(wi, "_map_mem", None)
+    monkeypatch.setattr(wi, "_rank_mem", None)
+    monkeypatch.setattr(wi, "_rank_disk_checked", False)
+    monkeypatch.setattr(wi, "_map_bg_task", None)
+    monkeypatch.setattr(wi, "_last_map_attempt", None)
+    wi._inflight.clear()
 
 
 @pytest.fixture
