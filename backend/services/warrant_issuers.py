@@ -511,15 +511,15 @@ def compute_issuer_rank(
         )
 
     # 層門檻:全市場計分檔 <MIN_STRATUM_SAMPLE 的層整層剔除(不入 n_scored)
-    stratum_counts: dict[str, int] = {}
+    by_stratum: dict[str, list[dict]] = {}
     for e in scored:
-        stratum_counts[e["stratum"]] = stratum_counts.get(e["stratum"], 0) + 1
-    valid_strata = {k for k, c in stratum_counts.items() if c >= MIN_STRATUM_SAMPLE}
-    scored = [e for e in scored if e["stratum"] in valid_strata]
+        by_stratum.setdefault(e["stratum"], []).append(e)
+    n_strata_all = len(by_stratum)
+    by_stratum = {k: v for k, v in by_stratum.items() if len(v) >= MIN_STRATUM_SAMPLE}
+    scored = [e for lst in by_stratum.values() for e in lst]
 
     # 層內 midrank pctl:iv 全員;spread / declining 各在有值子集上算
-    for stratum in valid_strata:
-        members = [e for e in scored if e["stratum"] == stratum]
+    for members in by_stratum.values():
         for e, p in zip(members, _midrank_pctls([m["iv_std"] for m in members])):
             e["iv_pctl"] = p
         with_spread = [e for e in members if e["spread"] is not None]
@@ -532,9 +532,9 @@ def compute_issuer_rank(
 
     if seen_wids:
         logger.info(
-            "issuer rank: archive wid coverage %d/%d (%.1f%%), strata valid %d/%d",
+            "issuer rank: archive wid coverage %d/%d (%.1f%%), scored %d, strata valid %d/%d",
             attributed, len(seen_wids), 100.0 * attributed / len(seen_wids),
-            len(valid_strata), len(stratum_counts),
+            len(scored), len(by_stratum), n_strata_all,
         )
 
     scored_by_iid: dict[str, list[dict]] = {}
@@ -604,7 +604,7 @@ def compute_issuer_rank(
         "_cache_version": _RANK_CACHE_VERSION,
         "as_of_date": as_of,
         "built_from_days": len(window),
-        "n_strata_total": len(valid_strata),
+        "n_strata_total": len(by_stratum),
         "issuers": issuers,
     }
 
