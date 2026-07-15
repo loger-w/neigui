@@ -40,6 +40,23 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.31.1",
+    date: "2026-07-15",
+    highlights: "權證頁載入大幅加速:每日首次開啟不再久等",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "權證頁每日首次開啟大幅加速 — 資料改在背景預先準備,不再讓首位開啟的人久等",
+      },
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "權證即時報價載入更快,交易時段開啟也更順",
+      },
+    ],
+  },
+  {
     version: "0.31.0",
     date: "2026-07-15",
     highlights: "權證挑選介面大改:欄位自由排列、報價呈現更直覺、精簡低價值資訊",
