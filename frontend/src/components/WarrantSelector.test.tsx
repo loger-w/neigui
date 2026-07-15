@@ -386,27 +386,6 @@ describe("WarrantSelector 波段 preset(SC-6)", () => {
   });
 });
 
-describe("WarrantSelector 發行商欄(SC-4/SC-5)", () => {
-  it("列顯示發行商簡稱 + tier 徽章;無對照 → em dash", async () => {
-    mockApis(
-      [
-        term({ issuer_name: "元大", issuer_tier: "front" }),
-        term({ warrant_id: "030013", issuer_name: "凱基", issuer_tier: null }),
-        term({ warrant_id: "030014" }),
-      ],
-      {},
-    );
-    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
-    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(3));
-    const cells = screen.getAllByTestId("issuer-cell");
-    expect(cells[0]?.textContent).toContain("元大");
-    expect(cells[0]?.textContent).toContain("前段");
-    expect(cells[1]?.textContent).toContain("凱基");
-    expect(cells[1]?.textContent).not.toContain("段");
-    expect(cells[2]?.textContent).toBe("—");
-  });
-});
-
 describe("WarrantSelector 懸崖 / 近售罄 badge(SC-8/SC-9)", () => {
   it("days_left ≤21 顯示近到期 badge,title 含法規口徑", async () => {
     mockApis([term()], { "030012": quote({ days_left: 18 }) });

@@ -3,13 +3,7 @@
 
 import type { ReactNode } from "react";
 import type { WarrantRow } from "./warrant-data";
-import {
-  TIER_CLASS,
-  TIER_TEXT,
-  isExitCliff,
-  isNearSoldOut,
-  type WarrantSortKey,
-} from "./warrant-utils";
+import { isExitCliff, isNearSoldOut, type WarrantSortKey } from "./warrant-utils";
 import { cn } from "./utils";
 
 // 欄位格式化:null/undefined 一律 em dash(數值缺席是常態 — 零成交/重設型)
@@ -108,32 +102,6 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     cell: (r) => (
       <td className="px-2 py-1 text-right text-ink-dim">
         {r.market === "twse" ? "上市" : "上櫃"}
-      </td>
-    ),
-  },
-  {
-    id: "issuer",
-    label: "發行商",
-    desc: "發行券商與信任分層(前段/中段/後段)",
-    cell: (r) => (
-      <td data-testid="issuer-cell" className="px-2 py-1 text-left">
-        {r.issuer_name ? (
-          <span className="inline-flex items-center gap-1">
-            <span className="text-ink-muted">{r.issuer_name}</span>
-            {r.issuer_tier && (
-              <span
-                className={cn(
-                  "inline-block px-1 border text-[0.7rem]",
-                  TIER_CLASS[r.issuer_tier],
-                )}
-              >
-                {TIER_TEXT[r.issuer_tier]}
-              </span>
-            )}
-          </span>
-        ) : (
-          "—"
-        )}
       </td>
     ),
   },

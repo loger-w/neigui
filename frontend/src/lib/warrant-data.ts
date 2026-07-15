@@ -20,37 +20,6 @@ export interface WarrantTerm {
   underlying_eod_close: number | null;
   iv_prev: number | null;
   iv_drift: IvDriftLabel | null;
-  /** 發行商欄(warrant-selector-enhance SC-4;舊 payload 無此欄 → undefined 亦安全) */
-  issuer_name?: string | null;
-  issuer_tier?: IssuerTier | null;
-}
-
-export type IssuerTier = "front" | "mid" | "back";
-
-export interface IssuerRankRow {
-  issuer_id: string;
-  issuer_name: string;
-  n_warrants: number;
-  n_scored: number;
-  iv_std_median: number | null;
-  spread_median: number | null;
-  declining_share: number | null;
-  /** v2 層內分數(0-1 低者佳,midrank pctl 聚合)+ 該商覆蓋有效層數 */
-  iv_score: number | null;
-  spread_score: number | null;
-  declining_score: number | null;
-  n_strata: number;
-  composite: number | null;
-  rank: number | null;
-  tier: IssuerTier | null;
-}
-
-export interface IssuerRankPayload {
-  as_of_date: string | null;
-  built_from_days: number;
-  /** v2:全市場有效層數(樣本 ≥5 檔的 moneyness×天期 層) */
-  n_strata_total: number;
-  issuers: IssuerRankRow[];
 }
 
 export interface WarrantIvPoint {

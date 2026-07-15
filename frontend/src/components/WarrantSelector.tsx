@@ -4,7 +4,6 @@ import { useWarrantQuotes } from "../hooks/useWarrantQuotes";
 import { useWarrantBrokers } from "../hooks/useWarrantBrokers";
 import { useWarrantFlow } from "../hooks/useWarrantFlow";
 import { WarrantIvHistory } from "./WarrantIvHistory";
-import { IssuerRankPanel } from "./IssuerRankPanel";
 import type { WarrantRow } from "../lib/warrant-data";
 import { formatNet } from "../lib/warrant-flow-data";
 import { WARRANT_COLUMNS, type WarrantColumnCtx } from "../lib/warrant-columns";
@@ -294,8 +293,6 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
           </span>
         )}
       </div>
-
-      <IssuerRankPanel />
 
       {error && (
         <div className="shrink-0 px-4 py-2 text-sm text-accent bg-accent/[0.06] border-b border-line">
