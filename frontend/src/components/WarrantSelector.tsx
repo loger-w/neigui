@@ -2,14 +2,11 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useWarrants } from "../hooks/useWarrants";
 import { useWarrantQuotes } from "../hooks/useWarrantQuotes";
 import { useWarrantBrokers } from "../hooks/useWarrantBrokers";
-import { useWarrantFlow } from "../hooks/useWarrantFlow";
 import { WarrantIvHistory } from "./WarrantIvHistory";
 import type { WarrantRow } from "../lib/warrant-data";
-import { formatNet } from "../lib/warrant-flow-data";
 import { WARRANT_COLUMNS, type WarrantColumnCtx } from "../lib/warrant-columns";
 import {
   DEFAULT_FILTERS,
-  WARRANT_PRESETS,
   filterWarrants,
   mergeWarrantRows,
   sortWarrants,
@@ -42,15 +39,8 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const brokersHook = useWarrantBrokers(expandedId);
-  // 分點欄手動載入(SC-10):預設不 fetch(瀏覽多標的不燒 FinMind 配額);
-  // 共 queryKey ["warrant-flow", symbol] — 分點 tab 抓過即 cache 命中直接顯示。
-  // 記「按下載入時的 symbol」而非 boolean:換標的的同一個 render 週期
-  // flowSymbol ≠ 新 symbol 即失效,不會在 reset effect 前對新標的開火
-  // (boolean + effect 重置有一拍 race,review 修正批紅測試鎖住)
-  const [flowSymbol, setFlowSymbol] = useState<string | null>(null);
-  const flowHook = useWarrantFlow(symbol, active && flowSymbol === symbol);
   // 篩選 input 用 defaultValue + epoch remount:controlled value 會沖掉
-  // 「-」「0.」等打字中間態;preset / 換標的靠 epoch 重掛同步顯示值
+  // 「-」「0.」等打字中間態;重製 / 換標的靠 epoch 重掛同步顯示值
   const [filterEpoch, setFilterEpoch] = useState(0);
 
   // 換標的:展開列與篩選歸零(舊標的殘留會誤導)
@@ -59,13 +49,6 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
     setFilters(DEFAULT_FILTERS);
     setFilterEpoch((e) => e + 1);
   }, [symbol]);
-
-  const flowNetByWid = useMemo(() => {
-    const out: Record<string, number> = {};
-    for (const w of flowHook.data?.warrants ?? []) out[w.warrant_id] = w.net_value;
-    return out;
-  }, [flowHook.data]);
-  const flowLoaded = flowHook.data != null;
 
   const rows: WarrantRow[] = useMemo(() => {
     const terms = warrantsHook.data?.warrants ?? [];
@@ -129,18 +112,6 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
           className="px-2 py-1 pointer-coarse:min-h-11 border border-line text-ink-muted hover:text-ink hover:border-accent disabled:opacity-50 transition-colors cursor-pointer"
         >
           重新整理
-        </button>
-        <button
-          type="button"
-          data-testid="preset-swing"
-          onClick={() => {
-            setFilters({ ...DEFAULT_FILTERS, ...WARRANT_PRESETS.swing.filters });
-            setFilterEpoch((e) => e + 1);
-          }}
-          title={`一鍵套用:${WARRANT_PRESETS.swing.source}(${WARRANT_PRESETS.swing.asOf});套用後可再手動調整`}
-          className="px-2 py-1 pointer-coarse:min-h-11 border border-line text-ink-muted hover:text-ink hover:border-accent transition-colors cursor-pointer"
-        >
-          {WARRANT_PRESETS.swing.label} preset
         </button>
         <div className="inline-flex items-stretch" role="group" aria-label="類型篩選">
           {(
@@ -333,23 +304,6 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
                     )}
                   </th>
                 ))}
-                <th scope="col" className="px-2 py-1.5 text-right font-normal">
-                  {flowLoaded ? (
-                    "分點買賣超"
-                  ) : (
-                    <button
-                      type="button"
-                      data-testid="flow-load-btn"
-                      onClick={() => setFlowSymbol(symbol)}
-                      disabled={flowHook.loading}
-                      aria-label="載入分點買賣超"
-                      title="手動載入:首次會掃描該標的全部權證的分點報表(T+1)"
-                      className="px-1.5 py-0.5 border border-line text-ink-dim hover:text-ink hover:border-accent disabled:opacity-50 cursor-pointer transition-colors"
-                    >
-                      {flowHook.loading ? "載入中..." : "載入分點"}
-                    </button>
-                  )}
-                </th>
               </tr>
             </thead>
             <tbody>
@@ -363,7 +317,6 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
                   }
                   slrClass={slrClass(r.spread_lev_ratio)}
                   brokersHook={expandedId === r.warrant_id ? brokersHook : null}
-                  flowNet={flowLoaded ? (flowNetByWid[r.warrant_id] ?? null) : undefined}
                 />
               ))}
             </tbody>
@@ -380,15 +333,12 @@ function RowPair({
   onToggle,
   slrClass,
   brokersHook,
-  flowNet,
 }: {
   row: WarrantRow;
   expanded: boolean;
   onToggle: () => void;
   slrClass: string;
   brokersHook: ReturnType<typeof useWarrantBrokers> | null;
-  /** undefined = flow 未載入(顯示 —);null = 已載入但該檔當日無分點成交 */
-  flowNet: number | null | undefined;
 }) {
   const ctx: WarrantColumnCtx = { slrClass };
   return (
@@ -412,13 +362,10 @@ function RowPair({
         {WARRANT_COLUMNS.map((c) => (
           <Fragment key={c.id}>{c.cell(r, ctx)}</Fragment>
         ))}
-        <td data-testid="flow-net-cell" className="px-2 py-1 text-right text-ink-muted">
-          {flowNet === undefined ? "—" : flowNet === null ? "無成交" : formatNet(flowNet)}
-        </td>
       </tr>
       {expanded && (
         <tr className="border-b border-line bg-bg-deep/50">
-          <td colSpan={WARRANT_COLUMNS.length + 2} className="px-8 py-2 space-y-3">
+          <td colSpan={WARRANT_COLUMNS.length + 1} className="px-8 py-2 space-y-3">
             <div className="text-xs">
               <WarrantIvHistory warrantId={r.warrant_id} />
             </div>

@@ -96,16 +96,6 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     ),
   },
   {
-    id: "market",
-    label: "市場",
-    desc: "掛牌市場:上市(TWSE)/上櫃(TPEx)",
-    cell: (r) => (
-      <td className="px-2 py-1 text-right text-ink-dim">
-        {r.market === "twse" ? "上市" : "上櫃"}
-      </td>
-    ),
-  },
-  {
     id: "strike",
     label: "履約價",
     desc: "行使權利的約定價格",

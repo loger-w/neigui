@@ -6,14 +6,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { type ReactNode } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type {
   WarrantQuote, WarrantQuotesPayload, WarrantTerm, WarrantsPayload,
 } from "../lib/warrant-data";
-import type { WarrantFlowPayload } from "../lib/warrant-flow-data";
-import { formatNet } from "../lib/warrant-flow-data";
 import { WarrantSelector } from "./WarrantSelector";
 import { makeQueryWrapper } from "../test-utils/query-wrapper";
 
@@ -119,12 +115,28 @@ describe("WarrantSelector", () => {
       .getAllByRole("columnheader")
       .map((th) => (th.textContent ?? "").replace(/ [↑↓]$/, ""));
     for (const h of [
-      "代號", "名稱", "類型", "市場", "履約價", "價內外", "剩餘天數", "行使比例",
+      "代號", "名稱", "類型", "履約價", "價內外", "剩餘天數", "行使比例",
       "現價", "買價/量", "賣價/量", "IV", "理論價", "估價差", "IV百分位",
       "實質槓桿", "價差比", "差槓比",
     ]) {
       expect(headerTexts).toContain(h);
     }
+  });
+
+  it("市場欄 / preset 按鈕 / 載入分點欄已移除(mod warrant-ux-feedback item 2/6)", async () => {
+    mockApis(THREE, THREE_QUOTES);
+    render(<WarrantSelector symbol="2330" active={true} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
+    const headerTexts = screen
+      .getAllByRole("columnheader")
+      .map((th) => (th.textContent ?? "").replace(/ [↑↓]$/, ""));
+    expect(headerTexts).not.toContain("市場");
+    expect(headerTexts).not.toContain("分點買賣超");
+    expect(screen.queryByTestId("preset-swing")).toBeNull();
+    expect(screen.queryByTestId("flow-load-btn")).toBeNull();
+    expect(screen.queryByTestId("flow-net-cell")).toBeNull();
   });
 
   it("預設差槓比升序,null 沉底(SC-2)", async () => {
@@ -326,66 +338,6 @@ describe("WarrantSelector", () => {
 
 // ---------------------------------------------------------------- warrant-selector-enhance
 
-function flowPayload(): WarrantFlowPayload {
-  return {
-    as_of_date: "2026-07-13",
-    truncated: false,
-    total_traded: 1,
-    analyzed: 1,
-    unmapped_count: 0,
-    empty_reason: null,
-    summary: {
-      call: { buy_value: 100, sell_value: 50 },
-      put: { buy_value: 0, sell_value: 0 },
-    },
-    top_buy_branches: [],
-    top_sell_branches: [],
-    warrants: [
-      {
-        warrant_id: "030012",
-        name: "台積凱基57購01",
-        kind: "call",
-        trading_money: 5_000_000,
-        net_value: 1234.5,
-      },
-    ],
-  };
-}
-
-describe("WarrantSelector 波段 preset(SC-6)", () => {
-  it("點「波段」一鍵套六鍵,行過濾生效且 input 反映值", async () => {
-    mockApis(
-      [term(), term({ warrant_id: "030013", name: "短天期" })],
-      {
-        "030012": quote({
-          days_left: 80, moneyness: 0.02, spread_ratio: 0.02,
-          spread_lev_ratio: 0.2, best_ask: 0.9, best_bid_vol: 50,
-        }),
-        "030013": quote({ days_left: 30 }),
-      },
-    );
-    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
-    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(2));
-    fireEvent.click(screen.getByTestId("preset-swing"));
-    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
-    expect(screen.getAllByTestId("warrant-row")[0]?.getAttribute("data-warrant-id")).toBe(
-      "030012",
-    );
-    const daysInput = screen.getByLabelText("剩餘天數下限") as HTMLInputElement;
-    expect(daysInput.value).toBe("60");
-    const bidVol = screen.getByLabelText("只看委買量大於零") as HTMLInputElement;
-    expect(bidVol.checked).toBe(true);
-  });
-
-  it("preset 按鈕 title 標注來源與時點(門檻是時代的函數)", async () => {
-    mockApis([term()], {});
-    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
-    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
-    const btn = screen.getByTestId("preset-swing");
-    expect(btn.getAttribute("title")).toContain("2026-07");
-  });
-});
-
 describe("WarrantSelector 懸崖 / 近售罄 badge(SC-8/SC-9)", () => {
   it("days_left ≤21 顯示近到期 badge,title 含法規口徑", async () => {
     mockApis([term()], { "030012": quote({ days_left: 18 }) });
@@ -416,59 +368,12 @@ describe("WarrantSelector 懸崖 / 近售罄 badge(SC-8/SC-9)", () => {
   });
 });
 
-describe("WarrantSelector 分點欄手動載入(SC-10)", () => {
-  it("預設不 fetch flow;點「載入分點」後 join 顯示 net_value", async () => {
-    mockApis([term()], {});
-    const flowSpy = vi.spyOn(api, "warrantFlow").mockResolvedValue(flowPayload());
-    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
-    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
-    expect(flowSpy).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId("flow-load-btn"));
-    await waitFor(() =>
-      expect(screen.getByTestId("flow-net-cell").textContent).toBe(formatNet(1234.5)),
-    );
-    expect(flowSpy).toHaveBeenCalledTimes(1);
-  });
-
-  it("TanStack cache 命中(分點 tab 已抓過)→ 未按鈕即顯示且不重抓(R4-2 採 (a))", async () => {
-    mockApis([term()], {});
-    const flowSpy = vi.spyOn(api, "warrantFlow").mockResolvedValue(flowPayload());
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false, staleTime: Infinity, gcTime: Infinity } },
-    });
-    client.setQueryData(["warrant-flow", "2330"], flowPayload());
-    const wrapper = ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
-    );
-    render(<WarrantSelector symbol="2330" active />, { wrapper });
-    await waitFor(() =>
-      expect(screen.getByTestId("flow-net-cell").textContent).toBe(formatNet(1234.5)),
-    );
-    expect(flowSpy).not.toHaveBeenCalled();
-  });
-});
-
 describe("WarrantSelector review 修正批(Phase 5)", () => {
-  it("flow 已載入後切換 symbol,不得自動抓新標的(白名單 6:不自動燒配額)", async () => {
-    mockApis([term()], {});
-    const flowSpy = vi.spyOn(api, "warrantFlow").mockResolvedValue(flowPayload());
-    const { rerender } = render(<WarrantSelector symbol="2330" active />, {
-      wrapper: makeQueryWrapper(),
-    });
-    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
-    fireEvent.click(screen.getByTestId("flow-load-btn"));
-    await waitFor(() => expect(flowSpy).toHaveBeenCalledTimes(1));
-    rerender(<WarrantSelector symbol="2317" active />);
-    // 切標的的 render 週期內 flowEnabled 殘留 true 會對 2317 開火 — 等一拍再驗
-    await new Promise((r) => setTimeout(r, 50));
-    expect(flowSpy).toHaveBeenCalledTimes(1);
-    expect(flowSpy.mock.calls.every((c) => c[0] === "2330")).toBe(true);
-  });
-
   it("篩選 input 打字值不被無關 filter 變更沖掉(uncontrolled+epoch 機制)", async () => {
     // 「-」「0.」badInput 中間態 jsdom 一律 sanitize 成 "",controlled/uncontrolled
     // 不可分辨 → 該情境由 Phase 7 真實環境(DevTools)驗;這裡鎖 epoch 機制:
-    // 無關 state 變更(kind toggle)不 remount、preset 才 remount 同步
+    // 無關 state 變更(kind toggle)不 remount(重製按鈕的 remount 覆寫由
+    // 重製篩選測試鎖)
     mockApis([term()], {});
     render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
     await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
@@ -476,19 +381,17 @@ describe("WarrantSelector review 修正批(Phase 5)", () => {
     fireEvent.change(days, { target: { value: "45" } });
     fireEvent.click(screen.getByRole("button", { name: "認購" })); // 無關 filter 變更
     expect((screen.getByLabelText("剩餘天數下限") as HTMLInputElement).value).toBe("45");
-    fireEvent.click(screen.getByTestId("preset-swing")); // preset → epoch remount 覆寫
-    expect((screen.getByLabelText("剩餘天數下限") as HTMLInputElement).value).toBe("60");
   });
 
-  it("preset 套用後 input 反映值;再切 symbol 篩選歸零且 input 清空", async () => {
+  it("手動輸入篩選值後切 symbol,篩選歸零且 input 清空(epoch remount)", async () => {
     mockApis([term()], {});
     const { rerender } = render(<WarrantSelector symbol="2330" active />, {
       wrapper: makeQueryWrapper(),
     });
     await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
-    fireEvent.click(screen.getByTestId("preset-swing"));
     const daysInput = screen.getByLabelText("剩餘天數下限") as HTMLInputElement;
-    expect(daysInput.value).toBe("60");
+    fireEvent.change(daysInput, { target: { value: "45" } });
+    expect(daysInput.value).toBe("45");
     rerender(<WarrantSelector symbol="2317" active />);
     await waitFor(() =>
       expect((screen.getByLabelText("剩餘天數下限") as HTMLInputElement).value).toBe(""),

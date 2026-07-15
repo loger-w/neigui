@@ -7,7 +7,6 @@ import {
   DEFAULT_FILTERS,
   EXIT_CLIFF_DAYS,
   QUOTES_REFETCH_MS,
-  WARRANT_PRESETS,
   filterWarrants,
   isExitCliff,
   isMarketOpen,
@@ -221,31 +220,6 @@ describe("filterWarrants 新篩選鍵(SC-7)", () => {
   it("未啟用(null)不剔除任何列", () => {
     const rows = [row({ spread_ratio: null, spread_lev_ratio: null, best_ask: null })];
     expect(filterWarrants(rows, DEFAULT_FILTERS)).toHaveLength(1);
-  });
-});
-
-describe("WARRANT_PRESETS 波段 preset(SC-6)", () => {
-  it("swing preset 六鍵值正確(元大 2026-07 live + 權證小哥 2022)", () => {
-    const p = WARRANT_PRESETS.swing;
-    expect(p.filters.minDaysLeft).toBe(60);
-    expect(p.filters.moneynessMin).toBe(-0.3);
-    expect(p.filters.moneynessMax).toBe(0.05);
-    expect(p.filters.spreadRatioMax).toBe(0.025);
-    expect(p.filters.slrMax).toBe(0.3);
-    expect(p.filters.minAskPrice).toBe(0.6);
-    expect(p.filters.requireBidVol).toBe(true);
-  });
-
-  it("preset 帶來源與日期標注(門檻是時代的函數,不 hardcode 無出處)", () => {
-    const p = WARRANT_PRESETS.swing;
-    expect(p.source.length).toBeGreaterThan(0);
-    expect(p.asOf).toMatch(/^\d{4}-\d{2}$/);
-  });
-
-  it("套用 = DEFAULT_FILTERS spread preset.filters,不鎖其他鍵", () => {
-    const applied = { ...DEFAULT_FILTERS, ...WARRANT_PRESETS.swing.filters };
-    expect(applied.kind).toBe("all");
-    expect(applied.ivPctlMax).toBeNull();
   });
 });
 

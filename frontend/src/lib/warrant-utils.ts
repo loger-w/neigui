@@ -37,31 +37,6 @@ export const DEFAULT_FILTERS: WarrantFilters = {
   minAskPrice: null,
 };
 
-export interface WarrantPreset {
-  label: string;
-  /** 門檻是時代的函數:preset 必附來源與時點,UI 標注(change-spec SC-6)。 */
-  source: string;
-  asOf: string; // YYYY-MM
-  filters: Partial<WarrantFilters>;
-}
-
-export const WARRANT_PRESETS: Record<"swing", WarrantPreset> = {
-  swing: {
-    label: "波段",
-    source: "元大智慧搜尋預設 + 權證小哥差槓比",
-    asOf: "2026-07",
-    filters: {
-      minDaysLeft: 60,
-      moneynessMin: -0.3, // 價外 30%
-      moneynessMax: 0.05, // 價內 5%
-      spreadRatioMax: 0.025,
-      slrMax: 0.3,
-      minAskPrice: 0.6,
-      requireBidVol: true,
-    },
-  },
-};
-
 /** ≈ 法規「到期前 15 個交易日可僅申報買進」的日曆日 proxy(change-spec SC-8)。 */
 export const EXIT_CLIFF_DAYS = 21;
 

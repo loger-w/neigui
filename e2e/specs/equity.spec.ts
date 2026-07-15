@@ -167,23 +167,6 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(detail).toContainText("資料日 = 2026-06-25");
   });
 
-  test("E16: 波段 preset 一鍵套用(warrant-selector-enhance SC-6)", async ({ page }) => {
-    // 痛點:preset → filters state → controlled inputs 同步鏈;篩選數學已由
-    // vitest 鎖,e2e 鎖「按鈕按下去 UI 真的反映六鍵」(uncontrolled input 時代
-    // 這條鏈斷了也 render 正常)。title 標注來源+時點 = 門檻時代性紀律。
-    await page.getByRole("button", { name: /^權證$/ }).click();
-    const preset = page.getByTestId(TESTIDS.presetSwing);
-    await expect(preset).toHaveAttribute("title", /2026-07/);
-    await preset.click();
-    await expect(page.getByLabel("剩餘天數下限")).toHaveValue("60");
-    await expect(page.getByLabel("價內外下限(%)")).toHaveValue("-30");
-    await expect(page.getByLabel("價內外上限(%)")).toHaveValue("5");
-    await expect(page.getByLabel("價差比上限(%)")).toHaveValue("2.5");
-    await expect(page.getByLabel("差槓比上限")).toHaveValue("0.3");
-    await expect(page.getByLabel("委賣價下限")).toHaveValue("0.6");
-    await expect(page.getByLabel("只看委買量大於零")).toBeChecked();
-  });
-
   test("E12: IV趨勢欄 drift 標記(warrant-iv-drift SC-6)", async ({ page }) => {
     // 痛點:iv_history fixture → loader → detect_drift → snapshot merge 全鏈
     // 資料級 assertion(030012 遞減 / 030013 平穩顯示 —)— visibility-only
