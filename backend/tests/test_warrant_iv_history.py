@@ -471,6 +471,25 @@ class TestBackfill:
         assert not day_file("2026-07-11").exists()
         assert day_file("2026-07-09").exists()
 
+    async def test_backfill_skips_weekend_days(self, monkeypatch) -> None:
+        # perf/warrant-api-load S1:週末休市為監管事實(補班日不開市),掃描
+        # 對週六日發 MI_INDEX + retry sleep 是純白工,還與冷 build 搶 TWSE
+        counter = patch_backfill_upstream(
+            monkeypatch,
+            mi_by_date={
+                ("2026-07-09", "0999"): [twse_hist_row()],
+                ("2026-07-03", "0999"): [twse_hist_row()],
+            },
+            terms=[twse_terms_raw()],
+        )
+        monkeypatch.setenv("WARRANT_IV_BACKFILL_DAYS", "2")
+        await ivh._backfill()
+        # 掃描路徑 07-10 → 07-03 跨過 07-05(日)/ 07-04(六):不得發請求
+        assert ("2026-07-05", "0999") not in counter["mi"]
+        assert ("2026-07-04", "0999") not in counter["mi"]
+        # 平日照掃:07-03 有料要入檔
+        assert day_file("2026-07-03").exists()
+
     async def test_backfill_fills_underlying_close_gap_via_finmind(self, monkeypatch) -> None:
         # R16:TPEx 權證標的價 TWSE 列查不到 → FinMind per-underlying range 一次
         wn_row = {"warrant_id": "72124U", "close": 0.31, "bid": 0.30, "ask": 0.32}

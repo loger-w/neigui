@@ -6,6 +6,10 @@
 
 ---
 
+## From /perf warrant-api-load(2026-07-15,Phase 0 分流)
+
+- **[user 已點名,待開獨立 /mod] chip 主力 540d 全量改「拖曳觸發」+ 缺料區 loading 顯示**:現行 fast(150d)成功後立即背景抓 540d;user 要改成「使用者拖曳 K 線到快取外區域才觸發補抓,補抓中該區顯示 loading」。行為/UX 改動,依 /perf 鐵則不混效能流程。觸發:本 /perf(warrant-api-load)merge 後即開 `/mod`(注意與本 /perf 對 major fan-out 的優化互動,以 merge 後的 main 為基準)
+
 ## From /feat warrant-iv-drift(2026-07-11)
 
 - **IV drift「rising」側受市場 vol regime 混淆**(2026-07-11 真實 60 日校準:市場整體 IV 上行 → rel 右尾肥,常數 0.30 下 rising 仍標 10.3%;declining 側 1.2% 選擇性 OK):要更乾淨需 cross-sectional de-mean(rel 減去全市場中位數),屬 detect 演算法 design amend。觸發重評估:user 反映 rising 標記太多、或市場轉入 IV 下行 regime 換 declining 側爆量時
