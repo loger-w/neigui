@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useWarrants } from "../hooks/useWarrants";
 import { useWarrantQuotes } from "../hooks/useWarrantQuotes";
 import { useWarrantBrokers } from "../hooks/useWarrantBrokers";
@@ -7,76 +7,17 @@ import { WarrantIvHistory } from "./WarrantIvHistory";
 import { IssuerRankPanel } from "./IssuerRankPanel";
 import type { WarrantRow } from "../lib/warrant-data";
 import { formatNet } from "../lib/warrant-flow-data";
+import { WARRANT_COLUMNS, type WarrantColumnCtx } from "../lib/warrant-columns";
 import {
   DEFAULT_FILTERS,
-  TIER_CLASS,
-  TIER_TEXT,
   WARRANT_PRESETS,
   filterWarrants,
-  isExitCliff,
-  isNearSoldOut,
   mergeWarrantRows,
   sortWarrants,
   type WarrantFilters,
   type WarrantSortKey,
 } from "../lib/warrant-utils";
 import { cn } from "../lib/utils";
-
-// 欄位格式化:null/undefined 一律 em dash(數值缺席是常態 — 零成交/重設型)
-function fmt(v: number | null | undefined, digits = 2): string {
-  return v == null ? "—" : v.toFixed(digits);
-}
-
-function fmtPct(v: number | null | undefined, digits = 1): string {
-  if (v == null) return "—";
-  const pct = v * 100;
-  return `${pct > 0 ? "+" : ""}${pct.toFixed(digits)}%`;
-}
-
-function fmtVol(price: number | null | undefined, vol: number | null | undefined): string {
-  if (price == null) return "—";
-  return `${price.toFixed(2)}/${vol ?? "—"}`;
-}
-
-const MISPRICING_TEXT = { cheap: "偏便宜", fair: "合理", expensive: "偏貴" } as const;
-// IV 趨勢中性文案(warrant-iv-drift SC-6):只陳述統計事實,stable/insufficient
-// 顯示 —(全表多數 stable,標出來是噪音);嚴禁「惡意」等指控性文字。
-const DRIFT_TEXT: Record<string, string> = { declining: "長期遞減", rising: "長期遞增" };
-// SC-5:中性色階,零色相 — accent 與 bull 同色值(#e85a4f,real-env 2026-07-11
-// 實測),資料標籤用 accent 即是多頭紅。兩端用「實底 vs 框線」+ ink 強度區分。
-const MISPRICING_CLASS = {
-  cheap: "text-ink border-line-strong bg-ink/10",
-  fair: "text-ink-dim border-transparent",
-  expensive: "text-ink border-line-strong",
-} as const;
-
-interface SortableHeader {
-  key: WarrantSortKey | null;
-  label: string;
-}
-
-const HEADERS: SortableHeader[] = [
-  { key: null, label: "代號" },
-  { key: null, label: "名稱" },
-  { key: null, label: "類型" },
-  { key: null, label: "市場" },
-  { key: null, label: "發行商" },
-  { key: "strike", label: "履約價" },
-  { key: "moneyness", label: "價內外" },
-  { key: "days_left", label: "剩餘天數" },
-  { key: "exercise_ratio", label: "行使比例" },
-  { key: "price", label: "現價" },
-  { key: null, label: "買價/量" },
-  { key: null, label: "賣價/量" },
-  { key: "iv", label: "IV" },
-  { key: "theo_price", label: "理論價" },
-  { key: "mispricing_pct", label: "估價差" },
-  { key: "iv_percentile", label: "IV百分位" },
-  { key: null, label: "IV趨勢" },
-  { key: "leverage", label: "實質槓桿" },
-  { key: "spread_ratio", label: "價差比" },
-  { key: "spread_lev_ratio", label: "差槓比" },
-];
 
 // 數字輸入(篩選列):空字串 = 未啟用(null)
 function numOrNull(s: string): number | null {
@@ -376,22 +317,22 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             <thead className="sticky top-0 bg-bg z-10">
               <tr className="border-b border-line-strong text-ink-dim">
                 <th className="px-2 py-1.5" aria-label="展開" />
-                {HEADERS.map((h) => (
-                  <th key={h.label} scope="col" className="px-2 py-1.5 text-right first:text-left font-normal">
-                    {h.key ? (
+                {WARRANT_COLUMNS.map((c) => (
+                  <th key={c.id} scope="col" className="px-2 py-1.5 text-right first:text-left font-normal">
+                    {c.sortKey ? (
                       <button
                         type="button"
-                        onClick={() => handleSort(h.key!)}
+                        onClick={() => handleSort(c.sortKey!)}
                         className={cn(
                           "cursor-pointer hover:text-ink transition-colors",
-                          sortKey === h.key && "text-accent",
+                          sortKey === c.sortKey && "text-accent",
                         )}
                       >
-                        {h.label}
-                        {sortKey === h.key && (sortDir === "asc" ? " ↑" : " ↓")}
+                        {c.label}
+                        {sortKey === c.sortKey && (sortDir === "asc" ? " ↑" : " ↓")}
                       </button>
                     ) : (
-                      h.label
+                      c.label
                     )}
                   </th>
                 ))}
@@ -452,6 +393,7 @@ function RowPair({
   /** undefined = flow 未載入(顯示 —);null = 已載入但該檔當日無分點成交 */
   flowNet: number | null | undefined;
 }) {
+  const ctx: WarrantColumnCtx = { slrClass };
   return (
     <>
       <tr
@@ -470,128 +412,16 @@ function RowPair({
             {expanded ? "−" : "+"}
           </button>
         </td>
-        <td className="px-2 py-1 text-left text-ink font-medium">{r.warrant_id}</td>
-        <td className="px-2 py-1 text-left text-ink-muted">
-          {r.name}
-          {r.is_reset && (
-            <span title="重設型:IV/估價不適用" aria-label="重設型" className="ml-1 text-ink-dim">
-              ◇
-            </span>
-          )}
-        </td>
-        <td className="px-2 py-1 text-left">
-          <span
-            data-testid="warrant-kind-badge"
-            className={cn(
-              // SC-5:認購/認售不用紅綠(accent==bull 同色值)— 實底 vs 框線區分
-              "inline-block px-1.5 py-px border text-[0.7rem]",
-              r.kind === "call"
-                ? "text-ink border-line-strong bg-ink/10"
-                : "text-ink-muted border-line-strong",
-            )}
-          >
-            {r.kind === "call" ? "認購" : "認售"}
-          </span>
-        </td>
-        <td className="px-2 py-1 text-right text-ink-dim">
-          {r.market === "twse" ? "上市" : "上櫃"}
-        </td>
-        <td data-testid="issuer-cell" className="px-2 py-1 text-left">
-          {r.issuer_name ? (
-            <span className="inline-flex items-center gap-1">
-              <span className="text-ink-muted">{r.issuer_name}</span>
-              {r.issuer_tier && (
-                <span
-                  className={cn(
-                    "inline-block px-1 border text-[0.7rem]",
-                    TIER_CLASS[r.issuer_tier],
-                  )}
-                >
-                  {TIER_TEXT[r.issuer_tier]}
-                </span>
-              )}
-            </span>
-          ) : (
-            "—"
-          )}
-        </td>
-        <td className="px-2 py-1 text-right text-ink-muted">{fmt(r.strike)}</td>
-        <td className="px-2 py-1 text-right text-ink-muted">{fmtPct(r.moneyness)}</td>
-        <td className="px-2 py-1 text-right text-ink-muted">
-          <span className="inline-flex items-center gap-1">
-            {r.days_left ?? "—"}
-            {isExitCliff(r.days_left) && (
-              <span
-                data-testid="cliff-badge"
-                title="距最後交易日 ≤21 日曆日;法規:到期前 15 個交易日發行商可僅申報買進(出場品質懸崖)"
-                className="inline-block px-1 border border-line-strong text-ink text-[0.7rem]"
-              >
-                近到期
-              </span>
-            )}
-          </span>
-        </td>
-        <td className="px-2 py-1 text-right text-ink-dim">{fmt(r.exercise_ratio, 4)}</td>
-        <td className="px-2 py-1 text-right text-ink font-medium">{fmt(r.price)}</td>
-        <td className="px-2 py-1 text-right text-ink-muted">
-          {fmtVol(r.best_bid, r.best_bid_vol)}
-        </td>
-        <td className="px-2 py-1 text-right text-ink-muted">
-          <span className="inline-flex items-center gap-1">
-            {fmtVol(r.best_ask, r.best_ask_vol)}
-            {isNearSoldOut(r) && (
-              <span
-                data-testid="soldout-badge"
-                title="委賣掛單消失且委買仍在:發行商庫存不足 10 張時僅掛委買,報價可能與標的脫鉤"
-                className="inline-block px-1 border border-line-strong text-ink bg-ink/10 text-[0.7rem]"
-              >
-                近售罄
-              </span>
-            )}
-          </span>
-        </td>
-        <td className="px-2 py-1 text-right text-ink-muted">
-          {r.iv == null ? "—" : `${(r.iv * 100).toFixed(1)}%`}
-        </td>
-        <td className="px-2 py-1 text-right text-ink-muted">{fmt(r.theo_price)}</td>
-        <td className="px-2 py-1 text-right">
-          {r.mispricing_label ? (
-            <span className="inline-flex items-center gap-1">
-              <span className="text-ink-muted">{fmtPct(r.mispricing_pct)}</span>
-              <span
-                data-testid="mispricing-label"
-                className={cn(
-                  "inline-block px-1 border text-[0.7rem]",
-                  MISPRICING_CLASS[r.mispricing_label],
-                )}
-              >
-                {MISPRICING_TEXT[r.mispricing_label]}
-              </span>
-            </span>
-          ) : (
-            "—"
-          )}
-        </td>
-        <td className="px-2 py-1 text-right text-ink-muted">
-          {r.iv_percentile == null ? "—" : r.iv_percentile.toFixed(0)}
-        </td>
-        <td className="px-2 py-1 text-right">
-          <span data-testid="iv-drift-label" className="text-ink-muted">
-            {(r.iv_drift && DRIFT_TEXT[r.iv_drift]) || "—"}
-          </span>
-        </td>
-        <td className="px-2 py-1 text-right text-ink-muted">{fmt(r.leverage, 2)}</td>
-        <td className="px-2 py-1 text-right text-ink-muted">{fmtPct(r.spread_ratio)}</td>
-        <td className={cn("px-2 py-1 text-right", slrClass)}>
-          {fmt(r.spread_lev_ratio, 4)}
-        </td>
+        {WARRANT_COLUMNS.map((c) => (
+          <Fragment key={c.id}>{c.cell(r, ctx)}</Fragment>
+        ))}
         <td data-testid="flow-net-cell" className="px-2 py-1 text-right text-ink-muted">
           {flowNet === undefined ? "—" : flowNet === null ? "無成交" : formatNet(flowNet)}
         </td>
       </tr>
       {expanded && (
         <tr className="border-b border-line bg-bg-deep/50">
-          <td colSpan={HEADERS.length + 2} className="px-8 py-2 space-y-3">
+          <td colSpan={WARRANT_COLUMNS.length + 2} className="px-8 py-2 space-y-3">
             <div className="text-xs">
               <WarrantIvHistory warrantId={r.warrant_id} />
             </div>
