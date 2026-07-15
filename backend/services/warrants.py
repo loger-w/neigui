@@ -41,6 +41,7 @@ _client: httpx.AsyncClient | None = None
 _inflight: dict[str, dict[str, Any]] = {}
 _snapshot_mem: dict | None = None
 _last_build_attempt: float | None = None
+_prewarm_task: asyncio.Task | None = None
 _monotonic = time.monotonic  # 測試以 monkeypatch 換假鐘
 
 
@@ -496,6 +497,56 @@ async def _load_snapshot(refresh: bool) -> dict:
 async def get_snapshot(refresh: bool = False) -> dict:
     """公開快照入口(warrant_iv_history 的 iv-history 查 underlying 用)。"""
     return await _load_snapshot(refresh)
+
+
+# ---------------------------------------------------------------- lifespan 預熱(S3)
+
+
+def ensure_prewarm_task() -> None:
+    """lifespan 入口:背景預熱當日快照,完成後才啟動 iv backfill(讓路)。
+
+    perf/warrant-api-load S3:每日首請求原本付整段冷 build;預熱把它移到
+    啟動背景,趕在預熱完成前的請求走 `_run_once` inflight join 只等殘餘時間。
+    backfill 排在預熱之後 — E3 實證兩者並跑會互搶 TWSE(43.5s vs 4.6s)。
+    FAKE 不預熱(fixture 快照 lazy 即時 build),但 backfill 入口照舊呼叫
+    (其內部自帶 FAKE no-op)。
+    """
+    global _prewarm_task
+    from services import warrant_iv_history as ivh  # local import,同 _build_and_store
+
+    if os.getenv("FAKE_FINMIND") == "1":
+        ivh.ensure_backfill_task()
+        return
+    if _prewarm_task is not None and not _prewarm_task.done():
+        return
+    _prewarm_task = asyncio.ensure_future(_prewarm_then_backfill())
+
+
+async def _prewarm_then_backfill() -> None:
+    from services import warrant_iv_history as ivh
+
+    try:
+        await _load_snapshot(refresh=False)
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        # 預熱失敗的處理 = 放棄預熱讓 lazy 路徑接手重 build(60s backoff 保護);
+        # 啟動不得因上游故障阻塞
+        logger.warning("warrant snapshot prewarm failed; lazy path will rebuild", exc_info=True)
+    ivh.ensure_backfill_task()
+
+
+async def shutdown_prewarm_task() -> None:
+    """lifespan shutdown:--reload / SIGTERM 落在預熱窗口時收乾淨 pending task。"""
+    global _prewarm_task
+    task = _prewarm_task
+    _prewarm_task = None
+    if task is not None and not task.done():
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 def find_warrant_underlying(snap: dict, warrant_id: str) -> str | None:

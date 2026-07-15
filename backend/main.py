@@ -43,29 +43,35 @@ async def lifespan(app: FastAPI):
     # perf/cold-start:kickoff 背景載入即 serve,不 await — 冷啟動 ready 時間
     # 與 FinMind fetch 脫鉤;第一發 /api/symbols/* 由 _ensure_loaded await 共用 task。
     symbols_mod.ensure_load_task()
-    # warrant IV 歷史 backfill(一次性補 60 交易日;FAKE / env 0 不啟動)
-    ivh_mod.ensure_backfill_task()
+    # 權證快照預熱 → 完成後才啟動 warrant IV backfill(讓路,perf/warrant-api-load
+    # S3;E3 實證兩者並跑互搶 TWSE 把冷 build 43.5s vs 4.6s)。FAKE 不預熱、
+    # backfill 內部自帶 FAKE / env 0 no-op
+    ws_mod.ensure_prewarm_task()
     yield
     try:
         await symbols_mod.shutdown_load_task()
     finally:
         # close 放 finally:shutdown 段的取消 / 例外不得跳過連線清理。
         # 巢狀 finally:各 client 各自清,任一炸不跳過另一個。
-        # ivh 最外層先收:背景 task cancel 要在其依賴的 client close 前。
+        # prewarm 最先收(它完成時會 spawn backfill,必須先於 ivh.aclose 的
+        # backfill cancel);ivh 次之:背景 task cancel 要在其依賴的 client close 前。
         try:
-            await ivh_mod.aclose()
+            await ws_mod.shutdown_prewarm_task()
         finally:
             try:
-                if fm_mod._client is not None:
-                    await fm_mod._client.close()
+                await ivh_mod.aclose()
             finally:
                 try:
-                    await df_mod.aclose()
+                    if fm_mod._client is not None:
+                        await fm_mod._client.close()
                 finally:
                     try:
-                        await ws_mod.aclose()
+                        await df_mod.aclose()
                     finally:
-                        await wq_mod.aclose()
+                        try:
+                            await ws_mod.aclose()
+                        finally:
+                            await wq_mod.aclose()
 
 
 app = FastAPI(title="Chip Overview", version="0.1.0", lifespan=lifespan)

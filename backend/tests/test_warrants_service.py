@@ -30,6 +30,7 @@ def _reset_warrants_state(monkeypatch):
     monkeypatch.setattr(ws, "_client", None)
     monkeypatch.setattr(ws, "_snapshot_mem", None)
     monkeypatch.setattr(ws, "_last_build_attempt", None)
+    monkeypatch.setattr(ws, "_prewarm_task", None, raising=False)
     ws._inflight.clear()
     monkeypatch.setattr(ivh, "ensure_post_build_task", lambda snap: None)
     monkeypatch.setattr(ivh, "_drift_mem", None)
@@ -362,6 +363,75 @@ class TestBuild:
         payload = await ws.get_underlying_warrants("6781")
         assert state["peak"] > 1
         assert len(payload["warrants"]) == 1  # 並發不得改變組裝結果
+
+
+# ---------------------------------------------------------------- S3 lifespan 預熱
+
+class TestPrewarm:
+    async def test_prewarm_builds_then_starts_backfill(self, monkeypatch) -> None:
+        # perf/warrant-api-load S3:預熱把每日首請求的冷 build 移到啟動背景;
+        # backfill 必須排在預熱 build 之後(讓路,不搶 TWSE)
+        from services import warrant_iv_history as ivh
+
+        order: list[str] = []
+
+        async def fake_load(refresh: bool) -> dict:
+            order.append("prewarm")
+            return {"by_underlying": {}}
+
+        monkeypatch.setattr(ws, "_load_snapshot", fake_load)
+        monkeypatch.setattr(ivh, "ensure_backfill_task", lambda: order.append("backfill"))
+        ws.ensure_prewarm_task()
+        assert ws._prewarm_task is not None
+        await ws._prewarm_task
+        assert order == ["prewarm", "backfill"]
+
+    async def test_prewarm_failure_still_starts_backfill(self, monkeypatch) -> None:
+        # 預熱失敗 = 放棄預熱讓 lazy 路徑接手;backfill 照常(晚啟動已達成)
+        from services import warrant_iv_history as ivh
+
+        started = {"backfill": False}
+
+        async def failing_load(refresh: bool) -> dict:
+            raise HTTPException(status_code=404, detail={"error": "no_data"})
+
+        monkeypatch.setattr(ws, "_load_snapshot", failing_load)
+        monkeypatch.setattr(
+            ivh, "ensure_backfill_task", lambda: started.__setitem__("backfill", True)
+        )
+        ws.ensure_prewarm_task()
+        await ws._prewarm_task
+        assert started["backfill"] is True
+
+    async def test_prewarm_skipped_when_fake(self, monkeypatch) -> None:
+        # FAKE/e2e:不預熱(fixture 快照 lazy 即時 build),但 backfill 入口
+        # 照舊呼叫(其內部自帶 FAKE no-op)— 保持 lifespan 行為面不變
+        from services import warrant_iv_history as ivh
+
+        called = {"backfill": False}
+        monkeypatch.setenv("FAKE_FINMIND", "1")
+        monkeypatch.setattr(
+            ivh, "ensure_backfill_task", lambda: called.__setitem__("backfill", True)
+        )
+        ws.ensure_prewarm_task()
+        assert ws._prewarm_task is None
+        assert called["backfill"] is True
+
+    async def test_shutdown_cancels_pending_prewarm(self, monkeypatch) -> None:
+        # --reload / SIGTERM 落在預熱窗口:pending task 必須被收乾淨
+        release = asyncio.Event()
+
+        async def hanging_load(refresh: bool) -> dict:
+            await release.wait()
+            return {"by_underlying": {}}
+
+        monkeypatch.setattr(ws, "_load_snapshot", hanging_load)
+        ws.ensure_prewarm_task()
+        task = ws._prewarm_task
+        assert task is not None and not task.done()
+        await ws.shutdown_prewarm_task()
+        assert task.cancelled()
+        assert ws._prewarm_task is None
 
 
 # ---------------------------------------------------------------- iv_prev
