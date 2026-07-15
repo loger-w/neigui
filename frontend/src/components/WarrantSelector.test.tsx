@@ -338,6 +338,26 @@ describe("WarrantSelector", () => {
 
 // ---------------------------------------------------------------- warrant-selector-enhance
 
+describe("WarrantSelector 重製篩選(mod warrant-ux-feedback item 3)", () => {
+  it("調整篩選與排序後按重製 → 篩選/排序回預設、input 清空、rows 回全量", async () => {
+    mockApis(THREE, THREE_QUOTES);
+    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(3));
+    fireEvent.click(screen.getByRole("button", { name: "認售" }));
+    expect(screen.getAllByTestId("warrant-row")).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("剩餘天數下限"), { target: { value: "45" } });
+    fireEvent.click(screen.getByRole("button", { name: /^履約價/ })); // 改排序
+    fireEvent.click(screen.getByTestId("filter-reset-btn"));
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(3));
+    expect((screen.getByLabelText("剩餘天數下限") as HTMLInputElement).value).toBe("");
+    // 排序回預設差槓比 asc(null 沉底)
+    const ids = screen
+      .getAllByTestId("warrant-row")
+      .map((r) => r.getAttribute("data-warrant-id"));
+    expect(ids).toEqual(["030013", "030012", "03001P"]);
+  });
+});
+
 describe("WarrantSelector 價量兩行呈現(mod warrant-ux-feedback item 6b)", () => {
   it("委買/委賣:價格主體 + ×N張 第二行", async () => {
     mockApis([term()], {
