@@ -18,10 +18,11 @@ const flowState: {
   error: string | null;
 } = { data: null, loading: false, error: null };
 
-// jsdom 無 ResizeObserver;疊直/並排的 regression 由 e2e 視覺面把關,
-// 此處 mock 固定寬度走並排分支(其他 component test 同慣例)
+// jsdom 無 ResizeObserver → mock 寬度;預設 800 走並排分支,疊直分支
+// 由 sizeState.width 覆寫測(review P1:疊直原本零自動化鎖,僅一張手動截圖)
+const sizeState = { width: 800, height: 600 };
 vi.mock("../hooks/useContainerSize", () => ({
-  useContainerSize: () => ({ width: 800, height: 600 }),
+  useContainerSize: () => sizeState,
 }));
 
 vi.mock("../hooks/useWarrantFlow", () => ({
@@ -229,5 +230,27 @@ describe("WarrantFlowPanel", () => {
   it("symbol 空 → 引導文案", () => {
     render(<WarrantFlowPanel symbol="" active={true} />);
     expect(screen.getByText(/請先搜尋標的/)).toBeTruthy();
+  });
+
+  it("SC-3 疊直:容器寬 <640 → 買賣兩欄改單欄直排(grid-cols-1)", () => {
+    // review P1 補鎖:疊直分支原本只有手動截圖佐證,改 grid class 或 640
+    // 斷點不會有測試變紅 — 這裡鎖 class 分支本身,e2e 視覺面留給 V#。
+    sizeState.width = 500;
+    try {
+      flowState.data = mk();
+      renderPanel();
+      const grid = screen.getByTestId("flow-buy-col").parentElement!;
+      expect(grid.className).toContain("grid-cols-1");
+      expect(grid.className).not.toContain("grid-cols-2");
+    } finally {
+      sizeState.width = 800;
+    }
+  });
+
+  it("SC-3 並排:容器寬 ≥640 → grid-cols-2(對照組)", () => {
+    flowState.data = mk();
+    renderPanel();
+    const grid = screen.getByTestId("flow-buy-col").parentElement!;
+    expect(grid.className).toContain("grid-cols-2");
   });
 });

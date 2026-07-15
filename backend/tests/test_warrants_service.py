@@ -293,6 +293,20 @@ class TestBuild:
         payload = await ws.get_underlying_warrants("6781")
         assert payload["warrants"] == []
 
+    async def test_expired_tpex_warrant_filtered(self, monkeypatch) -> None:
+        # review P2 補鎖:到期剔除原僅 TWSE fixture 驗證 — TPEx 路徑
+        # (ExpiryDate 已過 as_of)走同一 add_warrant 分支,補資料路徑直接證據
+        mi = {("2026-07-09", "0999"): [twse_market_row()]}
+        patch_upstream(
+            monkeypatch,
+            mi_by_date=mi,
+            quts=[tpex_quts_row()],
+            tclose=[tpex_close_row()],
+            issue=[tpex_issue_row(expiry="20260601")],
+        )
+        payload = await ws.get_underlying_warrants("8086")
+        assert payload["warrants"] == []
+
     async def test_market_row_without_terms_skipped(self, monkeypatch) -> None:
         # edge 8:新掛牌 race — 行情有、條款缺 → skip 不炸
         mi = {("2026-07-09", "0999"): [twse_market_row(), twse_market_row(wid="030099")]}

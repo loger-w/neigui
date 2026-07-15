@@ -174,10 +174,14 @@ async def test_flow_bad_date_400(client):
         assert r.json()["detail"]["error"] == "bad_date"
 
 
-async def test_bad_symbol_400_both_paths(client):
+async def test_bad_symbol_400_all_paths(client):
     r = await client.get("/api/warrants/abc!!")
     assert r.status_code == 400
     assert r.json()["detail"]["error"] == "bad_symbol"
     r = await client.get("/api/warrants/0300123456789/brokers")
+    assert r.status_code == 400
+    assert r.json()["detail"]["error"] == "bad_symbol"
+    # review P2 補鎖:/flow 原缺專屬 bad_symbol 契約證據(共用 _validate_id)
+    r = await client.get("/api/warrants/abc!!/flow")
     assert r.status_code == 400
     assert r.json()["detail"]["error"] == "bad_symbol"
