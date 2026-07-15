@@ -59,6 +59,14 @@ def _reset_symbols_load_task(monkeypatch):
     monkeypatch.setattr(symbols_mod, "_load_task", None)
 
 
+@pytest.fixture(autouse=True)
+def _reset_warrant_prewarm_task(monkeypatch):
+    """warrants._prewarm_task 同款跨 event loop 殘留問題(見上)— 每測試清空。"""
+    import services.warrants as ws
+
+    monkeypatch.setattr(ws, "_prewarm_task", None)
+
+
 @pytest.fixture
 def bypass_finmind_rate_limiter(monkeypatch):
     """Opt-in: swap the rate limiter for a no-op + force client rebuild.

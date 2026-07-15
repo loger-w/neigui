@@ -16,6 +16,37 @@ import routes.symbols as symbols_mod
 from main import app
 
 
+@pytest.fixture(autouse=True)
+def _stub_warrant_prewarm(monkeypatch):
+    """lifespan 會 spawn 權證快照預熱(真 TWSE 網路);本檔只驗 symbols 隔離 —
+    stub 掉並記錄呼叫,防 unit test 在 cancel 競態窗內對 TWSE 發真請求
+    (unit tests 的 conftest 刻意 delenv FAKE_FINMIND,不會走 FAKE no-op)。"""
+    from services import warrants as ws
+
+    calls = {"n": 0}
+    monkeypatch.setattr(
+        ws, "ensure_prewarm_task", lambda: calls.__setitem__("n", calls["n"] + 1)
+    )
+    return calls
+
+
+async def test_lifespan_spawns_warrant_prewarm(_stub_warrant_prewarm, monkeypatch) -> None:
+    # 痛點:lifespan 若漏接 ensure_prewarm_task,每日首開退回冷 build(46s 級)
+    release = asyncio.Event()
+
+    async def hanging_load() -> None:
+        await release.wait()
+
+    monkeypatch.setattr(symbols_mod, "load_symbols", hanging_load)
+    cm = app.router.lifespan_context(app)
+    await asyncio.wait_for(cm.__aenter__(), timeout=1.0)
+    try:
+        assert _stub_warrant_prewarm["n"] == 1
+    finally:
+        release.set()
+        await cm.__aexit__(None, None, None)
+
+
 async def test_lifespan_startup_not_blocked_by_symbols_load(monkeypatch) -> None:
     # 痛點:load_symbols 若卡住(FinMind 慢 / 網路 hang),app ready 不得被拖著走。
     # 用永不完成的 load 證明 startup 與 symbols 載入脫鉤。
