@@ -189,7 +189,7 @@ self_review_head: d1618f6
 
 ### 自動化(auto-verify,exit code 逐一驗)
 - backend pytest 703 passed / 1 skipped;ruff 0 issues
-- frontend tsc 0 errors;vitest 84 檔 800 passed;build 成功
+- frontend tsc 0 errors;vitest 84 檔 802 passed(收尾 review 實測校正;Commit 8 補鎖後 +2);build 成功
 - e2e 37 passed / 2 skipped(@live @visual);E18/E19 新增(修 3 處 selector 驅動問題:exact label、dispatchEvent dnd、reload 重搜)
 
 ### 真實環境(dev server + DevTools MCP,2330 真實 1107 檔)
