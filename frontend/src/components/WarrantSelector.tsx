@@ -3,8 +3,18 @@ import { useWarrants } from "../hooks/useWarrants";
 import { useWarrantQuotes } from "../hooks/useWarrantQuotes";
 import { useWarrantBrokers } from "../hooks/useWarrantBrokers";
 import { WarrantIvHistory } from "./WarrantIvHistory";
+import { WarrantColumnMenu } from "./WarrantColumnMenu";
 import type { WarrantRow } from "../lib/warrant-data";
-import { WARRANT_COLUMNS, type WarrantColumnCtx } from "../lib/warrant-columns";
+import {
+  WARRANT_COLUMNS,
+  type WarrantColumnCtx,
+  type WarrantColumnDef,
+} from "../lib/warrant-columns";
+import {
+  loadColumnPrefs,
+  saveColumnPrefs,
+  type ColumnPrefs,
+} from "../lib/warrant-column-prefs";
 import {
   DEFAULT_FILTERS,
   filterWarrants,
@@ -31,6 +41,10 @@ function pctVal(v: number | null): string {
   return v == null ? "" : String(Math.round(v * 1000) / 10);
 }
 
+const REGISTRY_IDS = WARRANT_COLUMNS.map((c) => c.id);
+const LOCKED_IDS = WARRANT_COLUMNS.filter((c) => c.lockVisible).map((c) => c.id);
+const COLUMN_BY_ID = new Map(WARRANT_COLUMNS.map((c) => [c.id, c]));
+
 export function WarrantSelector({ symbol, active }: { symbol: string; active: boolean }) {
   const warrantsHook = useWarrants(symbol, active);
   const quotesHook = useWarrantQuotes(symbol, active);
@@ -42,6 +56,21 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
   // 篩選 input 用 defaultValue + epoch remount:controlled value 會沖掉
   // 「-」「0.」等打字中間態;重製 / 換標的靠 epoch 重掛同步顯示值
   const [filterEpoch, setFilterEpoch] = useState(0);
+  // 欄位偏好 = 全域設定(localStorage),不隨標的 reset(白名單 5)
+  const [colPrefs, setColPrefs] = useState<ColumnPrefs>(() =>
+    loadColumnPrefs(REGISTRY_IDS, LOCKED_IDS),
+  );
+  const handleColPrefs = (p: ColumnPrefs) => {
+    setColPrefs(p);
+    saveColumnPrefs(p);
+  };
+  const visibleColumns = useMemo(() => {
+    const hidden = new Set(colPrefs.hidden);
+    return colPrefs.order
+      .filter((id) => !hidden.has(id))
+      .map((id) => COLUMN_BY_ID.get(id))
+      .filter((c): c is WarrantColumnDef => c != null);
+  }, [colPrefs]);
 
   // 換標的:展開列與篩選歸零(舊標的殘留會誤導)
   useEffect(() => {
@@ -128,6 +157,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
         >
           重製篩選
         </button>
+        <WarrantColumnMenu columns={WARRANT_COLUMNS} prefs={colPrefs} onChange={handleColPrefs} />
         <div className="inline-flex items-stretch" role="group" aria-label="類型篩選">
           {(
             [
@@ -300,8 +330,13 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             <thead className="sticky top-0 bg-bg z-10">
               <tr className="border-b border-line-strong text-ink-dim">
                 <th className="px-2 py-1.5" aria-label="展開" />
-                {WARRANT_COLUMNS.map((c) => (
-                  <th key={c.id} scope="col" className="px-2 py-1.5 text-right first:text-left font-normal">
+                {visibleColumns.map((c) => (
+                  <th
+                    key={c.id}
+                    scope="col"
+                    title={c.desc}
+                    className="px-2 py-1.5 text-right first:text-left font-normal"
+                  >
                     {c.sortKey ? (
                       <button
                         type="button"
@@ -332,6 +367,7 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
                   }
                   slrClass={slrClass(r.spread_lev_ratio)}
                   brokersHook={expandedId === r.warrant_id ? brokersHook : null}
+                  columns={visibleColumns}
                 />
               ))}
             </tbody>
@@ -348,12 +384,14 @@ function RowPair({
   onToggle,
   slrClass,
   brokersHook,
+  columns,
 }: {
   row: WarrantRow;
   expanded: boolean;
   onToggle: () => void;
   slrClass: string;
   brokersHook: ReturnType<typeof useWarrantBrokers> | null;
+  columns: WarrantColumnDef[];
 }) {
   const ctx: WarrantColumnCtx = { slrClass };
   return (
@@ -374,13 +412,13 @@ function RowPair({
             {expanded ? "−" : "+"}
           </button>
         </td>
-        {WARRANT_COLUMNS.map((c) => (
+        {columns.map((c) => (
           <Fragment key={c.id}>{c.cell(r, ctx)}</Fragment>
         ))}
       </tr>
       {expanded && (
         <tr className="border-b border-line bg-bg-deep/50">
-          <td colSpan={WARRANT_COLUMNS.length + 1} className="px-8 py-2 space-y-3">
+          <td colSpan={columns.length + 1} className="px-8 py-2 space-y-3">
             <div className="text-xs">
               <WarrantIvHistory warrantId={r.warrant_id} />
             </div>

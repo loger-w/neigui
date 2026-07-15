@@ -338,6 +338,62 @@ describe("WarrantSelector", () => {
 
 // ---------------------------------------------------------------- warrant-selector-enhance
 
+describe("WarrantSelector 欄位選單整合(mod warrant-ux-feedback SC-6)", () => {
+  beforeEach(() => localStorage.clear());
+  afterEach(() => localStorage.clear());
+
+  it("localStorage 隱藏欄 → th 消失,展開列 colSpan 跟著縮(= th 總數)", async () => {
+    localStorage.setItem(
+      "neigui.warrant-columns.v1",
+      JSON.stringify({ order: [], hidden: ["iv", "exercise_ratio"] }),
+    );
+    mockApis([term()], {});
+    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
+    const headerTexts = screen
+      .getAllByRole("columnheader")
+      .map((th) => (th.textContent ?? "").replace(/ [↑↓]$/, ""));
+    expect(headerTexts).not.toContain("IV");
+    expect(headerTexts).not.toContain("行使比例");
+    expect(headerTexts).toContain("IV百分位"); // 只隱藏 iv,不誤傷同字根欄
+    fireEvent.click(screen.getByRole("button", { name: /展開分點/ }));
+    const expandedTd = document.querySelector("td[colspan]") as HTMLTableCellElement;
+    expect(expandedTd.colSpan).toBe(screen.getAllByRole("columnheader").length);
+  });
+
+  it("localStorage 順序 → 表頭依偏好排列;th 帶 title 說明", async () => {
+    const order = ["slr", "warrant_id", "name", "kind", "strike", "moneyness", "days_left",
+      "exercise_ratio", "price", "bid", "ask", "iv", "theo_price", "mispricing",
+      "iv_percentile", "iv_drift", "leverage", "spread_ratio"];
+    localStorage.setItem(
+      "neigui.warrant-columns.v1",
+      JSON.stringify({ order, hidden: [] }),
+    );
+    mockApis([term()], {});
+    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
+    const ths = screen.getAllByRole("columnheader");
+    expect((ths[1]?.textContent ?? "").replace(/ [↑↓]$/, "")).toBe("差槓比");
+    const slrTh = ths[1]!;
+    expect(slrTh.getAttribute("title")).toContain("價差比 ÷ 實質槓桿");
+  });
+
+  it("經選單勾掉欄位 → 表格即時反映且寫入 localStorage", async () => {
+    mockApis([term()], {});
+    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
+    fireEvent.click(screen.getByTestId("column-menu-btn"));
+    const ivRow = document.querySelector('[data-column-id="iv"]')!;
+    fireEvent.click(ivRow.querySelector("input[type=checkbox]")!);
+    const headerTexts = screen
+      .getAllByRole("columnheader")
+      .map((th) => (th.textContent ?? "").replace(/ [↑↓]$/, ""));
+    expect(headerTexts).not.toContain("IV");
+    const saved = JSON.parse(localStorage.getItem("neigui.warrant-columns.v1")!);
+    expect(saved.hidden).toContain("iv");
+  });
+});
+
 describe("WarrantSelector 重製篩選(mod warrant-ux-feedback item 3)", () => {
   it("調整篩選與排序後按重製 → 篩選/排序回預設、input 清空、rows 回全量", async () => {
     mockApis(THREE, THREE_QUOTES);

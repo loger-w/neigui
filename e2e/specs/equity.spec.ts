@@ -169,6 +169,34 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(detail).toContainText("資料日 = 2026-06-25");
   });
 
+  test("E18: 欄位選單 — 隱藏/拖曳調序/reload 持久(mod warrant-ux-feedback SC-6)", async ({ page }) => {
+    // 痛點:menu → prefs → visibleColumns → localStorage 全鏈;HTML5 拖曳
+    // jsdom 測不到(vitest 只鎖 ▲▼ 按鈕路徑),真瀏覽器在此鎖 dnd + 持久化。
+    await page.getByRole("button", { name: /^權證$/ }).click();
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
+    await page.getByTestId(TESTIDS.columnMenuBtn).click();
+    // 隱藏 IV 欄(checkbox 本體 sr-only → force)
+    await page.getByLabel("顯示 IV 欄").uncheck({ force: true });
+    // 拖曳:差槓比(尾欄)拖到 履約價 → 插到履約價前
+    await page
+      .locator('[data-column-id="slr"]')
+      .dragTo(page.locator('[data-column-id="strike"]'));
+    await page.keyboard.press("Escape"); // 收選單再驗表頭
+    const headerTexts = async () =>
+      (await page.locator("thead th").allTextContents()).map((t) => t.replace(/ [↑↓]$/, ""));
+    let hs = await headerTexts();
+    expect(hs).not.toContain("IV");
+    expect(hs).toContain("IV百分位"); // 不誤傷同字根欄
+    expect(hs.indexOf("差槓比")).toBe(hs.indexOf("履約價") - 1);
+    // reload 持久(localStorage)
+    await page.reload();
+    await page.getByRole("button", { name: /^權證$/ }).click();
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
+    hs = await headerTexts();
+    expect(hs).not.toContain("IV");
+    expect(hs.indexOf("差槓比")).toBe(hs.indexOf("履約價") - 1);
+  });
+
   test("E19: 重製篩選一鍵回預設(mod warrant-ux-feedback item 3)", async ({ page }) => {
     // 痛點:重製 → filters/sort state + epoch remount 同步鏈;縮量篩選後重製
     // 需回全量且 input 顯示同步清空(state 歸零但 input 殘留 = remount 鏈斷)。
