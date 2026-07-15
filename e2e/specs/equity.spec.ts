@@ -169,6 +169,19 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(detail).toContainText("資料日 = 2026-06-25");
   });
 
+  test("E19: 重製篩選一鍵回預設(mod warrant-ux-feedback item 3)", async ({ page }) => {
+    // 痛點:重製 → filters/sort state + epoch remount 同步鏈;縮量篩選後重製
+    // 需回全量且 input 顯示同步清空(state 歸零但 input 殘留 = remount 鏈斷)。
+    await page.getByRole("button", { name: /^權證$/ }).click();
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
+    await page.getByRole("button", { name: /^認售$/ }).click();
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(1);
+    await page.getByLabel("剩餘天數下限").fill("45");
+    await page.getByTestId("filter-reset-btn").click();
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
+    await expect(page.getByLabel("剩餘天數下限")).toHaveValue("");
+  });
+
   test("E12: IV趨勢欄 drift 標記(warrant-iv-drift SC-6)", async ({ page }) => {
     // 痛點:iv_history fixture → loader → detect_drift → snapshot merge 全鏈
     // 資料級 assertion(030012 遞減 / 030013 平穩顯示 —)— visibility-only

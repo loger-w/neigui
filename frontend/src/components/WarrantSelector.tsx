@@ -113,6 +113,21 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
         >
           重新整理
         </button>
+        <button
+          type="button"
+          data-testid="filter-reset-btn"
+          onClick={() => {
+            setFilters(DEFAULT_FILTERS);
+            setSortKey("spread_lev_ratio");
+            setSortDir("asc");
+            setFilterEpoch((e) => e + 1);
+          }}
+          aria-label="重製篩選"
+          title="清除全部篩選條件並將排序恢復預設(差槓比升序)"
+          className="px-2 py-1 pointer-coarse:min-h-11 border border-line text-ink-muted hover:text-ink hover:border-accent transition-colors cursor-pointer"
+        >
+          重製篩選
+        </button>
         <div className="inline-flex items-stretch" role="group" aria-label="類型篩選">
           {(
             [
