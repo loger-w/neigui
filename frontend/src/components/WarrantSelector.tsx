@@ -4,6 +4,8 @@ import { useWarrantQuotes } from "../hooks/useWarrantQuotes";
 import { useWarrantBrokers } from "../hooks/useWarrantBrokers";
 import { WarrantIvHistory } from "./WarrantIvHistory";
 import { WarrantColumnMenu } from "./WarrantColumnMenu";
+import { Checkbox } from "./ui/checkbox";
+import { NumberField } from "./ui/number-field";
 import type { WarrantRow } from "../lib/warrant-data";
 import {
   WARRANT_COLUMNS,
@@ -181,128 +183,132 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             </button>
           ))}
         </div>
-        <label className="inline-flex items-center gap-1 text-ink-muted">
-          剩餘天數 ≥
-          <input
-            type="number"
-            className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
-            aria-label="剩餘天數下限"
-            defaultValue={numVal(filters.minDaysLeft)}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, minDaysLeft: numOrNull(e.target.value) }))
-            }
-          />
-        </label>
-        <label className="inline-flex items-center gap-1 text-ink-muted">
-          價內外%
-          <input
-            type="number"
-            className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
-            aria-label="價內外下限(%)"
-            placeholder="min"
-            defaultValue={pctVal(filters.moneynessMin)}
-            onChange={(e) => {
-              const n = numOrNull(e.target.value);
-              setFilters((f) => ({ ...f, moneynessMin: n == null ? null : n / 100 }));
-            }}
-          />
-          ~
-          <input
-            type="number"
-            className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
-            aria-label="價內外上限(%)"
-            placeholder="max"
-            defaultValue={pctVal(filters.moneynessMax)}
-            onChange={(e) => {
-              const n = numOrNull(e.target.value);
-              setFilters((f) => ({ ...f, moneynessMax: n == null ? null : n / 100 }));
-            }}
-          />
-        </label>
-        <label className="inline-flex items-center gap-1 text-ink-muted">
-          估價差%
-          <input
-            type="number"
-            className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
-            aria-label="估價差下限(%)"
-            placeholder="min"
-            defaultValue={pctVal(filters.mispricingMin)}
-            onChange={(e) => {
-              const n = numOrNull(e.target.value);
-              setFilters((f) => ({ ...f, mispricingMin: n == null ? null : n / 100 }));
-            }}
-          />
-          ~
-          <input
-            type="number"
-            className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
-            aria-label="估價差上限(%)"
-            placeholder="max"
-            defaultValue={pctVal(filters.mispricingMax)}
-            onChange={(e) => {
-              const n = numOrNull(e.target.value);
-              setFilters((f) => ({ ...f, mispricingMax: n == null ? null : n / 100 }));
-            }}
-          />
-        </label>
-        <label className="inline-flex items-center gap-1 text-ink-muted">
-          IV百分位 ≤
-          <input
-            type="number"
-            className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
-            aria-label="IV百分位上限"
-            defaultValue={numVal(filters.ivPctlMax)}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, ivPctlMax: numOrNull(e.target.value) }))
-            }
-          />
-        </label>
-        <label className="inline-flex items-center gap-1 text-ink-muted">
-          價差比% ≤
-          <input
-            type="number"
-            className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
-            aria-label="價差比上限(%)"
-            defaultValue={pctVal(filters.spreadRatioMax)}
-            onChange={(e) => {
-              const n = numOrNull(e.target.value);
-              setFilters((f) => ({ ...f, spreadRatioMax: n == null ? null : n / 100 }));
-            }}
-          />
-        </label>
-        <label className="inline-flex items-center gap-1 text-ink-muted">
-          差槓比 ≤
-          <input
-            type="number"
-            className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
-            aria-label="差槓比上限"
-            defaultValue={numVal(filters.slrMax)}
-            onChange={(e) => setFilters((f) => ({ ...f, slrMax: numOrNull(e.target.value) }))}
-          />
-        </label>
-        <label className="inline-flex items-center gap-1 text-ink-muted">
-          委賣價 ≥
-          <input
-            type="number"
-            className="w-14 bg-bg-deep border border-line px-1 py-0.5 text-ink"
-            aria-label="委賣價下限"
-            defaultValue={numVal(filters.minAskPrice)}
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, minAskPrice: numOrNull(e.target.value) }))
-            }
-          />
-        </label>
-        <label className="inline-flex items-center gap-1.5 text-ink-muted cursor-pointer">
-          <input
-            type="checkbox"
-            checked={filters.requireBidVol}
-            aria-label="只看委買量大於零"
-            onChange={(e) =>
-              setFilters((f) => ({ ...f, requireBidVol: e.target.checked }))
-            }
-          />
-          委買量&gt;0
-        </label>
+        {/* 期限/位階群組 */}
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-2 pl-3 border-l border-line">
+          <label className="inline-flex items-center gap-1 text-ink-muted">
+            剩餘天數 ≥
+            <NumberField
+              ariaLabel="剩餘天數下限"
+              name="minDaysLeft"
+              step={10}
+              defaultValue={numVal(filters.minDaysLeft)}
+              onValueChange={(raw) =>
+                setFilters((f) => ({ ...f, minDaysLeft: numOrNull(raw) }))
+              }
+            />
+          </label>
+          <label className="inline-flex items-center gap-1 text-ink-muted">
+            價內外%
+            <NumberField
+              ariaLabel="價內外下限(%)"
+              name="moneynessMin"
+              placeholder="min"
+              defaultValue={pctVal(filters.moneynessMin)}
+              onValueChange={(raw) => {
+                const n = numOrNull(raw);
+                setFilters((f) => ({ ...f, moneynessMin: n == null ? null : n / 100 }));
+              }}
+            />
+            ~
+            <NumberField
+              ariaLabel="價內外上限(%)"
+              name="moneynessMax"
+              placeholder="max"
+              defaultValue={pctVal(filters.moneynessMax)}
+              onValueChange={(raw) => {
+                const n = numOrNull(raw);
+                setFilters((f) => ({ ...f, moneynessMax: n == null ? null : n / 100 }));
+              }}
+            />
+          </label>
+        </span>
+        {/* 估值/成本群組 */}
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-2 pl-3 border-l border-line">
+          <label className="inline-flex items-center gap-1 text-ink-muted">
+            估價差%
+            <NumberField
+              ariaLabel="估價差下限(%)"
+              name="mispricingMin"
+              placeholder="min"
+              defaultValue={pctVal(filters.mispricingMin)}
+              onValueChange={(raw) => {
+                const n = numOrNull(raw);
+                setFilters((f) => ({ ...f, mispricingMin: n == null ? null : n / 100 }));
+              }}
+            />
+            ~
+            <NumberField
+              ariaLabel="估價差上限(%)"
+              name="mispricingMax"
+              placeholder="max"
+              defaultValue={pctVal(filters.mispricingMax)}
+              onValueChange={(raw) => {
+                const n = numOrNull(raw);
+                setFilters((f) => ({ ...f, mispricingMax: n == null ? null : n / 100 }));
+              }}
+            />
+          </label>
+          <label className="inline-flex items-center gap-1 text-ink-muted">
+            IV百分位 ≤
+            <NumberField
+              ariaLabel="IV百分位上限"
+              name="ivPctlMax"
+              step={5}
+              defaultValue={numVal(filters.ivPctlMax)}
+              onValueChange={(raw) =>
+                setFilters((f) => ({ ...f, ivPctlMax: numOrNull(raw) }))
+              }
+            />
+          </label>
+          <label className="inline-flex items-center gap-1 text-ink-muted">
+            價差比% ≤
+            <NumberField
+              ariaLabel="價差比上限(%)"
+              name="spreadRatioMax"
+              step={0.5}
+              defaultValue={pctVal(filters.spreadRatioMax)}
+              onValueChange={(raw) => {
+                const n = numOrNull(raw);
+                setFilters((f) => ({ ...f, spreadRatioMax: n == null ? null : n / 100 }));
+              }}
+            />
+          </label>
+          <label className="inline-flex items-center gap-1 text-ink-muted">
+            差槓比 ≤
+            <NumberField
+              ariaLabel="差槓比上限"
+              name="slrMax"
+              step={0.05}
+              defaultValue={numVal(filters.slrMax)}
+              onValueChange={(raw) => setFilters((f) => ({ ...f, slrMax: numOrNull(raw) }))}
+            />
+          </label>
+        </span>
+        {/* 流動性群組 */}
+        <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-2 pl-3 border-l border-line">
+          <label className="inline-flex items-center gap-1 text-ink-muted">
+            委賣價 ≥
+            <NumberField
+              ariaLabel="委賣價下限"
+              name="minAskPrice"
+              step={0.1}
+              defaultValue={numVal(filters.minAskPrice)}
+              onValueChange={(raw) =>
+                setFilters((f) => ({ ...f, minAskPrice: numOrNull(raw) }))
+              }
+            />
+          </label>
+          <span className="inline-flex items-center gap-1.5 text-ink-muted">
+            <Checkbox
+              checked={filters.requireBidVol}
+              aria-label="只看委買量大於零"
+              onCheckedChange={(checked) =>
+                setFilters((f) => ({ ...f, requireBidVol: checked }))
+              }
+            />
+            委買量&gt;0
+          </span>
+        </span>
         {totalCount > 0 && (
           <span className="text-ink-dim ml-auto">
             {rows.length}/{totalCount} 檔

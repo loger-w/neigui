@@ -394,6 +394,36 @@ describe("WarrantSelector 欄位選單整合(mod warrant-ux-feedback SC-6)", () 
   });
 });
 
+describe("WarrantSelector 篩選列改造(mod warrant-ux-feedback item 4)", () => {
+  it("number input 換 NumberField:帶 name 屬性 + stepper 按鈕可調值", async () => {
+    mockApis([term()], {});
+    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
+    const days = screen.getByLabelText("剩餘天數下限") as HTMLInputElement;
+    expect(days.name).toBe("minDaysLeft"); // next-time a11y:form field 帶 name
+    fireEvent.click(screen.getByLabelText("剩餘天數下限 增加"));
+    // 剩餘天數 step=10(天數級距;% 欄 step=1、差槓比 0.05、委賣價 0.1)
+    expect((screen.getByLabelText("剩餘天數下限") as HTMLInputElement).value).toBe("10");
+  });
+
+  it("stepper 調值會真的過濾(filters state 同步)", async () => {
+    mockApis(
+      [term(), term({ warrant_id: "030013" })],
+      {
+        "030012": quote({ days_left: 40 }),
+        "030013": quote({ days_left: 0 }),
+      },
+    );
+    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(2));
+    fireEvent.click(screen.getByLabelText("剩餘天數下限 增加")); // → 10;030013 days_left 0 被濾
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
+    expect(screen.getAllByTestId("warrant-row")[0]?.getAttribute("data-warrant-id")).toBe(
+      "030012",
+    );
+  });
+});
+
 describe("WarrantSelector 重製篩選(mod warrant-ux-feedback item 3)", () => {
   it("調整篩選與排序後按重製 → 篩選/排序回預設、input 清空、rows 回全量", async () => {
     mockApis(THREE, THREE_QUOTES);
