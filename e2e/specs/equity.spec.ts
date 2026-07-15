@@ -105,6 +105,8 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     const row12 = page.locator('[data-warrant-id="030012"]');
     await expect(row12).toContainText("3.50"); // MIS 現價(非 EOD 收盤 3.30)
     await expect(row12).toContainText(/\d+\.\d%/); // IV / 價內外 % 有值(計算鏈非空)
+    // 價量兩行(mod warrant-ux-feedback item 6b):030012 委買 3.48×50(fixture 已知有量列)
+    await expect(row12.getByTestId("bid-cell")).toContainText("×50張");
     await expect(page.getByText(/最後更新 13:30/)).toBeVisible(); // quotes 層到位
     await expect(page.getByText(/快照基準日 2026-06-26/)).toBeVisible();
   });

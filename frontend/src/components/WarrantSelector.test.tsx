@@ -116,7 +116,7 @@ describe("WarrantSelector", () => {
       .map((th) => (th.textContent ?? "").replace(/ [↑↓]$/, ""));
     for (const h of [
       "代號", "名稱", "類型", "履約價", "價內外", "剩餘天數", "行使比例",
-      "現價", "買價/量", "賣價/量", "IV", "理論價", "估價差", "IV百分位",
+      "現價", "委買", "委賣", "IV", "理論價", "估價差", "IV百分位",
       "實質槓桿", "價差比", "差槓比",
     ]) {
       expect(headerTexts).toContain(h);
@@ -337,6 +337,46 @@ describe("WarrantSelector", () => {
 });
 
 // ---------------------------------------------------------------- warrant-selector-enhance
+
+describe("WarrantSelector 價量兩行呈現(mod warrant-ux-feedback item 6b)", () => {
+  it("委買/委賣:價格主體 + ×N張 第二行", async () => {
+    mockApis([term()], {
+      "030012": quote({ best_bid: 1.23, best_bid_vol: 45, best_ask: 1.26, best_ask_vol: 12 }),
+    });
+    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
+    const bid = screen.getByTestId("bid-cell");
+    expect(bid.textContent).toContain("1.23");
+    expect(bid.textContent).toContain("×45張");
+    const ask = screen.getByTestId("ask-cell");
+    expect(ask.textContent).toContain("1.26");
+    expect(ask.textContent).toContain("×12張");
+  });
+
+  it("價 null → 單行 —;價在量 null → 無第二行;量 0 → ×0張(缺報價≠零掛單)", async () => {
+    mockApis(
+      [term(), term({ warrant_id: "030013" })],
+      {
+        // 030012:bid 全缺、ask 有價量 0;030013:bid 有價量 null
+        "030012": quote({
+          best_bid: null, best_bid_vol: null, best_ask: 2.5, best_ask_vol: 0, days_left: 60,
+        }),
+        "030013": quote({ best_bid: 1.0, best_bid_vol: null, days_left: 60 }),
+      },
+    );
+    render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(2));
+    const rows = screen.getAllByTestId("warrant-row");
+    const r12 = rows.find((r) => r.getAttribute("data-warrant-id") === "030012")!;
+    const r13 = rows.find((r) => r.getAttribute("data-warrant-id") === "030013")!;
+    const bid12 = within(r12).getByTestId("bid-cell");
+    expect(bid12.textContent?.replace(/\s/g, "")).toBe("—");
+    expect(within(r12).getByTestId("ask-cell").textContent).toContain("×0張");
+    const bid13 = within(r13).getByTestId("bid-cell");
+    expect(bid13.textContent).toContain("1.00");
+    expect(bid13.textContent).not.toContain("×");
+  });
+});
 
 describe("WarrantSelector 懸崖 / 近售罄 badge(SC-8/SC-9)", () => {
   it("days_left ≤21 顯示近到期 badge,title 含法規口徑", async () => {

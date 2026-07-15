@@ -17,9 +17,16 @@ function fmtPct(v: number | null | undefined, digits = 1): string {
   return `${pct > 0 ? "+" : ""}${pct.toFixed(digits)}%`;
 }
 
-function fmtVol(price: number | null | undefined, vol: number | null | undefined): string {
+/** 價主量副兩行(item 6b 拍板):價 null → — 單行;量 null → 無第二行;
+ * 量 0 → ×0張 照列(缺報價 ≠ 零掛單,兩種事實分開呈現)。 */
+function priceVolLines(price: number | null | undefined, vol: number | null | undefined) {
   if (price == null) return "—";
-  return `${price.toFixed(2)}/${vol ?? "—"}`;
+  return (
+    <>
+      <div>{price.toFixed(2)}</div>
+      {vol != null && <div className="text-ink-dim text-[0.7rem]">×{vol}張</div>}
+    </>
+  );
 }
 
 const MISPRICING_TEXT = { cheap: "偏便宜", fair: "合理", expensive: "偏貴" } as const;
@@ -151,22 +158,22 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
   },
   {
     id: "bid",
-    label: "買價/量",
-    desc: "最佳委買價與掛單量",
+    label: "委買",
+    desc: "最佳委買價;第二行 ×N張 為掛單量",
     cell: (r) => (
-      <td className="px-2 py-1 text-right text-ink-muted">
-        {fmtVol(r.best_bid, r.best_bid_vol)}
+      <td data-testid="bid-cell" className="px-2 py-1 text-right text-ink-muted">
+        {priceVolLines(r.best_bid, r.best_bid_vol)}
       </td>
     ),
   },
   {
     id: "ask",
-    label: "賣價/量",
-    desc: "最佳委賣價與掛單量;委賣消失且委買仍在標「近售罄」",
+    label: "委賣",
+    desc: "最佳委賣價;第二行 ×N張 為掛單量;委賣消失且委買仍在標「近售罄」",
     cell: (r) => (
-      <td className="px-2 py-1 text-right text-ink-muted">
+      <td data-testid="ask-cell" className="px-2 py-1 text-right text-ink-muted">
         <span className="inline-flex items-center gap-1">
-          {fmtVol(r.best_ask, r.best_ask_vol)}
+          {r.best_ask == null ? "—" : <span>{r.best_ask.toFixed(2)}</span>}
           {isNearSoldOut(r) && (
             <span
               data-testid="soldout-badge"
@@ -177,6 +184,9 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
             </span>
           )}
         </span>
+        {r.best_ask != null && r.best_ask_vol != null && (
+          <div className="text-ink-dim text-[0.7rem]">×{r.best_ask_vol}張</div>
+        )}
       </td>
     ),
   },
