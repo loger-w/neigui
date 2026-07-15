@@ -40,6 +40,33 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.31.0",
+    date: "2026-07-15",
+    highlights: "權證挑選介面大改:欄位自由排列、報價呈現更直覺、精簡低價值資訊",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證表新增「欄位」選單:可拖曳調整欄位順序、勾選顯示或隱藏,每個欄位附一句說明;設定會自動記住,重開頁面仍保留",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "委買/委賣改為價格為主、掛單量以小字列在第二行,不再與價格擠成一串",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "篩選列改版:新增「重製篩選」一鍵回到預設,數字條件附 −/+ 調整按鈕並依用途分組",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "介面精簡:移除發行商排行與發行商欄、市場欄、一鍵波段套用與分點買賣超欄(實用度偏低)",
+      },
+    ],
+  },
+  {
     version: "0.30.0",
     date: "2026-07-14",
     highlights: "發行商排行更公平:同類權證互比,不再被產品組合拉偏",
