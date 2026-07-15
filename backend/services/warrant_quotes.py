@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 MIS_URL = "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
 MIS_BATCH_SIZE = 100  # S-6:140 OK / 145 炸,留 headroom
+# perf/warrant-api-load S4:2330 級 16 批全序列盤中 1.4-1.8s 貼 2s 線;
+# 有限並發 3 溫和試探(S-6 的 145 炸是單批 size 上限,非並發證據)—
+# 真實環境若見 MIS 錯誤/封鎖徵兆,revert 本常數即回序列
+MIS_MAX_CONCURRENCY = 3
 QUOTES_COOLDOWN_SEC = 10.0  # S-6;前端 refetchInterval 15s > cooldown
 QUOTES_COOLDOWN_MAX = 8  # cooldown dict 上限(R8)
 MISPRICE_FAIR_BAND = 0.10  # 估價差 ±10% 內 = 合理 [auto-default: 實作期校準]
@@ -304,10 +308,21 @@ async def _build_quotes(stock_id: str) -> dict:
     codes = [f"{_mis_prefix(terms[0]['market'])}_{stock_id}.tw"] + [
         f"{_mis_prefix(w['market'])}_{w['warrant_id']}.tw" for w in terms
     ]
-    raw_rows: list = []
-    for i in range(0, len(codes), MIS_BATCH_SIZE):
-        # 序列送出不並發(S-6 保守化)
-        raw_rows.extend(await _fetch_mis_raw("|".join(codes[i : i + MIS_BATCH_SIZE])))
+    # S4:有限並發送批(≤ MIS_MAX_CONCURRENCY);結果進 dict 按 code 收斂,
+    # 批次完成順序不影響 payload
+    sem = asyncio.Semaphore(MIS_MAX_CONCURRENCY)
+
+    async def _bounded_fetch(ex_ch: str) -> list:
+        async with sem:
+            return await _fetch_mis_raw(ex_ch)
+
+    batches = await asyncio.gather(
+        *(
+            _bounded_fetch("|".join(codes[i : i + MIS_BATCH_SIZE]))
+            for i in range(0, len(codes), MIS_BATCH_SIZE)
+        )
+    )
+    raw_rows: list = [m for batch in batches for m in batch]
     quotes_by_code: dict[str, dict] = {}
     for m in raw_rows:
         q = _parse_mis_row(m)
