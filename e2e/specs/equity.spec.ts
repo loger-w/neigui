@@ -167,17 +167,6 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(detail).toContainText("資料日 = 2026-06-25");
   });
 
-  test("E15: 發行商欄 merge 全鏈(warrant-selector-enhance SC-4)", async ({ page }) => {
-    // 痛點:36_L/36_O fixture → issuer map(FAKE sync 分支)→ get_underlying_warrants
-    // merge → 前端欄位 — 資料級鎖簡稱(030012=元大、030011=凱基),對照缺漏
-    // 或 merge 斷鏈時全欄 —,visibility-only 蓋不住這種 silent 失效。
-    await page.getByRole("button", { name: /^權證$/ }).click();
-    const row12 = page.locator('[data-warrant-id="030012"]');
-    await expect(row12.getByTestId(TESTIDS.issuerCell)).toContainText("元大");
-    const row11 = page.locator('[data-warrant-id="030011"]');
-    await expect(row11.getByTestId(TESTIDS.issuerCell)).toContainText("凱基");
-  });
-
   test("E16: 波段 preset 一鍵套用(warrant-selector-enhance SC-6)", async ({ page }) => {
     // 痛點:preset → filters state → controlled inputs 同步鏈;篩選數學已由
     // vitest 鎖,e2e 鎖「按鈕按下去 UI 真的反映六鍵」(uncontrolled input 時代
@@ -193,26 +182,6 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(page.getByLabel("差槓比上限")).toHaveValue("0.3");
     await expect(page.getByLabel("委賣價下限")).toHaveValue("0.6");
     await expect(page.getByLabel("只看委買量大於零")).toBeChecked();
-  });
-
-  test("E17: 發行商排行面板展開(issuer-rank-strata v2 分層)", async ({ page }) => {
-    // 痛點:iv_history FAKE archive(2317 七檔 = 唯一有效層 otm|far)→ 層內
-    // midrank pctl → rank route → 面板表格全鏈資料級:元大 iv 分位 2.5/7≈35.7%、
-    // 凱基 6/7≈85.7% 皆 fixtures 手算值(change-spec §7.2 配方);2330 側兩層
-    // 各 1 檔 <5 → 整層不計分,030012 不入 n_scored(元大 5/6)。
-    await page.getByRole("button", { name: /^權證$/ }).click();
-    const panel = page.getByTestId(TESTIDS.issuerRankPanel);
-    await panel.getByRole("button", { name: /發行商排行/ }).click();
-    await expect(panel).toContainText("基準日 2026-06-26");
-    await expect(panel).toContainText("元大");
-    await expect(panel).toContainText("35.7%"); // 元大層內 iv 分位(手算)
-    await expect(panel).toContainText("85.7%"); // 凱基層內 iv 分位(手算)
-    await expect(panel).toContainText("前段"); // 元大 rank 1 → front tier
-    await expect(panel).toContainText("收盤報價推算"); // proxy 口徑標注
-    await expect(panel).toContainText("層內取分位"); // v2 分層口徑標注
-    // 計分/總檔數:元大 5/6(030012 落樣本不足層)、凱基 2/3(030011 sparse)
-    await expect(panel).toContainText("5/6");
-    await expect(panel).toContainText("2/3");
   });
 
   test("E12: IV趨勢欄 drift 標記(warrant-iv-drift SC-6)", async ({ page }) => {

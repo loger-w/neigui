@@ -157,7 +157,7 @@ async def _load_day_archives(dates: list[str] | None = None) -> list[tuple[str, 
 
 
 async def load_recent_archives(limit: int) -> list[tuple[str, dict]]:
-    """公開 accessor:最近 limit 個日檔 [(date, payload)] 升冪(warrant_issuers 用;
+    """公開 accessor:最近 limit 個日檔 [(date, payload)] 升冪(供跨模組重用;
     跨模組不吃私有函式 — twse-tpex-conventions)。"""
     return await _load_day_archives(_list_day_dates(limit))
 
