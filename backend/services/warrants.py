@@ -534,20 +534,23 @@ async def _prewarm_then_backfill() -> None:
         raise
     except Exception:
         # 預熱失敗的處理 = 放棄預熱讓 lazy 路徑接手重 build(60s backoff 保護);
-        # 啟動不得因上游故障阻塞
-        logger.warning("warrant snapshot prewarm failed; lazy path will rebuild", exc_info=True)
+        # 啟動不得因上游故障阻塞。背景 task 邊界精度對齊 ivh._backfill_guarded
+        logger.exception("warrant snapshot prewarm failed; lazy path will rebuild")
     ivh.ensure_backfill_task()
     # S5 freshness keeper:長駐跨午夜後快照 stale,由本 task 背景重 build;
-    # 失敗的處理 = 下一 tick 重試(_load_snapshot 內 60s backoff 防風暴),
-    # 記 debug 不 warning — 連續假日無資料期會每 tick 觸發,warning 會洗版
+    # 失敗的處理 = 下一 tick 重試(_load_snapshot 內 60s backoff 防風暴)
     while True:
         await asyncio.sleep(SNAPSHOT_FRESHNESS_INTERVAL_SEC)
         try:
             await _load_snapshot(refresh=False)
         except asyncio.CancelledError:
             raise
+        except HTTPException:
+            # 預期狀態(404 no_data:連續假日無資料 + 無 cache)— debug 級,
+            # warning 會在假期每 tick 洗版
+            logger.debug("warrant snapshot freshness tick: no data yet")
         except Exception:
-            logger.debug("warrant snapshot freshness tick failed; retrying next tick")
+            logger.exception("warrant snapshot freshness tick failed; retrying next tick")
 
 
 async def shutdown_prewarm_task() -> None:
