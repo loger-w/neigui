@@ -383,8 +383,13 @@ class TestPrewarm:
         monkeypatch.setattr(ivh, "ensure_backfill_task", lambda: order.append("backfill"))
         ws.ensure_prewarm_task()
         assert ws._prewarm_task is not None
-        await ws._prewarm_task
-        assert order == ["prewarm", "backfill"]
+        # keeper 常駐(S5)— task 不會結束;輪詢等 backfill 被 spawn
+        for _ in range(50):
+            if "backfill" in order:
+                break
+            await asyncio.sleep(0.01)
+        assert order[:2] == ["prewarm", "backfill"]
+        await ws.shutdown_prewarm_task()
 
     async def test_prewarm_failure_still_starts_backfill(self, monkeypatch) -> None:
         # 預熱失敗 = 放棄預熱讓 lazy 路徑接手;backfill 照常(晚啟動已達成)
@@ -400,8 +405,31 @@ class TestPrewarm:
             ivh, "ensure_backfill_task", lambda: started.__setitem__("backfill", True)
         )
         ws.ensure_prewarm_task()
-        await ws._prewarm_task
+        for _ in range(50):
+            if started["backfill"]:
+                break
+            await asyncio.sleep(0.01)
         assert started["backfill"] is True
+        await ws.shutdown_prewarm_task()
+
+    async def test_freshness_keeper_reloads_after_prewarm(self, monkeypatch) -> None:
+        # S5:長駐 backend 跨午夜後快照 stale — keeper 每 tick 走一次
+        # _load_snapshot(fresh 時為純 mem 檢查 no-op),每日首請求不再付冷 build
+        from services import warrant_iv_history as ivh
+
+        calls = {"n": 0}
+
+        async def fake_load(refresh: bool) -> dict:
+            calls["n"] += 1
+            return {"by_underlying": {}}
+
+        monkeypatch.setattr(ws, "_load_snapshot", fake_load)
+        monkeypatch.setattr(ivh, "ensure_backfill_task", lambda: None)
+        monkeypatch.setattr(ws, "SNAPSHOT_FRESHNESS_INTERVAL_SEC", 0.01, raising=False)
+        ws.ensure_prewarm_task()
+        await asyncio.sleep(0.1)
+        await ws.shutdown_prewarm_task()
+        assert calls["n"] >= 2  # 預熱 1 次 + keeper ≥1 tick
 
     async def test_prewarm_skipped_when_fake(self, monkeypatch) -> None:
         # FAKE/e2e:不預熱(fixture 快照 lazy 即時 build),但 backfill 入口

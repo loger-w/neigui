@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 _CACHE_VERSION = 1
 SNAPSHOT_FILE = "warrants_snapshot_latest.json"
 SNAPSHOT_LOOKBACK_DAYS = 7
+# S5 keeper tick:fresh 時 _load_snapshot 為純 mem 檢查,tick 成本 ~0;
+# 跨午夜 stale 後最遲一個 tick 內背景重 build(每日首請求不付冷 build)
+SNAPSHOT_FRESHNESS_INTERVAL_SEC = 300.0
 BUILD_RETRY_COOLDOWN_SEC = 60.0  # R2-1:build 失敗/空回後的重試 backoff
 IV_YIELD_EVERY = 500  # IV 反解純 CPU,每 N 檔讓出 event loop(R7)
 _UA = "Mozilla/5.0 (neigui-backend)"
@@ -534,6 +537,17 @@ async def _prewarm_then_backfill() -> None:
         # 啟動不得因上游故障阻塞
         logger.warning("warrant snapshot prewarm failed; lazy path will rebuild", exc_info=True)
     ivh.ensure_backfill_task()
+    # S5 freshness keeper:長駐跨午夜後快照 stale,由本 task 背景重 build;
+    # 失敗的處理 = 下一 tick 重試(_load_snapshot 內 60s backoff 防風暴),
+    # 記 debug 不 warning — 連續假日無資料期會每 tick 觸發,warning 會洗版
+    while True:
+        await asyncio.sleep(SNAPSHOT_FRESHNESS_INTERVAL_SEC)
+        try:
+            await _load_snapshot(refresh=False)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.debug("warrant snapshot freshness tick failed; retrying next tick")
 
 
 async def shutdown_prewarm_task() -> None:
