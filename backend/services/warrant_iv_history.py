@@ -518,6 +518,10 @@ async def _backfill() -> None:
         if found >= days_target:
             break
         d = today - timedelta(days=i)
+        if d.weekday() >= 5:
+            # perf/warrant-api-load S1:週末必休市(補班日不開市)— 不發請求;
+            # 原本每個週末日 4 個 MI_INDEX + retry sleep,啟動即與冷 build 搶 TWSE
+            continue
         date_iso = d.isoformat()
         if _day_file(date_iso).exists():
             found += 1
