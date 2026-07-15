@@ -177,10 +177,11 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await page.getByTestId(TESTIDS.columnMenuBtn).click();
     // 隱藏 IV 欄(checkbox 本體 sr-only → force)
     await page.getByLabel("顯示 IV 欄").uncheck({ force: true });
-    // 拖曳:差槓比(尾欄)拖到 履約價 → 插到履約價前
-    await page
-      .locator('[data-column-id="slr"]')
-      .dragTo(page.locator('[data-column-id="strike"]'));
+    // 拖曳:差槓比(尾欄)拖到 履約價 → 插到履約價前。Playwright dragTo 對
+    // HTML5 原生 dnd 不可靠(實測 order 不變)→ dispatchEvent 驅動 handler
+    // 接線;真實滑鼠拖曳軌跡由 Phase 7 DevTools 人工驗證。
+    await page.locator('[data-column-id="slr"]').dispatchEvent("dragstart");
+    await page.locator('[data-column-id="strike"]').dispatchEvent("drop");
     await page.keyboard.press("Escape"); // 收選單再驗表頭
     const headerTexts = async () =>
       (await page.locator("thead th").allTextContents()).map((t) => t.replace(/ [↑↓]$/, ""));
@@ -188,8 +189,10 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     expect(hs).not.toContain("IV");
     expect(hs).toContain("IV百分位"); // 不誤傷同字根欄
     expect(hs.indexOf("差槓比")).toBe(hs.indexOf("履約價") - 1);
-    // reload 持久(localStorage)
+    // reload 持久(localStorage);reload 丟 symbol state → 重走搜尋流程
     await page.reload();
+    await page.getByPlaceholder(/搜尋代號/).fill("2330");
+    await page.getByRole("option").first().click();
     await page.getByRole("button", { name: /^權證$/ }).click();
     await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
     hs = await headerTexts();
@@ -204,10 +207,11 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
     await page.getByRole("button", { name: /^認售$/ }).click();
     await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(1);
-    await page.getByLabel("剩餘天數下限").fill("45");
+    // exact:true — stepper 按鈕 aria-label(「… 增加/減少」)子字串會撞
+    await page.getByLabel("剩餘天數下限", { exact: true }).fill("45");
     await page.getByTestId("filter-reset-btn").click();
     await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
-    await expect(page.getByLabel("剩餘天數下限")).toHaveValue("");
+    await expect(page.getByLabel("剩餘天數下限", { exact: true })).toHaveValue("");
   });
 
   test("E12: IV趨勢欄 drift 標記(warrant-iv-drift SC-6)", async ({ page }) => {
