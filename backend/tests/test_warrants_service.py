@@ -332,6 +332,37 @@ class TestBuild:
         payload = await ws.get_underlying_warrants("2330")
         assert payload["warrants"] == []  # SC-7
 
+    async def test_build_upstream_fetches_run_concurrently(self, monkeypatch) -> None:
+        # perf/warrant-api-load S2:六個 upstream fetch 序列 ≈ 4.1s(E3 分解),
+        # 並發後冷 build ≈ max(單路)+ IV;儀器 = in-flight 峰值 > 1
+        state = {"inflight": 0, "peak": 0}
+
+        def instrument(rows_fn):
+            async def _fetch(*args) -> list:
+                state["inflight"] += 1
+                state["peak"] = max(state["peak"], state["inflight"])
+                await asyncio.sleep(0.01)
+                state["inflight"] -= 1
+                return rows_fn(*args)
+
+            return _fetch
+
+        mi = {
+            ("2026-07-09", "0999"): [twse_market_row()],
+            ("2026-07-09", "0999P"): [],
+        }
+        monkeypatch.setattr(
+            ws, "fetch_mi_index", instrument(lambda d, t: mi.get((d, t), []))
+        )
+        monkeypatch.setattr(ws, "fetch_t187ap37", instrument(lambda: [twse_terms_row()]))
+        monkeypatch.setattr(ws, "_fetch_tpex_quts", instrument(lambda: [tpex_quts_row()]))
+        monkeypatch.setattr(ws, "_fetch_tpex_close", instrument(lambda: [tpex_close_row()]))
+        monkeypatch.setattr(ws, "fetch_tpex_issue", instrument(lambda: [tpex_issue_row()]))
+
+        payload = await ws.get_underlying_warrants("6781")
+        assert state["peak"] > 1
+        assert len(payload["warrants"]) == 1  # 並發不得改變組裝結果
+
 
 # ---------------------------------------------------------------- iv_prev
 

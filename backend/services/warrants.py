@@ -307,8 +307,11 @@ async def _build_snapshot() -> dict:
     put_rows: list = []
     for i in range(SNAPSHOT_LOOKBACK_DAYS):
         d = (today - timedelta(days=i)).isoformat()
-        call_rows = await fetch_mi_index(d, "0999")
-        put_rows = await fetch_mi_index(d, "0999P")
+        # perf/warrant-api-load S2:同日兩型並發(E1b 實測 TWSE 無礙);
+        # 跨候選日回退仍序列,語意不變
+        call_rows, put_rows = await asyncio.gather(
+            fetch_mi_index(d, "0999"), fetch_mi_index(d, "0999P")
+        )
         if call_rows or put_rows:
             as_of = d
             break
@@ -321,19 +324,24 @@ async def _build_snapshot() -> dict:
             "by_underlying": {},
         }
 
+    # S2:四路條款/行情來源並發(TPEx OpenAPI 為靜態 dump,3 路溫和);
+    # 任一 fetch 例外 → 整 build 例外,與原序列語意等價
+    terms_raw, quts_raw, tclose_raw, issue_raw = await asyncio.gather(
+        fetch_t187ap37(), _fetch_tpex_quts(), _fetch_tpex_close(), fetch_tpex_issue()
+    )
     terms_by_id: dict[str, dict] = {}
-    for raw in await fetch_t187ap37():
+    for raw in terms_raw:
         t = normalize_twse_terms_row(raw)
         if t is not None:
             terms_by_id[t["warrant_id"]] = t
-    quts_rows = [q for r in await _fetch_tpex_quts() if (q := normalize_tpex_quts_row(r))]
+    quts_rows = [q for r in quts_raw if (q := normalize_tpex_quts_row(r))]
     tclose_by_id: dict[str, dict] = {}
-    for raw in await _fetch_tpex_close():
+    for raw in tclose_raw:
         c = normalize_tpex_close_row(raw)
         if c is not None:
             tclose_by_id[c["stock_id"]] = c
     issue_by_id: dict[str, dict] = {}
-    for raw in await fetch_tpex_issue():
+    for raw in issue_raw:
         t = normalize_tpex_issue_row(raw)
         if t is not None:
             issue_by_id[t["warrant_id"]] = t
