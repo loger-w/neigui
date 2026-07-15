@@ -314,6 +314,25 @@ class TestCooldownAndBatching:
         assert all(n <= wq.MIS_BATCH_SIZE for n in counter["batches"])
         assert sum(counter["batches"]) == 151  # 150 權證 + 標的
 
+    async def test_mis_batches_bounded_concurrency(self, monkeypatch) -> None:
+        # perf/warrant-api-load S4:2330 級標的 16 批全序列,盤中每批 70-200ms
+        # → quotes 1.4-1.8s 貼 2s 線;有限並發(≤3,MIS 非官方端點溫和試探)
+        state = {"inflight": 0, "peak": 0}
+
+        async def fake_mis(ex_ch: str) -> list:
+            state["inflight"] += 1
+            state["peak"] = max(state["peak"], state["inflight"])
+            await asyncio.sleep(0.01)
+            state["inflight"] -= 1
+            return []
+
+        warrants = [term(wid=f"03{i:04d}") for i in range(450)]
+        patch_snapshot(monkeypatch, warrants)
+        monkeypatch.setattr(wq, "_fetch_mis_raw", fake_mis)
+        await wq.get_quotes("2330")
+        assert state["peak"] > 1
+        assert state["peak"] <= wq.MIS_MAX_CONCURRENCY
+
     async def test_empty_warrants_no_mis_call(self, monkeypatch) -> None:
         patch_snapshot(monkeypatch, [])
         counter = patch_mis(monkeypatch, {})
