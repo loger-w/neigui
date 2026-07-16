@@ -256,10 +256,40 @@ class TestSeriesAssembly:
         out = await ivh.get_iv_history("030012")
         assert out is not None
         assert [p["date"] for p in out["series"]] == ["2026-07-07", "2026-07-08", "2026-07-09"]
-        assert out["series"][1] == {"date": "2026-07-08", "iv_bid": None, "iv_ask": None}
+        assert out["series"][1] == {
+            "date": "2026-07-08", "iv_bid": None, "iv_ask": None, "underlying_close": None,
+        }
         assert out["series"][0]["iv_bid"] == pytest.approx(0.41)
+        assert out["series"][0]["underlying_close"] == pytest.approx(100.0)
         assert out["terms_approx_dates"] == ["2026-07-09"]
         assert out["drift"]["label"] == "insufficient"  # 3 日 < MIN_VALID_POINTS
+        if ivh._rebuild_bg_task is not None:
+            await ivh._rebuild_bg_task
+
+    async def test_series_underlying_close_sourced_from_any_same_uid_warrant(
+        self, monkeypatch
+    ) -> None:
+        # underlying_close 取該標的任一權證的非 null s:本權證缺席/s 缺日由同標的
+        # 其他權證補;全缺 → None(change-spec §6 backend)
+        write_day("2026-07-07", {
+            "030012": {"b": 0.6, "a": 0.65, "c": 0.62, "s": None, "ivb": None, "iva": None},
+            "030013": {"b": 1.0, "a": 1.1, "c": 1.05, "s": 102.5, "ivb": 0.40, "iva": 0.44},
+        })
+        write_day("2026-07-08", {
+            "030013": {"b": 1.0, "a": 1.1, "c": 1.05, "s": 103.0, "ivb": 0.40, "iva": 0.44},
+        })
+        write_day("2026-07-09", {
+            "030012": {"b": 0.55, "a": 0.60, "c": 0.57, "s": None, "ivb": None, "iva": None},
+        })
+        snap = make_snap([make_warrant(), make_warrant(wid="030013")])
+
+        async def fake_get_snapshot(refresh: bool = False) -> dict:
+            return snap
+
+        monkeypatch.setattr(ws, "get_snapshot", fake_get_snapshot)
+        out = await ivh.get_iv_history("030012")
+        assert out is not None
+        assert [p["underlying_close"] for p in out["series"]] == [102.5, 103.0, None]
         if ivh._rebuild_bg_task is not None:
             await ivh._rebuild_bg_task
 

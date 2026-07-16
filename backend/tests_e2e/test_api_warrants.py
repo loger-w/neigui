@@ -99,6 +99,8 @@ async def test_iv_history_contract(client):
     assert dates == sorted(dates)
     assert body["series"][-1]["date"] == "2026-06-26"  # FAKE_TODAY
     assert body["series"][-1]["iv_bid"] == pytest.approx(0.35, abs=0.01)
+    # 標的收盤序列(warrant-iv-redesign):FAKE fixture 的 s 直通 payload
+    assert body["series"][-1]["underlying_close"] == pytest.approx(1000.0)
     assert body["drift"]["label"] == "declining"
     assert set(body["drift"]) == {"label", "slope_bid", "slope_ask", "n_valid"}
     assert body["terms_approx_dates"] == []
