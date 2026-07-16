@@ -1,0 +1,1299 @@
+diff --git a/backend/routes/warrants.py b/backend/routes/warrants.py
+index a8405a7..8f8f72e 100644
+--- a/backend/routes/warrants.py
++++ b/backend/routes/warrants.py
+@@ -1,8 +1,8 @@
+-"""權證選擇器 routes — EOD 快照 / MIS 盤中 quotes / FinMind 分點展開。
++"""權證選擇器 routes — EOD 快照 / MIS 盤中 quotes / IV 歷史 / 分點流向。
+ 
+-Error 邊界逐 endpoint(design R9):warrants/quotes 上游是 TWSE/TPEx/MIS,
+-自己 catch httpx 基類 → 502 warrant_upstream(中央 handler 會錯標
+-finmind_error);brokers 上游真是 FinMind → 不 catch,沿中央 handler。
++Error 邊界逐 endpoint(design R9):warrants/quotes/iv-history 上游是
++TWSE/TPEx/MIS,自己 catch httpx 基類 → 502 warrant_upstream(中央 handler
++會錯標 finmind_error);flow 上游是 FinMind → 不 catch,沿中央 handler。
+ """
+ 
+ from __future__ import annotations
+@@ -15,7 +15,6 @@ import httpx
+ from fastapi import APIRouter, HTTPException, Request
+ 
+ from services import (
+-    warrant_brokers,
+     warrant_flow,
+     warrant_iv_history,
+     warrant_quotes,
+@@ -95,10 +94,3 @@ async def get_warrant_flow(
+     # FinMind httpx 錯誤不 catch → 中央 handler finmind_error;
+     # 快照(TWSE/TPEx)錯誤 service 內已轉 502 warrant_upstream(design R16)
+     return await run_with_disconnect(request, warrant_flow.get_flow(stock_id, date, refresh))
+-
+-
+-@router.get("/api/warrants/{warrant_id}/brokers")
+-async def get_warrant_brokers(request: Request, warrant_id: str, refresh: bool = False) -> dict:
+-    _validate_id(warrant_id)
+-    # 不 catch httpx:FinMind 上游走中央 handler → finmind_error(R9)
+-    return await run_with_disconnect(request, warrant_brokers.get_brokers(warrant_id, refresh))
+diff --git a/backend/services/finmind.py b/backend/services/finmind.py
+index 28667b4..3a43730 100644
+--- a/backend/services/finmind.py
++++ b/backend/services/finmind.py
+@@ -644,7 +644,7 @@ class FinMindClient:
+         """權證分點報表(Sponsor;T+1 lag)— data_id 必填、end_date 必須留空
+         (官方 400 訊息明示單日單發;memory reference_finmind_warrant_dataset)。
+         FinMind start_date open-ended 可能回多日 rows,查詢日過濾由 caller
+-        (services/warrant_brokers.py)負責。"""
++        (services/warrant_flow.py)負責。"""
+         return await self._get(
+             f"{_FINMIND_BASE}/data",
+             {
+diff --git a/backend/services/warrant_brokers.py b/backend/services/warrant_brokers.py
+deleted file mode 100644
+index 4155cdf..0000000
+--- a/backend/services/warrant_brokers.py
++++ /dev/null
+@@ -1,84 +0,0 @@
+-"""權證分點展開 — FinMind TaiwanStockWarrantTradingDailyReport(T+1 單發)。
+-
+-全表不含分點欄(spec §6.3 降級設計,避免 fan-out 燒配額);只在前端展開
+-單一權證時抓,cache per (warrant_id, date)。
+-"""
+-
+-from __future__ import annotations
+-
+-import logging
+-from datetime import timedelta
+-
+-from services import clock
+-from utils.cache import atomic_write_json, chip_cache_dir, read_json
+-
+-logger = logging.getLogger(__name__)
+-
+-_CACHE_VERSION = 1
+-BROKER_LOOKBACK_DAYS = 5  # 跳週末後最多向前試的交易日數
+-
+-
+-def get_finmind():
+-    """per-module wrap(finmind-conventions):test 可獨立 monkeypatch。"""
+-    from services.finmind import get_finmind as _real
+-
+-    return _real()
+-
+-
+-def _cache_path(warrant_id: str, date: str):
+-    return chip_cache_dir() / f"warrant_brokers_{warrant_id}_{date}.json"
+-
+-
+-def _read_cache(warrant_id: str, date: str) -> dict | None:
+-    payload = read_json(_cache_path(warrant_id, date))
+-    if not isinstance(payload, dict) or payload.get("_cache_version") != _CACHE_VERSION:
+-        return None
+-    return payload
+-
+-
+-def _candidate_dates() -> list[str]:
+-    """today−1 起向前的非週末日,取 BROKER_LOOKBACK_DAYS 個。"""
+-    dates: list[str] = []
+-    d = clock.today() - timedelta(days=1)
+-    while len(dates) < BROKER_LOOKBACK_DAYS:
+-        if d.weekday() < 5:
+-            dates.append(d.isoformat())
+-        d -= timedelta(days=1)
+-    return dates
+-
+-
+-async def get_brokers(warrant_id: str, refresh: bool = False) -> dict:
+-    """最近可得日的分點買賣超;全空 → data_date None(權證存在但無報表屬常態)。"""
+-    fm = get_finmind()
+-    for date in _candidate_dates():
+-        if not refresh:
+-            cached = _read_cache(warrant_id, date)
+-            if cached is not None:
+-                return {"data_date": cached["data_date"], "rows": cached["rows"]}
+-        raw = await fm.fetch_warrant_trading_daily_report(warrant_id, date)
+-        # impl-R4:start_date open-ended 會回多日 rows → 只留查詢日
+-        day_rows = [r for r in raw if r.get("date") == date]
+-        if not day_rows:
+-            continue
+-        rows = []
+-        for r in day_rows:
+-            try:
+-                buy = int(r["buy"])
+-                sell = int(r["sell"])
+-                rows.append(
+-                    {
+-                        "broker_name": str(r["securities_trader"]),
+-                        "buy": buy,
+-                        "sell": sell,
+-                        "net": buy - sell,
+-                    }
+-                )
+-            except (KeyError, ValueError, TypeError):
+-                logger.warning("skip bad warrant broker row: %r", r)
+-        rows.sort(key=lambda r: -abs(r["net"]))
+-        atomic_write_json(
+-            _cache_path(warrant_id, date),
+-            {"_cache_version": _CACHE_VERSION, "data_date": date, "rows": rows},
+-        )
+-        return {"data_date": date, "rows": rows}
+-    return {"data_date": None, "rows": []}
+diff --git a/backend/tests/test_warrant_brokers.py b/backend/tests/test_warrant_brokers.py
+deleted file mode 100644
+index 2123bbd..0000000
+--- a/backend/tests/test_warrant_brokers.py
++++ /dev/null
+@@ -1,111 +0,0 @@
+-"""權證分點展開 service 測試(warrant-selector design §1.4;FinMind T+1 單發)。"""
+-
+-from __future__ import annotations
+-
+-from datetime import date as date_type
+-
+-import pytest
+-
+-from services import clock
+-from services import warrant_brokers as wb
+-
+-
+-def fm_row(
+-    date: str = "2026-07-09",
+-    trader: str = "凱基-台北",
+-    buy: int = 500,
+-    sell: int = 100,
+-) -> dict:
+-    return {
+-        "date": date,
+-        "stock_id": "030012",
+-        "securities_trader": trader,
+-        "securities_trader_id": "9200",
+-        "buy": buy,
+-        "sell": sell,
+-    }
+-
+-
+-class FakeFinMind:
+-    def __init__(self, rows_by_date: dict[str, list]) -> None:
+-        self.rows_by_date = rows_by_date
+-        self.calls: list[str] = []
+-
+-    async def fetch_warrant_trading_daily_report(self, warrant_id: str, date: str) -> list:
+-        self.calls.append(date)
+-        return self.rows_by_date.get(date, [])
+-
+-
+-@pytest.fixture(autouse=True)
+-def _freeze_today(monkeypatch):
+-    # 2026-07-10 = Friday
+-    monkeypatch.setattr(clock, "today", lambda: date_type(2026, 7, 10))
+-
+-
+-def patch_fm(monkeypatch, rows_by_date: dict[str, list]) -> FakeFinMind:
+-    fake = FakeFinMind(rows_by_date)
+-    monkeypatch.setattr(wb, "get_finmind", lambda: fake)
+-    return fake
+-
+-
+-async def test_hits_t_minus_1_sorted_by_abs_net(monkeypatch):
+-    fake = patch_fm(monkeypatch, {
+-        "2026-07-09": [
+-            fm_row(trader="小券商", buy=110, sell=100),      # net +10
+-            fm_row(trader="大買超", buy=900, sell=100),      # net +800
+-            fm_row(trader="大賣超", buy=100, sell=600),      # net -500
+-        ],
+-    })
+-    payload = await wb.get_brokers("030012")
+-    assert payload["data_date"] == "2026-07-09"
+-    assert fake.calls == ["2026-07-09"]
+-    rows = payload["rows"]
+-    assert [r["broker_name"] for r in rows] == ["大買超", "大賣超", "小券商"]
+-    assert rows[0] == {"broker_name": "大買超", "buy": 900, "sell": 100, "net": 800}
+-
+-
+-async def test_skips_weekend_in_walkback(monkeypatch):
+-    # today = Mon 2026-07-13 → T-1 走 Fri 2026-07-10(跳週日/週六)
+-    monkeypatch.setattr(clock, "today", lambda: date_type(2026, 7, 13))
+-    fake = patch_fm(monkeypatch, {"2026-07-10": [fm_row(date="2026-07-10")]})
+-    payload = await wb.get_brokers("030012")
+-    assert payload["data_date"] == "2026-07-10"
+-    assert fake.calls == ["2026-07-10"]  # 不打週末
+-
+-
+-async def test_multiday_rows_filtered_to_query_date(monkeypatch):
+-    # impl-R4:FinMind start_date open-ended 回多日 rows → 只留查詢日
+-    patch_fm(monkeypatch, {
+-        "2026-07-09": [fm_row(date="2026-07-09"), fm_row(date="2026-07-10", trader="混入")],
+-    })
+-    payload = await wb.get_brokers("030012")
+-    assert payload["data_date"] == "2026-07-09"
+-    assert [r["broker_name"] for r in payload["rows"]] == ["凱基-台北"]
+-
+-
+-async def test_walkback_until_hit(monkeypatch):
+-    fake = patch_fm(monkeypatch, {"2026-07-07": [fm_row(date="2026-07-07")]})
+-    payload = await wb.get_brokers("030012")
+-    assert payload["data_date"] == "2026-07-07"
+-    assert fake.calls == ["2026-07-09", "2026-07-08", "2026-07-07"]
+-
+-
+-async def test_all_empty_returns_none(monkeypatch):
+-    fake = patch_fm(monkeypatch, {})
+-    payload = await wb.get_brokers("030012")
+-    assert payload == {"data_date": None, "rows": []}
+-    assert len(fake.calls) == wb.BROKER_LOOKBACK_DAYS
+-
+-
+-async def test_cache_hit_skips_refetch(monkeypatch):
+-    fake = patch_fm(monkeypatch, {"2026-07-09": [fm_row()]})
+-    await wb.get_brokers("030012")
+-    await wb.get_brokers("030012")
+-    assert len(fake.calls) == 1
+-
+-
+-async def test_refresh_bypasses_cache(monkeypatch):
+-    fake = patch_fm(monkeypatch, {"2026-07-09": [fm_row()]})
+-    await wb.get_brokers("030012")
+-    await wb.get_brokers("030012", refresh=True)
+-    assert len(fake.calls) == 2
+diff --git a/backend/tests/test_warrants_routes.py b/backend/tests/test_warrants_routes.py
+index b4ecf56..1bff3be 100644
+--- a/backend/tests/test_warrants_routes.py
++++ b/backend/tests/test_warrants_routes.py
+@@ -1,8 +1,7 @@
+ """/api/warrants/* route 測試(warrant-selector design §1.5)。
+ 
+ 痛點:中央 httpx.HTTPError handler 回 finmind_error — 對 TWSE/TPEx/MIS 是
+-錯標籤,warrants/quotes handler 必須自己 catch;brokers 上游真是 FinMind,
+-反而不 catch(R9 逐 endpoint)。
++錯標籤,warrants/quotes/iv-history handler 必須自己 catch(R9 逐 endpoint)。
+ """
+ 
+ from __future__ import annotations
+@@ -11,7 +10,6 @@ import httpx
+ import pytest
+ from fastapi.testclient import TestClient
+ 
+-import services.warrant_brokers as wb
+ import services.warrant_quotes as wq
+ import services.warrants as ws
+ 
+@@ -52,11 +50,12 @@ def test_warrants_bad_symbol_400(client):
+     assert r.json()["detail"] == {"error": "bad_symbol"}
+ 
+ 
+-def test_brokers_bad_symbol_400(client):
+-    # R2-3:warrant_id 同樣驗證(未驗證直傳 FinMind 會 ×5 回退放大配額浪費)
+-    r = client.get("/api/warrants/0300123456789/brokers")
+-    assert r.status_code == 400
+-    assert r.json()["detail"] == {"error": "bad_symbol"}
++def test_brokers_route_removed():
++    # mod warrant-selector-table SC-3:分點買賣超前後端整組移除,route 不得殘留。
++    # app.routes 不攤平 included router(_IncludedRouter)→ 走 openapi paths。
++    from main import app
++
++    assert "/api/warrants/{warrant_id}/brokers" not in app.openapi()["paths"]
+ 
+ 
+ def test_warrants_upstream_error_502(monkeypatch, client):
+@@ -93,28 +92,6 @@ def test_quotes_shape_and_upstream_error(monkeypatch, client):
+     assert r.json()["detail"] == {"error": "warrant_upstream"}
+ 
+ 
+-def test_brokers_shape_ok(monkeypatch, client):
+-    async def fake(warrant_id: str, refresh: bool = False):
+-        assert warrant_id == "030012"
+-        return {"data_date": "2026-07-09", "rows": []}
+-
+-    monkeypatch.setattr(wb, "get_brokers", fake)
+-    r = client.get("/api/warrants/030012/brokers")
+-    assert r.status_code == 200
+-    assert r.json()["data_date"] == "2026-07-09"
+-
+-
+-def test_brokers_httpx_error_falls_to_central_handler(monkeypatch, client):
+-    # R9:brokers 上游 = FinMind,不自己 catch → 中央 handler finmind_error
+-    async def boom(warrant_id: str, refresh: bool = False):
+-        raise httpx.ConnectError("finmind down")
+-
+-    monkeypatch.setattr(wb, "get_brokers", boom)
+-    r = client.get("/api/warrants/030012/brokers")
+-    assert r.status_code == 502
+-    assert r.json()["detail"] == {"error": "finmind_error"}
+-
+-
+ # ---------------------------------------------------------------- iv-history(warrant-iv-drift)
+ 
+ 
+@@ -148,7 +125,14 @@ def test_warrants_rows_carry_iv_drift(monkeypatch, client, _reset_ivh):
+         {
+             "_cache_version": 1,
+             "built_from": [],
+-            "drift": {"030012": {"label": "declining", "slope_bid": -0.002, "slope_ask": -0.001, "n_valid": 55}},
++            "drift": {
++                "030012": {
++                    "label": "declining",
++                    "slope_bid": -0.002,
++                    "slope_ask": -0.001,
++                    "n_valid": 55,
++                }
++            },
+         },
+     )
+     r = client.get("/api/warrants/2330")
+diff --git a/backend/tests_e2e/test_api_warrants.py b/backend/tests_e2e/test_api_warrants.py
+index 3fbaf34..96be8ee 100644
+--- a/backend/tests_e2e/test_api_warrants.py
++++ b/backend/tests_e2e/test_api_warrants.py
+@@ -78,15 +78,6 @@ async def test_quotes_happy_path_computed_fields(client):
+     assert q15["price"] == pytest.approx((1.05 + 1.15) / 2)
+ 
+ 
+-async def test_brokers_happy_path(client):
+-    r = await client.get("/api/warrants/030012/brokers")
+-    assert r.status_code == 200
+-    body = r.json()
+-    assert body["data_date"] == "2026-06-25"  # FAKE_TODAY-1(impl-R4)
+-    assert body["rows"][0]["broker_name"] == "凱基-台北"
+-    assert body["rows"][0]["net"] == 800
+-
+-
+ async def test_warrants_rows_carry_iv_drift(client):
+     # SC-4 contract:iv_drift 欄走 fixture → loader → drift 真計算路徑
+     r = await client.get("/api/warrants/2330")
+@@ -178,9 +169,6 @@ async def test_bad_symbol_400_all_paths(client):
+     r = await client.get("/api/warrants/abc!!")
+     assert r.status_code == 400
+     assert r.json()["detail"]["error"] == "bad_symbol"
+-    r = await client.get("/api/warrants/0300123456789/brokers")
+-    assert r.status_code == 400
+-    assert r.json()["detail"]["error"] == "bad_symbol"
+     # review P2 補鎖:/flow 原缺專屬 bad_symbol 契約證據(共用 _validate_id)
+     r = await client.get("/api/warrants/abc!!/flow")
+     assert r.status_code == 400
+diff --git a/docs/next-time.md b/docs/next-time.md
+index 2f8421c..cdc0f38 100644
+--- a/docs/next-time.md
++++ b/docs/next-time.md
+@@ -20,7 +20,7 @@
+ ## From /feat warrant-broker-flow(2026-07-14)
+ 
+ - **equity tab 鈕樣板第 4 份複本**(App.tsx overview/bubble/warrants/warrant-flow 四個 button + hidden div 逐字同構):抽 tab config array + map render。觸發重評估:第 5 個 equity tab 出現、或改 tab 共通樣式/a11y 時
+-- **backend「候選日回退 + inflight dedup + date 驗證」三組近親複本**:`_run_once` 第 3 份(warrants/market_breadth/warrant_flow,行為已分歧 — refcount vs 無)、`_candidate_dates` 第 2 份(warrant_brokers 起點 today−1/5 天 vs warrant_flow today/10 天)、date query 驗證 2 處不同步(routes/warrants regex+fromisoformat vs routes/daytrade_fee 僅 fromisoformat)。抽共用時三組一起收。觸發重評估:任一組要出第 3+ 份複本、或修其中一份的 bug 時
++- **backend「候選日回退 + inflight dedup + date 驗證」複本組**:`_run_once` 第 3 份(warrants/market_breadth/warrant_flow,行為已分歧 — refcount vs 無)、date query 驗證 2 處不同步(routes/warrants regex+fromisoformat vs routes/daytrade_fee 僅 fromisoformat)。抽共用時一起收。(2026-07-16 註:原列 `_candidate_dates` 第 2 份複本已隨 warrant_brokers.py 刪除而收斂為單份,自本條移除)觸發重評估:任一組要出第 3+ 份複本、或修其中一份的 bug 時
+ - **flow 對映用「當下快照」查歷史候選日**:權證在 (d, 快照 as_of] 間到期下市 → 該權證當日成交不入統計、計入 unmapped_count(訊號在但不歸屬)。預設查詢(d = 快照 as_of)零影響;顯式舊 date / 深度回退才失真。修法 = 快照歷史化(per-date terms archive),v1 out of scope。觸發重評估:user 用顯式 date 查歷史流向、或 unmapped_count 異常飆高時
+ - **`_cleanup_flow_caches` 每次冷聚合跑一次全目錄 iterdir**:目前冷聚合本身 200 req 網路成本 >> 1 次 iterdir,不值得節流;cache 目錄檔案數若破萬再加 last-cleanup 時戳門檻。觸發重評估:chip cache 目錄檔案數 >5k 或 real-env 量到 cleanup 佔時
+ - **[需 user 拍板] flow 明細表「淨買賣超」欄與 summary 買/賣對恆退化(RE-1 守恆恆等式)**:全分點報表下單權證跨全分點 net ≡ 0、每 kind 買==賣(2330 實測精確 0.0)。候選替代口徑:(a) per-warrant「分點淨流動」= Σ 正 net(= Σ|負 net|,量測換手集中度);(b) 發行商造市 seat 反向 net(散戶/主力 vs 造市商,需權證名 → 發行商 seat 對映 heuristic);(c) 砍欄位、summary 改「認購/認售成交額」兩數字。動口徑 = 對外契約 + SC 改寫 → /mod 流程。觸發:user 看到 v1 UI 全零欄位時
+diff --git a/docs/specs/warrant-selector/spec.md b/docs/specs/warrant-selector/spec.md
+index 2c51255..6a850f9 100644
+--- a/docs/specs/warrant-selector/spec.md
++++ b/docs/specs/warrant-selector/spec.md
+@@ -1,5 +1,12 @@
+ # 權證選擇器 — 標的驅動的盤中權證篩選(equity mode 新 tab)
+ 
++> **Amendment 2026-07-16(mod/warrant-selector-table)**:分點買賣超展開已整組移除
++> (前端 useWarrantBrokers / 展開列分點表 + backend `/brokers` route 與
++> `services/warrant_brokers.py`;row 展開現只剩 IV 時序)。受影響段落:Goal、§1
++> 篩選維度、§2.1、§3.3 route 清單、§5 SC-6、§6.1、§6.3 — 該等內容為歷史規格,
++> 現況以 mod change-spec 為準。`TaiwanStockWarrantTradingDailyReport` client
++> method 保留(權證分點流向頁 `warrant_flow.py` 續用)。
++
+ **Date**: 2026-07-08(EOD 初版)→ **2026-07-11 盤中版改版(user 拍板)**
+ **Type**: brainstorm 產出 spec(實作走 `/feat`,本檔為 Phase 0 pre-reading)
+ **Goal**: 「先選標的股、再挑權證」— 盤中列出標的全部權證(上市 + 上櫃),以條款、槓桿、流動性、**估價(是否合理價/便宜)**、分點籌碼、差槓比篩選排序;收盤後用最後快照,盤後也能選。
+@@ -93,7 +100,7 @@ GET https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_030012.tw|tse_2
+ - `routes/warrants.py`(每 router 一檔):
+   - `GET /api/warrants/{stock_id}?refresh=` → EOD 快照 per-underlying 條款 + 昨日欄位
+   - `GET /api/warrants/{stock_id}/quotes?refresh=` → 盤中層(§3.2)
+-  - `GET /api/warrants/{warrant_id}/brokers?refresh=` → FinMind 分點(T+1,單日單發)
++  - ~~`GET /api/warrants/{warrant_id}/brokers?refresh=` → FinMind 分點(T+1,單日單發)~~(2026-07-16 移除,見頂部 amendment)
+ - Error contract `{detail:{error}}` 沿用;502/503/400/404 語意照專案慣例。
+ 
+ ---
+@@ -127,7 +134,7 @@ GET https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_030012.tw|tse_2
+ 3. **SC-3** 盤中自動更新:交易時段 TanStack `refetchInterval` 輪詢(間隔常數,對齊 backend cooldown),收盤後停止輪詢並顯示「最後更新 HH:MM」;盤後開頁直接顯示最後快照。
+ 4. **SC-4** 篩選器:認購/認售 toggle、剩餘天數下限、價內外範圍、「委買量 > 0」開關、**估價差範圍、IV 百分位上限**;全部 client-side filter。
+ 5. **SC-5** 估價標籤與差槓比標色:中性色階(accent/區間標),**不用紅綠**(紅綠保留多空語意)、不寫任何方向性/建議文案;data-testid + 正向 assertion 鎖住。
+-6. **SC-6** 點單一權證 row 展開:FinMind 分點買賣超(T+1 單發);顯示「資料日 = T-1」標註。
++6. ~~**SC-6** 點單一權證 row 展開:FinMind 分點買賣超(T+1 單發);顯示「資料日 = T-1」標註。~~(2026-07-16 移除,見頂部 amendment;展開列現為 IV 時序)
+ 7. **SC-7** 標的無權證 → 「此標的無掛牌權證」空狀態(繁中)。
+ 8. **SC-8** `no_trading_day` / `refresh=true` 慣例沿用;EOD 快照 cache 以日期為 key + `_cache_version`。
+ 9. **SC-9** 完成 gate:`pytest -q` + `ruff check .` + `npm test` + `npm run build` + chrome-devtools 截圖入 `docs/specs/warrant-selector/screenshots/`。
+diff --git a/e2e/helpers/selectors.ts b/e2e/helpers/selectors.ts
+index caaa432..4da1deb 100644
+--- a/e2e/helpers/selectors.ts
++++ b/e2e/helpers/selectors.ts
+@@ -48,7 +48,6 @@ export const TESTIDS = {
+   warrantRow: "warrant-row",
+   warrantKindBadge: "warrant-kind-badge",
+   mispricingLabel: "mispricing-label",
+-  warrantBrokersDetail: "warrant-brokers-detail",
+   // 權證 IV 趨勢(feat/warrant-iv-drift)
+   ivDriftLabel: "iv-drift-label",
+   warrantIvChart: "warrant-iv-chart",
+diff --git a/e2e/specs/equity.spec.ts b/e2e/specs/equity.spec.ts
+index e206975..e49c220 100644
+--- a/e2e/specs/equity.spec.ts
++++ b/e2e/specs/equity.spec.ts
+@@ -109,6 +109,16 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
+     await expect(row12.getByTestId("bid-cell")).toContainText("×50張");
+     await expect(page.getByText(/最後更新 13:30/)).toBeVisible(); // quotes 層到位
+     await expect(page.getByText(/快照基準日 2026-06-26/)).toBeVisible();
++    // 表頭對齊與資料欄一致(mod warrant-selector-table SC-1):文字欄靠左、
++    // 數值欄靠右 — 舊寫法 first:text-left 打在展開空 th 上,全表頭右對齊。
++    await expect(page.locator("thead th").filter({ hasText: "代號" })).toHaveCSS(
++      "text-align",
++      "left",
++    );
++    await expect(page.locator("thead th").filter({ hasText: "履約價" })).toHaveCSS(
++      "text-align",
++      "right",
++    );
+   });
+ 
+   test("E9: 認售 toggle 篩選(SC-4)", async ({ page }) => {
+@@ -157,18 +167,6 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
+     await expect(page.getByText("此標的無掛牌權證")).toBeVisible();
+   });
+ 
+-  test("E11: row 展開分點(SC-6,FinMind T+1 單發)", async ({ page }) => {
+-    // 痛點:展開走 FakeFinMindClient MANIFEST 路徑(warrant_id 030012 與
+-    // fixtures/warrants/ 快照對齊 — impl-R2 跨 wave 契約);資料日 = FAKE_TODAY-1。
+-    await page.getByRole("button", { name: /^權證$/ }).click();
+-    const row12 = page.locator('[data-warrant-id="030012"]');
+-    await row12.getByRole("button", { name: /展開分點/ }).click();
+-    const detail = page.getByTestId(TESTIDS.warrantBrokersDetail);
+-    await expect(detail).toContainText("凱基-台北");
+-    await expect(detail).toContainText("800"); // net = buy 900 - sell 100
+-    await expect(detail).toContainText("資料日 = 2026-06-25");
+-  });
+-
+   test("E18: 欄位選單 — 隱藏/拖曳調序/reload 持久(mod warrant-ux-feedback SC-6)", async ({ page }) => {
+     // 痛點:menu → prefs → visibleColumns → localStorage 全鏈;HTML5 拖曳
+     // jsdom 測不到(vitest 只鎖 ▲▼ 按鈕路徑),真瀏覽器在此鎖 dnd + 持久化。
+@@ -214,6 +212,23 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
+     await expect(page.getByLabel("剩餘天數下限", { exact: true })).toHaveValue("");
+   });
+ 
++  test("E20: 發行商下拉篩選(mod warrant-selector-table SC-2)", async ({ page }) => {
++    // 痛點:extractIssuer 名稱抽取 → 選項推導 → filterWarrants 全鏈;fixture
++    // 2330 六檔發行商互異,選凱基 6→1(030011)是 discriminative 訊號;
++    // 重製篩選需連下拉一起回「全部」。
++    await page.getByRole("button", { name: /^權證$/ }).click();
++    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
++    await page.getByLabel("發行商篩選").selectOption("凱基");
++    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(1);
++    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveAttribute(
++      "data-warrant-id",
++      "030011",
++    );
++    await page.getByTestId("filter-reset-btn").click();
++    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
++    await expect(page.getByLabel("發行商篩選")).toHaveValue("all");
++  });
++
+   test("E12: IV趨勢欄 drift 標記(warrant-iv-drift SC-6)", async ({ page }) => {
+     // 痛點:iv_history fixture → loader → detect_drift → snapshot merge 全鏈
+     // 資料級 assertion(030012 遞減 / 030013 平穩顯示 —)— visibility-only
+@@ -230,7 +245,7 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
+     // 鎖 path d 屬性非空(資料級),空 geometry 時 svg 不 render。
+     await page.getByRole("button", { name: /^權證$/ }).click();
+     const row12 = page.locator('[data-warrant-id="030012"]');
+-    await row12.getByRole("button", { name: /展開分點/ }).click();
++    await row12.getByRole("button", { name: /展開明細/ }).click();
+     const chart = page.getByTestId(TESTIDS.warrantIvChart);
+     await expect(chart).toBeVisible();
+     const bidD = await chart.locator('path[data-side="bid"]').getAttribute("d");
+diff --git a/frontend/src/components/WarrantSelector.test.tsx b/frontend/src/components/WarrantSelector.test.tsx
+index 500e691..03b6204 100644
+--- a/frontend/src/components/WarrantSelector.test.tsx
++++ b/frontend/src/components/WarrantSelector.test.tsx
+@@ -73,10 +73,6 @@ function mockApis(
+   };
+   vi.spyOn(api, "warrants").mockResolvedValue(wp);
+   vi.spyOn(api, "warrantQuotes").mockResolvedValue(qp);
+-  vi.spyOn(api, "warrantBrokers").mockResolvedValue({
+-    data_date: "2026-07-09",
+-    rows: [{ broker_name: "凱基-台北", buy: 900, sell: 100, net: 800 }],
+-  });
+   vi.spyOn(api, "warrantIvHistory").mockResolvedValue({
+     warrant_id: "030013",
+     terms_approx_dates: [],
+@@ -191,22 +187,6 @@ describe("WarrantSelector", () => {
+     expect(screen.queryByText(/做多|做空|買進|賣出|建議|滿倉|賣選/)).toBeNull();
+   });
+ 
+-  it("row 展開 lazy 抓分點 + 資料日標註(SC-6)", async () => {
+-    mockApis(THREE, THREE_QUOTES);
+-    const brokerSpy = vi.spyOn(api, "warrantBrokers");
+-    render(<WarrantSelector symbol="2330" active={true} />, {
+-      wrapper: makeQueryWrapper(),
+-    });
+-    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
+-    expect(brokerSpy).not.toHaveBeenCalled(); // 未展開不抓
+-    const expanders = screen.getAllByRole("button", { name: /展開分點/ });
+-    fireEvent.click(expanders[0]!);
+-    await waitFor(() => expect(screen.getByText("凱基-台北")).toBeTruthy());
+-    expect(brokerSpy).toHaveBeenCalledTimes(1);
+-    expect(brokerSpy.mock.calls[0]?.[0]).toBe("030013"); // 排序後首列
+-    expect(screen.getByText(/資料日 = 2026-07-09/)).toBeTruthy();
+-  });
+-
+   it("無權證空狀態(SC-7)", async () => {
+     mockApis([], {});
+     render(<WarrantSelector symbol="2330" active={true} />, {
+@@ -255,23 +235,6 @@ describe("WarrantSelector", () => {
+     expect(wSpy.mock.calls.length).toBe(wCalls); // 快照層不重抓
+   });
+ 
+-  it("同名分點兩列都 render(real-env 2026-07-11:彰銀買賣各一列)", async () => {
+-    mockApis(THREE, THREE_QUOTES);
+-    vi.spyOn(api, "warrantBrokers").mockResolvedValue({
+-      data_date: "2026-07-09",
+-      rows: [
+-        { broker_name: "彰銀", buy: 30000, sell: 0, net: 30000 },
+-        { broker_name: "彰銀", buy: 0, sell: 30000, net: -30000 },
+-      ],
+-    });
+-    render(<WarrantSelector symbol="2330" active={true} />, {
+-      wrapper: makeQueryWrapper(),
+-    });
+-    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
+-    fireEvent.click(screen.getAllByRole("button", { name: /展開分點/ })[0]!);
+-    await waitFor(() => expect(screen.getAllByText("彰銀")).toHaveLength(2));
+-  });
+-
+   it("IV趨勢欄:label 對映中性文案,stable/null 顯示 —(SC-6)", async () => {
+     mockApis(
+       [
+@@ -315,25 +278,11 @@ describe("WarrantSelector", () => {
+     });
+     await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
+     expect(ivSpy).not.toHaveBeenCalled(); // 未展開不抓
+-    fireEvent.click(screen.getAllByRole("button", { name: /展開分點/ })[0]!);
++    fireEvent.click(screen.getAllByRole("button", { name: /展開明細/ })[0]!);
+     await waitFor(() => expect(screen.getByTestId("warrant-iv-chart")).toBeTruthy());
+     expect(ivSpy).toHaveBeenCalledTimes(1);
+     expect(ivSpy.mock.calls[0]?.[0]).toBe("030013"); // 排序後首列
+   });
+-
+-  it("展開列的分點表滾動內容在 row 下方(within 收斂 scope)", async () => {
+-    mockApis(THREE, THREE_QUOTES);
+-    render(<WarrantSelector symbol="2330" active={true} />, {
+-      wrapper: makeQueryWrapper(),
+-    });
+-    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
+-    fireEvent.click(screen.getAllByRole("button", { name: /展開分點/ })[0]!);
+-    await waitFor(() => {
+-      const detail = screen.getByTestId("warrant-brokers-detail");
+-      expect(within(detail).getByText("凱基-台北")).toBeTruthy();
+-      expect(within(detail).getByText("800")).toBeTruthy();
+-    });
+-  });
+ });
+ 
+ // ---------------------------------------------------------------- warrant-selector-enhance
+@@ -356,7 +305,7 @@ describe("WarrantSelector 欄位選單整合(mod warrant-ux-feedback SC-6)", ()
+     expect(headerTexts).not.toContain("IV");
+     expect(headerTexts).not.toContain("行使比例");
+     expect(headerTexts).toContain("IV百分位"); // 只隱藏 iv,不誤傷同字根欄
+-    fireEvent.click(screen.getByRole("button", { name: /展開分點/ }));
++    fireEvent.click(screen.getByRole("button", { name: /展開明細/ }));
+     const expandedTd = document.querySelector("td[colspan]") as HTMLTableCellElement;
+     expect(expandedTd.colSpan).toBe(screen.getAllByRole("columnheader").length);
+   });
+@@ -514,6 +463,67 @@ describe("WarrantSelector 懸崖 / 近售罄 badge(SC-8/SC-9)", () => {
+   });
+ });
+ 
++describe("WarrantSelector 分點買賣超移除(mod warrant-selector-table SC-3)", () => {
++  it("展開列只剩 IV 時序,無分點買賣超區塊", async () => {
++    mockApis(THREE, THREE_QUOTES);
++    render(<WarrantSelector symbol="2330" active={true} />, {
++      wrapper: makeQueryWrapper(),
++    });
++    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
++    fireEvent.click(screen.getAllByRole("button", { name: /展開明細/ })[0]!);
++    await waitFor(() => expect(screen.getByTestId("warrant-iv-chart")).toBeTruthy());
++    expect(screen.queryByTestId("warrant-brokers-detail")).toBeNull();
++    expect(screen.queryByText(/分點買賣超/)).toBeNull();
++  });
++});
++
++describe("WarrantSelector 發行商篩選(mod warrant-selector-table SC-2)", () => {
++  it("下拉選項 = 全部 + 該標的實際發行商;選定後過濾;重製回全部", async () => {
++    // THREE 的名稱含凱基/元大/富邦三家 → 選項自 terms 推導(不隨其他篩選縮)
++    mockApis(THREE, THREE_QUOTES);
++    render(<WarrantSelector symbol="2330" active={true} />, {
++      wrapper: makeQueryWrapper(),
++    });
++    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
++    const select = screen.getByLabelText("發行商篩選") as HTMLSelectElement;
++    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
++      "全部", "元大", "凱基", "富邦",
++    ]);
++    fireEvent.change(select, { target: { value: "凱基" } });
++    const rows = screen.getAllByTestId("warrant-row");
++    expect(rows).toHaveLength(1);
++    expect(rows[0]?.getAttribute("data-warrant-id")).toBe("030012");
++    fireEvent.click(screen.getByTestId("filter-reset-btn"));
++    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(3));
++    expect((screen.getByLabelText("發行商篩選") as HTMLSelectElement).value).toBe("all");
++  });
++});
++
++describe("WarrantSelector 表頭對齊(mod warrant-selector-table SC-1)", () => {
++  it("代號/名稱/類型表頭靠左、其餘資料欄表頭靠右(與 td 對齊一致)", async () => {
++    // first:text-left 打在展開空 th(真正的 :first-child)上,資料欄表頭
++    // 全部右對齊 — 依欄位 align 屬性渲染後,文字欄表頭須與 td 同向。
++    mockApis(THREE, THREE_QUOTES);
++    render(<WarrantSelector symbol="2330" active={true} />, {
++      wrapper: makeQueryWrapper(),
++    });
++    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
++    const byLabel = new Map(
++      screen
++        .getAllByRole("columnheader")
++        .map((th) => [(th.textContent ?? "").replace(/ [↑↓]$/, ""), th.className]),
++    );
++    for (const h of ["代號", "名稱", "類型"]) {
++      expect(byLabel.get(h)).toContain("text-left");
++      expect(byLabel.get(h)).not.toContain("text-right");
++    }
++    for (const h of ["履約價", "現價", "差槓比"]) {
++      expect(byLabel.get(h)).toContain("text-right");
++      expect(byLabel.get(h)).not.toContain("text-left");
++    }
++  });
++});
++
+ describe("WarrantSelector review 修正批(Phase 5)", () => {
+   it("篩選 input 打字值不被無關 filter 變更沖掉(uncontrolled+epoch 機制)", async () => {
+     // 「-」「0.」badInput 中間態 jsdom 一律 sanitize 成 "",controlled/uncontrolled
+diff --git a/frontend/src/components/WarrantSelector.tsx b/frontend/src/components/WarrantSelector.tsx
+index efe6500..5d63920 100644
+--- a/frontend/src/components/WarrantSelector.tsx
++++ b/frontend/src/components/WarrantSelector.tsx
+@@ -1,7 +1,6 @@
+ import { Fragment, useEffect, useMemo, useState } from "react";
+ import { useWarrants } from "../hooks/useWarrants";
+ import { useWarrantQuotes } from "../hooks/useWarrantQuotes";
+-import { useWarrantBrokers } from "../hooks/useWarrantBrokers";
+ import { WarrantIvHistory } from "./WarrantIvHistory";
+ import { WarrantColumnMenu } from "./WarrantColumnMenu";
+ import { Checkbox } from "./ui/checkbox";
+@@ -19,6 +18,7 @@ import {
+ } from "../lib/warrant-column-prefs";
+ import {
+   DEFAULT_FILTERS,
++  extractIssuer,
+   filterWarrants,
+   mergeWarrantRows,
+   sortWarrants,
+@@ -54,7 +54,6 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
+   const [sortKey, setSortKey] = useState<WarrantSortKey>("spread_lev_ratio");
+   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+   const [expandedId, setExpandedId] = useState<string | null>(null);
+-  const brokersHook = useWarrantBrokers(expandedId);
+   // 篩選 input 用 defaultValue + epoch remount:controlled value 會沖掉
+   // 「-」「0.」等打字中間態;重製 / 換標的靠 epoch 重掛同步顯示值
+   const [filterEpoch, setFilterEpoch] = useState(0);
+@@ -87,6 +86,17 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
+     return sortWarrants(filterWarrants(merged, filters), sortKey, sortDir);
+   }, [warrantsHook.data, quotesHook.data, filters, sortKey, sortDir]);
+ 
++  // 發行商下拉選項:從 terms 推導(不隨其他篩選縮減);.sort() 走 code point,
++  // 跨環境 deterministic(localeCompare 依 ICU 而異)
++  const issuers = useMemo(() => {
++    const found = new Set<string>();
++    for (const t of warrantsHook.data?.warrants ?? []) {
++      const issuer = extractIssuer(t.name);
++      if (issuer) found.add(issuer);
++    }
++    return Array.from(found).sort();
++  }, [warrantsHook.data]);
++
+   // 差槓比中性強度階(SC-5):非 null 值三分位 → ink 強度,不用紅綠
+   const slrTerciles = useMemo(() => {
+     const vals = rows
+@@ -183,6 +193,27 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
+             </button>
+           ))}
+         </div>
++        <label className="inline-flex items-center gap-1 text-ink-muted">
++          發行商
++          <select
++            aria-label="發行商篩選"
++            value={filters.issuer ?? "all"}
++            onChange={(e) =>
++              setFilters((f) => ({
++                ...f,
++                issuer: e.target.value === "all" ? null : e.target.value,
++              }))
++            }
++            className="border border-line text-ink px-2 py-1 pointer-coarse:min-h-11 bg-bg cursor-pointer"
++          >
++            <option value="all">全部</option>
++            {issuers.map((issuer) => (
++              <option key={issuer} value={issuer}>
++                {issuer}
++              </option>
++            ))}
++          </select>
++        </label>
+         {/* 期限/位階群組 */}
+         <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-2 pl-3 border-l border-line">
+           <label className="inline-flex items-center gap-1 text-ink-muted">
+@@ -341,7 +372,10 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
+                     key={c.id}
+                     scope="col"
+                     title={c.desc}
+-                    className="px-2 py-1.5 text-right first:text-left font-normal"
++                    className={cn(
++                      "px-2 py-1.5 font-normal",
++                      c.align === "left" ? "text-left" : "text-right",
++                    )}
+                   >
+                     {c.sortKey ? (
+                       <button
+@@ -372,7 +406,6 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
+                     setExpandedId((cur) => (cur === r.warrant_id ? null : r.warrant_id))
+                   }
+                   slrClass={slrClass(r.spread_lev_ratio)}
+-                  brokersHook={expandedId === r.warrant_id ? brokersHook : null}
+                   columns={visibleColumns}
+                 />
+               ))}
+@@ -389,14 +422,12 @@ function RowPair({
+   expanded,
+   onToggle,
+   slrClass,
+-  brokersHook,
+   columns,
+ }: {
+   row: WarrantRow;
+   expanded: boolean;
+   onToggle: () => void;
+   slrClass: string;
+-  brokersHook: ReturnType<typeof useWarrantBrokers> | null;
+   columns: WarrantColumnDef[];
+ }) {
+   const ctx: WarrantColumnCtx = { slrClass };
+@@ -412,7 +443,7 @@ function RowPair({
+             type="button"
+             onClick={onToggle}
+             aria-expanded={expanded}
+-            aria-label={`展開分點 ${r.name}`}
++            aria-label={`展開明細 ${r.name}`}
+             className="w-5 h-5 pointer-coarse:min-h-11 inline-flex items-center justify-center text-ink-dim hover:text-accent cursor-pointer transition-colors"
+           >
+             {expanded ? "−" : "+"}
+@@ -424,47 +455,10 @@ function RowPair({
+       </tr>
+       {expanded && (
+         <tr className="border-b border-line bg-bg-deep/50">
+-          <td colSpan={columns.length + 1} className="px-8 py-2 space-y-3">
++          <td colSpan={columns.length + 1} className="px-8 py-2">
+             <div className="text-xs">
+               <WarrantIvHistory warrantId={r.warrant_id} />
+             </div>
+-            <div data-testid="warrant-brokers-detail" className="text-xs">
+-              {brokersHook?.loading ? (
+-                <span className="text-ink-dim">載入分點資料...</span>
+-              ) : brokersHook?.error ? (
+-                <span className="text-accent">{brokersHook.error}</span>
+-              ) : brokersHook?.data && brokersHook.data.rows.length > 0 ? (
+-                <div className="space-y-1">
+-                  <div className="text-ink-dim">
+-                    分點買賣超(資料日 = {brokersHook.dataDate},T-1)
+-                  </div>
+-                  <table className="text-xs">
+-                    <thead>
+-                      <tr className="text-ink-dim">
+-                        <th scope="col" className="pr-4 text-left font-normal">分點</th>
+-                        <th scope="col" className="pr-4 text-right font-normal">買進</th>
+-                        <th scope="col" className="pr-4 text-right font-normal">賣出</th>
+-                        <th scope="col" className="pr-4 text-right font-normal">買賣超</th>
+-                      </tr>
+-                    </thead>
+-                    <tbody>
+-                      {/* key 帶 index:真實 FinMind 分點同名可重複(彰銀買賣
+-                          兩列,2026-07-11 real-env 實測)— 純名字 key 會撞 */}
+-                      {brokersHook.data.rows.map((b, i) => (
+-                        <tr key={`${b.broker_name}-${i}`} className="text-ink-muted">
+-                          <td className="pr-4">{b.broker_name}</td>
+-                          <td className="pr-4 text-right">{b.buy}</td>
+-                          <td className="pr-4 text-right">{b.sell}</td>
+-                          <td className="pr-4 text-right text-ink">{b.net}</td>
+-                        </tr>
+-                      ))}
+-                    </tbody>
+-                  </table>
+-                </div>
+-              ) : (
+-                <span className="text-ink-dim">近 5 個交易日無分點報表資料</span>
+-              )}
+-            </div>
+           </td>
+         </tr>
+       )}
+diff --git a/frontend/src/hooks/useWarrantBrokers.test.ts b/frontend/src/hooks/useWarrantBrokers.test.ts
+deleted file mode 100644
+index e97a77a..0000000
+--- a/frontend/src/hooks/useWarrantBrokers.test.ts
++++ /dev/null
+@@ -1,48 +0,0 @@
+-/**
+- * @vitest-environment jsdom
+- *
+- * useWarrantBrokers — row 展開才抓(SC-6 lazy 單發,不 fan-out 全表)。
+- */
+-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+-import { cleanup, renderHook, waitFor } from "@testing-library/react";
+-import { api } from "../lib/api";
+-import type { WarrantBrokersPayload } from "../lib/warrant-data";
+-import { useWarrantBrokers } from "./useWarrantBrokers";
+-import { makeQueryWrapper } from "../test-utils/query-wrapper";
+-
+-const mk = (over?: Partial<WarrantBrokersPayload>): WarrantBrokersPayload => ({
+-  data_date: "2026-07-09",
+-  rows: [{ broker_name: "凱基-台北", buy: 900, sell: 100, net: 800 }],
+-  ...over,
+-});
+-
+-beforeEach(() => vi.restoreAllMocks());
+-afterEach(() => cleanup());
+-
+-describe("useWarrantBrokers", () => {
+-  it("warrantId=null 不 fetch(未展開)", () => {
+-    const spy = vi.spyOn(api, "warrantBrokers").mockResolvedValue(mk());
+-    renderHook(() => useWarrantBrokers(null), { wrapper: makeQueryWrapper() });
+-    expect(spy).not.toHaveBeenCalled();
+-  });
+-
+-  it("展開後單發抓 + 暴露 dataDate", async () => {
+-    const spy = vi.spyOn(api, "warrantBrokers").mockResolvedValue(mk());
+-    const { result } = renderHook(() => useWarrantBrokers("030012"), {
+-      wrapper: makeQueryWrapper(),
+-    });
+-    await waitFor(() => expect(result.current.dataDate).toBe("2026-07-09"));
+-    expect(spy).toHaveBeenCalledTimes(1);
+-    expect(result.current.data?.rows[0]?.net).toBe(800);
+-  });
+-
+-  it("全空(data_date null)不視為 error", async () => {
+-    vi.spyOn(api, "warrantBrokers").mockResolvedValue(mk({ data_date: null, rows: [] }));
+-    const { result } = renderHook(() => useWarrantBrokers("030012"), {
+-      wrapper: makeQueryWrapper(),
+-    });
+-    await waitFor(() => expect(result.current.data).not.toBeNull());
+-    expect(result.current.dataDate).toBeNull();
+-    expect(result.current.error).toBeNull();
+-  });
+-});
+diff --git a/frontend/src/hooks/useWarrantBrokers.ts b/frontend/src/hooks/useWarrantBrokers.ts
+deleted file mode 100644
+index d904e00..0000000
+--- a/frontend/src/hooks/useWarrantBrokers.ts
++++ /dev/null
+@@ -1,31 +0,0 @@
+-import { useRef } from "react";
+-import { useQuery } from "@tanstack/react-query";
+-import { api } from "../lib/api";
+-import type { WarrantBrokersPayload } from "../lib/warrant-data";
+-
+-// 分點展開:row 展開才抓(SC-6;FinMind T+1 單發,不 fan-out 全表)。
+-// warrantId=null = 未展開。
+-export function useWarrantBrokers(warrantId: string | null) {
+-  const forceRefreshRef = useRef(false);
+-
+-  const { data, isFetching, error, refetch } = useQuery<WarrantBrokersPayload, Error>({
+-    queryKey: ["warrant-brokers", warrantId],
+-    enabled: !!warrantId,
+-    queryFn: async ({ signal }) => {
+-      const force = forceRefreshRef.current;
+-      forceRefreshRef.current = false;
+-      return api.warrantBrokers(warrantId!, force, { signal });
+-    },
+-  });
+-
+-  return {
+-    data: data ?? null,
+-    loading: isFetching,
+-    error: error ? error.message : null,
+-    dataDate: data?.data_date ?? null,
+-    refresh: () => {
+-      forceRefreshRef.current = true;
+-      refetch();
+-    },
+-  };
+-}
+diff --git a/frontend/src/lib/api.ts b/frontend/src/lib/api.ts
+index 226d68f..9308476 100644
+--- a/frontend/src/lib/api.ts
++++ b/frontend/src/lib/api.ts
+@@ -4,7 +4,7 @@ import type {
+ } from "./chip-data";
+ import type { BorrowFeeData } from "./borrow-fee";
+ import type {
+-  WarrantBrokersPayload, WarrantIvHistoryPayload, WarrantQuotesPayload,
++  WarrantIvHistoryPayload, WarrantQuotesPayload,
+   WarrantsPayload,
+ } from "./warrant-data";
+ import type { WarrantFlowPayload } from "./warrant-flow-data";
+@@ -237,13 +237,6 @@ export const api = {
+     // 輪詢資料恆走 noCache(module cache TTL 5 分鐘會吞掉 15s 輪詢)
+     return get(`${BASE}/warrants/${stockId}/quotes`, params, { ...options, noCache: true });
+   },
+-  warrantBrokers(
+-    warrantId: string, refresh?: boolean, options?: RequestOptions,
+-  ): Promise<WarrantBrokersPayload> {
+-    const params: Record<string, string> = {};
+-    if (refresh) params.refresh = "true";
+-    return get(`${BASE}/warrants/${warrantId}/brokers`, params, options);
+-  },
+   warrantFlow(
+     stockId: string, refresh?: boolean, options?: RequestOptions,
+   ): Promise<WarrantFlowPayload> {
+diff --git a/frontend/src/lib/changelog.test.ts b/frontend/src/lib/changelog.test.ts
+index 6047ac7..b2f3ef5 100644
+--- a/frontend/src/lib/changelog.test.ts
++++ b/frontend/src/lib/changelog.test.ts
+@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
+     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
+   });
+ 
+-  it("最新版本是 v0.31.2(權證 IV 歷史資料修復上線)", () => {
+-    expect(CHANGELOG[0]?.version).toBe("0.31.2");
++  it("最新版本是 v0.32.0(權證發行商篩選上線)", () => {
++    expect(CHANGELOG[0]?.version).toBe("0.32.0");
+   });
+ 
+   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
+diff --git a/frontend/src/lib/changelog.ts b/frontend/src/lib/changelog.ts
+index 33635c5..fc5ca2a 100644
+--- a/frontend/src/lib/changelog.ts
++++ b/frontend/src/lib/changelog.ts
+@@ -39,6 +39,28 @@ export function semverGt(a: string, b: string): boolean {
+ // 版本字串遵循 SemVer 2.0.0 三段式 MAJOR.MINOR.PATCH;pre-1.0 階段 breaking change 也只 bump MINOR
+ // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
+ export const CHANGELOG: VersionEntry[] = [
++  {
++    version: "0.32.0",
++    date: "2026-07-16",
++    highlights: "權證挑選更好用:發行商篩選上線、表頭對齊修正、展開列精簡",
++    changes: [
++      {
++        kind: "feature",
++        scope: "equity",
++        text: "權證篩選列新增「發行商」下拉,可只看特定發行商(凱基、元大等)的權證",
++      },
++      {
++        kind: "fix",
++        scope: "equity",
++        text: "權證表的代號、名稱、類型欄表頭改為靠左,與欄位內容對齊一致",
++      },
++      {
++        kind: "feature",
++        scope: "equity",
++        text: "權證展開列聚焦 IV 走勢,移除單一權證的分點買賣超明細;分點動向請改看「權證分點」頁",
++      },
++    ],
++  },
+   {
+     version: "0.31.2",
+     date: "2026-07-16",
+diff --git a/frontend/src/lib/warrant-columns.tsx b/frontend/src/lib/warrant-columns.tsx
+index c933dbd..387e3a0 100644
+--- a/frontend/src/lib/warrant-columns.tsx
++++ b/frontend/src/lib/warrant-columns.tsx
+@@ -51,6 +51,8 @@ export interface WarrantColumnDef {
+   label: string;
+   /** 欄位一行說明(欄位選單與 th title 共用) */
+   desc: string;
++  /** 表頭對齊,與 cell 同向(th 依此渲染,不再用 first: 猜位) */
++  align: "left" | "right";
+   sortKey?: WarrantSortKey;
+   /** 不可隱藏(表格 anchor 欄) */
+   lockVisible?: boolean;
+@@ -62,7 +64,8 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+   {
+     id: "warrant_id",
+     label: "代號",
+-    desc: "權證代號;點左側 + 可展開 IV 時序與分點明細",
++    desc: "權證代號;點左側 + 可展開 IV 時序",
++    align: "left",
+     lockVisible: true,
+     cell: (r) => <td className="px-2 py-1 text-left text-ink font-medium">{r.warrant_id}</td>,
+   },
+@@ -70,6 +73,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "name",
+     label: "名稱",
+     desc: "權證名稱;◇ = 重設型(IV/估價不適用)",
++    align: "left",
+     cell: (r) => (
+       <td className="px-2 py-1 text-left text-ink-muted">
+         {r.name}
+@@ -85,6 +89,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "kind",
+     label: "類型",
+     desc: "認購(看多標的)/認售(看空標的)",
++    align: "left",
+     cell: (r) => (
+       <td className="px-2 py-1 text-left">
+         <span
+@@ -106,6 +111,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "strike",
+     label: "履約價",
+     desc: "行使權利的約定價格",
++    align: "right",
+     sortKey: "strike",
+     cell: (r) => <td className="px-2 py-1 text-right text-ink-muted">{fmt(r.strike)}</td>,
+   },
+@@ -113,6 +119,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "moneyness",
+     label: "價內外",
+     desc: "標的價相對履約價的偏離(正 = 價內,負 = 價外)",
++    align: "right",
+     sortKey: "moneyness",
+     cell: (r) => <td className="px-2 py-1 text-right text-ink-muted">{fmtPct(r.moneyness)}</td>,
+   },
+@@ -120,6 +127,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "days_left",
+     label: "剩餘天數",
+     desc: "距最後交易日的日曆日;≤21 日標「近到期」(出場品質懸崖)",
++    align: "right",
+     sortKey: "days_left",
+     cell: (r) => (
+       <td className="px-2 py-1 text-right text-ink-muted">
+@@ -142,6 +150,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "exercise_ratio",
+     label: "行使比例",
+     desc: "一張權證可換標的股數比",
++    align: "right",
+     sortKey: "exercise_ratio",
+     cell: (r) => (
+       <td className="px-2 py-1 text-right text-ink-dim">{fmt(r.exercise_ratio, 4)}</td>
+@@ -151,6 +160,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "price",
+     label: "現價",
+     desc: "權證最新成交價",
++    align: "right",
+     sortKey: "price",
+     cell: (r) => (
+       <td className="px-2 py-1 text-right text-ink font-medium">{fmt(r.price)}</td>
+@@ -160,6 +170,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "bid",
+     label: "委買",
+     desc: "最佳委買價;第二行 ×N張 為掛單量",
++    align: "right",
+     cell: (r) => (
+       <td data-testid="bid-cell" className="px-2 py-1 text-right text-ink-muted">
+         {priceVolLines(r.best_bid, r.best_bid_vol)}
+@@ -170,6 +181,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "ask",
+     label: "委賣",
+     desc: "最佳委賣價;第二行 ×N張 為掛單量;委賣消失且委買仍在標「近售罄」",
++    align: "right",
+     cell: (r) => (
+       <td data-testid="ask-cell" className="px-2 py-1 text-right text-ink-muted">
+         <span className="inline-flex items-center gap-1">
+@@ -194,6 +206,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "iv",
+     label: "IV",
+     desc: "以委買/委賣中價反解的隱含波動率",
++    align: "right",
+     sortKey: "iv",
+     cell: (r) => (
+       <td className="px-2 py-1 text-right text-ink-muted">
+@@ -205,6 +218,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "theo_price",
+     label: "理論價",
+     desc: "以昨日 IV 計算的 Black-Scholes 理論價",
++    align: "right",
+     sortKey: "theo_price",
+     cell: (r) => <td className="px-2 py-1 text-right text-ink-muted">{fmt(r.theo_price)}</td>,
+   },
+@@ -212,6 +226,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "mispricing",
+     label: "估價差",
+     desc: "現價相對理論價的偏離(±10% 內視為合理)",
++    align: "right",
+     sortKey: "mispricing_pct",
+     cell: (r) => (
+       <td className="px-2 py-1 text-right">
+@@ -238,6 +253,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "iv_percentile",
+     label: "IV百分位",
+     desc: "目前 IV 在同標的全部權證中的百分位(低 = 相對便宜)",
++    align: "right",
+     sortKey: "iv_percentile",
+     cell: (r) => (
+       <td className="px-2 py-1 text-right text-ink-muted">
+@@ -249,6 +265,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "iv_drift",
+     label: "IV趨勢",
+     desc: "近 10 個交易日 IV 走勢(長期遞減/遞增;— = 平穩或樣本不足)",
++    align: "right",
+     cell: (r) => (
+       <td className="px-2 py-1 text-right">
+         <span data-testid="iv-drift-label" className="text-ink-muted">
+@@ -261,6 +278,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "leverage",
+     label: "實質槓桿",
+     desc: "標的漲跌 1% 時權證理論漲跌的倍數",
++    align: "right",
+     sortKey: "leverage",
+     cell: (r) => <td className="px-2 py-1 text-right text-ink-muted">{fmt(r.leverage, 2)}</td>,
+   },
+@@ -268,6 +286,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "spread_ratio",
+     label: "價差比",
+     desc: "委買賣價差佔委買價比例(低 = 進出成本低)",
++    align: "right",
+     sortKey: "spread_ratio",
+     cell: (r) => (
+       <td className="px-2 py-1 text-right text-ink-muted">{fmtPct(r.spread_ratio)}</td>
+@@ -277,6 +296,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
+     id: "slr",
+     label: "差槓比",
+     desc: "價差比 ÷ 實質槓桿(綜合成本效率,低 = 佳;預設排序欄)",
++    align: "right",
+     sortKey: "spread_lev_ratio",
+     cell: (r, ctx) => (
+       <td className={cn("px-2 py-1 text-right", ctx.slrClass)}>
+diff --git a/frontend/src/lib/warrant-data.ts b/frontend/src/lib/warrant-data.ts
+index ae98a17..386af58 100644
+--- a/frontend/src/lib/warrant-data.ts
++++ b/frontend/src/lib/warrant-data.ts
+@@ -78,14 +78,3 @@ export interface WarrantQuotesPayload {
+   quotes: Record<string, WarrantQuote>;
+ }
+ 
+-export interface WarrantBrokerRow {
+-  broker_name: string;
+-  buy: number;
+-  sell: number;
+-  net: number;
+-}
+-
+-export interface WarrantBrokersPayload {
+-  data_date: string | null;
+-  rows: WarrantBrokerRow[];
+-}
+diff --git a/frontend/src/lib/warrant-utils.test.ts b/frontend/src/lib/warrant-utils.test.ts
+index 0b8120a..49ae224 100644
+--- a/frontend/src/lib/warrant-utils.test.ts
++++ b/frontend/src/lib/warrant-utils.test.ts
+@@ -7,6 +7,7 @@ import {
+   DEFAULT_FILTERS,
+   EXIT_CLIFF_DAYS,
+   QUOTES_REFETCH_MS,
++  extractIssuer,
+   filterWarrants,
+   isExitCliff,
+   isMarketOpen,
+@@ -46,12 +47,55 @@ function row(over: Partial<WarrantRow> = {}): WarrantRow {
+   };
+ }
+ 
++describe("extractIssuer(mod warrant-selector-table SC-2)", () => {
++  it("標準簡稱:標的 2 字 + 發行商 2 字", () => {
++    expect(extractIssuer("台積凱基61購01")).toBe("凱基");
++    expect(extractIssuer("鴻海元大71購03")).toBe("元大");
++  });
++
++  it("認售權證同樣抽取", () => {
++    expect(extractIssuer("台積國泰61售01")).toBe("國泰");
++  });
++
++  it("標的簡稱 = 金控名(國泰金/富邦金):不誤取標的自身", () => {
++    expect(extractIssuer("國泰凱基61購01")).toBe("凱基");
++    expect(extractIssuer("富邦統一61購02")).toBe("統一");
++  });
++
++  it("3 字標的簡稱 fallback:發行商落在 index 3", () => {
++    expect(extractIssuer("統一超凱基61購01")).toBe("凱基");
++  });
++
++  it("3 字標的第 2-3 字含名單字樣不誤判(fallback 從 index 2 起掃)", () => {
++    // 「台元大」為虛構 3 字標的 — index 1 起掃會誤中「元大」;正確答案是
++    // index 3 的「群益」
++    expect(extractIssuer("台元大群益61購01")).toBe("群益");
++  });
++
++  it("名單外發行商 / 非權證命名 → null", () => {
++    expect(extractIssuer("台積不明61購01")).toBeNull();
++    expect(extractIssuer("測試")).toBeNull();
++    expect(extractIssuer("")).toBeNull();
++  });
++});
++
+ describe("filterWarrants", () => {
+   it("預設 filters 不剔除任何列(含 null 欄位列)", () => {
+     const rows = [row(), row({ warrant_id: "030013", mispricing_pct: null })];
+     expect(filterWarrants(rows, DEFAULT_FILTERS)).toHaveLength(2);
+   });
+ 
++  it("issuer 篩選:null 全放行;指定發行商只留該發行商,抽不出者一併剔除", () => {
++    const rows = [
++      row({ warrant_id: "030011", name: "台積凱基61購01" }),
++      row({ warrant_id: "030012", name: "台積元大61購02" }),
++      row({ warrant_id: "030099", name: "台積不明61購99" }),
++    ];
++    expect(filterWarrants(rows, DEFAULT_FILTERS)).toHaveLength(3);
++    const out = filterWarrants(rows, { ...DEFAULT_FILTERS, issuer: "凱基" });
++    expect(out.map((r) => r.warrant_id)).toEqual(["030011"]);
++  });
++
+   it("kind toggle 只留認售", () => {
+     const rows = [row(), row({ warrant_id: "03001P", kind: "put" })];
+     const out = filterWarrants(rows, { ...DEFAULT_FILTERS, kind: "put" });
+diff --git a/frontend/src/lib/warrant-utils.ts b/frontend/src/lib/warrant-utils.ts
+index 398a6c7..3a0f83e 100644
+--- a/frontend/src/lib/warrant-utils.ts
++++ b/frontend/src/lib/warrant-utils.ts
+@@ -9,8 +9,29 @@ const TAIPEI_OPEN_MIN = 9 * 60;
+ // 13:35 inclusive:收盤撮合 13:30 後緩衝(impl-R6 定案)
+ const TAIPEI_CLOSE_MIN = 13 * 60 + 35;
+ 
++/** 台灣權證發行商 2 字簡稱名單(現役為主,對權證簡稱內嵌字樣;
++ * 名單外新券商抽不出 → 該權證僅在「全部」可見,graceful degradation)。 */
++export const WARRANT_ISSUERS = [
++  "元大", "凱基", "統一", "群益", "富邦", "永豐", "國泰", "兆豐",
++  "中信", "元富", "永昌", "玉山", "台新", "國票", "康和", "宏遠",
++] as const;
++
++const ISSUER_SET: ReadonlySet<string> = new Set(WARRANT_ISSUERS);
++
++/** 權證簡稱抽發行商:標準格式 = 標的簡稱 2 字 + 發行商 2 字(index 2 起),
++ * 3 字標的簡稱時發行商順延至 index 3 — 從 index 2 起掃描全名取首個命中。
++ * index 0/1 不掃:標的自身撞名(國泰金/富邦金等金控標的)靠起點排除。 */
++export function extractIssuer(name: string): string | null {
++  for (let i = 2; i + 2 <= name.length; i++) {
++    const cand = name.slice(i, i + 2);
++    if (ISSUER_SET.has(cand)) return cand;
++  }
++  return null;
++}
++
+ export interface WarrantFilters {
+   kind: "all" | "call" | "put";
++  issuer: string | null;
+   minDaysLeft: number | null;
+   moneynessMin: number | null;
+   moneynessMax: number | null;
+@@ -25,6 +46,7 @@ export interface WarrantFilters {
+ 
+ export const DEFAULT_FILTERS: WarrantFilters = {
+   kind: "all",
++  issuer: null,
+   minDaysLeft: null,
+   moneynessMin: null,
+   moneynessMax: null,
+@@ -58,6 +80,7 @@ export function isNearSoldOut(r: WarrantRow): boolean {
+ export function filterWarrants(rows: WarrantRow[], f: WarrantFilters): WarrantRow[] {
+   return rows.filter((r) => {
+     if (f.kind !== "all" && r.kind !== f.kind) return false;
++    if (f.issuer !== null && extractIssuer(r.name) !== f.issuer) return false;
+     if (f.minDaysLeft !== null && (r.days_left == null || r.days_left < f.minDaysLeft)) {
+       return false;
+     }
