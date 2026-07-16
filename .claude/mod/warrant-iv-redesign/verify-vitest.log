@@ -1,0 +1,13 @@
+
+> neigui-frontend@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.9 C:/side-project/neigui/.claude/worktrees/mod+warrant-iv-redesign/frontend
+
+
+ Test Files  83 passed (83)
+      Tests  823 passed (823)
+   Start at  17:31:19
+   Duration  11.42s (transform 4.42s, setup 0ms, import 24.77s, tests 23.58s, environment 95.95s)
+
