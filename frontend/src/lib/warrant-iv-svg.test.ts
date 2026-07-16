@@ -129,6 +129,17 @@ describe("computeIvHistoryChart", () => {
     expect(bidX).toBe(priceX);
   });
 
+  it("y ticks 高值在上(y 座標遞增 = 標籤由高到低);x ticks 取首/中/末日期", () => {
+    const series = mkSeries(10, (i) => ({ b: 0.4 + 0.01 * i }));
+    const geom = computeIvHistoryChart(series, W, null)!;
+    const ys = geom.ivPanel.yTicks.map((t) => t.y);
+    expect(ys[0]!).toBeLessThan(ys[1]!);
+    expect(ys[1]!).toBeLessThan(ys[2]!);
+    expect(geom.xTicks.map((t) => t.label)).toEqual(
+      [series[0]!, series[4]!, series[9]!].map((p) => p.date.slice(5)),
+    );
+  });
+
   it("缺值日斷線:null 之後 M 重起,不插值", () => {
     const series = mkSeries(5, (i) => ({ b: i === 2 ? null : 0.4 }));
     const geom = computeIvHistoryChart(series, W, null);
