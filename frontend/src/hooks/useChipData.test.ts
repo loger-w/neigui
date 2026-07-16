@@ -3,6 +3,10 @@
  *
  * Cluster B 🔴: useChipData must split summary + history into independent
  * fetches so date-pick refreshes only the right panel, not the whole page.
+ *
+ * chip-major-lazy-window 🔴: major 改單一 query + 階梯視窗(150→300→540)。
+ * 初載只抓 150;540 不再自動觸發,由 ensureMajorCoverage(可見左界日期)
+ * 依覆蓋判斷升檔。該紅/不該紅清單見 .claude/mod/chip-major-lazy-window/change-spec.md §8。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -43,11 +47,12 @@ const mkHistory = (): ChipHistory =>
     major: [],
   }) as ChipHistory;
 
-const mkHistoryMajor = (): ChipHistoryMajor => ({
+const mkHistoryMajor = (over: Partial<ChipHistoryMajor> = {}): ChipHistoryMajor => ({
   symbol: "2330",
   fetched_at: "",
   last_date: "2026-06-22",
   major: [],
+  ...over,
 });
 
 /** All three spies wired the same way every test needs. */
@@ -59,42 +64,26 @@ function spyChipApis() {
   };
 }
 
+// anchor last_date=2026-06-22 的階梯覆蓋左界(對照 date-utils.test.ts):
+// 150 → 2026-01-23;300 → 2025-08-26;540 → 2024-12-29。
+
 describe("useChipData split fetches", () => {
-  it("initial mount fires summary + base + major fast(150) then full(540)", async () => {
+  it("initial mount fires summary + base(540) + ONE major(150); 540 never auto-fires", async () => {
     const { chip, base, major } = spyChipApis();
     renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
     await waitFor(() => {
       expect(chip).toHaveBeenCalledTimes(1);
       expect(base).toHaveBeenCalledTimes(1);
-      // fast 150d window first; full 540d fires only after fast succeeds
-      expect(major).toHaveBeenCalledTimes(2);
+      expect(major).toHaveBeenCalledTimes(1);
     });
+    expect(base.mock.calls[0]![1]).toBe(540);
     expect(major.mock.calls[0]![1]).toBe(150);
-    expect(major.mock.calls[1]![1]).toBe(540);
-  });
-
-  it("full 540 does NOT fire until fast 150 resolves", async () => {
-    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
-    vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
-    const majorResolvers: ((v: ChipHistoryMajor) => void)[] = [];
-    const major = vi.spyOn(api, "chipHistoryMajor").mockImplementation(
-      () =>
-        new Promise<ChipHistoryMajor>((r) => {
-          majorResolvers.push(r);
-        }),
-    );
-    renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
-    await waitFor(() => expect(major).toHaveBeenCalledTimes(1));
-    expect(major.mock.calls[0]![1]).toBe(150);
-    // fast still pending → full must not have fired
-    await new Promise((r) => setTimeout(r, 30));
+    // lazy-window 核心:150 落地後靜置,不得自動補 540
+    await new Promise((r) => setTimeout(r, 50));
     expect(major).toHaveBeenCalledTimes(1);
-    majorResolvers[0]!(mkHistoryMajor());
-    await waitFor(() => expect(major).toHaveBeenCalledTimes(2));
-    expect(major.mock.calls[1]![1]).toBe(540);
   });
 
-  it("fast failure surfaces error and never fires full", async () => {
+  it("major failure surfaces error; no retry storm", async () => {
     vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
     vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
     const major = vi
@@ -104,7 +93,7 @@ describe("useChipData split fetches", () => {
       wrapper: makeQueryWrapper(),
     });
     await waitFor(() => expect(result.current.error).toBe("major_unavailable"));
-    expect(major).toHaveBeenCalledTimes(1); // fast only — full stays gated
+    expect(major).toHaveBeenCalledTimes(1);
   });
 
   it("date change fires api.chip ONLY (not history endpoints)", async () => {
@@ -114,15 +103,15 @@ describe("useChipData split fetches", () => {
       { initialProps: { d: "2026-06-22" }, wrapper: makeQueryWrapper() },
     );
     await waitFor(() => expect(chip).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(major).toHaveBeenCalledTimes(2)); // fast + full
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(1));
     expect(base).toHaveBeenCalledTimes(1);
     rerender({ d: "2026-06-21" });
     await waitFor(() => expect(chip).toHaveBeenCalledTimes(2));
     expect(base).toHaveBeenCalledTimes(1); // unchanged
-    expect(major).toHaveBeenCalledTimes(2); // unchanged
+    expect(major).toHaveBeenCalledTimes(1); // unchanged
   });
 
-  it("symbol change fires all three endpoints", async () => {
+  it("symbol change refires all three; major resets to fast 150", async () => {
     const { chip, base, major } = spyChipApis();
     const { rerender } = renderHook(
       ({ sym }: { sym: string }) => useChipData(sym, "2026-06-22"),
@@ -131,14 +120,16 @@ describe("useChipData split fetches", () => {
     await waitFor(() => {
       expect(chip).toHaveBeenCalledTimes(1);
       expect(base).toHaveBeenCalledTimes(1);
-      expect(major).toHaveBeenCalledTimes(2); // fast + full
+      expect(major).toHaveBeenCalledTimes(1);
     });
     rerender({ sym: "2454" });
     await waitFor(() => {
       expect(chip).toHaveBeenCalledTimes(2);
       expect(base).toHaveBeenCalledTimes(2);
-      expect(major).toHaveBeenCalledTimes(4); // fast + full again
+      expect(major).toHaveBeenCalledTimes(2);
     });
+    expect(major.mock.calls[1]![0]).toBe("2454");
+    expect(major.mock.calls[1]![1]).toBe(150);
   });
 
   it("history persists across date change (no null flash)", async () => {
@@ -179,7 +170,7 @@ describe("useChipData split fetches", () => {
     await waitFor(() => expect(result.current.summary?.date).toBe("2026-06-21"));
   });
 
-  it("loading = summaryLoading OR historyLoading; majorLoading clears on FAST landing", async () => {
+  it("loading = summaryLoading OR historyLoading; majorLoading clears when 150 lands", async () => {
     let resolveBase!: (v: ChipHistory) => void;
     const majorResolvers: ((v: ChipHistoryMajor) => void)[] = [];
     vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
@@ -202,73 +193,34 @@ describe("useChipData split fetches", () => {
     expect(result.current.majorLoading).toBe(true);
     expect(result.current.loading).toBe(true);
     // Resolving base alone is enough to flip global `loading` off — major
-    // continues in background without blocking the "重新整理" spinner.
+    // continues without blocking the "重新整理" spinner.
     resolveBase(mkHistory());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.majorLoading).toBe(true);
-    // FAST window lands → the visible subchart has data, overlay must clear
-    // even though the background 540d fill is still pending.
+    // 150 window lands → the visible subchart has data, overlay must clear.
     majorResolvers[0]!(mkHistoryMajor());
     await waitFor(() => expect(result.current.majorLoading).toBe(false));
   });
 
-  it("refresh() forces all endpoints (fast + full major) with refresh=true", async () => {
+  it("refresh() forces summary + base + current-tier major with refresh=true", async () => {
     const { chip, base, major } = spyChipApis();
     const { result } = renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
-    await waitFor(() => expect(major).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(1));
     act(() => result.current.refresh());
     await waitFor(() => {
       expect(chip).toHaveBeenCalledTimes(2);
       expect(base).toHaveBeenCalledTimes(2);
-      expect(major).toHaveBeenCalledTimes(4);
+      expect(major).toHaveBeenCalledTimes(2);
     });
     expect(chip.mock.calls[1]![2]).toBe(true);
     expect(base.mock.calls[1]![1]).toBe(540);
     expect(base.mock.calls[1]![2]).toBe(true);
-    // Refresh re-fires both major windows, each forced.
-    const refreshedDays = [major.mock.calls[2]![1], major.mock.calls[3]![1]].sort((a, b) => a - b);
-    expect(refreshedDays).toEqual([150, 540]);
-    expect(major.mock.calls[2]![2]).toBe(true);
-    expect(major.mock.calls[3]![2]).toBe(true);
-  });
-
-  it("base carries days=540; major fast=150 then full=540", async () => {
-    const { base, major } = spyChipApis();
-    renderHook(() => useChipData("2330", "2026-06-22"), { wrapper: makeQueryWrapper() });
-    await waitFor(() => {
-      expect(base).toHaveBeenCalledTimes(1);
-      expect(major).toHaveBeenCalledTimes(2);
-    });
-    expect(base.mock.calls[0]![1]).toBe(540);
-    expect(major.mock.calls[0]![1]).toBe(150);
-    expect(major.mock.calls[1]![1]).toBe(540);
-  });
-
-  it("merged major uses fast rows first, then full rows replace them", async () => {
-    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
-    vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
-    vi.spyOn(api, "chipHistoryMajor")
-      .mockResolvedValueOnce({
-        ...mkHistoryMajor(),
-        major: [{ date: "2026-06-22", major_net: 1 }],
-      })
-      .mockResolvedValueOnce({
-        ...mkHistoryMajor(),
-        major: [
-          { date: "2026-06-21", major_net: 2 },
-          { date: "2026-06-22", major_net: 1 },
-        ],
-      });
-    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), {
-      wrapper: makeQueryWrapper(),
-    });
-    // full (2 rows) eventually replaces fast (1 row); fast row visible en route
-    await waitFor(() => expect(result.current.history?.major.length).toBe(2));
-    expect(result.current.history?.major[0]?.major_net).toBe(2);
+    expect(major.mock.calls[1]![1]).toBe(150); // 未升檔 → 當前檔位 = 150
+    expect(major.mock.calls[1]![2]).toBe(true);
   });
 
   it("history merges base + major: major[] empty until major lands", async () => {
-    let resolveMajor!: (v: ReturnType<typeof mkHistoryMajor>) => void;
+    let resolveMajor!: (v: ChipHistoryMajor) => void;
     vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
     vi.spyOn(api, "chipHistoryBase").mockResolvedValue({
       ...mkHistory(),
@@ -278,7 +230,7 @@ describe("useChipData split fetches", () => {
     });
     vi.spyOn(api, "chipHistoryMajor").mockImplementation(
       () =>
-        new Promise<ReturnType<typeof mkHistoryMajor>>((r) => {
+        new Promise<ChipHistoryMajor>((r) => {
           resolveMajor = r;
         }),
     );
@@ -288,12 +240,7 @@ describe("useChipData split fetches", () => {
     expect(result.current.history?.major).toEqual([]);
     expect(result.current.majorLoading).toBe(true);
     // major arrives → merged in
-    resolveMajor({
-      symbol: "2330",
-      fetched_at: "",
-      last_date: "2026-06-22",
-      major: [{ date: "2026-06-22", major_net: 123 }],
-    });
+    resolveMajor(mkHistoryMajor({ major: [{ date: "2026-06-22", major_net: 123 }] }));
     await waitFor(() => expect(result.current.history?.major.length).toBe(1));
     expect(result.current.history?.major[0]?.major_net).toBe(123);
   });
@@ -319,5 +266,170 @@ describe("useChipData split fetches", () => {
     resolveFirst(mkSummary("STALE"));
     await new Promise((r) => setTimeout(r, 30));
     expect(result.current.summary?.date).toBe("FRESH"); // stale dropped
+  });
+});
+
+describe("useChipData major ladder (chip-major-lazy-window)", () => {
+  it("ensureMajorCoverage escalates to the smallest sufficient tier (300)", async () => {
+    const { major } = spyChipApis();
+    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(1));
+    // 2025-12-01 早於 150 覆蓋左界(2026-01-23)、晚於 300 的(2025-08-26)→ 300
+    act(() => result.current.ensureMajorCoverage("2025-12-01"));
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(2));
+    expect(major.mock.calls[1]![1]).toBe(300);
+  });
+
+  it("escalates straight to 540 when 300 is insufficient (tier skip)", async () => {
+    const { major } = spyChipApis();
+    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(1));
+    // 2025-01-01 早於 300 覆蓋左界(2025-08-26)→ 直跳 540
+    act(() => result.current.ensureMajorCoverage("2025-01-01"));
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(2));
+    expect(major.mock.calls[1]![1]).toBe(540);
+  });
+
+  it("idempotent: fromDate within coverage / repeated reports fire nothing extra (SC-3)", async () => {
+    const { major } = spyChipApis();
+    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(1));
+    // 覆蓋內 → no-op
+    act(() => result.current.ensureMajorCoverage("2026-03-01"));
+    // 同一出界日期重複回報(拖曳連續事件)→ 只升一次
+    act(() => result.current.ensureMajorCoverage("2025-12-01"));
+    act(() => result.current.ensureMajorCoverage("2025-12-01"));
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(2));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(major).toHaveBeenCalledTimes(2);
+    expect(major.mock.calls[1]![1]).toBe(300);
+  });
+
+  it("keeps previous tier rows visible while escalation is in flight (placeholder)", async () => {
+    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
+    vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
+    let resolveSecond!: (v: ChipHistoryMajor) => void;
+    vi.spyOn(api, "chipHistoryMajor")
+      .mockResolvedValueOnce(
+        mkHistoryMajor({ major: [{ date: "2026-06-22", major_net: 1 }] }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<ChipHistoryMajor>((r) => {
+            resolveSecond = r;
+          }),
+      );
+    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(result.current.history?.major.length).toBe(1));
+    act(() => result.current.ensureMajorCoverage("2025-12-01"));
+    await waitFor(() => expect(result.current.majorFetching).toBe(true));
+    // 升檔在途:前檔 rows 保留、整版 overlay 不重現
+    expect(result.current.history?.major.length).toBe(1);
+    expect(result.current.majorLoading).toBe(false);
+    resolveSecond(
+      mkHistoryMajor({
+        major: [
+          { date: "2025-12-01", major_net: 2 },
+          { date: "2026-06-22", major_net: 1 },
+        ],
+      }),
+    );
+    await waitFor(() => expect(result.current.history?.major.length).toBe(2));
+    expect(result.current.majorFetching).toBe(false);
+  });
+
+  it("symbol pivot clears the placeholder — no previous-symbol rows flash", async () => {
+    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
+    vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
+    vi.spyOn(api, "chipHistoryMajor")
+      .mockResolvedValueOnce(
+        mkHistoryMajor({ major: [{ date: "2026-06-22", major_net: 99 }] }),
+      )
+      .mockImplementation(() => new Promise<ChipHistoryMajor>(() => {}));
+    const { result, rerender } = renderHook(
+      ({ sym }: { sym: string }) => useChipData(sym, "2026-06-22"),
+      { initialProps: { sym: "2330" }, wrapper: makeQueryWrapper() },
+    );
+    await waitFor(() => expect(result.current.history?.major.length).toBe(1));
+    rerender({ sym: "2454" });
+    // 新 symbol 的 base 落地後,major 必須是空的(不能殘留 2330 的 rows)
+    await waitFor(() => expect(result.current.history).not.toBeNull());
+    expect(result.current.history?.major).toEqual([]);
+    expect(result.current.majorLoading).toBe(true);
+  });
+
+  it("R1(a): report arriving before anchor exists is applied once 150 lands", async () => {
+    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
+    vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
+    let resolveFirst!: (v: ChipHistoryMajor) => void;
+    const major = vi
+      .spyOn(api, "chipHistoryMajor")
+      .mockImplementationOnce(
+        () =>
+          new Promise<ChipHistoryMajor>((r) => {
+            resolveFirst = r;
+          }),
+      )
+      .mockResolvedValue(mkHistoryMajor());
+    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(1));
+    // 初載在途(anchor null)使用者就 zoom-out 出界 → 需求要被記住
+    act(() => result.current.ensureMajorCoverage("2025-12-01"));
+    expect(major).toHaveBeenCalledTimes(1);
+    resolveFirst(mkHistoryMajor());
+    // 150 落地 → 補跑 effect 對記住的 fromDate 升檔
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(2));
+    expect(major.mock.calls[1]![1]).toBe(300);
+  });
+
+  it("R1(b): stale report from the previous symbol never escalates the new one", async () => {
+    const { major } = spyChipApis();
+    const { result, rerender } = renderHook(
+      ({ sym }: { sym: string }) => useChipData(sym, "2026-06-22"),
+      { initialProps: { sym: "2330" }, wrapper: makeQueryWrapper() },
+    );
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(1));
+    act(() => result.current.ensureMajorCoverage("2025-01-01")); // 2330 → 540
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(2));
+    rerender({ sym: "2454" });
+    // 2454 回到 150;其 major 落地時,舊 symbol 的 fromDate 不得誤升 2454
+    await waitFor(() => expect(major).toHaveBeenCalledTimes(3));
+    expect(major.mock.calls[2]![0]).toBe("2454");
+    expect(major.mock.calls[2]![1]).toBe(150);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(major).toHaveBeenCalledTimes(3);
+  });
+
+  it("majorCoverageStart reflects the LANDED tier (placeholder keeps old value mid-flight)", async () => {
+    vi.spyOn(api, "chip").mockResolvedValue(mkSummary("d"));
+    vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
+    let resolveSecond!: (v: ChipHistoryMajor) => void;
+    vi.spyOn(api, "chipHistoryMajor")
+      .mockResolvedValueOnce(mkHistoryMajor())
+      .mockImplementationOnce(
+        () =>
+          new Promise<ChipHistoryMajor>((r) => {
+            resolveSecond = r;
+          }),
+      );
+    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(result.current.majorCoverageStart).toBe("2026-01-23"));
+    act(() => result.current.ensureMajorCoverage("2025-12-01"));
+    await waitFor(() => expect(result.current.majorFetching).toBe(true));
+    expect(result.current.majorCoverageStart).toBe("2026-01-23"); // 前檔的
+    resolveSecond(mkHistoryMajor());
+    await waitFor(() => expect(result.current.majorCoverageStart).toBe("2025-08-26"));
   });
 });
