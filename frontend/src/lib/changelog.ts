@@ -40,6 +40,28 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.32.0",
+    date: "2026-07-16",
+    highlights: "權證挑選更好用:發行商篩選上線、表頭對齊修正、展開列精簡",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證篩選列新增「發行商」下拉,可只看特定發行商(凱基、元大等)的權證",
+      },
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "權證表的代號、名稱、類型欄表頭改為靠左,與欄位內容對齊一致",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證展開列聚焦 IV 走勢,移除單一權證的分點買賣超明細;分點動向請改看「權證分點」頁",
+      },
+    ],
+  },
+  {
     version: "0.31.2",
     date: "2026-07-16",
     highlights: "權證 IV 歷史資料更可靠:缺日與不完整的日子會自動補齊",
