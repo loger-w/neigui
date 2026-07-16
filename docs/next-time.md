@@ -10,6 +10,11 @@
 
 - **[user 已點名,待開獨立 /mod] chip 主力 540d 全量改「拖曳觸發」+ 缺料區 loading 顯示**:現行 fast(150d)成功後立即背景抓 540d;user 要改成「使用者拖曳 K 線到快取外區域才觸發補抓,補抓中該區顯示 loading」。行為/UX 改動,依 /perf 鐵則不混效能流程。觸發:本 /perf(warrant-api-load)merge 後即開 `/mod`(注意與本 /perf 對 major fan-out 的優化互動,以 merge 後的 main 為基準)
 
+## From /mod chip-major-lazy-window Phase 2 probe(2026-07-16)
+
+- **[高優先,建議獨立 /bug] prd cancel 鏈斷在 Vercel rewrite 層**:probe 實證(證據:`.claude/mod/chip-major-lazy-window/current-state.md` P1/P2/P3 節)— dev(vite proxy)四環全通;prd 的 Vercel rewrite **不轉發 client abort**,瀏覽器 ERR_ABORTED 後 Railway 上 fan-out 殭屍燒到完(+368),並把切換目的地的請求排隊拖慢(2330 base 6.4s vs 無競爭 1.7s、major fast 11.4s)。候選修法:(a) prd 前端直連 Railway + CORS(FRONTEND_ORIGIN 機制已在)繞過 rewrite;(b) 應用層 cancel 信號(abort 時 sendBeacon 砍 inflight)。cancel-chain skill 第五環節需同步翻新(現述「30s 超時觸發整條鏈」易誤讀成 abort 會傳導)。觸發:chip-major-lazy-window merge 後排程
+- **[待查] prd 有 ~0.7-1.2 req/s 常駐 FinMind 消耗**(≈3000-4300/hr,單獨就逼近 6000/hr 配額):2026-07-16 13:xx 與 16:xx 兩時段 baseline 皆觀測到。嫌疑:某長駐 keeper 打 FinMind(warrant snapshot freshness keeper?或 intraday 輪詢)。觸發:下次 prd 出現成串 502/402、或排查配額異常時優先查
+
 ## From /feat warrant-iv-drift(2026-07-11)
 
 - **IV drift「rising」側受市場 vol regime 混淆**(2026-07-11 真實 60 日校準:市場整體 IV 上行 → rel 右尾肥,常數 0.30 下 rising 仍標 10.3%;declining 側 1.2% 選擇性 OK):要更乾淨需 cross-sectional de-mean(rel 減去全市場中位數),屬 detect 演算法 design amend。觸發重評估:user 反映 rising 標記太多、或市場轉入 IV 下行 regime 換 declining 側爆量時
