@@ -212,6 +212,23 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(page.getByLabel("剩餘天數下限", { exact: true })).toHaveValue("");
   });
 
+  test("E20: 發行商下拉篩選(mod warrant-selector-table SC-2)", async ({ page }) => {
+    // 痛點:extractIssuer 名稱抽取 → 選項推導 → filterWarrants 全鏈;fixture
+    // 2330 六檔發行商互異,選凱基 6→1(030011)是 discriminative 訊號;
+    // 重製篩選需連下拉一起回「全部」。
+    await page.getByRole("button", { name: /^權證$/ }).click();
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
+    await page.getByLabel("發行商篩選").selectOption("凱基");
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(1);
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveAttribute(
+      "data-warrant-id",
+      "030011",
+    );
+    await page.getByTestId("filter-reset-btn").click();
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
+    await expect(page.getByLabel("發行商篩選")).toHaveValue("all");
+  });
+
   test("E12: IV趨勢欄 drift 標記(warrant-iv-drift SC-6)", async ({ page }) => {
     // 痛點:iv_history fixture → loader → detect_drift → snapshot merge 全鏈
     // 資料級 assertion(030012 遞減 / 030013 平穩顯示 —)— visibility-only

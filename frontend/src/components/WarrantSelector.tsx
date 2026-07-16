@@ -18,6 +18,7 @@ import {
 } from "../lib/warrant-column-prefs";
 import {
   DEFAULT_FILTERS,
+  extractIssuer,
   filterWarrants,
   mergeWarrantRows,
   sortWarrants,
@@ -84,6 +85,17 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
     const merged = mergeWarrantRows(terms, quotesHook.data?.quotes ?? {});
     return sortWarrants(filterWarrants(merged, filters), sortKey, sortDir);
   }, [warrantsHook.data, quotesHook.data, filters, sortKey, sortDir]);
+
+  // 發行商下拉選項:從 terms 推導(不隨其他篩選縮減);.sort() 走 code point,
+  // 跨環境 deterministic(localeCompare 依 ICU 而異)
+  const issuers = useMemo(() => {
+    const found = new Set<string>();
+    for (const t of warrantsHook.data?.warrants ?? []) {
+      const issuer = extractIssuer(t.name);
+      if (issuer) found.add(issuer);
+    }
+    return Array.from(found).sort();
+  }, [warrantsHook.data]);
 
   // 差槓比中性強度階(SC-5):非 null 值三分位 → ink 強度,不用紅綠
   const slrTerciles = useMemo(() => {
@@ -181,6 +193,27 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             </button>
           ))}
         </div>
+        <label className="inline-flex items-center gap-1 text-ink-muted">
+          發行商
+          <select
+            aria-label="發行商篩選"
+            value={filters.issuer ?? "all"}
+            onChange={(e) =>
+              setFilters((f) => ({
+                ...f,
+                issuer: e.target.value === "all" ? null : e.target.value,
+              }))
+            }
+            className="border border-line text-ink px-2 py-1 pointer-coarse:min-h-11 bg-bg cursor-pointer"
+          >
+            <option value="all">全部</option>
+            {issuers.map((issuer) => (
+              <option key={issuer} value={issuer}>
+                {issuer}
+              </option>
+            ))}
+          </select>
+        </label>
         {/* 期限/位階群組 */}
         <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-2 pl-3 border-l border-line">
           <label className="inline-flex items-center gap-1 text-ink-muted">

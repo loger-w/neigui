@@ -9,8 +9,29 @@ const TAIPEI_OPEN_MIN = 9 * 60;
 // 13:35 inclusive:收盤撮合 13:30 後緩衝(impl-R6 定案)
 const TAIPEI_CLOSE_MIN = 13 * 60 + 35;
 
+/** 台灣權證發行商 2 字簡稱名單(現役為主,對權證簡稱內嵌字樣;
+ * 名單外新券商抽不出 → 該權證僅在「全部」可見,graceful degradation)。 */
+export const WARRANT_ISSUERS = [
+  "元大", "凱基", "統一", "群益", "富邦", "永豐", "國泰", "兆豐",
+  "中信", "元富", "永昌", "玉山", "台新", "國票", "康和", "宏遠",
+] as const;
+
+const ISSUER_SET: ReadonlySet<string> = new Set(WARRANT_ISSUERS);
+
+/** 權證簡稱抽發行商:標準格式 = 標的簡稱 2 字 + 發行商 2 字(index 2 起),
+ * 3 字標的簡稱時發行商順延至 index 3 — 從 index 2 起掃描全名取首個命中。
+ * index 0/1 不掃:標的自身撞名(國泰金/富邦金等金控標的)靠起點排除。 */
+export function extractIssuer(name: string): string | null {
+  for (let i = 2; i + 2 <= name.length; i++) {
+    const cand = name.slice(i, i + 2);
+    if (ISSUER_SET.has(cand)) return cand;
+  }
+  return null;
+}
+
 export interface WarrantFilters {
   kind: "all" | "call" | "put";
+  issuer: string | null;
   minDaysLeft: number | null;
   moneynessMin: number | null;
   moneynessMax: number | null;
@@ -25,6 +46,7 @@ export interface WarrantFilters {
 
 export const DEFAULT_FILTERS: WarrantFilters = {
   kind: "all",
+  issuer: null,
   minDaysLeft: null,
   moneynessMin: null,
   moneynessMax: null,
@@ -58,6 +80,7 @@ export function isNearSoldOut(r: WarrantRow): boolean {
 export function filterWarrants(rows: WarrantRow[], f: WarrantFilters): WarrantRow[] {
   return rows.filter((r) => {
     if (f.kind !== "all" && r.kind !== f.kind) return false;
+    if (f.issuer !== null && extractIssuer(r.name) !== f.issuer) return false;
     if (f.minDaysLeft !== null && (r.days_left == null || r.days_left < f.minDaysLeft)) {
       return false;
     }

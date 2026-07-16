@@ -477,6 +477,28 @@ describe("WarrantSelector 分點買賣超移除(mod warrant-selector-table SC-3)
   });
 });
 
+describe("WarrantSelector 發行商篩選(mod warrant-selector-table SC-2)", () => {
+  it("下拉選項 = 全部 + 該標的實際發行商;選定後過濾;重製回全部", async () => {
+    // THREE 的名稱含凱基/元大/富邦三家 → 選項自 terms 推導(不隨其他篩選縮)
+    mockApis(THREE, THREE_QUOTES);
+    render(<WarrantSelector symbol="2330" active={true} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
+    const select = screen.getByLabelText("發行商篩選") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+      "全部", "元大", "凱基", "富邦",
+    ]);
+    fireEvent.change(select, { target: { value: "凱基" } });
+    const rows = screen.getAllByTestId("warrant-row");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.getAttribute("data-warrant-id")).toBe("030012");
+    fireEvent.click(screen.getByTestId("filter-reset-btn"));
+    await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(3));
+    expect((screen.getByLabelText("發行商篩選") as HTMLSelectElement).value).toBe("all");
+  });
+});
+
 describe("WarrantSelector 表頭對齊(mod warrant-selector-table SC-1)", () => {
   it("代號/名稱/類型表頭靠左、其餘資料欄表頭靠右(與 td 對齊一致)", async () => {
     // first:text-left 打在展開空 th(真正的 :first-child)上,資料欄表頭
