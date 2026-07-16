@@ -40,6 +40,23 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.31.2",
+    date: "2026-07-16",
+    highlights: "權證 IV 歷史資料更可靠:缺日與不完整的日子會自動補齊",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "權證 IV 歷史修正:上游查詢偶發回空造成的缺日或只剩一半的資料,現在會自動偵測並補齊,IV 走勢與漂移標記更可信",
+      },
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "伺服器啟動不再對休市日重複掃描,開機後權證資料更快就緒",
+      },
+    ],
+  },
+  {
     version: "0.31.1",
     date: "2026-07-15",
     highlights: "權證頁載入大幅加速:每日首次開啟不再久等",
