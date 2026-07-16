@@ -210,12 +210,13 @@ export function WarrantIvHistory({
             padLeft={geom.pad.left}
             xEnd={geom.width - geom.pad.right}
           />
-          {geom.xTicks.map((t) => (
+          {geom.xTicks.map((t, i) => (
             <text
               key={`x${t.x}`}
               x={t.x}
               y={geom.height - 5}
-              textAnchor="middle"
+              // 末 tick 靠右對齊,置中會超出 svg 右緣被裁(real-env 實測)
+              textAnchor={i === geom.xTicks.length - 1 ? "end" : "middle"}
               fontSize="0.5625rem"
               fill="currentColor"
               className="text-ink-dim"
