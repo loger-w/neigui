@@ -51,6 +51,8 @@ export interface WarrantColumnDef {
   label: string;
   /** 欄位一行說明(欄位選單與 th title 共用) */
   desc: string;
+  /** 表頭對齊,與 cell 同向(th 依此渲染,不再用 first: 猜位) */
+  align: "left" | "right";
   sortKey?: WarrantSortKey;
   /** 不可隱藏(表格 anchor 欄) */
   lockVisible?: boolean;
@@ -63,6 +65,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "warrant_id",
     label: "代號",
     desc: "權證代號;點左側 + 可展開 IV 時序與分點明細",
+    align: "left",
     lockVisible: true,
     cell: (r) => <td className="px-2 py-1 text-left text-ink font-medium">{r.warrant_id}</td>,
   },
@@ -70,6 +73,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "name",
     label: "名稱",
     desc: "權證名稱;◇ = 重設型(IV/估價不適用)",
+    align: "left",
     cell: (r) => (
       <td className="px-2 py-1 text-left text-ink-muted">
         {r.name}
@@ -85,6 +89,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "kind",
     label: "類型",
     desc: "認購(看多標的)/認售(看空標的)",
+    align: "left",
     cell: (r) => (
       <td className="px-2 py-1 text-left">
         <span
@@ -106,6 +111,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "strike",
     label: "履約價",
     desc: "行使權利的約定價格",
+    align: "right",
     sortKey: "strike",
     cell: (r) => <td className="px-2 py-1 text-right text-ink-muted">{fmt(r.strike)}</td>,
   },
@@ -113,6 +119,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "moneyness",
     label: "價內外",
     desc: "標的價相對履約價的偏離(正 = 價內,負 = 價外)",
+    align: "right",
     sortKey: "moneyness",
     cell: (r) => <td className="px-2 py-1 text-right text-ink-muted">{fmtPct(r.moneyness)}</td>,
   },
@@ -120,6 +127,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "days_left",
     label: "剩餘天數",
     desc: "距最後交易日的日曆日;≤21 日標「近到期」(出場品質懸崖)",
+    align: "right",
     sortKey: "days_left",
     cell: (r) => (
       <td className="px-2 py-1 text-right text-ink-muted">
@@ -142,6 +150,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "exercise_ratio",
     label: "行使比例",
     desc: "一張權證可換標的股數比",
+    align: "right",
     sortKey: "exercise_ratio",
     cell: (r) => (
       <td className="px-2 py-1 text-right text-ink-dim">{fmt(r.exercise_ratio, 4)}</td>
@@ -151,6 +160,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "price",
     label: "現價",
     desc: "權證最新成交價",
+    align: "right",
     sortKey: "price",
     cell: (r) => (
       <td className="px-2 py-1 text-right text-ink font-medium">{fmt(r.price)}</td>
@@ -160,6 +170,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "bid",
     label: "委買",
     desc: "最佳委買價;第二行 ×N張 為掛單量",
+    align: "right",
     cell: (r) => (
       <td data-testid="bid-cell" className="px-2 py-1 text-right text-ink-muted">
         {priceVolLines(r.best_bid, r.best_bid_vol)}
@@ -170,6 +181,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "ask",
     label: "委賣",
     desc: "最佳委賣價;第二行 ×N張 為掛單量;委賣消失且委買仍在標「近售罄」",
+    align: "right",
     cell: (r) => (
       <td data-testid="ask-cell" className="px-2 py-1 text-right text-ink-muted">
         <span className="inline-flex items-center gap-1">
@@ -194,6 +206,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "iv",
     label: "IV",
     desc: "以委買/委賣中價反解的隱含波動率",
+    align: "right",
     sortKey: "iv",
     cell: (r) => (
       <td className="px-2 py-1 text-right text-ink-muted">
@@ -205,6 +218,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "theo_price",
     label: "理論價",
     desc: "以昨日 IV 計算的 Black-Scholes 理論價",
+    align: "right",
     sortKey: "theo_price",
     cell: (r) => <td className="px-2 py-1 text-right text-ink-muted">{fmt(r.theo_price)}</td>,
   },
@@ -212,6 +226,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "mispricing",
     label: "估價差",
     desc: "現價相對理論價的偏離(±10% 內視為合理)",
+    align: "right",
     sortKey: "mispricing_pct",
     cell: (r) => (
       <td className="px-2 py-1 text-right">
@@ -238,6 +253,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "iv_percentile",
     label: "IV百分位",
     desc: "目前 IV 在同標的全部權證中的百分位(低 = 相對便宜)",
+    align: "right",
     sortKey: "iv_percentile",
     cell: (r) => (
       <td className="px-2 py-1 text-right text-ink-muted">
@@ -249,6 +265,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "iv_drift",
     label: "IV趨勢",
     desc: "近 10 個交易日 IV 走勢(長期遞減/遞增;— = 平穩或樣本不足)",
+    align: "right",
     cell: (r) => (
       <td className="px-2 py-1 text-right">
         <span data-testid="iv-drift-label" className="text-ink-muted">
@@ -261,6 +278,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "leverage",
     label: "實質槓桿",
     desc: "標的漲跌 1% 時權證理論漲跌的倍數",
+    align: "right",
     sortKey: "leverage",
     cell: (r) => <td className="px-2 py-1 text-right text-ink-muted">{fmt(r.leverage, 2)}</td>,
   },
@@ -268,6 +286,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "spread_ratio",
     label: "價差比",
     desc: "委買賣價差佔委買價比例(低 = 進出成本低)",
+    align: "right",
     sortKey: "spread_ratio",
     cell: (r) => (
       <td className="px-2 py-1 text-right text-ink-muted">{fmtPct(r.spread_ratio)}</td>
@@ -277,6 +296,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     id: "slr",
     label: "差槓比",
     desc: "價差比 ÷ 實質槓桿(綜合成本效率,低 = 佳;預設排序欄)",
+    align: "right",
     sortKey: "spread_lev_ratio",
     cell: (r, ctx) => (
       <td className={cn("px-2 py-1 text-right", ctx.slrClass)}>

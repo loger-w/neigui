@@ -109,6 +109,16 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(row12.getByTestId("bid-cell")).toContainText("×50張");
     await expect(page.getByText(/最後更新 13:30/)).toBeVisible(); // quotes 層到位
     await expect(page.getByText(/快照基準日 2026-06-26/)).toBeVisible();
+    // 表頭對齊與資料欄一致(mod warrant-selector-table SC-1):文字欄靠左、
+    // 數值欄靠右 — 舊寫法 first:text-left 打在展開空 th 上,全表頭右對齊。
+    await expect(page.locator("thead th").filter({ hasText: "代號" })).toHaveCSS(
+      "text-align",
+      "left",
+    );
+    await expect(page.locator("thead th").filter({ hasText: "履約價" })).toHaveCSS(
+      "text-align",
+      "right",
+    );
   });
 
   test("E9: 認售 toggle 篩選(SC-4)", async ({ page }) => {
