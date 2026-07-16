@@ -41,6 +41,8 @@ IV_YIELD_EVERY = 500  # IV 反解純 CPU 讓出 event loop(沿 warrants 慣例)
 DRIFT_YIELD_EVERY = 200  # rebuild 逐權證 detect 讓出(R13)
 _SERIES_LRU_CAP = 4
 _NONTRADING_RETRY_SLEEP = 5.0  # R15:transient 空回與真非交易日不可區分,retry 一次
+NONTRADING_FILE = "warrant_iv_nontrading.json"
+_NONTRADING_TTL_DAYS = 7  # marker 重驗週期:雙空誤判(機率 p² 級)最遲 7 天自癒
 _UA = "Mozilla/5.0 (neigui-backend)"
 WN1430_URL = (
     "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php"
@@ -472,6 +474,29 @@ def _backfill_days() -> int:
     return int(os.getenv("WARRANT_IV_BACKFILL_DAYS", "60") or "60")
 
 
+def _load_nontrading() -> dict[str, str]:
+    """非交易日 marker {date_iso: checked_iso};版本不符視同缺檔(R18 同慣例)。"""
+    payload = read_json(chip_cache_dir() / NONTRADING_FILE)
+    if isinstance(payload, dict) and payload.get("_cache_version") == _CACHE_VERSION:
+        return dict(payload.get("days") or {})
+    return {}
+
+
+def _save_nontrading(days: dict[str, str]) -> None:
+    atomic_write_json(
+        chip_cache_dir() / NONTRADING_FILE,
+        {"_cache_version": _CACHE_VERSION, "days": days},
+    )
+
+
+def _nontrading_fresh(checked_iso: str, today: date_type) -> bool:
+    try:
+        checked = date_type.fromisoformat(checked_iso)
+    except ValueError:
+        return False  # 壞值 → 視同過期,走重驗路徑自癒
+    return (today - checked).days < _NONTRADING_TTL_DAYS
+
+
 def ensure_backfill_task() -> None:
     """lifespan 入口;FAKE / env 0 → no-op。全窗零交易日不自動重試(Known Risk R-5)。"""
     global _backfill_task
@@ -512,6 +537,7 @@ async def _backfill() -> None:
     today = clock.today()
     max_scan = days_target * 2 + 11
     s_range: dict[str, dict[str, float]] | None = None
+    nontrading = _load_nontrading()
     found = 0
     wrote_any = False
     for i in range(1, max_scan + 1):
@@ -526,19 +552,30 @@ async def _backfill() -> None:
         if _day_file(date_iso).exists():
             found += 1
             continue
+        checked = nontrading.get(date_iso)
+        if checked is not None and _nontrading_fresh(checked, today):
+            continue  # marker TTL 內:已確認非交易日,不重掃(過期則重驗)
         try:
             call_rows = await warrants_mod.fetch_mi_index(date_iso, "0999")
             put_rows = await warrants_mod.fetch_mi_index(date_iso, "0999P")
-            if not call_rows and not put_rows:
-                # R15:transient 失敗與真非交易日不可區分 → retry 一次
+            if not call_rows or not put_rows:
+                # 交易日兩型別必都有行情:任一空 = transient「stat=OK 空表」嫌疑
+                # (shape 與真非交易日不可區分)→ retry 一次(R15)
                 await asyncio.sleep(_NONTRADING_RETRY_SLEEP)
                 call_rows = await warrants_mod.fetch_mi_index(date_iso, "0999")
                 put_rows = await warrants_mod.fetch_mi_index(date_iso, "0999P")
             if not call_rows and not put_rows:
-                if d.weekday() < 5:
-                    logger.warning(
-                        "warrant iv backfill: weekday %s empty (holiday or upstream?)", date_iso
-                    )
+                # 雙空兩次 = 非交易日 → marker(TTL 過期重驗,誤判自癒)
+                nontrading[date_iso] = today.isoformat()
+                _save_nontrading(nontrading)
+                continue
+            if not call_rows or not put_rows:
+                # 單邊空兩次 = transient partial:寫了就 immutable 殘檔永不自癒
+                # (06-08 / 07-02 實錘)→ 不寫,留待下次啟動補
+                logger.warning(
+                    "warrant iv backfill: %s partial empty (call=%d put=%d), skip write",
+                    date_iso, len(call_rows), len(put_rows),
+                )
                 continue
 
             s_map: dict[str, float] = {}
@@ -607,6 +644,8 @@ async def _backfill() -> None:
                 {"_cache_version": _CACHE_VERSION, "date": date_iso, "terms_approx": True,
                  "warrants": warrants_out},
             )
+            if nontrading.pop(date_iso, None) is not None:
+                _save_nontrading(nontrading)  # 過期重驗有料 = 先前誤判 → 自癒
             found += 1
             wrote_any = True
         except httpx.HTTPError as exc:

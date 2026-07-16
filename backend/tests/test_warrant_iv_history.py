@@ -371,11 +371,16 @@ def patch_backfill_upstream(
     terms: list | None = None,
     issue: list | None = None,
     wn1430_by_date: dict[str, list] | None = None,
+    mi_seq_by_date: dict[tuple[str, str], list[list]] | None = None,
 ) -> dict:
     counter: dict = {"mi": {}, "rebuild": 0}
+    seqs = {k: list(v) for k, v in (mi_seq_by_date or {}).items()}
 
     async def fake_mi(date_iso: str, type_code: str) -> list:
         counter["mi"][(date_iso, type_code)] = counter["mi"].get((date_iso, type_code), 0) + 1
+        seq = seqs.get((date_iso, type_code))
+        if seq:
+            return seq.pop(0)
         return mi_by_date.get((date_iso, type_code), [])
 
     async def fake_terms() -> list:
@@ -438,9 +443,13 @@ def tpex_issue_raw(wid: str = "72124U", uid: str = "8086") -> dict:
 class TestBackfill:
     async def test_backfill_skips_existing_and_nontrading(self, monkeypatch) -> None:
         write_day("2026-07-08", {})  # 已存在 → 不 fetch
+        # fixture 慣例:交易日兩型別都要給 rows(單邊空 = transient,不寫檔)
         counter = patch_backfill_upstream(
             monkeypatch,
-            mi_by_date={("2026-07-09", "0999"): [twse_hist_row()]},
+            mi_by_date={
+                ("2026-07-09", "0999"): [twse_hist_row()],
+                ("2026-07-09", "0999P"): [twse_hist_row(wid="03001P")],
+            },
             terms=[twse_terms_raw()],
         )
         monkeypatch.setenv("WARRANT_IV_BACKFILL_DAYS", "2")
@@ -461,7 +470,9 @@ class TestBackfill:
             monkeypatch,
             mi_by_date={
                 ("2026-07-11", "0999"): [twse_hist_row()],
+                ("2026-07-11", "0999P"): [twse_hist_row(wid="03001P")],
                 ("2026-07-09", "0999"): [twse_hist_row()],
+                ("2026-07-09", "0999P"): [twse_hist_row(wid="03001P")],
             },
             terms=[twse_terms_raw()],
         )
@@ -478,7 +489,9 @@ class TestBackfill:
             monkeypatch,
             mi_by_date={
                 ("2026-07-09", "0999"): [twse_hist_row()],
+                ("2026-07-09", "0999P"): [twse_hist_row(wid="03001P")],
                 ("2026-07-03", "0999"): [twse_hist_row()],
+                ("2026-07-03", "0999P"): [twse_hist_row(wid="03001P")],
             },
             terms=[twse_terms_raw()],
         )
@@ -495,7 +508,10 @@ class TestBackfill:
         wn_row = {"warrant_id": "72124U", "close": 0.31, "bid": 0.30, "ask": 0.32}
         patch_backfill_upstream(
             monkeypatch,
-            mi_by_date={("2026-07-09", "0999"): [twse_hist_row()]},
+            mi_by_date={
+                ("2026-07-09", "0999"): [twse_hist_row()],
+                ("2026-07-09", "0999P"): [twse_hist_row(wid="03001P")],
+            },
             terms=[twse_terms_raw()],
             issue=[tpex_issue_raw()],
             wn1430_by_date={"2026-07-09": [wn_row]},
@@ -515,12 +531,106 @@ class TestBackfill:
         assert entry["ivb"] is not None
         assert captured["args"][0] == "8086"
 
+    # ---- transient empty vs 非交易日(2026-07-16 /bug:06-08 / 07-02 殘檔實錘,
+    # TWSE 慢查詢會「stat=OK 空表」且 shape 與真假日不可區分)----
+
+    async def test_backfill_retries_when_single_type_empty_then_recovers(self, monkeypatch) -> None:
+        # 殘檔 root cause:0999 transient 空 + 0999P 有料 → 舊碼不 retry 直接寫殘檔;
+        # 交易日兩型別必都有行情,任一空即要 retry 補齊
+        counter = patch_backfill_upstream(
+            monkeypatch,
+            mi_by_date={("2026-07-10", "0999P"): [twse_hist_row(wid="03001P")]},
+            mi_seq_by_date={("2026-07-10", "0999"): [[], [twse_hist_row()]]},
+            terms=[twse_terms_raw(), twse_terms_raw(wid="03001P")],
+        )
+        monkeypatch.setenv("WARRANT_IV_BACKFILL_DAYS", "1")
+        await ivh._backfill()
+        assert counter["mi"][("2026-07-10", "0999")] == 2
+        payload = read_json(day_file("2026-07-10"))
+        assert payload is not None
+        assert "030012" in payload["warrants"]  # retry 補齊 call 側,非殘檔
+        assert "03001P" in payload["warrants"]
+
+    async def test_backfill_persistent_partial_empty_writes_no_day_file(self, monkeypatch) -> None:
+        # retry 後仍單邊空 = transient partial → 不寫檔(留待下次啟動自癒);
+        # 寫了就 immutable 永不自癒(06-08 / 07-02 兩個殘檔的直接病灶)
+        counter = patch_backfill_upstream(
+            monkeypatch,
+            mi_by_date={("2026-07-10", "0999P"): [twse_hist_row(wid="03001P")]},
+            terms=[twse_terms_raw(wid="03001P")],
+        )
+        monkeypatch.setenv("WARRANT_IV_BACKFILL_DAYS", "1")
+        await ivh._backfill()
+        assert counter["mi"][("2026-07-10", "0999")] == 2
+        assert not day_file("2026-07-10").exists()
+
+    async def test_backfill_double_empty_writes_nontrading_marker(self, monkeypatch) -> None:
+        # 雙空兩次 = 非交易日 → 寫 marker(帶 checked 日期),啟動不再重掃
+        patch_backfill_upstream(
+            monkeypatch,
+            mi_by_date={
+                ("2026-07-09", "0999"): [twse_hist_row()],
+                ("2026-07-09", "0999P"): [twse_hist_row(wid="03001P")],
+            },
+            terms=[twse_terms_raw()],
+        )
+        monkeypatch.setenv("WARRANT_IV_BACKFILL_DAYS", "1")
+        await ivh._backfill()
+        marker = read_json(chip_cache_dir() / "warrant_iv_nontrading.json")
+        assert marker is not None, "非交易日 marker 檔應存在"
+        assert marker["days"]["2026-07-10"] == "2026-07-11"
+        assert day_file("2026-07-09").exists()
+
+    async def test_backfill_skips_marked_nontrading_within_ttl(self, monkeypatch) -> None:
+        # marker TTL 內 → 該日不發任何 MI_INDEX 請求(消每次啟動重掃)
+        atomic_write_json(
+            chip_cache_dir() / "warrant_iv_nontrading.json",
+            {"_cache_version": ivh._CACHE_VERSION, "days": {"2026-07-10": "2026-07-11"}},
+        )
+        counter = patch_backfill_upstream(
+            monkeypatch,
+            mi_by_date={
+                ("2026-07-09", "0999"): [twse_hist_row()],
+                ("2026-07-09", "0999P"): [twse_hist_row(wid="03001P")],
+            },
+            terms=[twse_terms_raw()],
+        )
+        monkeypatch.setenv("WARRANT_IV_BACKFILL_DAYS", "1")
+        await ivh._backfill()
+        assert ("2026-07-10", "0999") not in counter["mi"]
+        assert ("2026-07-10", "0999P") not in counter["mi"]
+        assert day_file("2026-07-09").exists()
+
+    async def test_backfill_expired_marker_rechecks_and_self_heals(self, monkeypatch) -> None:
+        # 誤判自癒:marker 過期(> TTL)重驗,有料 → 補檔 + 移除 marker
+        atomic_write_json(
+            chip_cache_dir() / "warrant_iv_nontrading.json",
+            {"_cache_version": ivh._CACHE_VERSION, "days": {"2026-07-10": "2026-07-01"}},
+        )
+        patch_backfill_upstream(
+            monkeypatch,
+            mi_by_date={
+                ("2026-07-10", "0999"): [twse_hist_row()],
+                ("2026-07-10", "0999P"): [twse_hist_row(wid="03001P")],
+            },
+            terms=[twse_terms_raw()],
+        )
+        monkeypatch.setenv("WARRANT_IV_BACKFILL_DAYS", "1")
+        await ivh._backfill()
+        assert day_file("2026-07-10").exists()
+        marker = read_json(chip_cache_dir() / "warrant_iv_nontrading.json")
+        assert marker is not None
+        assert "2026-07-10" not in marker["days"]
+
     async def test_backfill_excludes_non_universe_codes(self, monkeypatch) -> None:
         # edge 7:se=EW 混入 ETF → 不在 issue universe 的代號不入 archive
         etf_row = {"warrant_id": "00679B", "close": 26.80, "bid": 26.80, "ask": 26.81}
         patch_backfill_upstream(
             monkeypatch,
-            mi_by_date={("2026-07-09", "0999"): [twse_hist_row()]},
+            mi_by_date={
+                ("2026-07-09", "0999"): [twse_hist_row()],
+                ("2026-07-09", "0999P"): [twse_hist_row(wid="03001P")],
+            },
             terms=[twse_terms_raw()],
             issue=[tpex_issue_raw()],
             wn1430_by_date={"2026-07-09": [etf_row]},
