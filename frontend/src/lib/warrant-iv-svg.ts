@@ -8,6 +8,8 @@ export interface IvHistoryChartGeom {
   width: number;
   height: number;
   pad: { left: number; right: number };
+  /** computeHv20 結果(與 series index 對齊)— 摘要列複用,免重算。 */
+  hv: (number | null)[];
   ivPanel: {
     top: number;
     height: number;
@@ -173,6 +175,7 @@ export function computeIvHistoryChart(
     width,
     height: IV_TOP + IV_H + PANEL_GAP + PRICE_H + X_LABEL_H,
     pad: PAD,
+    hv,
     ivPanel: {
       top: IV_TOP,
       height: IV_H,
