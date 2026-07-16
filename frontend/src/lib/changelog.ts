@@ -40,6 +40,28 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.33.0",
+    date: "2026-07-16",
+    highlights: "權證展開列隱波圖全面重做:位階摘要、標的價對照、降波趨勢一眼看懂",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證展開列的隱波圖重新設計:上方隱波走勢疊上標的歷史波動率(HV20)與降波趨勢線,下方對照標的收盤走勢,看得出「標的漲但隱波被調降」",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "新增隱波位階摘要:最新買價隱波、自身 60 日位階、同標的其他權證位階、與標的波動率的差距,貴不貴一眼判斷",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "展開列圖表改為隨表格寬度自動放大,不再固定小尺寸",
+      },
+    ],
+  },
+  {
     version: "0.32.0",
     date: "2026-07-16",
     highlights: "權證挑選更好用:發行商篩選上線、表頭對齊修正、展開列精簡",
