@@ -271,3 +271,49 @@ test.describe("equity mode — 泡泡圖提示", () => {
     await expect(page.getByTestId("bubble-brush-hint")).toBeVisible();
   });
 });
+test.describe("equity mode — 主力線階梯補抓(mod chip-major-lazy-window)", () => {
+  test.beforeEach(async ({ page }) => {
+    await installFixtureClock(page);
+    await page.goto("/");
+  });
+
+  test("E20: 初載只發一筆 major days=150,無自動 540(SC-1)", async ({ page }) => {
+    // 痛點:配額核心 — 舊行為 fast 成功後自動背景抓 540(~360 requests/檔)。
+    // regression = 這裡多出第二筆 major 請求。
+    const majorRequests: string[] = [];
+    page.on("request", (req) => {
+      if (req.url().includes("/history/major")) majorRequests.push(req.url());
+    });
+    await page.getByPlaceholder(/搜尋代號/).fill("2330");
+    await page.getByRole("option").first().click();
+    await expect(page.getByTestId(TESTIDS.chipKlineChart)).toBeVisible();
+    // 等 major 落地 + 靜置,確認沒有背景第二筆
+    await page.waitForTimeout(1200);
+    expect(majorRequests.length).toBe(1);
+    expect(majorRequests[0]).toContain("days=150");
+  });
+
+  test("E21: 滾輪出界 → 發 days=300 補抓 + 缺料區段 overlay 出現後消失(SC-2)", async ({ page }) => {
+    // 痛點:出界升檔鏈 = chart 回報可見左界 → hook 升檔 → 區段 overlay。
+    // 鏈上任一環斷 = 拖出去看到假 0 bars 且永遠不補資料(spec R1 死區)。
+    // fixture 2330 共 ~118 根(2026-01-01 起),150 檔覆蓋左界 2026-01-27:
+    // 預設 90 根不出界;滾 3 次(+30 根,clamp 118)左界 = 2026-01-01 出界 → 300。
+    await page.route(/\/history\/major\?.*days=300/, async (route) => {
+      await new Promise((r) => setTimeout(r, 1200)); // 撐開 loading 窗口供 assert
+      await route.continue();
+    });
+    await page.getByPlaceholder(/搜尋代號/).fill("2330");
+    await page.getByRole("option").first().click();
+    const chart = page.getByTestId(TESTIDS.chipKlineChart);
+    await expect(chart).toBeVisible();
+    // 等 150 落地(major-loading-overlay 消失)再滾,確保出界時 anchor 已在
+    await expect(page.getByTestId("major-loading-overlay")).toBeHidden({ timeout: 5000 });
+    const escalation = page.waitForRequest(/\/history\/major\?.*days=300/);
+    await chart.hover();
+    for (let i = 0; i < 3; i++) await page.mouse.wheel(0, 100);
+    await escalation; // 出界 → 升檔請求真的發出
+    // 補抓在途:缺料區段 overlay 可見;落地後消失
+    await expect(page.getByTestId("major-gap-overlay")).toBeVisible();
+    await expect(page.getByTestId("major-gap-overlay")).toBeHidden({ timeout: 5000 });
+  });
+});

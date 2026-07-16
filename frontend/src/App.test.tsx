@@ -45,6 +45,7 @@ vi.mock("./components/VersionBadge", () => ({
 vi.mock("./hooks/useChipData", () => ({
   useChipData: () => ({
     history: null, loading: false, majorLoading: false,
+    majorFetching: false, majorCoverageStart: null, ensureMajorCoverage: vi.fn(),
     error: null, refresh: vi.fn(),
   }),
 }));

@@ -36,6 +36,15 @@ interface Props {
   /** chip-controls-v2: N 日聚合視窗。> 1 時 K 線 + subchart 顯示半透明區間 band,
    *  涵蓋從 selectedDate 往前 N-1 個 trading day。<=1 / undefined 不渲染。 */
   windowDays?: number;
+  /** chip-major-lazy-window:主力資料已落地覆蓋的左界日期(YYYY-MM-DD)。
+   *  可見窗內早於此日的區段 = 缺料,補抓在途時蓋 major-gap-overlay。 */
+  majorCoverageStart?: string | null;
+  /** 主力補抓(初載或升檔)在途。只有它為 true 時才蓋缺料區段 overlay —
+   *  非 fetching 的缺料(升檔失敗)回到既有 0-bar 呈現。 */
+  majorFetching?: boolean;
+  /** 可見視窗變化時回報最左可見 K 線日期。政策(要不要升檔、升到哪檔)
+   *  在 useChipData.ensureMajorCoverage — chart 只報事實。 */
+  onVisibleRangeChange?: (leftmostDate: string) => void;
 }
 
 const KLINE_ZOOM_MIN = 30;     // 太小無法看 BB(period 20) + MA20
@@ -49,6 +58,7 @@ export function ChipKlineChart({
   onPickDate, onClearAllBrokers,
   loading, loadingSymbol, majorLoading,
   windowDays,
+  majorCoverageStart, majorFetching, onVisibleRangeChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const { width, height } = useContainerSize(containerRef);
@@ -205,6 +215,27 @@ export function ChipKlineChart({
     const start = Math.max(0, end - n + 1);
     return { start, end, total };
   }, [fullDerived, viewEndIdx, visibleDays]);
+
+  // 可見左界回報:windowRange(zoom/pan)或資料變動時報最左可見日期,
+  // useChipData 依此判斷要不要升主力檔位。冪等由 hook 端保證,重複回報無害。
+  useEffect(() => {
+    if (!fullDerived || !windowRange || !onVisibleRangeChange) return;
+    const leftDate = fullDerived.candles[windowRange.start]?.date;
+    if (leftDate) onVisibleRangeChange(leftDate);
+  }, [fullDerived, windowRange, onVisibleRangeChange]);
+
+  // 缺料區段比例:可見窗內 date < majorCoverageStart 的根數 / 可見根數。
+  // R4 clamp:coverageStart 已達全量首根(跨午夜錨差)= 全覆蓋,不蓋。
+  const majorGapFraction = useMemo(() => {
+    if (!majorCoverageStart || !fullDerived || !windowRange) return 0;
+    const first = fullDerived.candles[0]?.date ?? "";
+    if (majorCoverageStart <= first) return 0;
+    const { start, end } = windowRange;
+    const visible = fullDerived.candles.slice(start, end + 1);
+    if (visible.length === 0) return 0;
+    const gapCount = visible.filter((c) => c.date < majorCoverageStart).length;
+    return gapCount / visible.length;
+  }, [majorCoverageStart, fullDerived, windowRange]);
 
   const derived = useMemo(() => {
     if (!fullDerived || !windowRange) return null;
@@ -413,6 +444,22 @@ export function ChipKlineChart({
           <div
             data-testid="major-loading-overlay"
             className="absolute inset-0 flex items-center justify-center bg-bg-deep/40 pointer-events-none"
+            aria-live="polite"
+          >
+            <span className="text-xs text-ink-dim bg-bg-deep/85 px-2 py-0.5 border border-line flex items-center gap-1.5">
+              <LoadingSpinner size="3" />
+              主力資料載入中…
+            </span>
+          </div>
+        )}
+        {/* 缺料區段 overlay(chip-major-lazy-window):升檔在途只蓋可見窗
+            左側缺料比例的 x 範圍,已載區段 bars 照常顯示。與整版
+            major-loading-overlay 互斥(majorLoading 時尚無任何資料)。 */}
+        {!majorLoading && majorFetching && majorGapFraction > 0 && subH > 0 && (
+          <div
+            data-testid="major-gap-overlay"
+            className="absolute inset-y-0 left-0 flex items-center justify-center overflow-hidden bg-bg-deep/40 pointer-events-none"
+            style={{ width: `${majorGapFraction * 100}%` }}
             aria-live="polite"
           >
             <span className="text-xs text-ink-dim bg-bg-deep/85 px-2 py-0.5 border border-line flex items-center gap-1.5">
