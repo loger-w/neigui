@@ -341,7 +341,10 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
                     key={c.id}
                     scope="col"
                     title={c.desc}
-                    className="px-2 py-1.5 text-right first:text-left font-normal"
+                    className={cn(
+                      "px-2 py-1.5 font-normal",
+                      c.align === "left" ? "text-left" : "text-right",
+                    )}
                   >
                     {c.sortKey ? (
                       <button

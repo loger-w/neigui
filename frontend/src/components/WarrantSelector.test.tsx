@@ -514,6 +514,31 @@ describe("WarrantSelector 懸崖 / 近售罄 badge(SC-8/SC-9)", () => {
   });
 });
 
+describe("WarrantSelector 表頭對齊(mod warrant-selector-table SC-1)", () => {
+  it("代號/名稱/類型表頭靠左、其餘資料欄表頭靠右(與 td 對齊一致)", async () => {
+    // first:text-left 打在展開空 th(真正的 :first-child)上,資料欄表頭
+    // 全部右對齊 — 依欄位 align 屬性渲染後,文字欄表頭須與 td 同向。
+    mockApis(THREE, THREE_QUOTES);
+    render(<WarrantSelector symbol="2330" active={true} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
+    const byLabel = new Map(
+      screen
+        .getAllByRole("columnheader")
+        .map((th) => [(th.textContent ?? "").replace(/ [↑↓]$/, ""), th.className]),
+    );
+    for (const h of ["代號", "名稱", "類型"]) {
+      expect(byLabel.get(h)).toContain("text-left");
+      expect(byLabel.get(h)).not.toContain("text-right");
+    }
+    for (const h of ["履約價", "現價", "差槓比"]) {
+      expect(byLabel.get(h)).toContain("text-right");
+      expect(byLabel.get(h)).not.toContain("text-left");
+    }
+  });
+});
+
 describe("WarrantSelector review 修正批(Phase 5)", () => {
   it("篩選 input 打字值不被無關 filter 變更沖掉(uncontrolled+epoch 機制)", async () => {
     // 「-」「0.」badInput 中間態 jsdom 一律 sanitize 成 "",controlled/uncontrolled
