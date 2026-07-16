@@ -7,6 +7,7 @@ import {
   DEFAULT_FILTERS,
   EXIT_CLIFF_DAYS,
   QUOTES_REFETCH_MS,
+  extractIssuer,
   filterWarrants,
   isExitCliff,
   isMarketOpen,
@@ -46,10 +47,53 @@ function row(over: Partial<WarrantRow> = {}): WarrantRow {
   };
 }
 
+describe("extractIssuer(mod warrant-selector-table SC-2)", () => {
+  it("標準簡稱:標的 2 字 + 發行商 2 字", () => {
+    expect(extractIssuer("台積凱基61購01")).toBe("凱基");
+    expect(extractIssuer("鴻海元大71購03")).toBe("元大");
+  });
+
+  it("認售權證同樣抽取", () => {
+    expect(extractIssuer("台積國泰61售01")).toBe("國泰");
+  });
+
+  it("標的簡稱 = 金控名(國泰金/富邦金):不誤取標的自身", () => {
+    expect(extractIssuer("國泰凱基61購01")).toBe("凱基");
+    expect(extractIssuer("富邦統一61購02")).toBe("統一");
+  });
+
+  it("3 字標的簡稱 fallback:發行商落在 index 3", () => {
+    expect(extractIssuer("統一超凱基61購01")).toBe("凱基");
+  });
+
+  it("3 字標的第 2-3 字含名單字樣不誤判(fallback 從 index 2 起掃)", () => {
+    // 「台元大」為虛構 3 字標的 — index 1 起掃會誤中「元大」;正確答案是
+    // index 3 的「群益」
+    expect(extractIssuer("台元大群益61購01")).toBe("群益");
+  });
+
+  it("名單外發行商 / 非權證命名 → null", () => {
+    expect(extractIssuer("台積不明61購01")).toBeNull();
+    expect(extractIssuer("測試")).toBeNull();
+    expect(extractIssuer("")).toBeNull();
+  });
+});
+
 describe("filterWarrants", () => {
   it("預設 filters 不剔除任何列(含 null 欄位列)", () => {
     const rows = [row(), row({ warrant_id: "030013", mispricing_pct: null })];
     expect(filterWarrants(rows, DEFAULT_FILTERS)).toHaveLength(2);
+  });
+
+  it("issuer 篩選:null 全放行;指定發行商只留該發行商,抽不出者一併剔除", () => {
+    const rows = [
+      row({ warrant_id: "030011", name: "台積凱基61購01" }),
+      row({ warrant_id: "030012", name: "台積元大61購02" }),
+      row({ warrant_id: "030099", name: "台積不明61購99" }),
+    ];
+    expect(filterWarrants(rows, DEFAULT_FILTERS)).toHaveLength(3);
+    const out = filterWarrants(rows, { ...DEFAULT_FILTERS, issuer: "凱基" });
+    expect(out.map((r) => r.warrant_id)).toEqual(["030011"]);
   });
 
   it("kind toggle 只留認售", () => {
