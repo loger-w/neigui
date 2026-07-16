@@ -1,0 +1,1270 @@
+diff --git a/backend/services/warrant_iv_history.py b/backend/services/warrant_iv_history.py
+index cae976e..827fdf7 100644
+--- a/backend/services/warrant_iv_history.py
++++ b/backend/services/warrant_iv_history.py
+@@ -362,11 +362,21 @@ async def _get_underlying_series(uid: str, wids: list[str], refresh: bool) -> di
+         for wid in wids:
+             entries = [(p["warrants"].get(wid) or {}) for _, p in loaded]
+             by_wid[wid] = [(e.get("ivb"), e.get("iva")) for e in entries]
++        # 標的收盤:每日取同標的任一權證的非 null s。wids 來自現行快照 —
++        # 早期日檔若現行權證全未上市則留 None(known gap,change-spec R7)
++        s_list: list[float | None] = [
++            next(
++                (s for wid in wids if (s := (p["warrants"].get(wid) or {}).get("s")) is not None),
++                None,
++            )
++            for _, p in loaded
++        ]
+         built = {
+             "latest": dates[-1] if dates else None,
+             "gen": gen,
+             "dates": dates,
+             "by_wid": by_wid,
++            "s_list": s_list,
+             "approx_dates": [d for d, p in loaded if p.get("terms_approx")],
+         }
+         if gen == _rebuild_generation:  # R12:組裝期間 rebuild 完成 → 丟棄不入 cache
+@@ -388,7 +398,8 @@ async def get_iv_history(warrant_id: str, refresh: bool = False) -> dict | None:
+     entry = await _get_underlying_series(uid, wids, refresh)
+     pairs = entry["by_wid"].get(warrant_id) or [(None, None)] * len(entry["dates"])
+     series = [
+-        {"date": d, "iv_bid": b, "iv_ask": a} for d, (b, a) in zip(entry["dates"], pairs)
++        {"date": d, "iv_bid": b, "iv_ask": a, "underlying_close": s}
++        for d, (b, a), s in zip(entry["dates"], pairs, entry["s_list"])
+     ]
+     drift_map = await get_drift_map()
+     drift = drift_map.get(warrant_id) or {
+diff --git a/backend/tests/test_warrant_iv_history.py b/backend/tests/test_warrant_iv_history.py
+index 163647c..0a2aa61 100644
+--- a/backend/tests/test_warrant_iv_history.py
++++ b/backend/tests/test_warrant_iv_history.py
+@@ -256,13 +256,43 @@ class TestSeriesAssembly:
+         out = await ivh.get_iv_history("030012")
+         assert out is not None
+         assert [p["date"] for p in out["series"]] == ["2026-07-07", "2026-07-08", "2026-07-09"]
+-        assert out["series"][1] == {"date": "2026-07-08", "iv_bid": None, "iv_ask": None}
++        assert out["series"][1] == {
++            "date": "2026-07-08", "iv_bid": None, "iv_ask": None, "underlying_close": None,
++        }
+         assert out["series"][0]["iv_bid"] == pytest.approx(0.41)
++        assert out["series"][0]["underlying_close"] == pytest.approx(100.0)
+         assert out["terms_approx_dates"] == ["2026-07-09"]
+         assert out["drift"]["label"] == "insufficient"  # 3 日 < MIN_VALID_POINTS
+         if ivh._rebuild_bg_task is not None:
+             await ivh._rebuild_bg_task
+ 
++    async def test_series_underlying_close_sourced_from_any_same_uid_warrant(
++        self, monkeypatch
++    ) -> None:
++        # underlying_close 取該標的任一權證的非 null s:本權證缺席/s 缺日由同標的
++        # 其他權證補;全缺 → None(change-spec §6 backend)
++        write_day("2026-07-07", {
++            "030012": {"b": 0.6, "a": 0.65, "c": 0.62, "s": None, "ivb": None, "iva": None},
++            "030013": {"b": 1.0, "a": 1.1, "c": 1.05, "s": 102.5, "ivb": 0.40, "iva": 0.44},
++        })
++        write_day("2026-07-08", {
++            "030013": {"b": 1.0, "a": 1.1, "c": 1.05, "s": 103.0, "ivb": 0.40, "iva": 0.44},
++        })
++        write_day("2026-07-09", {
++            "030012": {"b": 0.55, "a": 0.60, "c": 0.57, "s": None, "ivb": None, "iva": None},
++        })
++        snap = make_snap([make_warrant(), make_warrant(wid="030013")])
++
++        async def fake_get_snapshot(refresh: bool = False) -> dict:
++            return snap
++
++        monkeypatch.setattr(ws, "get_snapshot", fake_get_snapshot)
++        out = await ivh.get_iv_history("030012")
++        assert out is not None
++        assert [p["underlying_close"] for p in out["series"]] == [102.5, 103.0, None]
++        if ivh._rebuild_bg_task is not None:
++            await ivh._rebuild_bg_task
++
+     async def test_unknown_warrant_returns_none(self, monkeypatch) -> None:
+         snap = make_snap()
+ 
+diff --git a/backend/tests_e2e/test_api_warrants.py b/backend/tests_e2e/test_api_warrants.py
+index 96be8ee..e97abde 100644
+--- a/backend/tests_e2e/test_api_warrants.py
++++ b/backend/tests_e2e/test_api_warrants.py
+@@ -99,6 +99,8 @@ async def test_iv_history_contract(client):
+     assert dates == sorted(dates)
+     assert body["series"][-1]["date"] == "2026-06-26"  # FAKE_TODAY
+     assert body["series"][-1]["iv_bid"] == pytest.approx(0.35, abs=0.01)
++    # 標的收盤序列(warrant-iv-redesign):FAKE fixture 的 s 直通 payload
++    assert body["series"][-1]["underlying_close"] == pytest.approx(1000.0)
+     assert body["drift"]["label"] == "declining"
+     assert set(body["drift"]) == {"label", "slope_bid", "slope_ask", "n_valid"}
+     assert body["terms_approx_dates"] == []
+diff --git a/e2e/specs/equity.spec.ts b/e2e/specs/equity.spec.ts
+index e49c220..6b6196c 100644
+--- a/e2e/specs/equity.spec.ts
++++ b/e2e/specs/equity.spec.ts
+@@ -240,9 +240,10 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
+     await expect(row13.getByTestId(TESTIDS.ivDriftLabel)).toHaveText("—");
+   });
+ 
+-  test("E13: row 展開 IV 時序圖(warrant-iv-drift SC-7)", async ({ page }) => {
+-    // 痛點:iv-history endpoint → hook → computeIvChart → svg path 全鏈;
+-    // 鎖 path d 屬性非空(資料級),空 geometry 時 svg 不 render。
++  test("E13: row 展開 IV 時序圖(warrant-iv-drift SC-7 / warrant-iv-redesign)", async ({ page }) => {
++    // 痛點:iv-history endpoint → hook → computeIvHistoryChart → svg path 全鏈;
++    // 鎖 path d 屬性非空(資料級),空 geometry 時 svg 不 render。重設計後
++    // 加鎖標的收盤 panel(underlying_close 欄位斷了 = price path 空)與摘要列。
+     await page.getByRole("button", { name: /^權證$/ }).click();
+     const row12 = page.locator('[data-warrant-id="030012"]');
+     await row12.getByRole("button", { name: /展開明細/ }).click();
+@@ -250,7 +251,10 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
+     await expect(chart).toBeVisible();
+     const bidD = await chart.locator('path[data-side="bid"]').getAttribute("d");
+     expect(bidD).toMatch(/^M[\d.]+,[\d.]+L/); // 至少一段 M + L 連線
+-    await expect(page.getByText("買價IV")).toBeVisible();
++    const priceD = await chart.locator('path[data-series="price"]').getAttribute("d");
++    expect(priceD).toMatch(/^M[\d.]+,[\d.]+L/); // 標的收盤序列資料級
++    await expect(page.getByTestId("warrant-iv-summary")).toBeVisible();
++    await expect(page.getByText("買價IV", { exact: true })).toBeVisible();
+   });
+ });
+ 
+diff --git a/frontend/src/components/WarrantIvHistory.test.tsx b/frontend/src/components/WarrantIvHistory.test.tsx
+index 43f96f7..09cb3f1 100644
+--- a/frontend/src/components/WarrantIvHistory.test.tsx
++++ b/frontend/src/components/WarrantIvHistory.test.tsx
+@@ -1,13 +1,15 @@
+ /**
+  * @vitest-environment jsdom
+  *
+- * WarrantIvHistory — 展開區 bid/ask IV 時序圖(SC-7)。
++ * WarrantIvHistory — 展開列 IV 歷史重設計(warrant-iv-redesign)。
+  * Mock 走 vi.spyOn(api),不 mock hooks(frontend-testing 慣例)。
++ * useContainerSize 走真 hook + RO polyfill + rect stub(MarketColdLoad 樣板),
++ * 響應式 regression 直接鎖 svg width。
+  */
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import { cleanup, render, screen, waitFor } from "@testing-library/react";
+ import { api } from "../lib/api";
+-import type { WarrantIvHistoryPayload } from "../lib/warrant-data";
++import type { WarrantIvHistoryPayload, WarrantIvPoint } from "../lib/warrant-data";
+ import { WarrantIvHistory } from "./WarrantIvHistory";
+ import { makeQueryWrapper } from "../test-utils/query-wrapper";
+ 
+@@ -15,16 +17,53 @@ const mk = (over?: Partial<WarrantIvHistoryPayload>): WarrantIvHistoryPayload =>
+   warrant_id: "030012",
+   terms_approx_dates: [],
+   series: [
+-    { date: "2026-07-07", iv_bid: 0.43, iv_ask: 0.47 },
+-    { date: "2026-07-08", iv_bid: 0.42, iv_ask: 0.46 },
+-    { date: "2026-07-09", iv_bid: 0.41, iv_ask: 0.45 },
++    { date: "2026-07-07", iv_bid: 0.43, iv_ask: 0.47, underlying_close: 995.0 },
++    { date: "2026-07-08", iv_bid: 0.42, iv_ask: 0.46, underlying_close: 1000.0 },
++    { date: "2026-07-09", iv_bid: 0.41, iv_ask: 0.45, underlying_close: 1010.0 },
+   ],
+   drift: { label: "declining", slope_bid: -0.002, slope_ask: -0.001, n_valid: 25 },
+   ...over,
+ });
+ 
+-beforeEach(() => vi.restoreAllMocks());
+-afterEach(() => cleanup());
++/** 25 點常數收盤序列:HV20 可算(=0),用於 vs HV20 摘要項。 */
++const longSeries = (): WarrantIvPoint[] =>
++  Array.from({ length: 25 }, (_, i) => ({
++    date: `2026-06-${String(i + 1).padStart(2, "0")}`,
++    iv_bid: 0.41,
++    iv_ask: 0.45,
++    underlying_close: 1000.0,
++  }));
++
++let rectSpy: ReturnType<typeof vi.spyOn>;
++
++beforeEach(() => {
++  vi.restoreAllMocks();
++  if (!globalThis.ResizeObserver) {
++    globalThis.ResizeObserver = class {
++      observe(): void {}
++      unobserve(): void {}
++      disconnect(): void {}
++    } as unknown as typeof ResizeObserver;
++  }
++  rectSpy = vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
++    width: 800,
++    height: 600,
++    top: 0,
++    left: 0,
++    right: 800,
++    bottom: 600,
++    x: 0,
++    y: 0,
++    toJSON() {
++      return this;
++    },
++  } as DOMRect);
++});
++
++afterEach(() => {
++  rectSpy.mockRestore();
++  cleanup();
++});
+ 
+ describe("WarrantIvHistory", () => {
+   it("loading 狀態(繁中)", () => {
+@@ -49,16 +88,90 @@ describe("WarrantIvHistory", () => {
+     await waitFor(() => expect(screen.getByText("無歷史引波資料")).toBeTruthy());
+   });
+ 
+-  it("正常渲染:svg 兩線 path 非空 + 圖例(資料級)", async () => {
++  it("正常渲染:雙 panel path + 圖例 + svg 寬跟容器(響應式 regression)", async () => {
+     vi.spyOn(api, "warrantIvHistory").mockResolvedValue(mk());
+     render(<WarrantIvHistory warrantId="030012" />, { wrapper: makeQueryWrapper() });
+     await waitFor(() => expect(screen.getByTestId("warrant-iv-chart")).toBeTruthy());
+     const svg = screen.getByTestId("warrant-iv-chart");
+-    const paths = svg.querySelectorAll("path[data-side]");
+-    expect(paths.length).toBe(2);
+-    for (const p of paths) expect(p.getAttribute("d")).toMatch(/^M/);
+-    expect(screen.getByText(/買價IV/)).toBeTruthy();
+-    expect(screen.getByText(/賣價IV/)).toBeTruthy();
++    // 冷載入路徑:loading 態先 mount(恆存 wrapper 掛 ref),資料到位後量測已生效
++    expect(svg.getAttribute("width")).toBe("800");
++    const sides = svg.querySelectorAll("path[data-side]");
++    expect(sides.length).toBe(2);
++    for (const p of sides) expect(p.getAttribute("d")).toMatch(/^M/);
++    const price = svg.querySelector('path[data-series="price"]');
++    expect(price).toBeTruthy();
++    expect(price!.getAttribute("d")).toMatch(/^M[\d.]+,[\d.]+L/);
++    expect(screen.getByText("買價IV")).toBeTruthy();
++    expect(screen.getByText("賣價IV")).toBeTruthy();
++    expect(screen.getByText("HV20(標的)")).toBeTruthy();
++    expect(screen.getByText("標的收盤")).toBeTruthy();
++  });
++
++  it("摘要列:最新買價IV / 自身位階 / 同標的位階(prop)/ drift 統計", async () => {
++    vi.spyOn(api, "warrantIvHistory").mockResolvedValue(mk());
++    render(<WarrantIvHistory warrantId="030012" ivPercentile={62} />, {
++      wrapper: makeQueryWrapper(),
++    });
++    await waitFor(() => expect(screen.getByTestId("warrant-iv-chart")).toBeTruthy());
++    expect(screen.getByText("41.0%")).toBeTruthy(); // 最新非 null iv_bid
++    expect(screen.getByText("P33")).toBeTruthy(); // 0.41 是 3 值最低 → 33.3
++    expect(screen.getByText("P62")).toBeTruthy(); // 表格傳入的同標的位階
++    expect(screen.getByText(/長期遞減/)).toBeTruthy();
++    expect(screen.getByText(/-0\.20 pp\/日/)).toBeTruthy(); // slope_bid −0.002 → −0.20
++    expect(screen.getByText(/25 日/)).toBeTruthy();
++  });
++
++  it("ivPercentile 未傳 → 同標的位階顯示 —;HV 不足窗 → 不顯示 vs HV20 項", async () => {
++    vi.spyOn(api, "warrantIvHistory").mockResolvedValue(mk());
++    render(<WarrantIvHistory warrantId="030012" />, { wrapper: makeQueryWrapper() });
++    await waitFor(() => expect(screen.getByTestId("warrant-iv-chart")).toBeTruthy());
++    expect(screen.getByText("同標的位階").nextElementSibling?.textContent).toBe("—");
++    expect(screen.queryByText(/vs HV20/)).toBeNull(); // 3 點序列 HV 全 null
++  });
++
++  it("HV 可算時顯示 vs HV20 差距(pp)", async () => {
++    vi.spyOn(api, "warrantIvHistory").mockResolvedValue(mk({ series: longSeries() }));
++    render(<WarrantIvHistory warrantId="030012" />, { wrapper: makeQueryWrapper() });
++    await waitFor(() => expect(screen.getByTestId("warrant-iv-chart")).toBeTruthy());
++    // 常數收盤 HV20 = 0,最新 BIV 41% → +41.0 pp
++    expect(screen.getByText(/vs HV20/)).toBeTruthy();
++    expect(screen.getByText("+41.0 pp")).toBeTruthy();
++  });
++
++  it("declining 畫趨勢線;stable(slope null)不畫且文案無斜率", async () => {
++    vi.spyOn(api, "warrantIvHistory").mockResolvedValue(mk());
++    const { unmount } = render(<WarrantIvHistory warrantId="030012" />, {
++      wrapper: makeQueryWrapper(),
++    });
++    await waitFor(() => expect(screen.getByTestId("warrant-iv-chart")).toBeTruthy());
++    expect(
++      screen.getByTestId("warrant-iv-chart").querySelector('path[data-series="trend"]'),
++    ).toBeTruthy();
++    unmount();
++
++    vi.spyOn(api, "warrantIvHistory").mockResolvedValue(
++      mk({ drift: { label: "stable", slope_bid: null, slope_ask: null, n_valid: 25 } }),
++    );
++    render(<WarrantIvHistory warrantId="030013" />, { wrapper: makeQueryWrapper() });
++    await waitFor(() => expect(screen.getByTestId("warrant-iv-chart")).toBeTruthy());
++    expect(
++      screen.getByTestId("warrant-iv-chart").querySelector('path[data-series="trend"]'),
++    ).toBeNull();
++    expect(screen.getByText(/平穩/)).toBeTruthy();
++    expect(screen.queryByText(/pp\/日/)).toBeNull();
++  });
++
++  it("中性鐵則:無方向性/指控性文案,線不用 accent/bull/bear(SC-5)", async () => {
++    vi.spyOn(api, "warrantIvHistory").mockResolvedValue(mk());
++    render(<WarrantIvHistory warrantId="030012" ivPercentile={88} />, {
++      wrapper: makeQueryWrapper(),
++    });
++    await waitFor(() => expect(screen.getByTestId("warrant-iv-chart")).toBeTruthy());
++    expect(screen.queryByText(/做多|做空|賣選|滿倉|惡意|坑殺/)).toBeNull();
++    const paths = screen.getByTestId("warrant-iv-chart").querySelectorAll("path");
++    for (const p of paths) {
++      expect(p.getAttribute("class") ?? "").not.toMatch(/accent|bull|bear/);
++    }
+   });
+ 
+   it("近似註記:terms_approx_dates 非空才顯示(edge 4)", async () => {
+diff --git a/frontend/src/components/WarrantIvHistory.tsx b/frontend/src/components/WarrantIvHistory.tsx
+index f64afa4..0097007 100644
+--- a/frontend/src/components/WarrantIvHistory.tsx
++++ b/frontend/src/components/WarrantIvHistory.tsx
+@@ -1,112 +1,269 @@
+-import { useMemo } from "react";
++import { useMemo, useRef } from "react";
+ import { useWarrantIvHistory } from "../hooks/useWarrantIvHistory";
+-import { computeIvChart } from "../lib/warrant-iv-svg";
++import { useContainerSize } from "../hooks/useContainerSize";
++import { computeHv20, computeIvHistoryChart, computeIvPercentile } from "../lib/warrant-iv-svg";
+ 
+-// 展開區 bid/ask IV 時序圖(SC-7)。中性呈現:ink 階兩線(bid 實線 / ask 虛線),
+-// 不用紅綠方向色;文案只陳述統計事實。
+-const CHART_W = 480;
+-const CHART_H = 140;
++// 展開列 IV 歷史重設計(warrant-iv-redesign):上下雙 panel 共 x 軸(上 IV %、
++// 下標的收盤)+ 位階摘要列。中性呈現:全 ink 色階零紅綠,線型區分(實/虛/點/
++// 細直線);文案只陳述統計事實。圖寬吃滿表格(useContainerSize,ref 掛恆存 wrapper)。
+ 
+-export function WarrantIvHistory({ warrantId }: { warrantId: string }) {
++const MIN_WIDTH = 320;
++
++const DRIFT_LABEL: Record<string, string> = {
++  declining: "長期遞減",
++  rising: "長期遞增",
++  stable: "平穩",
++  insufficient: "樣本不足",
++};
++
++function lastNonNull(values: (number | null)[]): number | null {
++  for (let i = values.length - 1; i >= 0; i--) {
++    const v = values[i];
++    if (v != null) return v;
++  }
++  return null;
++}
++
++function SummaryItem({ label, value }: { label: string; value: string }) {
++  return (
++    <span className="inline-flex items-baseline gap-1.5">
++      <span className="text-ink-dim">{label}</span>
++      <span className="text-ink tabular-nums">{value}</span>
++    </span>
++  );
++}
++
++export function WarrantIvHistory({
++  warrantId,
++  ivPercentile,
++}: {
++  warrantId: string;
++  ivPercentile?: number | null;
++}) {
+   const { data, loading, error } = useWarrantIvHistory(warrantId);
++  const wrapRef = useRef<HTMLDivElement>(null);
++  const { width: cw } = useContainerSize(wrapRef);
++  const width = Math.max(MIN_WIDTH, cw);
++
++  const drift = data?.drift ?? null;
++  const trendSlope =
++    drift && (drift.label === "declining" || drift.label === "rising")
++      ? drift.slope_bid
++      : null;
++
+   const geom = useMemo(
+-    () => (data ? computeIvChart(data.series, CHART_W, CHART_H) : null),
++    () => (data ? computeIvHistoryChart(data.series, width, trendSlope) : null),
++    [data, width, trendSlope],
++  );
++  const hv = useMemo(() => (data ? computeHv20(data.series) : null), [data]);
++  const selfPercentile = useMemo(
++    () => (data ? computeIvPercentile(data.series) : null),
+     [data],
+   );
+ 
++  const latestBid = data ? lastNonNull(data.series.map((p) => p.iv_bid)) : null;
++  const latestHv = hv ? lastNonNull(hv) : null;
++
++  let body: React.ReactNode;
+   if (loading && !data) {
+-    return <span className="text-ink-dim">載入引波歷史...</span>;
+-  }
+-  if (error) {
+-    return <span className="text-accent">{error}</span>;
+-  }
+-  if (!data || !geom) {
+-    return <span className="text-ink-dim">無歷史引波資料</span>;
+-  }
++    body = <span className="text-ink-dim">載入引波歷史...</span>;
++  } else if (error) {
++    body = <span className="text-accent">{error}</span>;
++  } else if (!data || !geom) {
++    body = <span className="text-ink-dim">無歷史引波資料</span>;
++  } else {
++    const driftText = drift
++      ? `${DRIFT_LABEL[drift.label] ?? drift.label}` +
++        (drift.slope_bid != null &&
++        (drift.label === "declining" || drift.label === "rising")
++          ? ` · 斜率 ${(drift.slope_bid * 100) >= 0 ? "+" : ""}${(drift.slope_bid * 100).toFixed(2)} pp/日`
++          : "") +
++        ` · 有效樣本 ${drift.n_valid} 日`
++      : null;
++    const hvDiff =
++      latestBid != null && latestHv != null ? (latestBid - latestHv) * 100 : null;
+ 
+-  return (
+-    <div className="space-y-1">
+-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-ink-dim">
+-        <span>買賣價反解引波(近 {data.series.length} 交易日)</span>
+-        <span className="inline-flex items-center gap-1.5">
+-          <svg width="18" height="6" aria-hidden="true">
+-            <line x1="0" y1="3" x2="18" y2="3" stroke="currentColor" strokeWidth="1.5" className="text-ink" />
+-          </svg>
+-          買價IV
+-        </span>
+-        <span className="inline-flex items-center gap-1.5">
+-          <svg width="18" height="6" aria-hidden="true">
+-            <line x1="0" y1="3" x2="18" y2="3" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" className="text-ink-muted" />
+-          </svg>
+-          賣價IV
+-        </span>
+-      </div>
+-      <svg
+-        data-testid="warrant-iv-chart"
+-        width={CHART_W}
+-        height={CHART_H}
+-        viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+-        role="img"
+-        aria-label="買賣價反解引波時序圖"
+-        className="max-w-full"
+-      >
+-        {geom.yTicks.map((t) => (
+-          <g key={`y${t.y}`}>
+-            <line
+-              x1={geom.pad.left}
+-              y1={t.y}
+-              x2={CHART_W - geom.pad.right}
+-              y2={t.y}
+-              stroke="currentColor"
+-              strokeWidth="0.5"
+-              className="text-line"
++    body = (
++      <>
++        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-ink-dim">
++          <span>買賣價反解引波(近 {data.series.length} 交易日)</span>
++          <span className="inline-flex items-center gap-1.5">
++            <svg width="18" height="6" aria-hidden="true">
++              <line x1="0" y1="3" x2="18" y2="3" stroke="currentColor" strokeWidth="1.5" className="text-ink" />
++            </svg>
++            買價IV
++          </span>
++          <span className="inline-flex items-center gap-1.5">
++            <svg width="18" height="6" aria-hidden="true">
++              <line x1="0" y1="3" x2="18" y2="3" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" className="text-ink-muted" />
++            </svg>
++            賣價IV
++          </span>
++          <span className="inline-flex items-center gap-1.5">
++            <svg width="18" height="6" aria-hidden="true">
++              <line x1="0" y1="3" x2="18" y2="3" stroke="currentColor" strokeWidth="1.25" strokeDasharray="1.5 3" className="text-ink-dim" />
++            </svg>
++            HV20(標的)
++          </span>
++          <span className="inline-flex items-center gap-1.5">
++            <svg width="18" height="6" aria-hidden="true">
++              <line x1="0" y1="3" x2="18" y2="3" stroke="currentColor" strokeWidth="1.25" className="text-ink-muted" />
++            </svg>
++            標的收盤
++          </span>
++        </div>
++        <div
++          data-testid="warrant-iv-summary"
++          className="flex flex-wrap items-center gap-x-5 gap-y-1"
++        >
++          <SummaryItem
++            label="最新買價IV"
++            value={latestBid != null ? `${(latestBid * 100).toFixed(1)}%` : "—"}
++          />
++          <SummaryItem
++            label="自身60日位階"
++            value={selfPercentile != null ? `P${Math.round(selfPercentile)}` : "—"}
++          />
++          <SummaryItem
++            label="同標的位階"
++            value={ivPercentile != null ? `P${Math.round(ivPercentile)}` : "—"}
++          />
++          {hvDiff != null && (
++            <SummaryItem
++              label="vs HV20"
++              value={`${hvDiff >= 0 ? "+" : ""}${hvDiff.toFixed(1)} pp`}
+             />
++          )}
++          {driftText && <SummaryItem label="IV趨勢" value={driftText} />}
++        </div>
++        <svg
++          data-testid="warrant-iv-chart"
++          width={geom.width}
++          height={geom.height}
++          viewBox={`0 0 ${geom.width} ${geom.height}`}
++          role="img"
++          aria-label="買賣價反解引波與標的收盤時序圖"
++          className="max-w-full"
++        >
++          {geom.ivPanel.yTicks.map((t) => (
++            <g key={`ivy${t.y}`}>
++              <line
++                x1={geom.pad.left}
++                y1={t.y}
++                x2={geom.width - geom.pad.right}
++                y2={t.y}
++                stroke="currentColor"
++                strokeWidth="0.5"
++                className="text-line"
++              />
++              <text
++                x={geom.pad.left - 4}
++                y={t.y + 3}
++                textAnchor="end"
++                fontSize="0.5625rem"
++                fill="currentColor"
++                className="text-ink-dim"
++              >
++                {t.label}
++              </text>
++            </g>
++          ))}
++          {geom.pricePanel.yTicks.map((t) => (
++            <g key={`py${t.y}`}>
++              <line
++                x1={geom.pad.left}
++                y1={t.y}
++                x2={geom.width - geom.pad.right}
++                y2={t.y}
++                stroke="currentColor"
++                strokeWidth="0.5"
++                className="text-line"
++              />
++              <text
++                x={geom.pad.left - 4}
++                y={t.y + 3}
++                textAnchor="end"
++                fontSize="0.5625rem"
++                fill="currentColor"
++                className="text-ink-dim"
++              >
++                {t.label}
++              </text>
++            </g>
++          ))}
++          {geom.xTicks.map((t) => (
+             <text
+-              x={geom.pad.left - 4}
+-              y={t.y + 3}
+-              textAnchor="end"
+-              fontSize="9"
++              key={`x${t.x}`}
++              x={t.x}
++              y={geom.height - 5}
++              textAnchor="middle"
++              fontSize="0.5625rem"
+               fill="currentColor"
+               className="text-ink-dim"
+             >
+               {t.label}
+             </text>
+-          </g>
+-        ))}
+-        {geom.xTicks.map((t) => (
+-          <text
+-            key={`x${t.x}`}
+-            x={t.x}
+-            y={CHART_H - 5}
+-            textAnchor="middle"
+-            fontSize="9"
+-            fill="currentColor"
+-            className="text-ink-dim"
+-          >
+-            {t.label}
+-          </text>
+-        ))}
+-        <path
+-          data-side="bid"
+-          d={geom.bidPath}
+-          fill="none"
+-          stroke="currentColor"
+-          strokeWidth="1.5"
+-          className="text-ink"
+-        />
+-        <path
+-          data-side="ask"
+-          d={geom.askPath}
+-          fill="none"
+-          stroke="currentColor"
+-          strokeWidth="1.5"
+-          strokeDasharray="4 3"
+-          className="text-ink-muted"
+-        />
+-      </svg>
+-      {data.terms_approx_dates.length > 0 && (
+-        <div className="text-ink-dim">歷史 IV 以現行條款近似</div>
+-      )}
++          ))}
++          {geom.ivPanel.hvPath && (
++            <path
++              data-series="hv20"
++              d={geom.ivPanel.hvPath}
++              fill="none"
++              stroke="currentColor"
++              strokeWidth="1.25"
++              strokeDasharray="1.5 3"
++              className="text-ink-dim"
++            />
++          )}
++          {geom.ivPanel.trendPath && (
++            <path
++              data-series="trend"
++              d={geom.ivPanel.trendPath}
++              fill="none"
++              stroke="currentColor"
++              strokeWidth="1"
++              opacity="0.7"
++              className="text-ink-dim"
++            />
++          )}
++          <path
++            data-side="bid"
++            d={geom.ivPanel.bidPath}
++            fill="none"
++            stroke="currentColor"
++            strokeWidth="1.5"
++            className="text-ink"
++          />
++          <path
++            data-side="ask"
++            d={geom.ivPanel.askPath}
++            fill="none"
++            stroke="currentColor"
++            strokeWidth="1.5"
++            strokeDasharray="4 3"
++            className="text-ink-muted"
++          />
++          {geom.pricePanel.pricePath && (
++            <path
++              data-series="price"
++              d={geom.pricePanel.pricePath}
++              fill="none"
++              stroke="currentColor"
++              strokeWidth="1.25"
++              className="text-ink-muted"
++            />
++          )}
++        </svg>
++        {data.terms_approx_dates.length > 0 && (
++          <div className="text-ink-dim">歷史 IV 以現行條款近似</div>
++        )}
++      </>
++    );
++  }
++
++  return (
++    <div ref={wrapRef} className="space-y-1.5">
++      {body}
+     </div>
+   );
+ }
+diff --git a/frontend/src/components/WarrantSelector.test.tsx b/frontend/src/components/WarrantSelector.test.tsx
+index 03b6204..714c676 100644
+--- a/frontend/src/components/WarrantSelector.test.tsx
++++ b/frontend/src/components/WarrantSelector.test.tsx
+@@ -77,14 +77,24 @@ function mockApis(
+     warrant_id: "030013",
+     terms_approx_dates: [],
+     series: [
+-      { date: "2026-07-08", iv_bid: 0.42, iv_ask: 0.46 },
+-      { date: "2026-07-09", iv_bid: 0.41, iv_ask: 0.45 },
++      { date: "2026-07-08", iv_bid: 0.42, iv_ask: 0.46, underlying_close: 1000.0 },
++      { date: "2026-07-09", iv_bid: 0.41, iv_ask: 0.45, underlying_close: 1010.0 },
+     ],
+     drift: { label: "stable", slope_bid: 0.0, slope_ask: 0.0, n_valid: 25 },
+   });
+ }
+ 
+-beforeEach(() => vi.restoreAllMocks());
++beforeEach(() => {
++  vi.restoreAllMocks();
++  // 展開列的 WarrantIvHistory 走真 useContainerSize;jsdom 無 ResizeObserver
++  if (!globalThis.ResizeObserver) {
++    globalThis.ResizeObserver = class {
++      observe(): void {}
++      unobserve(): void {}
++      disconnect(): void {}
++    } as unknown as typeof ResizeObserver;
++  }
++});
+ afterEach(() => cleanup());
+ 
+ const THREE = [
+diff --git a/frontend/src/components/WarrantSelector.tsx b/frontend/src/components/WarrantSelector.tsx
+index 5d63920..a97b775 100644
+--- a/frontend/src/components/WarrantSelector.tsx
++++ b/frontend/src/components/WarrantSelector.tsx
+@@ -457,7 +457,7 @@ function RowPair({
+         <tr className="border-b border-line bg-bg-deep/50">
+           <td colSpan={columns.length + 1} className="px-8 py-2">
+             <div className="text-xs">
+-              <WarrantIvHistory warrantId={r.warrant_id} />
++              <WarrantIvHistory warrantId={r.warrant_id} ivPercentile={r.iv_percentile ?? null} />
+             </div>
+           </td>
+         </tr>
+diff --git a/frontend/src/hooks/useWarrantIvHistory.test.ts b/frontend/src/hooks/useWarrantIvHistory.test.ts
+index cfa54ee..41a2db8 100644
+--- a/frontend/src/hooks/useWarrantIvHistory.test.ts
++++ b/frontend/src/hooks/useWarrantIvHistory.test.ts
+@@ -14,8 +14,8 @@ const mk = (over?: Partial<WarrantIvHistoryPayload>): WarrantIvHistoryPayload =>
+   warrant_id: "030012",
+   terms_approx_dates: [],
+   series: [
+-    { date: "2026-07-08", iv_bid: 0.42, iv_ask: 0.46 },
+-    { date: "2026-07-09", iv_bid: 0.41, iv_ask: 0.45 },
++    { date: "2026-07-08", iv_bid: 0.42, iv_ask: 0.46, underlying_close: 1000.0 },
++    { date: "2026-07-09", iv_bid: 0.41, iv_ask: 0.45, underlying_close: 1010.0 },
+   ],
+   drift: { label: "declining", slope_bid: -0.002, slope_ask: -0.001, n_valid: 55 },
+   ...over,
+diff --git a/frontend/src/lib/changelog.test.ts b/frontend/src/lib/changelog.test.ts
+index b2f3ef5..41da283 100644
+--- a/frontend/src/lib/changelog.test.ts
++++ b/frontend/src/lib/changelog.test.ts
+@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
+     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
+   });
+ 
+-  it("最新版本是 v0.32.0(權證發行商篩選上線)", () => {
+-    expect(CHANGELOG[0]?.version).toBe("0.32.0");
++  it("最新版本是 v0.33.0(權證展開列隱波圖重設計)", () => {
++    expect(CHANGELOG[0]?.version).toBe("0.33.0");
+   });
+ 
+   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
+diff --git a/frontend/src/lib/changelog.ts b/frontend/src/lib/changelog.ts
+index fc5ca2a..b60e4a7 100644
+--- a/frontend/src/lib/changelog.ts
++++ b/frontend/src/lib/changelog.ts
+@@ -39,6 +39,28 @@ export function semverGt(a: string, b: string): boolean {
+ // 版本字串遵循 SemVer 2.0.0 三段式 MAJOR.MINOR.PATCH;pre-1.0 階段 breaking change 也只 bump MINOR
+ // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
+ export const CHANGELOG: VersionEntry[] = [
++  {
++    version: "0.33.0",
++    date: "2026-07-16",
++    highlights: "權證展開列隱波圖全面重做:位階摘要、標的價對照、降波趨勢一眼看懂",
++    changes: [
++      {
++        kind: "feature",
++        scope: "equity",
++        text: "權證展開列的隱波圖重新設計:上方隱波走勢疊上標的歷史波動率(HV20)與降波趨勢線,下方對照標的收盤走勢,看得出「標的漲但隱波被調降」",
++      },
++      {
++        kind: "feature",
++        scope: "equity",
++        text: "新增隱波位階摘要:最新買價隱波、自身 60 日位階、同標的其他權證位階、與標的波動率的差距,貴不貴一眼判斷",
++      },
++      {
++        kind: "feature",
++        scope: "equity",
++        text: "展開列圖表改為隨表格寬度自動放大,不再固定小尺寸",
++      },
++    ],
++  },
+   {
+     version: "0.32.0",
+     date: "2026-07-16",
+diff --git a/frontend/src/lib/warrant-data.ts b/frontend/src/lib/warrant-data.ts
+index 386af58..6378157 100644
+--- a/frontend/src/lib/warrant-data.ts
++++ b/frontend/src/lib/warrant-data.ts
+@@ -26,6 +26,7 @@ export interface WarrantIvPoint {
+   date: string;
+   iv_bid: number | null;
+   iv_ask: number | null;
++  underlying_close: number | null;
+ }
+ 
+ export interface WarrantIvDrift {
+diff --git a/frontend/src/lib/warrant-iv-svg.test.ts b/frontend/src/lib/warrant-iv-svg.test.ts
+index d75f842..7ea7480 100644
+--- a/frontend/src/lib/warrant-iv-svg.test.ts
++++ b/frontend/src/lib/warrant-iv-svg.test.ts
+@@ -1,69 +1,172 @@
+-/**
+- * warrant-iv-svg — 純 SVG 計算(SC-7;無 React 依賴,對齊 chip-svg 慣例)。
+- */
++// 權證 IV 歷史圖純計算測試(warrant-iv-redesign change-spec §6)。
++// 缺值斷線 / HV20 口徑(21 個連續有效收盤)/ Theil-Sen 截距 / 雙 panel x 對齊。
++
+ import { describe, expect, it } from "vitest";
+-import { computeIvChart } from "./warrant-iv-svg";
+ import type { WarrantIvPoint } from "./warrant-data";
++import {
++  computeHv20,
++  computeIvHistoryChart,
++  computeIvPercentile,
++  trendLine,
++} from "./warrant-iv-svg";
++
++function pt(
++  date: string,
++  iv_bid: number | null,
++  iv_ask: number | null,
++  underlying_close: number | null,
++): WarrantIvPoint {
++  return { date, iv_bid, iv_ask, underlying_close };
++}
+ 
+-const pt = (date: string, bid: number | null, ask: number | null): WarrantIvPoint => ({
+-  date,
+-  iv_bid: bid,
+-  iv_ask: ask,
++/** n 點序列產生器:date 遞增,iv/close 由 callback 決定。 */
++function mkSeries(
++  n: number,
++  fn: (i: number) => { b?: number | null; a?: number | null; s?: number | null },
++): WarrantIvPoint[] {
++  return Array.from({ length: n }, (_, i) => {
++    const { b = 0.4, a = 0.45, s = 100 } = fn(i);
++    const day = String((i % 28) + 1).padStart(2, "0");
++    const month = String(Math.floor(i / 28) + 1).padStart(2, "0");
++    return pt(`2026-${month}-${day}`, b, a, s);
++  });
++}
++
++describe("computeHv20", () => {
++  it("21 個連續有效收盤才出第一個點(20 個 log return)", () => {
++    const series = mkSeries(21, () => ({ s: 100 }));
++    const hv = computeHv20(series);
++    expect(hv[19]).toBeNull();
++    expect(hv[20]).toBe(0); // 常數收盤 → 報酬全 0 → HV 0
++  });
++
++  it("已知數值手算對照:十個 0 報酬 + 十個 0.02 報酬", () => {
++    // 11 個 100,再 10 個每日 ×e^0.02:20 個 return = 十個 0、十個 0.02
++    // sample std = sqrt(20*0.01^2/19) = 0.0102598,×√252 = 0.16287
++    const series = mkSeries(21, (i) => ({
++      s: i <= 10 ? 100 : 100 * Math.exp(0.02 * (i - 10)),
++    }));
++    const hv = computeHv20(series);
++    expect(hv[20]).toBeCloseTo(0.16287, 4);
++  });
++
++  it("斷檔重積:null 收盤打斷 run,之後要再累 21 個", () => {
++    const series = mkSeries(26, (i) => ({ s: i === 4 ? null : 100 }));
++    const hv = computeHv20(series);
++    expect(hv[4]).toBeNull();
++    expect(hv[24]).toBeNull(); // 5..24 只有 20 個收盤(19 個 return)
++    expect(hv[25]).toBe(0); // 5..25 = 21 個收盤
++  });
+ });
+ 
+-describe("computeIvChart", () => {
+-  it("兩線 path:連續有效點 M 起手 + L 連線", () => {
+-    const geom = computeIvChart(
+-      [pt("2026-07-07", 0.43, 0.47), pt("2026-07-08", 0.42, 0.46), pt("2026-07-09", 0.41, 0.45)],
+-      300,
+-      120,
+-    );
++describe("computeIvPercentile", () => {
++  it("最新非 null iv_bid 在全窗非 null 值的分位(<= 口徑,對齊 backend)", () => {
++    const series = [
++      pt("2026-07-07", 0.43, 0.47, 100),
++      pt("2026-07-08", 0.42, 0.46, 100),
++      pt("2026-07-09", 0.41, 0.45, 100),
++    ];
++    expect(computeIvPercentile(series)).toBeCloseTo(33.333, 2); // 最低值 → 1/3
++  });
++
++  it("尾端 null 跳過取最新非 null", () => {
++    const series = [
++      pt("2026-07-07", 0.41, 0.45, 100),
++      pt("2026-07-08", 0.43, 0.47, 100),
++      pt("2026-07-09", null, null, 100),
++    ];
++    expect(computeIvPercentile(series)).toBe(100); // 0.43 是最大值
++  });
++
++  it("全 null → null", () => {
++    expect(computeIvPercentile([pt("2026-07-09", null, null, 100)])).toBeNull();
++  });
++});
++
++describe("trendLine", () => {
++  it("截距 = median(y − slope·x):完美線性殘差恆等", () => {
++    const series = mkSeries(5, (i) => ({ b: 0.5 - 0.001 * i }));
++    const t = trendLine(series, -0.001);
++    expect(t).not.toBeNull();
++    expect(t!.intercept).toBeCloseTo(0.5, 10);
++    expect(t!.i0).toBe(0);
++    expect(t!.i1).toBe(4);
++  });
++
++  it("含洞 x 語意:x = series index(不壓縮)", () => {
++    const series = [
++      pt("2026-07-01", 0.5, 0.55, 100),
++      pt("2026-07-02", null, null, 100),
++      pt("2026-07-03", 0.48, 0.53, 100), // index 2 → 0.5 - 0.01*2 = 0.48
++    ];
++    const t = trendLine(series, -0.01);
++    expect(t).not.toBeNull();
++    expect(t!.intercept).toBeCloseTo(0.5, 10);
++    expect(t!.i1).toBe(2);
++  });
++
++  it("bid 有效點 <2 → null", () => {
++    expect(trendLine([pt("2026-07-09", 0.4, 0.45, 100)], -0.001)).toBeNull();
++  });
++});
++
++describe("computeIvHistoryChart", () => {
++  const W = 800;
++
++  it("空序列 / IV 全 null → null", () => {
++    expect(computeIvHistoryChart([], W, null)).toBeNull();
++    expect(
++      computeIvHistoryChart([pt("2026-07-09", null, null, 100)], W, null),
++    ).toBeNull();
++  });
++
++  it("雙 panel 同 index 的 x 座標相等(SC-3 垂直對齊)", () => {
++    const series = mkSeries(10, () => ({}));
++    const geom = computeIvHistoryChart(series, W, null);
+     expect(geom).not.toBeNull();
+-    expect(geom!.bidPath.startsWith("M")).toBe(true);
+-    expect(geom!.bidPath.match(/L/g)).toHaveLength(2);
+-    expect(geom!.askPath.match(/M/g)).toHaveLength(1);
+-  });
+-
+-  it("中段缺值日斷線:path 兩段 M,不插值(R24 渲染語意)", () => {
+-    const geom = computeIvChart(
+-      [
+-        pt("2026-07-05", 0.44, 0.48),
+-        pt("2026-07-06", 0.43, 0.47),
+-        pt("2026-07-07", null, null),
+-        pt("2026-07-08", 0.42, 0.46),
+-        pt("2026-07-09", 0.41, 0.45),
+-      ],
+-      300,
+-      120,
+-    );
+-    expect(geom!.bidPath.match(/M/g)).toHaveLength(2);
+-    expect(geom!.askPath.match(/M/g)).toHaveLength(2);
++    const bidX = geom!.ivPanel.bidPath.match(/^M([\d.]+),/)![1];
++    const priceX = geom!.pricePanel.pricePath.match(/^M([\d.]+),/)![1];
++    expect(bidX).toBe(priceX);
+   });
+ 
+-  it("雙側全 null → null(元件顯示空狀態)", () => {
+-    expect(computeIvChart([pt("2026-07-09", null, null)], 300, 120)).toBeNull();
+-    expect(computeIvChart([], 300, 120)).toBeNull();
++  it("缺值日斷線:null 之後 M 重起,不插值", () => {
++    const series = mkSeries(5, (i) => ({ b: i === 2 ? null : 0.4 }));
++    const geom = computeIvHistoryChart(series, W, null);
++    const segments = geom!.ivPanel.bidPath.match(/M/g);
++    expect(segments!.length).toBe(2);
+   });
+ 
+-  it("y 軸刻度單調遞增(座標)且標籤為百分比", () => {
+-    const geom = computeIvChart(
+-      [pt("2026-07-08", 0.40, 0.50), pt("2026-07-09", 0.30, 0.60)],
+-      300,
+-      120,
+-    );
+-    const ys = geom!.yTicks.map((t) => t.y);
+-    expect([...ys].sort((a, b) => a - b)).toEqual(ys);
+-    for (const t of geom!.yTicks) expect(t.label).toMatch(/%$/);
++  it("trendSlope null → 無 trendPath;非 null → 單段直線", () => {
++    const series = mkSeries(5, (i) => ({ b: 0.5 - 0.001 * i }));
++    expect(computeIvHistoryChart(series, W, null)!.ivPanel.trendPath).toBe("");
++    const withTrend = computeIvHistoryChart(series, W, -0.001)!;
++    expect(withTrend.ivPanel.trendPath).toMatch(/^M[\d.]+,[\d.]+L[\d.]+,[\d.]+$/);
+   });
+ 
+-  it("x 軸刻度含首尾日期", () => {
+-    const geom = computeIvChart(
+-      [pt("2026-07-07", 0.43, null), pt("2026-07-08", 0.42, null), pt("2026-07-09", 0.41, null)],
+-      300,
+-      120,
++  it("價格全 null → pricePath 空、price yTicks 空(IV panel 照常)", () => {
++    const series = mkSeries(5, () => ({ s: null }));
++    const geom = computeIvHistoryChart(series, W, null)!;
++    expect(geom.pricePanel.pricePath).toBe("");
++    expect(geom.pricePanel.yTicks).toEqual([]);
++    expect(geom.ivPanel.bidPath).toMatch(/^M/);
++  });
++
++  it("寬度驅動幾何:xTicks 末點隨 width 變", () => {
++    const series = mkSeries(10, () => ({}));
++    const g1 = computeIvHistoryChart(series, 600, null)!;
++    const g2 = computeIvHistoryChart(series, 1200, null)!;
++    expect(g2.xTicks[g2.xTicks.length - 1]!.x).toBeGreaterThan(
++      g1.xTicks[g1.xTicks.length - 1]!.x,
+     );
+-    const labels = geom!.xTicks.map((t) => t.label);
+-    expect(labels[0]).toContain("07-07");
+-    expect(labels[labels.length - 1]).toContain("07-09");
++    expect(g1.width).toBe(600);
++  });
++
++  it("HV 線納入 IV panel 值域(HV 遠低於 IV 時不被裁掉)", () => {
++    // 26 點:IV 0.5 上下、常數收盤 → HV 0;值域需涵蓋 0
++    const series = mkSeries(26, () => ({ b: 0.5, a: 0.55, s: 100 }));
++    const geom = computeIvHistoryChart(series, W, null)!;
++    expect(geom.ivPanel.hvPath).toMatch(/^M/);
++    const lows = geom.ivPanel.yTicks.map((t) => t.label);
++    expect(lows).toContain("0%"); // lo tick 被 HV 0 拉下來
+   });
+ });
+diff --git a/frontend/src/lib/warrant-iv-svg.ts b/frontend/src/lib/warrant-iv-svg.ts
+index 76df0cf..c663dae 100644
+--- a/frontend/src/lib/warrant-iv-svg.ts
++++ b/frontend/src/lib/warrant-iv-svg.ts
+@@ -1,34 +1,104 @@
+-// 權證 IV 時序圖純計算 — 無 React 依賴(SC-7;chip-svg 慣例)。
+-// 缺值日斷線:null 之後的下一個有效點以 M 重起,不插值(design R24 渲染語意)。
++// 權證 IV 歷史圖純計算 — 無 React 依賴(chip-svg 慣例;warrant-iv-redesign)。
++// 上下雙 panel 共 x 軸(dataviz 單軸鐵則,不做雙軸疊圖):上 IV %(bid/ask/HV20/
++// 趨勢線),下標的收盤。缺值日斷線:null 之後的下一個有效點以 M 重起,不插值。
+ 
+ import type { WarrantIvPoint } from "./warrant-data";
+ 
+-export interface ChartTick {
+-  x?: number;
+-  y?: number;
+-  label: string;
++export interface IvHistoryChartGeom {
++  width: number;
++  height: number;
++  pad: { left: number; right: number };
++  ivPanel: {
++    top: number;
++    height: number;
++    bidPath: string;
++    askPath: string;
++    hvPath: string;
++    trendPath: string;
++    yTicks: { y: number; label: string }[];
++  };
++  pricePanel: {
++    top: number;
++    height: number;
++    pricePath: string;
++    yTicks: { y: number; label: string }[];
++  };
++  xTicks: { x: number; label: string }[];
+ }
+ 
+-export interface IvChartGeom {
+-  bidPath: string;
+-  askPath: string;
+-  xTicks: { x: number; label: string }[];
+-  yTicks: { y: number; label: string }[];
+-  pad: { top: number; right: number; bottom: number; left: number };
++const PAD = { left: 44, right: 8 };
++const IV_TOP = 8;
++const IV_H = 150;
++const PANEL_GAP = 16;
++const PRICE_H = 56;
++const X_LABEL_H = 18;
++
++const HV_WINDOW = 20; // 20 個 log return = 21 個連續有效收盤(change-spec R3)
++const ANNUALIZE = Math.sqrt(252);
++
++/** 標的收盤 20 日年化歷史波動率;與 series index 對齊,null 收盤打斷 run 重積。 */
++export function computeHv20(series: WarrantIvPoint[]): (number | null)[] {
++  const out: (number | null)[] = new Array(series.length).fill(null);
++  let returns: number[] = []; // 當前 run 的 log returns
++  let prevClose: number | null = null;
++  series.forEach((p, i) => {
++    const c = p.underlying_close;
++    if (c == null || c <= 0) {
++      returns = [];
++      prevClose = null;
++      return;
++    }
++    if (prevClose != null) {
++      returns.push(Math.log(c / prevClose));
++      if (returns.length > HV_WINDOW) returns.shift();
++      if (returns.length === HV_WINDOW) {
++        const mean = returns.reduce((s, r) => s + r, 0) / HV_WINDOW;
++        const varSum = returns.reduce((s, r) => s + (r - mean) ** 2, 0);
++        out[i] = Math.sqrt(varSum / (HV_WINDOW - 1)) * ANNUALIZE;
++      }
++    }
++    prevClose = c;
++  });
++  return out;
+ }
+ 
+-const PAD = { top: 8, right: 8, bottom: 18, left: 38 };
++/** 最新非 null iv_bid 在全窗非 null iv_bid 的分位(0-100,<= 口徑對齊 backend)。 */
++export function computeIvPercentile(series: WarrantIvPoint[]): number | null {
++  const values = series.map((p) => p.iv_bid).filter((v): v is number => v != null);
++  if (values.length === 0) return null;
++  const latest = values[values.length - 1]!;
++  return (100 * values.filter((v) => v <= latest).length) / values.length;
++}
++
++/** 趨勢線:斜率 = backend Theil-Sen slope_bid,截距 = median(y − slope·x)。
++ *  x = series index(含洞不壓縮,對齊 backend);bid 有效點 <2 → null。 */
++export function trendLine(
++  series: WarrantIvPoint[],
++  slope: number,
++): { intercept: number; i0: number; i1: number } | null {
++  const points = series
++    .map((p, i) => [i, p.iv_bid] as const)
++    .filter((pair): pair is readonly [number, number] => pair[1] != null);
++  if (points.length < 2) return null;
++  const residuals = points.map(([x, y]) => y - slope * x).sort((a, b) => a - b);
++  const mid = Math.floor(residuals.length / 2);
++  const intercept =
++    residuals.length % 2 === 1
++      ? residuals[mid]!
++      : (residuals[mid - 1]! + residuals[mid]!) / 2;
++  return { intercept, i0: points[0]![0], i1: points[points.length - 1]![0] };
++}
+ 
+ function buildPath(
+   series: WarrantIvPoint[],
+-  pick: (p: WarrantIvPoint) => number | null,
++  pick: (p: WarrantIvPoint, i: number) => number | null,
+   x: (i: number) => number,
+   y: (v: number) => number,
+ ): string {
+   let path = "";
+   let pen = false; // 前一點是否有效(false → 下一有效點 M 重起)
+   series.forEach((p, i) => {
+-    const v = pick(p);
++    const v = pick(p, i);
+     if (v == null) {
+       pen = false;
+       return;
+@@ -39,18 +109,7 @@ function buildPath(
+   return path;
+ }
+ 
+-export function computeIvChart(
+-  series: WarrantIvPoint[],
+-  width: number,
+-  height: number,
+-): IvChartGeom | null {
+-  const values = series
+-    .flatMap((p) => [p.iv_bid, p.iv_ask])
+-    .filter((v): v is number => v != null);
+-  if (series.length === 0 || values.length === 0) return null;
+-
+-  const innerW = Math.max(1, width - PAD.left - PAD.right);
+-  const innerH = Math.max(1, height - PAD.top - PAD.bottom);
++function span(values: number[]): { lo: number; hi: number } {
+   let lo = Math.min(...values);
+   let hi = Math.max(...values);
+   if (hi - lo < 1e-6) {
+@@ -58,28 +117,86 @@ export function computeIvChart(
+     lo -= 0.01;
+     hi += 0.01;
+   }
+-  const span = hi - lo;
+-  const x = (i: number) => PAD.left + (series.length === 1 ? 0.5 : i / (series.length - 1)) * innerW;
+-  const y = (v: number) => PAD.top + (1 - (v - lo) / span) * innerH;
+-
+-  const yTicks = [hi, (hi + lo) / 2, lo].map((v) => ({
+-    y: y(v),
+-    label: `${(v * 100).toFixed(0)}%`,
+-  }));
++  return { lo, hi };
++}
++
++export function computeIvHistoryChart(
++  series: WarrantIvPoint[],
++  width: number,
++  trendSlope: number | null,
++): IvHistoryChartGeom | null {
++  const ivValues = series
++    .flatMap((p) => [p.iv_bid, p.iv_ask])
++    .filter((v): v is number => v != null);
++  if (series.length === 0 || ivValues.length === 0) return null;
++
++  const hv = computeHv20(series);
++  const trend = trendSlope != null ? trendLine(series, trendSlope) : null;
++
++  const innerW = Math.max(1, width - PAD.left - PAD.right);
++  const x = (i: number) =>
++    PAD.left + (series.length === 1 ? 0.5 : i / (series.length - 1)) * innerW;
++
++  // IV panel 值域涵蓋 HV 與趨勢線端點,低 HV 不被裁掉
++  const scaleValues = [
++    ...ivValues,
++    ...hv.filter((v): v is number => v != null),
++    ...(trend
++      ? [trend.intercept + trendSlope! * trend.i0, trend.intercept + trendSlope! * trend.i1]
++      : []),
++  ];
++  const iv = span(scaleValues);
++  const ivY = (v: number) => IV_TOP + (1 - (v - iv.lo) / (iv.hi - iv.lo)) * IV_H;
++
++  const priceTop = IV_TOP + IV_H + PANEL_GAP;
++  const priceValues = series
++    .map((p) => p.underlying_close)
++    .filter((v): v is number => v != null);
++  let pricePath = "";
++  let priceTicks: { y: number; label: string }[] = [];
++  if (priceValues.length > 0) {
++    const pr = span(priceValues);
++    const priceY = (v: number) => priceTop + (1 - (v - pr.lo) / (pr.hi - pr.lo)) * PRICE_H;
++    pricePath = buildPath(series, (p) => p.underlying_close, x, priceY);
++    priceTicks = [pr.hi, pr.lo].map((v) => ({
++      y: priceY(v),
++      label: v >= 1000 ? v.toFixed(0) : v.toFixed(1),
++    }));
++  }
++
+   const tickIdx =
+     series.length <= 2
+       ? [0, series.length - 1].filter((i, k, a) => a.indexOf(i) === k)
+       : [0, Math.floor((series.length - 1) / 2), series.length - 1];
+-  const xTicks = tickIdx.map((i) => ({
+-    x: x(i),
+-    label: series[i]!.date.slice(5), // MM-DD
+-  }));
+ 
+   return {
+-    bidPath: buildPath(series, (p) => p.iv_bid, x, y),
+-    askPath: buildPath(series, (p) => p.iv_ask, x, y),
+-    xTicks,
+-    yTicks,
++    width,
++    height: IV_TOP + IV_H + PANEL_GAP + PRICE_H + X_LABEL_H,
+     pad: PAD,
++    ivPanel: {
++      top: IV_TOP,
++      height: IV_H,
++      bidPath: buildPath(series, (p) => p.iv_bid, x, ivY),
++      askPath: buildPath(series, (p) => p.iv_ask, x, ivY),
++      hvPath: buildPath(series, (_p, i) => hv[i] ?? null, x, ivY),
++      trendPath: trend
++        ? `M${x(trend.i0).toFixed(1)},${ivY(trend.intercept + trendSlope! * trend.i0).toFixed(1)}` +
++          `L${x(trend.i1).toFixed(1)},${ivY(trend.intercept + trendSlope! * trend.i1).toFixed(1)}`
++        : "",
++      yTicks: [iv.hi, (iv.hi + iv.lo) / 2, iv.lo].map((v) => ({
++        y: ivY(v),
++        label: `${(v * 100).toFixed(0)}%`,
++      })),
++    },
++    pricePanel: {
++      top: priceTop,
++      height: PRICE_H,
++      pricePath,
++      yTicks: priceTicks,
++    },
++    xTicks: tickIdx.map((i) => ({
++      x: x(i),
++      label: series[i]!.date.slice(5), // MM-DD
++    })),
+   };
+ }

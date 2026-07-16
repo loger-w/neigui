@@ -1,0 +1,133 @@
+
+> neigui-e2e@0.1.0 test
+> playwright test --grep-invert="@live|@visual"
+
+[WebServer] INFO:     Started server process [21924]
+[WebServer] INFO:     Waiting for application startup.
+[WebServer] INFO:     Application startup complete.
+[WebServer] INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+
+Running 39 tests using 1 worker
+
+  ok  1 [chromium] › specs\borrow-fee.spec.ts:22:3 › borrow fee mode › BF1: 表格有料、費率降序、高費率標色(SC-2/3 資料級 assertion) (3.4s)
+  ok  2 [chromium] › specs\borrow-fee.spec.ts:41:3 › borrow fee mode › BF3: 單檔篩選 — 選定只剩該檔、清除回全表(mod/borrow-fee-stock-filter SC-2/3) (727ms)
+  ok  3 [chromium] › specs\borrow-fee.spec.ts:57:3 › borrow fee mode › BF2: reload 後 borrow mode 持久化(SC-1) (1.0s)
+  ok  4 [chromium] › specs\equity.spec.ts:14:3 › equity mode › E1: 首頁 default render(SC-3 case 1) (277ms)
+  ok  5 [chromium] › specs\equity.spec.ts:22:3 › equity mode › E2: 搜尋 2330 → 三大法人 + brokers + K 線 visible(SC-3 case 2) (561ms)
+[WebServer] ERROR:    Exception in ASGI application
+[WebServer] Traceback (most recent call last):
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\uvicorn\protocols\http\httptools_impl.py", line 421, in run_asgi
+[WebServer]     result = await app(  # type: ignore[func-returns-value]
+[WebServer]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[WebServer]         self.scope, self.receive, self.send
+[WebServer]         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[WebServer]     )
+[WebServer]     ^
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\uvicorn\middleware\proxy_headers.py", line 62, in __call__
+[WebServer]     return await self.app(scope, receive, send)
+[WebServer]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py", line 1163, in __call__
+[WebServer]     await super().__call__(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\applications.py", line 90, in __call__
+[WebServer]     await self.middleware_stack(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\errors.py", line 164, in __call__
+[WebServer]     await self.app(scope, receive, _send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\gzip.py", line 29, in __call__
+[WebServer]     await responder(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\gzip.py", line 130, in __call__
+[WebServer]     await super().__call__(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\gzip.py", line 46, in __call__
+[WebServer]     await self.app(scope, receive, self.send_with_compression)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\cors.py", line 88, in __call__
+[WebServer]     await self.app(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+[WebServer]     await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+[WebServer]     await app(scope, receive, sender)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+[WebServer]     await self.app(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\routing.py", line 660, in __call__
+[WebServer]     await self.middleware_stack(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py", line 2531, in app
+[WebServer]     await route.handle(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py", line 1700, in handle
+[WebServer]     await self.original_router.handle(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py", line 2586, in handle
+[WebServer]     await included_router._handle_selected(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py", line 1720, in _handle_selected
+[WebServer]     await original_route.handle(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py", line 1239, in handle
+[WebServer]     await app(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py", line 150, in app
+[WebServer]     await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+[WebServer]     await app(scope, receive, sender)
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py", line 136, in app
+[WebServer]     response = await f(request)
+[WebServer]                ^^^^^^^^^^^^^^^^
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py", line 690, in app
+[WebServer]     raw_response = await run_endpoint_function(
+[WebServer]                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[WebServer]     ...<3 lines>...
+[WebServer]     )
+[WebServer]     ^
+[WebServer]   File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\routing.py", line 344, in run_endpoint_function
+[WebServer]     return await dependant.call(**values)
+[WebServer]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[WebServer]   File "C:\side-project\neigui\.claude\worktrees\mod+warrant-iv-redesign\backend\routes\chip.py", line 95, in get_chip_history_major
+[WebServer]     return await run_with_disconnect(
+[WebServer]            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+[WebServer]         request, get_finmind().fetch_chip_history_major(symbol, refresh, days)
+[WebServer]         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[WebServer]     )
+[WebServer]     ^
+[WebServer]   File "C:\side-project\neigui\.claude\worktrees\mod+warrant-iv-redesign\backend\utils\cancel.py", line 45, in run_with_disconnect
+[WebServer]     return await task
+[WebServer]            ^^^^^^^^^^
+[WebServer]   File "C:\side-project\neigui\.claude\worktrees\mod+warrant-iv-redesign\backend\services\finmind.py", line 596, in fetch_chip_history_major
+[WebServer]     return await self._run_once(
+[WebServer]            ^^^^^^^^^^^^^^^^^^^^^
+[WebServer]     ...<2 lines>...
+[WebServer]     )
+[WebServer]     ^
+[WebServer]   File "C:\side-project\neigui\.claude\worktrees\mod+warrant-iv-redesign\backend\services\finmind.py", line 173, in _run_once
+[WebServer]     return await asyncio.shield(entry["task"])
+[WebServer]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[WebServer] asyncio.exceptions.CancelledError
+  ok  6 [chromium] › specs\equity.spec.ts:33:3 › equity mode › E3: 籌碼總覽 / 泡泡圖 tab 切換(SC-3 case 3) (879ms)
+  ok  7 [chromium] › specs\equity.spec.ts:46:3 › equity mode › E4: refresh button 啟用 → 點擊 → spinner appear(SC-3 case 5) (759ms)
+  ok  8 [chromium] › specs\equity.spec.ts:60:3 › equity mode › E5: K 線 chart resize handle visible(SC-3 case 4) (405ms)
+  ok  9 [chromium] › specs\equity.spec.ts:74:3 › equity mode — mobile viewport › E6: 375px 搜尋 2330 → K 線 + 面板堆疊、無水平溢出、resize handle 不存在 (439ms)
+  ok 10 [chromium] › specs\equity.spec.ts:99:3 › equity mode — 權證 tab(feat/warrant-selector) › E8: 權證 tab 表格資料級 assertion(SC-1/SC-2) (588ms)
+  ok 11 [chromium] › specs\equity.spec.ts:124:3 › equity mode — 權證 tab(feat/warrant-selector) › E9: 認售 toggle 篩選(SC-4) (587ms)
+  ok 12 [chromium] › specs\equity.spec.ts:137:3 › equity mode — 權證 tab(feat/warrant-selector) › E14: 權證分點 tab 資料級 assertion + 展開明細(warrant-broker-flow SC-1/SC-2/SC-3) (597ms)
+  ok 13 [chromium] › specs\equity.spec.ts:157:3 › equity mode — 權證 tab(feat/warrant-selector) › E10: 無權證標的空狀態(SC-7) (591ms)
+  ok 14 [chromium] › specs\equity.spec.ts:170:3 › equity mode — 權證 tab(feat/warrant-selector) › E18: 欄位選單 — 隱藏/拖曳調序/reload 持久(mod warrant-ux-feedback SC-6) (1.0s)
+  ok 15 [chromium] › specs\equity.spec.ts:201:3 › equity mode — 權證 tab(feat/warrant-selector) › E19: 重製篩選一鍵回預設(mod warrant-ux-feedback item 3) (644ms)
+  ok 16 [chromium] › specs\equity.spec.ts:215:3 › equity mode — 權證 tab(feat/warrant-selector) › E20: 發行商下拉篩選(mod warrant-selector-table SC-2) (643ms)
+  ok 17 [chromium] › specs\equity.spec.ts:232:3 › equity mode — 權證 tab(feat/warrant-selector) › E12: IV趨勢欄 drift 標記(warrant-iv-drift SC-6) (545ms)
+  ok 18 [chromium] › specs\equity.spec.ts:243:3 › equity mode — 權證 tab(feat/warrant-selector) › E13: row 展開 IV 時序圖(warrant-iv-drift SC-7 / warrant-iv-redesign) (645ms)
+  ok 19 [chromium] › specs\equity.spec.ts:262:3 › equity mode — 泡泡圖提示 › E7: 桌面泡泡圖顯示價格軸拖曳篩選提示 (523ms)
+  ok 20 [chromium] › specs\market.spec.ts:15:3 › market mode › M1: heatmap + leaderboard render(SC-5 case 1) (522ms)
+  -  21 [chromium] › specs\market.spec.ts:23:8 › market mode › M2: heatmap 至少 1 個 tile(anti-empty)— 待 fixture 補真實 universe join
+  -  22 [chromium] › specs\market.spec.ts:30:8 › market mode › M3: leaderboard 點股 → pivot — 待 fixture 補 leaderboards 資料
+  ok 23 [chromium] › specs\market.spec.ts:39:3 › market mode › M4: v2 panels 空狀態渲染不 crash(SC-11b) (631ms)
+  ok 24 [chromium] › specs\market.spec.ts:50:3 › market mode › M5: 經典檢視預設展開,舊 heatmap/leaderboard 可見(D-2,M1 顯性防回歸) (546ms)
+  ok 25 [chromium] › specs\market.spec.ts:56:3 › market mode › M6: 折疊 toggle → 舊 panel hidden → 再點恢復(SC-9 hidden 慣例) (591ms)
+  ok 26 [chromium] › specs\market.spec.ts:78:3 › market mode @1440x900 › M7: 1440x900 新主視圖無 scroll — grid bottom ≤ viewport(SC-9) (566ms)
+  ok 27 [chromium] › specs\market.spec.ts:101:3 › market mode — mobile viewport › M8: 375px 下 v2 grid + heatmap 可見且無水平溢出 (534ms)
+  ok 28 [chromium] › specs\navigation.spec.ts:14:3 › navigation & persistence › N1: 四 mode toggle active style aria-current(SC-6 case 1) (426ms)
+  ok 29 [chromium] › specs\navigation.spec.ts:31:3 › navigation & persistence › N2: reload 後 mode 維持(SC-6 case 2) (713ms)
+  ok 30 [chromium] › specs\navigation.spec.ts:41:3 › navigation & persistence › N3: chip_window_days localStorage roundtrip(SC-6 case 3) (403ms)
+  ok 31 [chromium] › specs\navigation.spec.ts:53:3 › navigation & persistence › N4: mode 切換時對應 mode 元件實際被 unmount(SC-6 case 4 — R2-P2-2) (2.4s)
+  ok 32 [chromium] › specs\no-trading-day.spec.ts:9:1 › NTD2: warrant flow 顯式週六 date → no_trading_day flag + 回退資料日(warrant-broker-flow SC-8) (22ms)
+  ok 33 [chromium] › specs\no-trading-day.spec.ts:20:1 › NTD1: options page 選 Sat 日期 → 顯示無交易日 (1.4s)
+  ok 34 [chromium] › specs\options.spec.ts:21:3 › options mode › O1: 首屏四層 root 全 visible(SC-6/7/8/9) (548ms)
+  ok 35 [chromium] › specs\options.spec.ts:30:3 › options mode › O2: 結論列生成句子且溫度計四格有判讀(SC-6/8 anti-tautology) (551ms)
+  ok 36 [chromium] › specs\options.spec.ts:41:3 › options mode › O3: RangeMap 牆標記非空(SC-7 anti-tautology + 後端權威值) (546ms)
+  ok 37 [chromium] › specs\options.spec.ts:50:3 › options mode › O4: 進階統計展開 → 四卡 + NET 對照表 + refresh 可點(SC-9) (665ms)
+  ok 38 [chromium] › specs\options.spec.ts:68:3 › options mode › O6: RangeMap OI/成交量 toggle 切換(SC-7) (606ms)
+  ok 39 [chromium] › specs\options.spec.ts:83:3 › options mode — mobile viewport › O5: 375px 下首屏 root 可見且無水平溢出 (547ms)
+
+  2 skipped
+  37 passed (29.9s)
