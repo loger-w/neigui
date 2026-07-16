@@ -193,3 +193,10 @@ equity mode UI/flow 行為改動 → **需要**,`equity.spec.ts` 加 E#(§7);非
 M 級(frontend 4 檔 + 測試 + e2e;無對外 API 改動、無 migration)→ Phase 3 dispatch `change-spec-reviewer` 1 輪,退出條件無 P0/P1。
 
 self_review_head: 5a4f215
+
+## Phase 7 真實環境驗證結果(2026-07-16,真 FinMind,evidence/)
+
+- 8/8 PASS:SC-1(network 僅一筆 days=150)/ SC-2(days=300 升檔 + gap overlay 出現→落地消失,截圖 ×3)/ 白名單抽查(雙擊 reset HUD=90、refresh cycle、pivot 2330)/ console 0 errors。
+- 配額量測:user_count baseline 12 → 全流程 226(**~214 requests,含初載 fast ~105 + 升檔 300 增量 ~100**);舊行為單檔初載即 ~360。SC-1 配額目標達成。
+- SC-6(fan-out 在途切 symbol 的 dev cancel)subsumed by Phase 2 probe Stage C 證據(本 mod 未動 cancel 鏈,queryFn signal 直傳保留)。
+- 註:驗證經 Playwright chromium 直連 :8001(chrome-devtools profile 被並行 session 鎖定,auto-verify infra fallback;vite proxy 層行為非本次 SC,已由 probe 另證)。
