@@ -78,14 +78,3 @@ export interface WarrantQuotesPayload {
   quotes: Record<string, WarrantQuote>;
 }
 
-export interface WarrantBrokerRow {
-  broker_name: string;
-  buy: number;
-  sell: number;
-  net: number;
-}
-
-export interface WarrantBrokersPayload {
-  data_date: string | null;
-  rows: WarrantBrokerRow[];
-}

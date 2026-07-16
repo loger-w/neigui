@@ -1,8 +1,7 @@
 """/api/warrants/* route 測試(warrant-selector design §1.5)。
 
 痛點:中央 httpx.HTTPError handler 回 finmind_error — 對 TWSE/TPEx/MIS 是
-錯標籤,warrants/quotes handler 必須自己 catch;brokers 上游真是 FinMind,
-反而不 catch(R9 逐 endpoint)。
+錯標籤,warrants/quotes/iv-history handler 必須自己 catch(R9 逐 endpoint)。
 """
 
 from __future__ import annotations
@@ -11,7 +10,6 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-import services.warrant_brokers as wb
 import services.warrant_quotes as wq
 import services.warrants as ws
 
@@ -52,11 +50,12 @@ def test_warrants_bad_symbol_400(client):
     assert r.json()["detail"] == {"error": "bad_symbol"}
 
 
-def test_brokers_bad_symbol_400(client):
-    # R2-3:warrant_id 同樣驗證(未驗證直傳 FinMind 會 ×5 回退放大配額浪費)
-    r = client.get("/api/warrants/0300123456789/brokers")
-    assert r.status_code == 400
-    assert r.json()["detail"] == {"error": "bad_symbol"}
+def test_brokers_route_removed():
+    # mod warrant-selector-table SC-3:分點買賣超前後端整組移除,route 不得殘留。
+    # app.routes 不攤平 included router(_IncludedRouter)→ 走 openapi paths。
+    from main import app
+
+    assert "/api/warrants/{warrant_id}/brokers" not in app.openapi()["paths"]
 
 
 def test_warrants_upstream_error_502(monkeypatch, client):
@@ -93,28 +92,6 @@ def test_quotes_shape_and_upstream_error(monkeypatch, client):
     assert r.json()["detail"] == {"error": "warrant_upstream"}
 
 
-def test_brokers_shape_ok(monkeypatch, client):
-    async def fake(warrant_id: str, refresh: bool = False):
-        assert warrant_id == "030012"
-        return {"data_date": "2026-07-09", "rows": []}
-
-    monkeypatch.setattr(wb, "get_brokers", fake)
-    r = client.get("/api/warrants/030012/brokers")
-    assert r.status_code == 200
-    assert r.json()["data_date"] == "2026-07-09"
-
-
-def test_brokers_httpx_error_falls_to_central_handler(monkeypatch, client):
-    # R9:brokers 上游 = FinMind,不自己 catch → 中央 handler finmind_error
-    async def boom(warrant_id: str, refresh: bool = False):
-        raise httpx.ConnectError("finmind down")
-
-    monkeypatch.setattr(wb, "get_brokers", boom)
-    r = client.get("/api/warrants/030012/brokers")
-    assert r.status_code == 502
-    assert r.json()["detail"] == {"error": "finmind_error"}
-
-
 # ---------------------------------------------------------------- iv-history(warrant-iv-drift)
 
 
@@ -148,7 +125,14 @@ def test_warrants_rows_carry_iv_drift(monkeypatch, client, _reset_ivh):
         {
             "_cache_version": 1,
             "built_from": [],
-            "drift": {"030012": {"label": "declining", "slope_bid": -0.002, "slope_ask": -0.001, "n_valid": 55}},
+            "drift": {
+                "030012": {
+                    "label": "declining",
+                    "slope_bid": -0.002,
+                    "slope_ask": -0.001,
+                    "n_valid": 55,
+                }
+            },
         },
     )
     r = client.get("/api/warrants/2330")

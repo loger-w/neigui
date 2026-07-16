@@ -64,7 +64,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
   {
     id: "warrant_id",
     label: "代號",
-    desc: "權證代號;點左側 + 可展開 IV 時序與分點明細",
+    desc: "權證代號;點左側 + 可展開 IV 時序",
     align: "left",
     lockVisible: true,
     cell: (r) => <td className="px-2 py-1 text-left text-ink font-medium">{r.warrant_id}</td>,

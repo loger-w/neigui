@@ -20,7 +20,7 @@
 ## From /feat warrant-broker-flow(2026-07-14)
 
 - **equity tab 鈕樣板第 4 份複本**(App.tsx overview/bubble/warrants/warrant-flow 四個 button + hidden div 逐字同構):抽 tab config array + map render。觸發重評估:第 5 個 equity tab 出現、或改 tab 共通樣式/a11y 時
-- **backend「候選日回退 + inflight dedup + date 驗證」三組近親複本**:`_run_once` 第 3 份(warrants/market_breadth/warrant_flow,行為已分歧 — refcount vs 無)、`_candidate_dates` 第 2 份(warrant_brokers 起點 today−1/5 天 vs warrant_flow today/10 天)、date query 驗證 2 處不同步(routes/warrants regex+fromisoformat vs routes/daytrade_fee 僅 fromisoformat)。抽共用時三組一起收。觸發重評估:任一組要出第 3+ 份複本、或修其中一份的 bug 時
+- **backend「候選日回退 + inflight dedup + date 驗證」複本組**:`_run_once` 第 3 份(warrants/market_breadth/warrant_flow,行為已分歧 — refcount vs 無)、date query 驗證 2 處不同步(routes/warrants regex+fromisoformat vs routes/daytrade_fee 僅 fromisoformat)。抽共用時一起收。(2026-07-16 註:原列 `_candidate_dates` 第 2 份複本已隨 warrant_brokers.py 刪除而收斂為單份,自本條移除)觸發重評估:任一組要出第 3+ 份複本、或修其中一份的 bug 時
 - **flow 對映用「當下快照」查歷史候選日**:權證在 (d, 快照 as_of] 間到期下市 → 該權證當日成交不入統計、計入 unmapped_count(訊號在但不歸屬)。預設查詢(d = 快照 as_of)零影響;顯式舊 date / 深度回退才失真。修法 = 快照歷史化(per-date terms archive),v1 out of scope。觸發重評估:user 用顯式 date 查歷史流向、或 unmapped_count 異常飆高時
 - **`_cleanup_flow_caches` 每次冷聚合跑一次全目錄 iterdir**:目前冷聚合本身 200 req 網路成本 >> 1 次 iterdir,不值得節流;cache 目錄檔案數若破萬再加 last-cleanup 時戳門檻。觸發重評估:chip cache 目錄檔案數 >5k 或 real-env 量到 cleanup 佔時
 - **[需 user 拍板] flow 明細表「淨買賣超」欄與 summary 買/賣對恆退化(RE-1 守恆恆等式)**:全分點報表下單權證跨全分點 net ≡ 0、每 kind 買==賣(2330 實測精確 0.0)。候選替代口徑:(a) per-warrant「分點淨流動」= Σ 正 net(= Σ|負 net|,量測換手集中度);(b) 發行商造市 seat 反向 net(散戶/主力 vs 造市商,需權證名 → 發行商 seat 對映 heuristic);(c) 砍欄位、summary 改「認購/認售成交額」兩數字。動口徑 = 對外契約 + SC 改寫 → /mod 流程。觸發:user 看到 v1 UI 全零欄位時
