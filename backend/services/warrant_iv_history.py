@@ -494,7 +494,8 @@ def _nontrading_fresh(checked_iso: str, today: date_type) -> bool:
         checked = date_type.fromisoformat(checked_iso)
     except ValueError:
         return False  # 壞值 → 視同過期,走重驗路徑自癒
-    return (today - checked).days < _NONTRADING_TTL_DAYS
+    # 下界 0:時鐘回撥留下未來 checked → 負 days 恆 < TTL 會永久 fresh,自癒失效
+    return 0 <= (today - checked).days < _NONTRADING_TTL_DAYS
 
 
 def ensure_backfill_task() -> None:
@@ -560,14 +561,21 @@ async def _backfill() -> None:
             put_rows = await warrants_mod.fetch_mi_index(date_iso, "0999P")
             if not call_rows or not put_rows:
                 # 交易日兩型別必都有行情:任一空 = transient「stat=OK 空表」嫌疑
-                # (shape 與真非交易日不可區分)→ retry 一次(R15)
+                # (shape 與真非交易日不可區分)→ retry 一次(R15),只重抓空側
+                # (重抓已成功側會丟棄首輪資料,retry 輪雙 transient 誤寫 marker)
                 await asyncio.sleep(_NONTRADING_RETRY_SLEEP)
-                call_rows = await warrants_mod.fetch_mi_index(date_iso, "0999")
-                put_rows = await warrants_mod.fetch_mi_index(date_iso, "0999P")
+                if not call_rows:
+                    call_rows = await warrants_mod.fetch_mi_index(date_iso, "0999")
+                if not put_rows:
+                    put_rows = await warrants_mod.fetch_mi_index(date_iso, "0999P")
             if not call_rows and not put_rows:
                 # 雙空兩次 = 非交易日 → marker(TTL 過期重驗,誤判自癒)
                 nontrading[date_iso] = today.isoformat()
                 _save_nontrading(nontrading)
+                logger.warning(
+                    "warrant iv backfill: %s empty twice -> non-trading marker "
+                    "(holiday or outage; recheck in %dd)", date_iso, _NONTRADING_TTL_DAYS,
+                )
                 continue
             if not call_rows or not put_rows:
                 # 單邊空兩次 = transient partial:寫了就 immutable 殘檔永不自癒

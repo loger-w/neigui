@@ -546,6 +546,9 @@ class TestBackfill:
         monkeypatch.setenv("WARRANT_IV_BACKFILL_DAYS", "1")
         await ivh._backfill()
         assert counter["mi"][("2026-07-10", "0999")] == 2
+        # review 補齊:retry 只重抓空側 — 重抓已成功側會丟棄首輪資料,
+        # retry 輪雙 transient 時把真交易日誤寫 marker
+        assert counter["mi"][("2026-07-10", "0999P")] == 1
         payload = read_json(day_file("2026-07-10"))
         assert payload is not None
         assert "030012" in payload["warrants"]  # retry 補齊 call 側,非殘檔
@@ -562,6 +565,7 @@ class TestBackfill:
         monkeypatch.setenv("WARRANT_IV_BACKFILL_DAYS", "1")
         await ivh._backfill()
         assert counter["mi"][("2026-07-10", "0999")] == 2
+        assert counter["mi"][("2026-07-10", "0999P")] == 1  # 有料側不重抓
         assert not day_file("2026-07-10").exists()
 
     async def test_backfill_double_empty_writes_nontrading_marker(self, monkeypatch) -> None:
@@ -606,6 +610,28 @@ class TestBackfill:
         atomic_write_json(
             chip_cache_dir() / "warrant_iv_nontrading.json",
             {"_cache_version": ivh._CACHE_VERSION, "days": {"2026-07-10": "2026-07-01"}},
+        )
+        patch_backfill_upstream(
+            monkeypatch,
+            mi_by_date={
+                ("2026-07-10", "0999"): [twse_hist_row()],
+                ("2026-07-10", "0999P"): [twse_hist_row(wid="03001P")],
+            },
+            terms=[twse_terms_raw()],
+        )
+        monkeypatch.setenv("WARRANT_IV_BACKFILL_DAYS", "1")
+        await ivh._backfill()
+        assert day_file("2026-07-10").exists()
+        marker = read_json(chip_cache_dir() / "warrant_iv_nontrading.json")
+        assert marker is not None
+        assert "2026-07-10" not in marker["days"]
+
+    async def test_backfill_future_dated_marker_treated_expired(self, monkeypatch) -> None:
+        # review 補齊:時鐘回撥留下 checked 在未來的 marker → 負 days 恆 < TTL
+        # 會永久 fresh、自癒保證失效;必須視同過期重驗
+        atomic_write_json(
+            chip_cache_dir() / "warrant_iv_nontrading.json",
+            {"_cache_version": ivh._CACHE_VERSION, "days": {"2026-07-10": "2026-08-01"}},
         )
         patch_backfill_upstream(
             monkeypatch,
