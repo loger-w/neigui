@@ -77,14 +77,24 @@ function mockApis(
     warrant_id: "030013",
     terms_approx_dates: [],
     series: [
-      { date: "2026-07-08", iv_bid: 0.42, iv_ask: 0.46 },
-      { date: "2026-07-09", iv_bid: 0.41, iv_ask: 0.45 },
+      { date: "2026-07-08", iv_bid: 0.42, iv_ask: 0.46, underlying_close: 1000.0 },
+      { date: "2026-07-09", iv_bid: 0.41, iv_ask: 0.45, underlying_close: 1010.0 },
     ],
     drift: { label: "stable", slope_bid: 0.0, slope_ask: 0.0, n_valid: 25 },
   });
 }
 
-beforeEach(() => vi.restoreAllMocks());
+beforeEach(() => {
+  vi.restoreAllMocks();
+  // 展開列的 WarrantIvHistory 走真 useContainerSize;jsdom 無 ResizeObserver
+  if (!globalThis.ResizeObserver) {
+    globalThis.ResizeObserver = class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    } as unknown as typeof ResizeObserver;
+  }
+});
 afterEach(() => cleanup());
 
 const THREE = [

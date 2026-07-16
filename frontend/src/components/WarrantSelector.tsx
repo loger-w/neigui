@@ -457,7 +457,7 @@ function RowPair({
         <tr className="border-b border-line bg-bg-deep/50">
           <td colSpan={columns.length + 1} className="px-8 py-2">
             <div className="text-xs">
-              <WarrantIvHistory warrantId={r.warrant_id} />
+              <WarrantIvHistory warrantId={r.warrant_id} ivPercentile={r.iv_percentile ?? null} />
             </div>
           </td>
         </tr>
