@@ -26,6 +26,10 @@
 - **[需 user 拍板] flow 明細表「淨買賣超」欄與 summary 買/賣對恆退化(RE-1 守恆恆等式)**:全分點報表下單權證跨全分點 net ≡ 0、每 kind 買==賣(2330 實測精確 0.0)。候選替代口徑:(a) per-warrant「分點淨流動」= Σ 正 net(= Σ|負 net|,量測換手集中度);(b) 發行商造市 seat 反向 net(散戶/主力 vs 造市商,需權證名 → 發行商 seat 對映 heuristic);(c) 砍欄位、summary 改「認購/認售成交額」兩數字。動口徑 = 對外契約 + SC 改寫 → /mod 流程。觸發:user 看到 v1 UI 全零欄位時
 - **flow warm 路徑每次查詢付 1 個 T+0 dump request(~2s,44k rows)**:自適應設計的常數成本;若嫌慢,候選 = 當日空 dump 短 TTL(如 30 分)cache。觸發重評估:user 抱怨 tab 切換慢、或午後高頻使用場景出現
 
+## From /mod warrant-selector-table(2026-07-16)
+
+- **原生 `<select>` 樣式第 2 份複本**(OptionsHeader.tsx 合約下拉 vs WarrantSelector.tsx 發行商下拉,border-line/bg-bg/cursor-pointer 同構、細節微異):第三份 select 出現時抽共用 className util 或 ui/select 元件。觸發重評估:第三個原生 select 出現時
+
 ## From /mod warrant-ux-feedback(2026-07-15)
 
 - **Popover 面板骨架第 2 份複本**(BrokerFilterPopover / WarrantColumnMenu:Root+Trigger+Portal+Content+scroll 列表+footer 同構):第三份 popover 出現時抽共用 wrapper。觸發重評估:第三個 popover 面板出現時
