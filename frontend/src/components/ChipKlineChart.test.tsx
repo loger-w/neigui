@@ -389,3 +389,108 @@ describe("ChipKlineChart — B3 broker row 容器常駐 (C4 🔴)", () => {
     expect(rowSelected).toBeTruthy();
   });
 });
+
+describe("ChipKlineChart — major gap overlay + visible-range report (chip-major-lazy-window)", () => {
+  // 痛點:出界升檔的觸發源 = chart 回報可見最左日期;沒回報 = 永不升檔。
+  it("reports the leftmost visible date on mount and after zoom-out", () => {
+    const history = mkHistory(540);
+    const onVisibleRangeChange = vi.fn();
+    const { container } = render(
+      <ChipKlineChart
+        history={history}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+        onVisibleRangeChange={onVisibleRangeChange}
+      />,
+    );
+    // 預設 90 根、跟最新 → 可見窗 = candles[450..539]
+    expect(onVisibleRangeChange).toHaveBeenCalledWith(history.candles[450]!.date);
+    const root = container.querySelector("[data-testid=chip-kline-chart]")!;
+    dispatchWheel(root, 100); // zoom out → 100 根 → 左界 candles[440]
+    expect(onVisibleRangeChange).toHaveBeenCalledWith(history.candles[440]!.date);
+  });
+
+  // 痛點:缺料區段 loading — 已載區段照常顯示,只有覆蓋外的 x 範圍蓋 overlay,
+  // 寬度 = 缺料根數比例(spec §6.3)。
+  it("shows major-gap-overlay over the uncovered fraction while fetching", () => {
+    const history = mkHistory(540);
+    // 可見窗 candles[450..539];覆蓋左界設在 candles[470] → 缺 20/90 根
+    const coverageStart = history.candles[470]!.date;
+    const { getByTestId } = render(
+      <ChipKlineChart
+        history={history}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+        majorCoverageStart={coverageStart}
+        majorFetching={true}
+      />,
+    );
+    const overlay = getByTestId("major-gap-overlay");
+    expect(overlay).toBeTruthy();
+    const width = parseFloat((overlay as HTMLElement).style.width);
+    expect(width).toBeCloseTo((20 / 90) * 100, 1);
+  });
+
+  // 痛點:overlay 只該在補抓在途時出現;非 fetching 的缺料(升檔失敗)回到
+  // 既有 0-bar 呈現,error 走 hook 的 error 欄位(spec Known Edges)。
+  it("no overlay when not fetching, even with a gap", () => {
+    const history = mkHistory(540);
+    const { queryByTestId } = render(
+      <ChipKlineChart
+        history={history}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+        majorCoverageStart={history.candles[470]!.date}
+        majorFetching={false}
+      />,
+    );
+    expect(queryByTestId("major-gap-overlay")).toBeNull();
+  });
+
+  // 痛點:R4 錨差 clamp — coverageStart 早於(或等於)全量首根 = 全覆蓋,
+  // 不得誤蓋 overlay(base 與 major 的 last_date 跨午夜可差一天)。
+  it("no overlay when coverage reaches the first candle (R4 clamp)", () => {
+    const history = mkHistory(540);
+    const { queryByTestId } = render(
+      <ChipKlineChart
+        history={history}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+        majorCoverageStart={history.candles[0]!.date}
+        majorFetching={true}
+      />,
+    );
+    expect(queryByTestId("major-gap-overlay")).toBeNull();
+  });
+
+  // 痛點:可見窗全在覆蓋內(沒拖出去)→ 不蓋,即使更左邊還有缺料。
+  it("no overlay when the visible window is fully covered", () => {
+    const history = mkHistory(540);
+    // 覆蓋左界 = 可見窗左界(candles[450])→ 可見窗零缺料
+    const { queryByTestId } = render(
+      <ChipKlineChart
+        history={history}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+        majorCoverageStart={history.candles[450]!.date}
+        majorFetching={true}
+      />,
+    );
+    expect(queryByTestId("major-gap-overlay")).toBeNull();
+  });
+});

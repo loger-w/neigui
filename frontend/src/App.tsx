@@ -146,6 +146,7 @@ export default function App() {
   // global `loading` so the "重新整理" spinner doesn't sit for ~24s.
   const {
     history, loading, majorLoading, error,
+    majorFetching, majorCoverageStart, ensureMajorCoverage,
     refresh: refreshChip,
   } = useChipData(symbol, date);
   // Gate bubble + intraday by bubble tab — overview 不需要泡泡圖也不需要
@@ -428,6 +429,9 @@ export default function App() {
                 loading={!!symbol && isLoading}
                 loadingSymbol={symbol || undefined}
                 majorLoading={!!symbol && majorLoading}
+                majorFetching={!!symbol && majorFetching}
+                majorCoverageStart={majorCoverageStart}
+                onVisibleRangeChange={ensureMajorCoverage}
                 windowDays={windowDays}
               />
             );
