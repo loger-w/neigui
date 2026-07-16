@@ -101,15 +101,18 @@ export function useChipData(symbol: string, date: string) {
   // 最後一次可見左界回報(升檔需求),帶 symbol 防跨 symbol 誤升(R1)。
   const lastReportRef = useRef<{ symbol: string; fromDate: string } | null>(null);
 
+  // anchor 抽成字串 dep:majorQ.data 每次落地都是新物件,但 last_date 通常
+  // 不變 — 依賴字串讓 applyPolicy / ensureMajorCoverage 的 identity 穩定,
+  // chart 的回報 effect 不會在每次資料落地時空轉重跑。
+  const majorAnchor = majorQ.data?.payload.last_date;
   const applyPolicy = useCallback(
     (fromDate: string) => {
-      const anchor = majorQ.data?.payload.last_date;
-      if (!anchor) return; // 初載在途 — 由下方補跑 effect 接手
+      if (!majorAnchor) return; // 初載在途 — 由下方補跑 effect 接手
       const needed =
-        MAJOR_TIERS.find((t) => addDays(anchor, -t) <= fromDate) ?? MAJOR_FULL_DAYS;
+        MAJOR_TIERS.find((t) => addDays(majorAnchor, -t) <= fromDate) ?? MAJOR_FULL_DAYS;
       if (needed > majorDays) setTier({ symbol, days: needed });
     },
-    [majorQ.data, majorDays, symbol],
+    [majorAnchor, majorDays, symbol],
   );
 
   const ensureMajorCoverage = useCallback(

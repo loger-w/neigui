@@ -47,6 +47,16 @@ interface Props {
   onVisibleRangeChange?: (leftmostDate: string) => void;
 }
 
+// 整版 major-loading-overlay 與缺料區段 major-gap-overlay 共用的內層徽章。
+function MajorLoadingBadge() {
+  return (
+    <span className="text-xs text-ink-dim bg-bg-deep/85 px-2 py-0.5 border border-line flex items-center gap-1.5">
+      <LoadingSpinner size="3" />
+      主力資料載入中…
+    </span>
+  );
+}
+
 const KLINE_ZOOM_MIN = 30;     // 太小無法看 BB(period 20) + MA20
 const KLINE_ZOOM_DEFAULT = 90;
 const KLINE_ZOOM_STEP = 10;    // 每次滾輪 ±10 個 trading days
@@ -446,10 +456,7 @@ export function ChipKlineChart({
             className="absolute inset-0 flex items-center justify-center bg-bg-deep/40 pointer-events-none"
             aria-live="polite"
           >
-            <span className="text-xs text-ink-dim bg-bg-deep/85 px-2 py-0.5 border border-line flex items-center gap-1.5">
-              <LoadingSpinner size="3" />
-              主力資料載入中…
-            </span>
+            <MajorLoadingBadge />
           </div>
         )}
         {/* 缺料區段 overlay(chip-major-lazy-window):升檔在途只蓋可見窗
@@ -462,10 +469,7 @@ export function ChipKlineChart({
             style={{ width: `${majorGapFraction * 100}%` }}
             aria-live="polite"
           >
-            <span className="text-xs text-ink-dim bg-bg-deep/85 px-2 py-0.5 border border-line flex items-center gap-1.5">
-              <LoadingSpinner size="3" />
-              主力資料載入中…
-            </span>
+            <MajorLoadingBadge />
           </div>
         )}
       </div>
