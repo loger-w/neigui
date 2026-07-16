@@ -362,11 +362,21 @@ async def _get_underlying_series(uid: str, wids: list[str], refresh: bool) -> di
         for wid in wids:
             entries = [(p["warrants"].get(wid) or {}) for _, p in loaded]
             by_wid[wid] = [(e.get("ivb"), e.get("iva")) for e in entries]
+        # 標的收盤:每日取同標的任一權證的非 null s。wids 來自現行快照 —
+        # 早期日檔若現行權證全未上市則留 None(known gap,change-spec R7)
+        s_list: list[float | None] = [
+            next(
+                (s for wid in wids if (s := (p["warrants"].get(wid) or {}).get("s")) is not None),
+                None,
+            )
+            for _, p in loaded
+        ]
         built = {
             "latest": dates[-1] if dates else None,
             "gen": gen,
             "dates": dates,
             "by_wid": by_wid,
+            "s_list": s_list,
             "approx_dates": [d for d, p in loaded if p.get("terms_approx")],
         }
         if gen == _rebuild_generation:  # R12:組裝期間 rebuild 完成 → 丟棄不入 cache
@@ -388,7 +398,8 @@ async def get_iv_history(warrant_id: str, refresh: bool = False) -> dict | None:
     entry = await _get_underlying_series(uid, wids, refresh)
     pairs = entry["by_wid"].get(warrant_id) or [(None, None)] * len(entry["dates"])
     series = [
-        {"date": d, "iv_bid": b, "iv_ask": a} for d, (b, a) in zip(entry["dates"], pairs)
+        {"date": d, "iv_bid": b, "iv_ask": a, "underlying_close": s}
+        for d, (b, a), s in zip(entry["dates"], pairs, entry["s_list"])
     ]
     drift_map = await get_drift_map()
     drift = drift_map.get(warrant_id) or {
