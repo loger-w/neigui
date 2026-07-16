@@ -48,7 +48,6 @@ export const TESTIDS = {
   warrantRow: "warrant-row",
   warrantKindBadge: "warrant-kind-badge",
   mispricingLabel: "mispricing-label",
-  warrantBrokersDetail: "warrant-brokers-detail",
   // 權證 IV 趨勢(feat/warrant-iv-drift)
   ivDriftLabel: "iv-drift-label",
   warrantIvChart: "warrant-iv-chart",

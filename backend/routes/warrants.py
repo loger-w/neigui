@@ -1,8 +1,8 @@
-"""權證選擇器 routes — EOD 快照 / MIS 盤中 quotes / FinMind 分點展開。
+"""權證選擇器 routes — EOD 快照 / MIS 盤中 quotes / IV 歷史 / 分點流向。
 
-Error 邊界逐 endpoint(design R9):warrants/quotes 上游是 TWSE/TPEx/MIS,
-自己 catch httpx 基類 → 502 warrant_upstream(中央 handler 會錯標
-finmind_error);brokers 上游真是 FinMind → 不 catch,沿中央 handler。
+Error 邊界逐 endpoint(design R9):warrants/quotes/iv-history 上游是
+TWSE/TPEx/MIS,自己 catch httpx 基類 → 502 warrant_upstream(中央 handler
+會錯標 finmind_error);flow 上游是 FinMind → 不 catch,沿中央 handler。
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 
 from services import (
-    warrant_brokers,
     warrant_flow,
     warrant_iv_history,
     warrant_quotes,
@@ -95,10 +94,3 @@ async def get_warrant_flow(
     # FinMind httpx 錯誤不 catch → 中央 handler finmind_error;
     # 快照(TWSE/TPEx)錯誤 service 內已轉 502 warrant_upstream(design R16)
     return await run_with_disconnect(request, warrant_flow.get_flow(stock_id, date, refresh))
-
-
-@router.get("/api/warrants/{warrant_id}/brokers")
-async def get_warrant_brokers(request: Request, warrant_id: str, refresh: bool = False) -> dict:
-    _validate_id(warrant_id)
-    # 不 catch httpx:FinMind 上游走中央 handler → finmind_error(R9)
-    return await run_with_disconnect(request, warrant_brokers.get_brokers(warrant_id, refresh))

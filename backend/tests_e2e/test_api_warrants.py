@@ -78,15 +78,6 @@ async def test_quotes_happy_path_computed_fields(client):
     assert q15["price"] == pytest.approx((1.05 + 1.15) / 2)
 
 
-async def test_brokers_happy_path(client):
-    r = await client.get("/api/warrants/030012/brokers")
-    assert r.status_code == 200
-    body = r.json()
-    assert body["data_date"] == "2026-06-25"  # FAKE_TODAY-1(impl-R4)
-    assert body["rows"][0]["broker_name"] == "凱基-台北"
-    assert body["rows"][0]["net"] == 800
-
-
 async def test_warrants_rows_carry_iv_drift(client):
     # SC-4 contract:iv_drift 欄走 fixture → loader → drift 真計算路徑
     r = await client.get("/api/warrants/2330")
@@ -176,9 +167,6 @@ async def test_flow_bad_date_400(client):
 
 async def test_bad_symbol_400_all_paths(client):
     r = await client.get("/api/warrants/abc!!")
-    assert r.status_code == 400
-    assert r.json()["detail"]["error"] == "bad_symbol"
-    r = await client.get("/api/warrants/0300123456789/brokers")
     assert r.status_code == 400
     assert r.json()["detail"]["error"] == "bad_symbol"
     # review P2 補鎖:/flow 原缺專屬 bad_symbol 契約證據(共用 _validate_id)

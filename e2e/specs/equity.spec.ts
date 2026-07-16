@@ -167,18 +167,6 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(page.getByText("此標的無掛牌權證")).toBeVisible();
   });
 
-  test("E11: row 展開分點(SC-6,FinMind T+1 單發)", async ({ page }) => {
-    // 痛點:展開走 FakeFinMindClient MANIFEST 路徑(warrant_id 030012 與
-    // fixtures/warrants/ 快照對齊 — impl-R2 跨 wave 契約);資料日 = FAKE_TODAY-1。
-    await page.getByRole("button", { name: /^權證$/ }).click();
-    const row12 = page.locator('[data-warrant-id="030012"]');
-    await row12.getByRole("button", { name: /展開分點/ }).click();
-    const detail = page.getByTestId(TESTIDS.warrantBrokersDetail);
-    await expect(detail).toContainText("凱基-台北");
-    await expect(detail).toContainText("800"); // net = buy 900 - sell 100
-    await expect(detail).toContainText("資料日 = 2026-06-25");
-  });
-
   test("E18: 欄位選單 — 隱藏/拖曳調序/reload 持久(mod warrant-ux-feedback SC-6)", async ({ page }) => {
     // 痛點:menu → prefs → visibleColumns → localStorage 全鏈;HTML5 拖曳
     // jsdom 測不到(vitest 只鎖 ▲▼ 按鈕路徑),真瀏覽器在此鎖 dnd + 持久化。
@@ -240,7 +228,7 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     // 鎖 path d 屬性非空(資料級),空 geometry 時 svg 不 render。
     await page.getByRole("button", { name: /^權證$/ }).click();
     const row12 = page.locator('[data-warrant-id="030012"]');
-    await row12.getByRole("button", { name: /展開分點/ }).click();
+    await row12.getByRole("button", { name: /展開明細/ }).click();
     const chart = page.getByTestId(TESTIDS.warrantIvChart);
     await expect(chart).toBeVisible();
     const bidD = await chart.locator('path[data-side="bid"]').getAttribute("d");

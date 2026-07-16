@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useWarrants } from "../hooks/useWarrants";
 import { useWarrantQuotes } from "../hooks/useWarrantQuotes";
-import { useWarrantBrokers } from "../hooks/useWarrantBrokers";
 import { WarrantIvHistory } from "./WarrantIvHistory";
 import { WarrantColumnMenu } from "./WarrantColumnMenu";
 import { Checkbox } from "./ui/checkbox";
@@ -54,7 +53,6 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
   const [sortKey, setSortKey] = useState<WarrantSortKey>("spread_lev_ratio");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const brokersHook = useWarrantBrokers(expandedId);
   // 篩選 input 用 defaultValue + epoch remount:controlled value 會沖掉
   // 「-」「0.」等打字中間態;重製 / 換標的靠 epoch 重掛同步顯示值
   const [filterEpoch, setFilterEpoch] = useState(0);
@@ -375,7 +373,6 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
                     setExpandedId((cur) => (cur === r.warrant_id ? null : r.warrant_id))
                   }
                   slrClass={slrClass(r.spread_lev_ratio)}
-                  brokersHook={expandedId === r.warrant_id ? brokersHook : null}
                   columns={visibleColumns}
                 />
               ))}
@@ -392,14 +389,12 @@ function RowPair({
   expanded,
   onToggle,
   slrClass,
-  brokersHook,
   columns,
 }: {
   row: WarrantRow;
   expanded: boolean;
   onToggle: () => void;
   slrClass: string;
-  brokersHook: ReturnType<typeof useWarrantBrokers> | null;
   columns: WarrantColumnDef[];
 }) {
   const ctx: WarrantColumnCtx = { slrClass };
@@ -415,7 +410,7 @@ function RowPair({
             type="button"
             onClick={onToggle}
             aria-expanded={expanded}
-            aria-label={`展開分點 ${r.name}`}
+            aria-label={`展開明細 ${r.name}`}
             className="w-5 h-5 pointer-coarse:min-h-11 inline-flex items-center justify-center text-ink-dim hover:text-accent cursor-pointer transition-colors"
           >
             {expanded ? "−" : "+"}
@@ -427,46 +422,9 @@ function RowPair({
       </tr>
       {expanded && (
         <tr className="border-b border-line bg-bg-deep/50">
-          <td colSpan={columns.length + 1} className="px-8 py-2 space-y-3">
+          <td colSpan={columns.length + 1} className="px-8 py-2">
             <div className="text-xs">
               <WarrantIvHistory warrantId={r.warrant_id} />
-            </div>
-            <div data-testid="warrant-brokers-detail" className="text-xs">
-              {brokersHook?.loading ? (
-                <span className="text-ink-dim">載入分點資料...</span>
-              ) : brokersHook?.error ? (
-                <span className="text-accent">{brokersHook.error}</span>
-              ) : brokersHook?.data && brokersHook.data.rows.length > 0 ? (
-                <div className="space-y-1">
-                  <div className="text-ink-dim">
-                    分點買賣超(資料日 = {brokersHook.dataDate},T-1)
-                  </div>
-                  <table className="text-xs">
-                    <thead>
-                      <tr className="text-ink-dim">
-                        <th scope="col" className="pr-4 text-left font-normal">分點</th>
-                        <th scope="col" className="pr-4 text-right font-normal">買進</th>
-                        <th scope="col" className="pr-4 text-right font-normal">賣出</th>
-                        <th scope="col" className="pr-4 text-right font-normal">買賣超</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {/* key 帶 index:真實 FinMind 分點同名可重複(彰銀買賣
-                          兩列,2026-07-11 real-env 實測)— 純名字 key 會撞 */}
-                      {brokersHook.data.rows.map((b, i) => (
-                        <tr key={`${b.broker_name}-${i}`} className="text-ink-muted">
-                          <td className="pr-4">{b.broker_name}</td>
-                          <td className="pr-4 text-right">{b.buy}</td>
-                          <td className="pr-4 text-right">{b.sell}</td>
-                          <td className="pr-4 text-right text-ink">{b.net}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <span className="text-ink-dim">近 5 個交易日無分點報表資料</span>
-              )}
             </div>
           </td>
         </tr>

@@ -4,7 +4,7 @@ import type {
 } from "./chip-data";
 import type { BorrowFeeData } from "./borrow-fee";
 import type {
-  WarrantBrokersPayload, WarrantIvHistoryPayload, WarrantQuotesPayload,
+  WarrantIvHistoryPayload, WarrantQuotesPayload,
   WarrantsPayload,
 } from "./warrant-data";
 import type { WarrantFlowPayload } from "./warrant-flow-data";
@@ -236,13 +236,6 @@ export const api = {
     if (refresh) params.refresh = "true";
     // 輪詢資料恆走 noCache(module cache TTL 5 分鐘會吞掉 15s 輪詢)
     return get(`${BASE}/warrants/${stockId}/quotes`, params, { ...options, noCache: true });
-  },
-  warrantBrokers(
-    warrantId: string, refresh?: boolean, options?: RequestOptions,
-  ): Promise<WarrantBrokersPayload> {
-    const params: Record<string, string> = {};
-    if (refresh) params.refresh = "true";
-    return get(`${BASE}/warrants/${warrantId}/brokers`, params, options);
   },
   warrantFlow(
     stockId: string, refresh?: boolean, options?: RequestOptions,

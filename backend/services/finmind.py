@@ -644,7 +644,7 @@ class FinMindClient:
         """權證分點報表(Sponsor;T+1 lag)— data_id 必填、end_date 必須留空
         (官方 400 訊息明示單日單發;memory reference_finmind_warrant_dataset)。
         FinMind start_date open-ended 可能回多日 rows,查詢日過濾由 caller
-        (services/warrant_brokers.py)負責。"""
+        (services/warrant_flow.py)負責。"""
         return await self._get(
             f"{_FINMIND_BASE}/data",
             {

@@ -1,5 +1,12 @@
 # 權證選擇器 — 標的驅動的盤中權證篩選(equity mode 新 tab)
 
+> **Amendment 2026-07-16(mod/warrant-selector-table)**:分點買賣超展開已整組移除
+> (前端 useWarrantBrokers / 展開列分點表 + backend `/brokers` route 與
+> `services/warrant_brokers.py`;row 展開現只剩 IV 時序)。受影響段落:Goal、§1
+> 篩選維度、§2.1、§3.3 route 清單、§5 SC-6、§6.1、§6.3 — 該等內容為歷史規格,
+> 現況以 mod change-spec 為準。`TaiwanStockWarrantTradingDailyReport` client
+> method 保留(權證分點流向頁 `warrant_flow.py` 續用)。
+
 **Date**: 2026-07-08(EOD 初版)→ **2026-07-11 盤中版改版(user 拍板)**
 **Type**: brainstorm 產出 spec(實作走 `/feat`,本檔為 Phase 0 pre-reading)
 **Goal**: 「先選標的股、再挑權證」— 盤中列出標的全部權證(上市 + 上櫃),以條款、槓桿、流動性、**估價(是否合理價/便宜)**、分點籌碼、差槓比篩選排序;收盤後用最後快照,盤後也能選。
@@ -93,7 +100,7 @@ GET https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_030012.tw|tse_2
 - `routes/warrants.py`(每 router 一檔):
   - `GET /api/warrants/{stock_id}?refresh=` → EOD 快照 per-underlying 條款 + 昨日欄位
   - `GET /api/warrants/{stock_id}/quotes?refresh=` → 盤中層(§3.2)
-  - `GET /api/warrants/{warrant_id}/brokers?refresh=` → FinMind 分點(T+1,單日單發)
+  - ~~`GET /api/warrants/{warrant_id}/brokers?refresh=` → FinMind 分點(T+1,單日單發)~~(2026-07-16 移除,見頂部 amendment)
 - Error contract `{detail:{error}}` 沿用;502/503/400/404 語意照專案慣例。
 
 ---
@@ -127,7 +134,7 @@ GET https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=tse_030012.tw|tse_2
 3. **SC-3** 盤中自動更新:交易時段 TanStack `refetchInterval` 輪詢(間隔常數,對齊 backend cooldown),收盤後停止輪詢並顯示「最後更新 HH:MM」;盤後開頁直接顯示最後快照。
 4. **SC-4** 篩選器:認購/認售 toggle、剩餘天數下限、價內外範圍、「委買量 > 0」開關、**估價差範圍、IV 百分位上限**;全部 client-side filter。
 5. **SC-5** 估價標籤與差槓比標色:中性色階(accent/區間標),**不用紅綠**(紅綠保留多空語意)、不寫任何方向性/建議文案;data-testid + 正向 assertion 鎖住。
-6. **SC-6** 點單一權證 row 展開:FinMind 分點買賣超(T+1 單發);顯示「資料日 = T-1」標註。
+6. ~~**SC-6** 點單一權證 row 展開:FinMind 分點買賣超(T+1 單發);顯示「資料日 = T-1」標註。~~(2026-07-16 移除,見頂部 amendment;展開列現為 IV 時序)
 7. **SC-7** 標的無權證 → 「此標的無掛牌權證」空狀態(繁中)。
 8. **SC-8** `no_trading_day` / `refresh=true` 慣例沿用;EOD 快照 cache 以日期為 key + `_cache_version`。
 9. **SC-9** 完成 gate:`pytest -q` + `ruff check .` + `npm test` + `npm run build` + chrome-devtools 截圖入 `docs/specs/warrant-selector/screenshots/`。
