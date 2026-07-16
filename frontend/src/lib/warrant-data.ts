@@ -26,6 +26,7 @@ export interface WarrantIvPoint {
   date: string;
   iv_bid: number | null;
   iv_ask: number | null;
+  underlying_close: number | null;
 }
 
 export interface WarrantIvDrift {

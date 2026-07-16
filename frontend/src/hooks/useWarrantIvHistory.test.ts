@@ -14,8 +14,8 @@ const mk = (over?: Partial<WarrantIvHistoryPayload>): WarrantIvHistoryPayload =>
   warrant_id: "030012",
   terms_approx_dates: [],
   series: [
-    { date: "2026-07-08", iv_bid: 0.42, iv_ask: 0.46 },
-    { date: "2026-07-09", iv_bid: 0.41, iv_ask: 0.45 },
+    { date: "2026-07-08", iv_bid: 0.42, iv_ask: 0.46, underlying_close: 1000.0 },
+    { date: "2026-07-09", iv_bid: 0.41, iv_ask: 0.45, underlying_close: 1010.0 },
   ],
   drift: { label: "declining", slope_bid: -0.002, slope_ask: -0.001, n_valid: 55 },
   ...over,
