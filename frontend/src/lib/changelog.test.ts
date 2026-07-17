@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
   });
 
-  it("最新版本是 v0.34.0(主力買賣超按需載入)", () => {
-    expect(CHANGELOG[0]?.version).toBe("0.34.0");
+  it("最新版本是 v0.34.1(線上版切換時舊請求真正中止)", () => {
+    expect(CHANGELOG[0]?.version).toBe("0.34.1");
   });
 
   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
