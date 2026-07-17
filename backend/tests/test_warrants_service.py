@@ -132,13 +132,24 @@ def patch_upstream(
     quts: list | None = None,
     tclose: list | None = None,
     issue: list | None = None,
+    mi_seq_by_date: dict[tuple[str, str], list[list]] | None = None,
 ) -> dict:
-    """六個 fetch 全 monkeypatch;回 counter dict 供斷言打了幾次。"""
-    counter = {"mi": 0, "terms": 0, "quts": 0, "tclose": 0, "issue": 0}
+    """六個 fetch 全 monkeypatch;回 counter dict 供斷言打了幾次。
+
+    mi_seq_by_date:同 (date, type) 逐次回不同 rows(transient 空模擬,
+    對齊 test_warrant_iv_history.patch_backfill_upstream 慣例)。
+    """
+    counter = {"mi": 0, "terms": 0, "quts": 0, "tclose": 0, "issue": 0, "mi_by_key": {}}
+    seqs = {k: list(v) for k, v in (mi_seq_by_date or {}).items()}
 
     async def fake_mi(date_iso: str, type_code: str) -> list:
         counter["mi"] += 1
-        return (mi_by_date or {}).get((date_iso, type_code), [])
+        key = (date_iso, type_code)
+        counter["mi_by_key"][key] = counter["mi_by_key"].get(key, 0) + 1
+        seq = seqs.get(key)
+        if seq:
+            return seq.pop(0)
+        return (mi_by_date or {}).get(key, [])
 
     async def fake_terms() -> list:
         counter["terms"] += 1
@@ -161,19 +172,25 @@ def patch_upstream(
     monkeypatch.setattr(ws, "_fetch_tpex_quts", fake_quts)
     monkeypatch.setattr(ws, "_fetch_tpex_close", fake_tclose)
     monkeypatch.setattr(ws, "fetch_tpex_issue", fake_issue)
+    monkeypatch.setattr(ws, "_PARTIAL_RETRY_SLEEP", 0.0, raising=False)
     return counter
 
 
 def default_upstream(monkeypatch) -> dict:
-    """標準情境:07-11(today)空、07-10 空(颱風假)、07-09 有料。"""
+    """標準情境:07-11(today)空、07-10 空(颱風假)、07-09 有料。
+
+    2026-07-17 fixture 升級(事前標記):07-09 從單邊(僅 call)改為雙側 —
+    交易日兩型別必都有行情,單邊 fixture 是舊「or 即收」語意的產物;
+    雙側下不觸發 retry,per-day mi 計數(2 次)不變。
+    """
     mi = {
         ("2026-07-09", "0999"): [twse_market_row()],
-        ("2026-07-09", "0999P"): [],
+        ("2026-07-09", "0999P"): [twse_market_row(wid="03001P")],
     }
     return patch_upstream(
         monkeypatch,
         mi_by_date=mi,
-        terms=[twse_terms_row()],
+        terms=[twse_terms_row(), twse_terms_row(wid="03001P", kind="認售")],
         quts=[tpex_quts_row()],
         tclose=[tpex_close_row()],
         issue=[tpex_issue_row()],
@@ -276,7 +293,7 @@ class TestBuild:
         payload = await ws.get_underlying_warrants("6781")
         assert payload["as_of_date"] == "2026-07-09"
         assert "no_trading_day" not in payload
-        assert len(payload["warrants"]) == 1
+        assert {w["warrant_id"] for w in payload["warrants"]} == {"030012", "03001P"}
 
     async def test_all_days_empty_no_cache_raises_404(self, monkeypatch) -> None:
         patch_upstream(monkeypatch)
@@ -287,17 +304,26 @@ class TestBuild:
 
     async def test_expired_warrant_filtered(self, monkeypatch) -> None:
         # S-4:t187ap37_L 含已到期(ltd < as_of)→ 剔除
-        mi = {("2026-07-09", "0999"): [twse_market_row()]}
+        # (fixture 雙側化:0999P 補活券,鎖「只有過期的 call 被剔」)
+        mi = {
+            ("2026-07-09", "0999"): [twse_market_row()],
+            ("2026-07-09", "0999P"): [twse_market_row(wid="03001P")],
+        }
         patch_upstream(
-            monkeypatch, mi_by_date=mi, terms=[twse_terms_row(ltd="1150528")],
+            monkeypatch,
+            mi_by_date=mi,
+            terms=[twse_terms_row(ltd="1150528"), twse_terms_row(wid="03001P", kind="認售")],
         )
         payload = await ws.get_underlying_warrants("6781")
-        assert payload["warrants"] == []
+        assert [w["warrant_id"] for w in payload["warrants"]] == ["03001P"]
 
     async def test_expired_tpex_warrant_filtered(self, monkeypatch) -> None:
         # review P2 補鎖:到期剔除原僅 TWSE fixture 驗證 — TPEx 路徑
         # (ExpiryDate 已過 as_of)走同一 add_warrant 分支,補資料路徑直接證據
-        mi = {("2026-07-09", "0999"): [twse_market_row()]}
+        mi = {
+            ("2026-07-09", "0999"): [twse_market_row()],
+            ("2026-07-09", "0999P"): [twse_market_row(wid="03001P")],
+        }
         patch_upstream(
             monkeypatch,
             mi_by_date=mi,
@@ -310,7 +336,10 @@ class TestBuild:
 
     async def test_market_row_without_terms_skipped(self, monkeypatch) -> None:
         # edge 8:新掛牌 race — 行情有、條款缺 → skip 不炸
-        mi = {("2026-07-09", "0999"): [twse_market_row(), twse_market_row(wid="030099")]}
+        mi = {
+            ("2026-07-09", "0999"): [twse_market_row(), twse_market_row(wid="030099")],
+            ("2026-07-09", "0999P"): [twse_market_row(wid="03001P")],  # 無條款 → 同 skip
+        }
         patch_upstream(monkeypatch, mi_by_date=mi, terms=[twse_terms_row()])
         payload = await ws.get_underlying_warrants("6781")
         assert [w["warrant_id"] for w in payload["warrants"]] == ["030012"]
@@ -350,19 +379,65 @@ class TestBuild:
 
         mi = {
             ("2026-07-09", "0999"): [twse_market_row()],
-            ("2026-07-09", "0999P"): [],
+            ("2026-07-09", "0999P"): [twse_market_row(wid="03001P")],
         }
         monkeypatch.setattr(
             ws, "fetch_mi_index", instrument(lambda d, t: mi.get((d, t), []))
         )
-        monkeypatch.setattr(ws, "fetch_t187ap37", instrument(lambda: [twse_terms_row()]))
+        monkeypatch.setattr(
+            ws,
+            "fetch_t187ap37",
+            instrument(lambda: [twse_terms_row(), twse_terms_row(wid="03001P", kind="認售")]),
+        )
         monkeypatch.setattr(ws, "_fetch_tpex_quts", instrument(lambda: [tpex_quts_row()]))
         monkeypatch.setattr(ws, "_fetch_tpex_close", instrument(lambda: [tpex_close_row()]))
         monkeypatch.setattr(ws, "fetch_tpex_issue", instrument(lambda: [tpex_issue_row()]))
 
         payload = await ws.get_underlying_warrants("6781")
         assert state["peak"] > 1
-        assert len(payload["warrants"]) == 1  # 並發不得改變組裝結果
+        assert len(payload["warrants"]) == 2  # 並發不得改變組裝結果
+
+
+# ---------------------------------------------------------------- 單邊空 transient(2026-07-17 /bug warrants-snapshot-partial-empty)
+
+
+class TestPartialEmpty:
+    async def test_build_retries_single_empty_side_then_recovers(self, monkeypatch) -> None:
+        # 交易日兩型別必都有行情:單邊空 = transient「stat=OK 空表」嫌疑
+        # (backfill R15 同病)→ retry 空側一次補齊,有料側不重抓
+        counter = patch_upstream(
+            monkeypatch,
+            mi_by_date={("2026-07-09", "0999"): [twse_market_row()]},
+            mi_seq_by_date={
+                ("2026-07-09", "0999P"): [[], [twse_market_row(wid="03001P")]],
+            },
+            terms=[twse_terms_row(), twse_terms_row(wid="03001P", kind="認售")],
+        )
+        payload = await ws.get_underlying_warrants("6781")
+        assert payload["as_of_date"] == "2026-07-09"
+        assert {w["warrant_id"] for w in payload["warrants"]} == {"030012", "03001P"}
+        assert counter["mi_by_key"][("2026-07-09", "0999P")] == 2  # 空側 retry 一次
+        assert counter["mi_by_key"][("2026-07-09", "0999")] == 1  # 有料側不重抓
+
+    async def test_build_persistent_partial_empty_falls_back_previous_day(
+        self, monkeypatch
+    ) -> None:
+        # retry 後仍單邊 = transient partial:接受會讓 UI 服務半宇宙一整天
+        # (fetched_on 當日恆 fresh)+ archive 寫 immutable 殘檔 → 該候選日
+        # 視同無資料,回退前一日(完整資料 > 缺半邊的當日資料)
+        counter = patch_upstream(
+            monkeypatch,
+            mi_by_date={
+                ("2026-07-09", "0999"): [twse_market_row()],  # 0999P 恆空
+                ("2026-07-08", "0999"): [twse_market_row()],
+                ("2026-07-08", "0999P"): [twse_market_row(wid="03001P")],
+            },
+            terms=[twse_terms_row(), twse_terms_row(wid="03001P", kind="認售")],
+        )
+        payload = await ws.get_underlying_warrants("6781")
+        assert payload["as_of_date"] == "2026-07-08"
+        assert counter["mi_by_key"][("2026-07-09", "0999P")] == 2  # 空側有 retry
+        assert {w["warrant_id"] for w in payload["warrants"]} == {"030012", "03001P"}
 
 
 # ---------------------------------------------------------------- S3 lifespan 預熱
@@ -472,10 +547,14 @@ class TestIvPrev:
             ("2026-07-09", "0999"): [
                 twse_market_row(close="1.25", bid="1.20", ask="1.30", uclose="100.00"),
             ],
+            ("2026-07-09", "0999P"): [twse_market_row(wid="03001P", uclose="100.00")],
         }
         patch_upstream(
             monkeypatch, mi_by_date=mi,
-            terms=[twse_terms_row(strike="95.0000", per_thousand="100.00")],
+            terms=[
+                twse_terms_row(strike="95.0000", per_thousand="100.00"),
+                twse_terms_row(wid="03001P", kind="認售"),
+            ],
         )
         payload = await ws.get_underlying_warrants("6781")
         w = payload["warrants"][0]
@@ -489,10 +568,14 @@ class TestIvPrev:
             ("2026-07-09", "0999"): [
                 twse_market_row(close="", bid="1.20", ask="1.30", uclose="100.00"),
             ],
+            ("2026-07-09", "0999P"): [twse_market_row(wid="03001P", uclose="100.00")],
         }
         patch_upstream(
             monkeypatch, mi_by_date=mi,
-            terms=[twse_terms_row(strike="95.0000", per_thousand="100.00")],
+            terms=[
+                twse_terms_row(strike="95.0000", per_thousand="100.00"),
+                twse_terms_row(wid="03001P", kind="認售"),
+            ],
         )
         w = (await ws.get_underlying_warrants("6781"))["warrants"][0]
         t = (date_type(2026, 7, 28) - date_type(2026, 7, 9)).days / 365.0
@@ -505,6 +588,7 @@ class TestIvPrev:
                 twse_market_row(close="", bid="", ask="", uclose="100.00"),
                 twse_market_row(wid="030777", close="1.25", uclose="100.00"),
             ],
+            ("2026-07-09", "0999P"): [twse_market_row(wid="03001P", uclose="100.00")],
         }
         patch_upstream(
             monkeypatch, mi_by_date=mi,
@@ -512,6 +596,7 @@ class TestIvPrev:
                 twse_terms_row(strike="95.0000", per_thousand="100.00"),
                 twse_terms_row(wid="030777", category="重設型-單一單價",
                                strike="95.0000", per_thousand="100.00"),
+                twse_terms_row(wid="03001P", kind="認售"),
             ],
         )
         ws_by_id = {
