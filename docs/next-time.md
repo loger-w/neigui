@@ -25,7 +25,8 @@
 
 - **IV drift「rising」側受市場 vol regime 混淆**(2026-07-11 真實 60 日校準:市場整體 IV 上行 → rel 右尾肥,常數 0.30 下 rising 仍標 10.3%;declining 側 1.2% 選擇性 OK):要更乾淨需 cross-sectional de-mean(rel 減去全市場中位數),屬 detect 演算法 design amend。觸發重評估:user 反映 rising 標記太多、或市場轉入 IV 下行 regime 換 declining 側爆量時
 
-- **forceRefreshRef pattern 已複製到第 20 個 hook — 門檻已觸發**(2026-07-14 useWarrantFlow 為第 20 個;原訂「第 20 個出現時重評估」):建議開專屬 /refactor 抽共用 `useForceRefreshQuery` helper(順帶收斂 code-review 指出的 ref 時序 race:refresh 旗標可能被非 refresh 的 in-flight fetch 提前消費 — pattern 級,20 個 hook 同病)。觸發重評估:已觸發,下次 /refactor 排程時收割
+- (原「forceRefreshRef pattern 第 20 個複本門檻」條目已由 refactor/force-refresh-query 收割刪除,2026-07-17:18 個 hook 收斂到 `useForceRefreshQuery`,排除 useBrokerHistory / useChipData 兩個異形樣板)
+- **[bug 候選] forceRefresh 旗標時序 race — 收斂後只剩 3 處要修**:refresh 旗標可能被非 refresh 的 in-flight fetch 提前消費(消費方 = 「下一個執行的 queryFn」而非 refresh 觸發的那次)→ 使用者按重新整理實際發出的請求沒帶 `refresh=true`。修點:`useForceRefreshQuery.ts`(18 hook 共用,一處修)+ useBrokerHistory + useChipData(排除範圍同病)。行為改動,走 /bug(紅測試 = 模擬 in-flight fetch 消費旗標)。觸發:排程下一個 /bug 時
 - **tests/test_finmind_realtime.py 在機器高負載下 flaky**(真實 asyncio 短 sleep 0.02s + wait_for timeout=1.0;2026-07-11 全套跑兩輪各紅 15/8 個、單檔跑與後續全套皆綠):改假鐘或放寬 timeout。觸發重評估:CI 或平常開發再看到該檔紅時
 
 ## From /feat warrant-broker-flow(2026-07-14)
