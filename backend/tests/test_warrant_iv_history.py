@@ -140,6 +140,45 @@ class TestArchive:
         assert "030012" in payload["warrants"]
         assert "72124U" not in payload["warrants"]
 
+    # ---- daily R3 窗口自癒(2026-07-17 /bug tpex-warrant-iv-empty:snapshot
+    # 落在「TWSE 已發布、TPEx OpenAPI 未發布」窗 → tpex_date < as_of → 日檔
+    # 寫成 TWSE-only 且 immutable;隔日 keeper 首 build(as_of=昨日、tpex 已
+    # current)須能只補 TPEx 列)----
+
+    async def test_archive_merges_tpex_into_existing_file_when_current(self) -> None:
+        write_day(
+            "2026-07-09",
+            {"030012": {"b": 0.6, "a": 0.65, "c": 0.62, "s": 100.0, "ivb": 0.41, "iva": 0.45}},
+        )
+        snap = make_snap([make_warrant(), make_warrant(wid="72124U", market="tpex", uid="8086")])
+        assert await ivh.archive_from_snapshot(snap) is True
+        payload = read_json(day_file("2026-07-09"))
+        assert "72124U" in payload["warrants"]
+        assert payload["warrants"]["72124U"]["ivb"] is not None
+        # 既有 TWSE 值保留不重算(檔內 b=0.60,snap 是 0.65)、flag 不變
+        assert payload["warrants"]["030012"]["b"] == pytest.approx(0.6)
+        assert payload["terms_approx"] is False
+
+    async def test_archive_no_merge_when_tpex_stale(self) -> None:
+        # merge 也要守 R3:tpex_date != as_of 的 TPEx 列不得補進檔
+        write_day(
+            "2026-07-09",
+            {"030012": {"b": 0.6, "a": 0.65, "c": 0.62, "s": 100.0, "ivb": 0.41, "iva": 0.45}},
+        )
+        snap = make_snap(
+            [make_warrant(wid="72124U", market="tpex", uid="8086")], tpex_date="2026-07-08"
+        )
+        assert await ivh.archive_from_snapshot(snap) is False
+        assert "72124U" not in read_json(day_file("2026-07-09"))["warrants"]
+
+    async def test_archive_merge_without_tpex_rows_returns_false(self) -> None:
+        # merge 模式但 snapshot 本身無 TPEx 列 → 無事可補,不重寫不觸發 rebuild
+        write_day(
+            "2026-07-09",
+            {"030012": {"b": 0.6, "a": 0.65, "c": 0.62, "s": 100.0, "ivb": 0.41, "iva": 0.45}},
+        )
+        assert await ivh.archive_from_snapshot(make_snap()) is False
+
     async def test_archive_inverted_quote_both_none(self) -> None:
         # R8:bid > ask 倒掛是 pair 層級無效 → ivb/iva 皆 None(對齊 _warrant_price_basis)
         snap = make_snap([make_warrant(bid=0.70, ask=0.65)])
@@ -204,6 +243,34 @@ WN1430_ROW = [
     "20,000", "6,200", "5", "0.30", "22", "0.32", "10", "10,000,000",
     "9,999.95", "0.01",
 ]
+
+
+class TestWn1430Fetch:
+    async def test_fetch_requests_warrant_table_se_ww(self, monkeypatch) -> None:
+        # root cause(2026-07-17 /bug tpex-warrant-iv-empty):se=EW 是「上櫃
+        # 股票+ETF(不含權證、牛熊證)」表,從未回過權證;權證表 = se=WW
+        # (實測 9,075 筆全 7xxxxx,恰 == issue universe)。EW 之下 TPEx 線靜默全滅。
+        captured: dict = {}
+
+        class FakeResp:
+            status_code = 200
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return wn1430_body(WN1430_FIELDS, [WN1430_ROW])
+
+        class FakeClient:
+            async def get(self, url: str, params: dict | None = None) -> FakeResp:
+                captured["params"] = params
+                return FakeResp()
+
+        monkeypatch.setattr(ivh, "_get_client", lambda: FakeClient())
+        rows = await ivh._fetch_wn1430_rows("2026-07-09")
+        assert captured["params"]["se"] == "WW"
+        assert captured["params"]["d"] == "115/07/09"
+        assert rows and rows[0]["warrant_id"] == "72124U"
 
 
 class TestWn1430Parse:
@@ -472,7 +539,12 @@ def tpex_issue_raw(wid: str = "72124U", uid: str = "8086") -> dict:
 
 class TestBackfill:
     async def test_backfill_skips_existing_and_nontrading(self, monkeypatch) -> None:
-        write_day("2026-07-08", {})  # 已存在 → 不 fetch
+        # 2026-07-17 assertion 升級(事前標記):「已存在→不 fetch」收窄為
+        # 「已存在且含 TPEx→不 fetch」;無 TPEx 殘檔改走 repair(見下方測試)
+        write_day(
+            "2026-07-08",
+            {"72124U": {"b": 0.30, "a": 0.32, "c": 0.31, "s": 91.0, "ivb": 0.5, "iva": 0.55}},
+        )
         # fixture 慣例:交易日兩型別都要給 rows(單邊空 = transient,不寫檔)
         counter = patch_backfill_upstream(
             monkeypatch,
@@ -678,8 +750,54 @@ class TestBackfill:
         assert marker is not None
         assert "2026-07-10" not in marker["days"]
 
+    # ---- se=EW 時代殘檔自癒(2026-07-17 /bug tpex-warrant-iv-empty:63 個
+    # backfill 日檔 + daily R3 窗口檔全零 TPEx,exists 短路下永不自癒;prd
+    # 同樣有殘檔,必須 code 層修復)----
+
+    async def test_backfill_repairs_existing_day_file_missing_tpex(self, monkeypatch) -> None:
+        write_day(
+            "2026-07-09",
+            {"030012": {"b": 0.6, "a": 0.65, "c": 0.62, "s": 100.0, "ivb": 0.41, "iva": 0.45}},
+        )
+        wn_row = {"warrant_id": "72124U", "close": 0.31, "bid": 0.30, "ask": 0.32}
+        counter = patch_backfill_upstream(
+            monkeypatch,
+            mi_by_date={
+                ("2026-07-09", "0999"): [twse_hist_row()],
+                ("2026-07-09", "0999P"): [twse_hist_row(wid="03001P")],
+            },
+            terms=[twse_terms_raw(), twse_terms_raw(wid="03001P")],
+            issue=[tpex_issue_raw()],
+            wn1430_by_date={"2026-07-09": [wn_row]},
+        )
+
+        class FakeFm:
+            async def stock_price_range(self, symbol: str, start: str, end: str) -> list:
+                return [{"date": "2026-07-09", "close": 91.0}]
+
+        monkeypatch.setattr(ivh, "get_finmind", lambda: FakeFm())
+        monkeypatch.setenv("WARRANT_IV_BACKFILL_DAYS", "1")
+        await ivh._backfill()
+        payload = read_json(day_file("2026-07-09"))
+        assert "72124U" in payload["warrants"]
+        assert payload["warrants"]["72124U"]["ivb"] is not None
+        assert "030012" in payload["warrants"]
+        assert counter["rebuild"] == 1
+
+    async def test_backfill_skips_existing_file_with_tpex(self, monkeypatch) -> None:
+        # 自癒收斂條件:檔含 TPEx 即視為完整,不重抓(immutable 語意保留)
+        write_day(
+            "2026-07-09",
+            {"72124U": {"b": 0.30, "a": 0.32, "c": 0.31, "s": 91.0, "ivb": 0.5, "iva": 0.55}},
+        )
+        counter = patch_backfill_upstream(monkeypatch, mi_by_date={}, terms=[twse_terms_raw()])
+        monkeypatch.setenv("WARRANT_IV_BACKFILL_DAYS", "1")
+        await ivh._backfill()
+        assert ("2026-07-09", "0999") not in counter["mi"]
+        assert ("2026-07-09", "0999P") not in counter["mi"]
+
     async def test_backfill_excludes_non_universe_codes(self, monkeypatch) -> None:
-        # edge 7:se=EW 混入 ETF → 不在 issue universe 的代號不入 archive
+        # edge 7:wn1430 回的代號一律過 issue universe 交集,不在名單不入 archive
         etf_row = {"warrant_id": "00679B", "close": 26.80, "bid": 26.80, "ask": 26.81}
         patch_backfill_upstream(
             monkeypatch,
