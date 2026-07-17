@@ -40,6 +40,23 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.34.0",
+    date: "2026-07-16",
+    highlights: "個股頁更快更省:主力買賣超改為看多遠、載多遠",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "主力買賣超改為「看多遠、載多遠」:預設載入近半年,拖曳或縮小 K 線看更早的區間時才自動補載,補載中的區段會顯示讀取動畫指示",
+      },
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "剛開啟一檔個股後馬上切到別檔時更順 — 不再於背景預載完整一年半的主力資料拖慢後續載入",
+      },
+    ],
+  },
+  {
     version: "0.33.0",
     date: "2026-07-16",
     highlights: "權證展開列隱波圖全面重做:位階摘要、標的價對照、降波趨勢一眼看懂",

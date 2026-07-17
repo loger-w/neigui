@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
   });
 
-  it("最新版本是 v0.33.0(權證展開列隱波圖重設計)", () => {
-    expect(CHANGELOG[0]?.version).toBe("0.33.0");
+  it("最新版本是 v0.34.0(主力買賣超按需載入)", () => {
+    expect(CHANGELOG[0]?.version).toBe("0.34.0");
   });
 
   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
