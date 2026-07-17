@@ -231,7 +231,10 @@ async def archive_from_snapshot(snap: dict) -> bool:
             not isinstance(payload, dict)
             or payload.get("_cache_version") != _CACHE_VERSION
             or not tpex_current
-            or _has_tpex(payload.get("warrants") or {})
+            # warrants 非 dict(壞檔)不進 merge:merge 進空 dict 會產生
+            # TPEx-only 檔,_has_tpex 轉真後 backfill 永久跳過 → TWSE 側永缺
+            or not isinstance(payload.get("warrants"), dict)
+            or _has_tpex(payload["warrants"])
         ):
             return False
         existing = payload

@@ -171,6 +171,19 @@ class TestArchive:
         assert await ivh.archive_from_snapshot(snap) is False
         assert "72124U" not in read_json(day_file("2026-07-09"))["warrants"]
 
+    async def test_archive_malformed_warrants_key_not_merged(self) -> None:
+        # review P2:版本正確但 warrants 非 dict 的壞檔不進 merge —
+        # merge 進空 dict 會產生 TPEx-only 檔,轉真 _has_tpex 後 backfill
+        # 永久跳過 → TWSE 側永缺;保持不動(False)交給 backfill 全量重建
+        atomic_write_json(
+            day_file("2026-07-09"),
+            {"_cache_version": ivh._CACHE_VERSION, "date": "2026-07-09",
+             "terms_approx": False, "warrants": None},
+        )
+        snap = make_snap([make_warrant(wid="72124U", market="tpex", uid="8086")])
+        assert await ivh.archive_from_snapshot(snap) is False
+        assert read_json(day_file("2026-07-09"))["warrants"] is None  # 檔未被動
+
     async def test_archive_merge_without_tpex_rows_returns_false(self) -> None:
         # merge 模式但 snapshot 本身無 TPEx 列 → 無事可補,不重寫不觸發 rebuild
         write_day(
