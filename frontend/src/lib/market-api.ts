@@ -1,4 +1,5 @@
 import type { RequestOptions } from "./api";
+import { apiOrigin } from "./api-base";
 import type { MarketSnapshot } from "./market-types";
 
 const BASE = "/api/market";
@@ -17,7 +18,7 @@ export async function fetchMarketSnapshot(
   refresh: boolean,
   options?: RequestOptions,
 ): Promise<MarketSnapshot> {
-  const url = new URL(`${BASE}/snapshot`, window.location.origin);
+  const url = new URL(`${BASE}/snapshot`, apiOrigin());
   if (refresh) url.searchParams.set("refresh", "true");
 
   const resp = await fetch(url.toString(), { signal: options?.signal });
