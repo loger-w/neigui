@@ -7,18 +7,6 @@
 
 ## A. 立即可開
 
-### A2. daily snapshot 單邊空殘檔
-
-```
-/bug warrants daily snapshot 單邊空 → immutable 殘檔(收尾 review CONFIRMED,與已修的 backfill R15 同失敗類):`warrants.py::_build_snapshot` 候選日接受條件是 `call_rows or put_rows`(單邊有料即收、零 retry)→ 單邊 transient 空的 snapshot 流進 `archive_from_snapshot` 寫 immutable 日檔(`path.exists()` 短路,`refresh=true` 也不重寫,無自癒)。freshness keeper 每日首建正落在 TWSE 分型別發布時窗,風險不可用 cache 溫度豁免。
-
-條目:docs/next-time.md「From /bug iv-backfill-empty-vs-holiday」。
-對照樣板:backfill 側同病已修(R15:單邊空 retry 一次、雙空兩次才寫非交易日 marker、單邊空兩次不寫留待下次)— 讀 warrant_iv_history.py::_backfill 的空回應處理邏輯當基準。
-候選修法(條目原載):archive 端 kind 平衡守衛(全 call 或全 put → 不寫)+ build 端比照 backfill retry。
-紅測試方向:mock 單邊空的 TWSE 回應 → 現行會寫出單邊 archive 日檔(紅)→ 修後不寫或 retry 後才寫。
-注意:動到 UI-serving snapshot 語意,blast radius 大 — Phase 5 要掃 snapshot 所有 consumer(warrants 表 / iv-history / flow);已存在的單邊殘檔要不要清算入 scope,Phase 2 拍板。
-```
-
 ### A3. 順手雜項(chore,一次清掉)
 
 ```
