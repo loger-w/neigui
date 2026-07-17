@@ -1,7 +1,6 @@
-import { useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { ChipBrokersWindow } from "../lib/chip-data";
+import { useForceRefreshQuery } from "./useForceRefreshQuery";
 
 /**
  * N-day aggregate of broker-level chips, ending at `date`. Driven by the
@@ -19,26 +18,18 @@ export function useChipBrokersWindow(
   error: string | null;
   refresh: () => void;
 } {
-  const forceRef = useRef(false);
-
-  const q = useQuery<ChipBrokersWindow, Error>({
+  const { data, isFetching, error, refresh } = useForceRefreshQuery<ChipBrokersWindow>({
     queryKey: ["chip-brokers-window", symbol, date, windowDays],
-    queryFn: async ({ signal }) => {
-      const force = forceRef.current;
-      forceRef.current = false;
-      return api.chipBrokersWindow(symbol, date, windowDays, force, { signal });
-    },
+    queryFn: async (force, { signal }) =>
+      api.chipBrokersWindow(symbol, date, windowDays, force, { signal }),
     enabled: symbol !== "" && date !== "",
     placeholderData: (prev) => (prev?.symbol === symbol ? prev : undefined),
   });
 
   return {
-    data: q.data ?? null,
-    loading: q.isFetching,
-    error: q.error ? q.error.message : null,
-    refresh: () => {
-      forceRef.current = true;
-      q.refetch();
-    },
+    data: data ?? null,
+    loading: isFetching,
+    error: error ? error.message : null,
+    refresh,
   };
 }
