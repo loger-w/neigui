@@ -12,8 +12,13 @@
 
 ## From /mod chip-major-lazy-window Phase 2 probe(2026-07-16)
 
-- **[高優先,建議獨立 /bug] prd cancel 鏈斷在 Vercel rewrite 層**:probe 實證(證據:`.claude/mod/chip-major-lazy-window/current-state.md` P1/P2/P3 節)— dev(vite proxy)四環全通;prd 的 Vercel rewrite **不轉發 client abort**,瀏覽器 ERR_ABORTED 後 Railway 上 fan-out 殭屍燒到完(+368),並把切換目的地的請求排隊拖慢(2330 base 6.4s vs 無競爭 1.7s、major fast 11.4s)。候選修法:(a) prd 前端直連 Railway + CORS(FRONTEND_ORIGIN 機制已在)繞過 rewrite;(b) 應用層 cancel 信號(abort 時 sendBeacon 砍 inflight)。cancel-chain skill 第五環節需同步翻新(現述「30s 超時觸發整條鏈」易誤讀成 abort 會傳導)。觸發:chip-major-lazy-window merge 後排程
+- (原「prd cancel 鏈斷在 Vercel rewrite 層」條目已由 fix/prd-cancel-propagation 解決刪除,2026-07-17:prd 正式域名直連 Railway,abort 直達;cancel-chain skill 第五環已翻新)
 - **[待查] prd 有 ~0.7-1.2 req/s 常駐 FinMind 消耗**(≈3000-4300/hr,單獨就逼近 6000/hr 配額):2026-07-16 13:xx 與 16:xx 兩時段 baseline 皆觀測到。嫌疑:某長駐 keeper 打 FinMind(warrant snapshot freshness keeper?或 intraday 輪詢)。觸發:下次 prd 出現成串 502/402、或排查配額異常時優先查
+
+## From /bug prd-cancel-propagation(2026-07-17)
+
+- **prd 域名判定寫死 `neigui.vercel.app`**(`frontend/src/lib/api-base.ts`):未來若綁自訂網域,PRD_HOSTNAME 沒同步會**靜默**回退 rewrite 路徑 — 站能用但殭屍 fan-out 回歸,不易察覺。觸發:綁任何新網域時同步 api-base.ts + vercel.json
+- **preview deploy(`neigui-git-*.vercel.app`)無 cancel 傳導**(設計取捨):preview origin 不在 CORS 名單,走 rewrite fallback。要修的話 backend CORS 改 `allow_origin_regex` 收 neigui preview pattern。觸發:preview 環境重度使用、或在 preview 上排查配額異常時
 
 ## From /feat warrant-iv-drift(2026-07-11)
 
