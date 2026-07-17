@@ -7,23 +7,6 @@
 
 ## A. 立即可開
 
-### A1. TPEx 權證 IV 歷史全空(優先 — 現在就在影響功能)
-
-```
-/bug TPEx 權證(7 開頭)IV 歷史實質全空 — wn1430 backfill 線疑似全滅:全部 63 個 backfill 日檔零 '7' 開頭權證,daily archive 檔(07-15,terms_approx False)也零 TPEx,兩線疊加 → TPEx 權證 iv-history series 全 null。
-
-已知證據(docs/next-time.md「From /bug iv-backfill-empty-vs-holiday」條目,2026-07-16):
-- probe wn1430(se=EW)回 http 200 / stat ok / 1,013 rows — 上游有料,斷點在我方解析或 skip 邏輯
-- 主嫌疑 1:probe console 欄名 mojibake — 需確認 production `resp.json()` 解出的欄名是否 strip-match「代號/收盤/最後買價/最後賣價」(warrant_iv_history.py::parse_wn1430,不 match 會靜默回 [])
-- 主嫌疑 2:daily 線的 R3「tpex_date 落後 skip」常態觸發
-- 兩個嫌疑要分開驗(一次一假說),可能兩個都真
-
-重現:查任一 TPEx 權證的 iv-history endpoint,series 應全 null。
-Phase 1 蒐證建議:離線腳本直呼 _fetch_wn1430_rows 印 repr(欄名 bytes),對照 parse_wn1430 的 required tuple;TPEx TLS/encoding 慣例先讀 skill `twse-tpex-conventions`。
-驗收必含:某 TPEx 權證 iv-history 真實回非空 series + backfill 重跑後日檔含 '7' 開頭權證 + 反向驗證(還原修復紅回來)。
-注意:backfill 重跑會打 TPEx/TWSE(零 FinMind 配額),但仍留意別在測試裡重複全量 backfill。
-```
-
 ### A2. daily snapshot 單邊空殘檔
 
 ```
