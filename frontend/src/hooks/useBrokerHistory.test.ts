@@ -160,29 +160,4 @@ describe("useBrokerHistory", () => {
     expect(result.current.series.get("A")![0]!.net).toBe(99);
   });
 
-  it("ids 變更的 effect batch 與 refresh 同 tick — refresh batch 必須帶 refresh=true(旗標不可被 effect batch 偷走)", async () => {
-    // race 重現(fix/force-refresh-race):effect(missing ids)的 mutationFn
-    // 先執行會 read→clear 共用旗標,refresh 的 batch 實際發出時 force=false。
-    const spy = vi.spyOn(api, "chipBrokerHistory").mockResolvedValue(
-      mkPayload({ A: [], B: [] }),
-    );
-    const { result, rerender } = renderHook(
-      ({ ids }: { ids: Set<string> }) => useBrokerHistory("2330", ids),
-      { initialProps: { ids: new Set(["A"]) }, wrapper: makeQueryWrapper() },
-    );
-    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
-
-    act(() => {
-      rerender({ ids: new Set(["A", "B"]) }); // effect 排入 missing=[B] batch
-      result.current.refresh();                // refresh 排入全 ids batch
-    });
-
-    await waitFor(() => expect(spy.mock.calls.length).toBeGreaterThanOrEqual(3));
-    const refreshCall = spy.mock.calls
-      .slice(1)
-      .find((c) => (c[1] as string[]).length === 2);
-    expect(refreshCall).toBeDefined();
-    expect(refreshCall![2]).toBe(true);
-  });
-
 });

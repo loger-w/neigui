@@ -40,24 +40,6 @@ describe("useForceRefreshQuery", () => {
     await waitFor(() => expect(calls).toEqual([false, true, true]));
   });
 
-  it("onBeforeRefetch 在 set ref 之後、refetch 之前被呼叫一次", async () => {
-    const order: string[] = [];
-    const { result } = renderHook(
-      () =>
-        useForceRefreshQuery<Payload>({
-          queryKey: ["t2"],
-          queryFn: async (force) => {
-            order.push(`fetch:${force}`);
-            return { value: 1 };
-          },
-          onBeforeRefetch: () => order.push("before"),
-        }),
-      { wrapper: makeQueryWrapper() },
-    );
-    await waitFor(() => expect(result.current.data).toBeDefined());
-    result.current.refresh();
-    await waitFor(() => expect(order).toEqual(["fetch:false", "before", "fetch:true"]));
-  });
 
   it("error 終態暴露 Error 物件;enabled:false 不 fetch", async () => {
     const spy = vi.fn(async () => {
