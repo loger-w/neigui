@@ -40,6 +40,28 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.34.4",
+    date: "2026-07-18",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "權證清單在資料來源短暫異常時,可能整天只顯示認購或認售單邊 — 現在會自動重試補齊,仍不完整則改顯示最近一個完整交易日的資料",
+      },
+    ],
+  },
+  {
+    version: "0.34.3",
+    date: "2026-07-17",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "上櫃權證(代號 7 開頭)的 IV 歷史先前完全沒有資料 — 已修復資料來源並自動補齊過去 60 個交易日,趨勢標籤同步恢復",
+      },
+    ],
+  },
+  {
     version: "0.34.2",
     date: "2026-07-17",
     changes: [
