@@ -433,3 +433,29 @@ describe("useChipData major ladder (chip-major-lazy-window)", () => {
     await waitFor(() => expect(result.current.majorCoverageStart).toBe("2025-08-26"));
   });
 });
+
+describe("useChipData refresh 旗標 race(fix/force-refresh-race)", () => {
+  it("in-flight 期間按 refresh() — summary 必須立即補發帶 refresh=true 的請求(不被 dedupe 吃掉)", async () => {
+    let resolveFirst!: (v: ChipSummary) => void;
+    const chipSpy = vi
+      .spyOn(api, "chip")
+      .mockImplementationOnce(
+        () => new Promise<ChipSummary>((r) => { resolveFirst = r; }),
+      )
+      .mockResolvedValue(mkSummary("2026-06-22"));
+    vi.spyOn(api, "chipHistoryBase").mockResolvedValue(mkHistory());
+    vi.spyOn(api, "chipHistoryMajor").mockResolvedValue(mkHistoryMajor());
+
+    const { result } = renderHook(() => useChipData("2330", "2026-06-22"), {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(chipSpy).toHaveBeenCalledTimes(1)); // 初載在途
+
+    act(() => result.current.refresh());
+    resolveFirst(mkSummary("2026-06-22"));
+
+    // 修後:in-flight 被 cancel,refresh 觸發的新 fetch 帶 force=true
+    await waitFor(() => expect(chipSpy).toHaveBeenCalledTimes(2));
+    expect(chipSpy.mock.calls[1]![2]).toBe(true);
+  });
+});

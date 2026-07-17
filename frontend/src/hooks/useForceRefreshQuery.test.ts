@@ -88,6 +88,37 @@ describe("useForceRefreshQuery", () => {
     expect(gated).not.toHaveBeenCalled();
   });
 
+  it("in-flight fetch 期間按 refresh() — 必須立即補發帶 force=true 的請求(不被 dedupe 吃掉)", async () => {
+    // race 重現(fix/force-refresh-race):TanStack 在 in-flight 期間的
+    // refetch() 會 join 既有 fetch,不重跑 queryFn — refresh 旗標沒被
+    // refresh 觸發的請求消費,使用者拿到未 refresh 的舊資料。
+    let resolveFirst!: (v: Payload) => void;
+    const calls: boolean[] = [];
+    const { result } = renderHook(
+      () =>
+        useForceRefreshQuery<Payload>({
+          queryKey: ["t5"],
+          queryFn: (force) => {
+            calls.push(force);
+            if (calls.length === 1) {
+              return new Promise<Payload>((r) => {
+                resolveFirst = r;
+              });
+            }
+            return Promise.resolve({ value: calls.length });
+          },
+        }),
+      { wrapper: makeQueryWrapper() },
+    );
+    await waitFor(() => expect(calls).toEqual([false])); // 初載在途(未 resolve)
+
+    result.current.refresh();
+    resolveFirst({ value: 1 });
+
+    // 修後:in-flight 被 cancel,refresh 觸發的新 fetch 帶 force=true
+    await waitFor(() => expect(calls).toEqual([false, true]));
+  });
+
   it("refetchInterval callback 收到 query.state.data 為 T | undefined(型別編譯用例,R3)", async () => {
     const seen: Array<boolean | undefined> = [];
     const { result } = renderHook(
