@@ -35,7 +35,7 @@ describe("prd 域名下 API 直連 Railway", () => {
 
     await api.symbols("2330");
 
-    const url = fetchMock.mock.calls[0][0] as string;
+    const url = fetchMock.mock.calls[0]![0] as string;
     expect(new URL(url).origin).toBe(RAILWAY_ORIGIN);
     expect(new URL(url).pathname).toBe("/api/symbols");
   });
@@ -46,7 +46,7 @@ describe("prd 域名下 API 直連 Railway", () => {
 
     await fetchMarketSnapshot(false);
 
-    const url = fetchMock.mock.calls[0][0] as string;
+    const url = fetchMock.mock.calls[0]![0] as string;
     expect(new URL(url).origin).toBe(RAILWAY_ORIGIN);
     expect(new URL(url).pathname).toBe("/api/market/snapshot");
   });
