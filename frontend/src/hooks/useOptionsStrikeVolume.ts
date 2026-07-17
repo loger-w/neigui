@@ -1,18 +1,12 @@
-import { useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { optionsApi } from "../lib/options-api";
 import type { OptionsStrikeVolume } from "../lib/options-types";
+import { useForceRefreshQuery } from "./useForceRefreshQuery";
 
 export function useOptionsStrikeVolume(contract: string, date: string) {
-  const forceRefreshRef = useRef(false);
-
-  const { data, isFetching, error, refetch } = useQuery<OptionsStrikeVolume, Error>({
+  const { data, isFetching, error, refresh } = useForceRefreshQuery<OptionsStrikeVolume>({
     queryKey: ["options-strike-volume", contract, date],
-    queryFn: async ({ signal }) => {
-      const force = forceRefreshRef.current;
-      forceRefreshRef.current = false;
-      return optionsApi.strikeVolume(contract, date, force ? true : undefined, { signal });
-    },
+    queryFn: async (force, { signal }) =>
+      optionsApi.strikeVolume(contract, date, force ? true : undefined, { signal }),
     enabled: contract !== "",
   });
 
@@ -20,10 +14,7 @@ export function useOptionsStrikeVolume(contract: string, date: string) {
     data: data ?? null,
     loading: isFetching,
     error: error ? error.message : null,
-    refresh: () => {
-      forceRefreshRef.current = true;
-      refetch();
-    },
+    refresh,
     noTradingDay: data?.no_trading_day === true,
   };
 }
