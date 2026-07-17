@@ -7,13 +7,7 @@
 
 ## A. 立即可開
 
-### A3. 順手雜項(chore,一次清掉)
-
-```
-兩個一分鐘級雜項,不走完整流程,直接開 chore 分支處理後 PR:
-1. docs/next-time.md 刪 stale 條目「chip 主力 540d 全量改拖曳觸發」(已由 mod/chip-major-lazy-window 於 2026-07-16 完成 merge,條目沒刪)。
-2. repo 根目錄 untracked node_modules/:先 grep 根目錄 package.json 是否存在、有無任何引用,確認是誤跑 npm 的殘留後刪除;若根目錄本就不該有 node_modules,順手在 .gitignore 補一行並在 commit message 說明。
-```
+(A1-A3 已於 2026-07-17/18 全數完成並刪除:A1 = fix/tpex-warrant-iv-empty、A2 = fix/warrants-snapshot-partial-empty、A3 = chore/backlog-a3-cleanup)
 
 ---
 
