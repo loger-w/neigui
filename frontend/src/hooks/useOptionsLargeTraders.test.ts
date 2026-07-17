@@ -49,6 +49,17 @@ describe("useOptionsLargeTraders", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  it("refresh() 使下一發帶 refresh=true(characterization,S1)", async () => {
+    const spy = vi.spyOn(optionsApi, "largeTraders").mockResolvedValue(mockData);
+    const { result } = renderHook(
+      () => useOptionsLargeTraders("TXO202607", "2026-06-23"),
+      { wrapper: makeQueryWrapper() },
+    );
+    await waitFor(() => expect(result.current.data).toEqual(mockData));
+    result.current.refresh();
+    await waitFor(() => expect(spy.mock.calls.at(-1)?.[2]).toBe(true));
+  });
+
   it("exposes noTradingDay flag from payload", async () => {
     vi.spyOn(optionsApi, "largeTraders").mockResolvedValue({
       ...mockData, no_trading_day: true,

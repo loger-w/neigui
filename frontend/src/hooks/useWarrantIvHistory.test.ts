@@ -42,6 +42,17 @@ describe("useWarrantIvHistory", () => {
     expect(result.current.data?.series).toHaveLength(2);
   });
 
+  it("refresh() 使下一發帶 refresh=true(characterization,S1)", async () => {
+    const spy = vi.spyOn(api, "warrantIvHistory").mockResolvedValue(mk());
+    const { result } = renderHook(() => useWarrantIvHistory("030012"), {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(result.current.data).not.toBeNull());
+    expect(spy.mock.calls[0]?.[1]).toBe(false);
+    result.current.refresh();
+    await waitFor(() => expect(spy.mock.calls.at(-1)?.[1]).toBe(true));
+  });
+
   it("API 失敗 → error 終態(繁中訊息由 api 層轉譯)", async () => {
     vi.spyOn(api, "warrantIvHistory").mockRejectedValue(new Error("上游資料源異常"));
     const { result } = renderHook(() => useWarrantIvHistory("030012"), {
