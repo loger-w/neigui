@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import {
   useQuery,
+  useQueryClient,
   type QueryFunctionContext,
   type QueryKey,
   type UseQueryOptions,
@@ -14,9 +15,10 @@ import {
  * 18 個 hook,收斂到這裡。語意與原樣板逐字相同:
  * - queryFn 收 force(read→clear 由本 helper 做);`force ? true : undefined`
  *   之類的轉換留在呼叫端,api 呼叫形狀不變。
- * - refresh() = set ref → (onBeforeRefetch) → refetch。
- * - 已知 race 原樣保留:旗標由「下一個執行的 queryFn」消費,非 refresh 的
- *   in-flight fetch 可能提前吃掉(pattern 級,修復屬行為改動另案處理)。
+ * - refresh() = set ref → cancelQueries → refetch(fix/force-refresh-race):
+ *   TanStack 對 in-flight fetch 的 refetch() 會 join 不重跑 queryFn,旗標
+ *   不會被 refresh 觸發的請求消費 — 先 cancel 讓 refetch 必然重跑 queryFn,
+ *   refresh 意圖立即生效(原 useMarketSnapshot R8 實戰解法,收進 helper)。
  *
  * 只回傳 {data, isFetching, error, refresh} — 不 spread query result:
  * TanStack v5 tracked props 下 spread 會擴大訂閱面、增加 re-render。
@@ -27,9 +29,6 @@ import {
 interface ForceRefreshQueryOptions<T>
   extends Omit<UseQueryOptions<T, Error>, "queryFn"> {
   queryFn: (force: boolean, ctx: QueryFunctionContext<QueryKey>) => Promise<T>;
-  /** refresh() 於 set ref 之後、refetch 之前呼叫(useMarketSnapshot 的
-   * cancelQueries 掛點:防 polling 的 in-flight fetch dedupe 掉本次 refetch)。 */
-  onBeforeRefetch?: () => void;
 }
 
 export function useForceRefreshQuery<T>(options: ForceRefreshQueryOptions<T>): {
@@ -39,7 +38,8 @@ export function useForceRefreshQuery<T>(options: ForceRefreshQueryOptions<T>): {
   refresh: () => void;
 } {
   const forceRefreshRef = useRef(false);
-  const { queryFn, onBeforeRefetch, ...rest } = options;
+  const queryClient = useQueryClient();
+  const { queryFn, ...rest } = options;
 
   const { data, isFetching, error, refetch } = useQuery<T, Error>({
     ...rest,
@@ -56,7 +56,7 @@ export function useForceRefreshQuery<T>(options: ForceRefreshQueryOptions<T>): {
     error,
     refresh: () => {
       forceRefreshRef.current = true;
-      onBeforeRefetch?.();
+      queryClient.cancelQueries({ queryKey: options.queryKey });
       refetch();
     },
   };

@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.34.2",
+    date: "2026-07-17",
+    changes: [
+      {
+        kind: "fix",
+        scope: "global",
+        text: "「重新整理」在資料載入中按下時偶爾沒有生效(拿到的仍是舊資料)— 現在會立即中止載入中的請求並重新抓取最新資料",
+      },
+    ],
+  },
+  {
     version: "0.34.1",
     date: "2026-07-17",
     changes: [

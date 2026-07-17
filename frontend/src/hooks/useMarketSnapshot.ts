@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import { fetchMarketSnapshot } from "../lib/market-api";
 import type { MarketSnapshot } from "../lib/market-types";
 import { useForceRefreshQuery } from "./useForceRefreshQuery";
@@ -14,8 +13,6 @@ export type UseMarketSnapshot = {
 };
 
 export function useMarketSnapshot(enabled: boolean): UseMarketSnapshot {
-  const queryClient = useQueryClient();
-
   const { data, isFetching, error, refresh } = useForceRefreshQuery<MarketSnapshot>({
     queryKey: ["market", "snapshot"],
     queryFn: async (force, { signal }) => fetchMarketSnapshot(force, { signal }),
@@ -31,12 +28,8 @@ export function useMarketSnapshot(enabled: boolean): UseMarketSnapshot {
     refetchIntervalInBackground: false,
     retry: 1,
     staleTime: 0,
-    // Phase 4 R8: 取消 in-flight polling 確保 user click 不被 polling 吃掉
-    // (TanStack Query dedupes in-flight queryFn,不 cancel 就讓本次 refresh
-    // 等下一個 tick 才生效)。
-    onBeforeRefetch: () => {
-      queryClient.cancelQueries({ queryKey: ["market", "snapshot"] });
-    },
+    // Phase 4 R8 的 cancel-before-refetch 已收進 useForceRefreshQuery 本體
+    // (fix/force-refresh-race):polling in-flight 不再吃掉 user click。
   });
 
   return {

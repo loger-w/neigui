@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { ChipHistoryMajor } from "../lib/api";
 import type { ChipHistory, ChipSummary } from "../lib/chip-data";
@@ -53,6 +53,7 @@ interface MajorData {
  * (`majorCoverageStart` 提供已落地覆蓋左界)。
  */
 export function useChipData(symbol: string, date: string) {
+  const queryClient = useQueryClient();
   const summaryForceRef = useRef(false);
   const historyForceRef = useRef(false);
 
@@ -168,6 +169,11 @@ export function useChipData(symbol: string, date: string) {
     refresh: () => {
       summaryForceRef.current = true;
       historyForceRef.current = true;
+      // cancel-before-refetch(fix/force-refresh-race):in-flight fetch 的
+      // refetch() 會被 join 不重跑 queryFn,旗標消費不到 → 先 cancel 讓每個
+      // refetch 必然重跑。["chip-history", symbol] 前綴同時涵蓋 base 與 major。
+      queryClient.cancelQueries({ queryKey: ["chip-summary", symbol, date] });
+      queryClient.cancelQueries({ queryKey: ["chip-history", symbol] });
       summaryQ.refetch();
       historyBaseQ.refetch();
       // major 只重抓當前檔位;settle 後清 force flag(base 讀 flag 不清,
