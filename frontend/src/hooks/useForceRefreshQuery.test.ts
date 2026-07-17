@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  *
  * useForceRefreshQuery — forceRefreshRef 樣板共用層的行為合約:
- * consume-and-clear、refresh 標記下一發、onBeforeRefetch 順序。
+ * consume-and-clear、refresh 標記下一發、cancel-before-refetch(in-flight join 防呆)。
  * refetchInterval callback 用例同時是型別編譯測試(R3:query.state.data
  * 需推導為 T | undefined,S4 useMarketSnapshot 遷移的前置驗證)。
  */
