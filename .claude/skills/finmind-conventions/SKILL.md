@@ -15,7 +15,9 @@ description: FinMind 接入慣例與配額真相。接新 FinMind dataset、寫 
 - **真瓶頸 = 每小時 6000 requests(rolling window),不是 per-second rate**:一檔冷 `history/major`(days=540)~360 req → **每小時只能冷載入 ~16 檔**;燒乾後全面 402 → 前端 502(HTTPStatusError)/ 503(JSONDecodeError 是 ValueError 子類)。
 - `FINMIND_RATE_LIMIT_PER_SEC` code 預設 40(`services/finmind.py::get_finmind_rate_limiter`):拉高只會燒配額更快 + abort 前已燒的更多。**結構性解法是砍每檔 request 數,不是調 rate**。
 - **檢查配額**:`GET api.web.finmindtrade.com/v2/user_info`(Bearer)看 `user_count / api_request_limit`。counter 有 5-8s 批次延遲 + rolling window aging 噪音,當驗證 side-channel 用時要先量 idle drift。
-- Trigger:出現成串 502/503 / 設計新 fan-out endpoint / 評估冷載入成本時。
+- **user_count 只計 `/api/v4/data` dataset 呼叫**(2026-07-17 實測):`taiwan_stock_tick_snapshot` 等即時 snapshot 端點與 `user_info` 本身**都不計數** — sampler 可任意頻率打 user_info 零成本;market/options 的 snapshot 輪詢不吃 6000/hr 配額。
+- **判讀「常駐消耗」前先做在場證明**(2026-07-17 /bug prd-idle-finmind-drain 教訓):確保零瀏覽分頁 + 零 probe 後看 user_count 能否歸零(rolling window 1 小時排空,app 無 daemon 時應見連續平零)。當時的「~1 req/s 常駐」實為殭屍 fan-out(已修)+ 瀏覽/probe 活動誤歸因;app 內 keeper 全 TWSE、backfill 的 FinMind 面一次性,無常駐 FinMind 迴圈。
+- Trigger:出現成串 502/503 / 設計新 fan-out endpoint / 評估冷載入成本 / 懷疑配額異常消耗時。
 
 ## Fan-out 設計(2026-07-14 warrant-broker-flow 沉澱)
 
