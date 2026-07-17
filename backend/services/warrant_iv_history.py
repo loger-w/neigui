@@ -120,6 +120,12 @@ def _history_dir() -> Path:
     return chip_cache_dir() / HISTORY_DIR
 
 
+def _has_tpex(warrants: dict) -> bool:
+    """TPEx 權證代號域 = 7xxxxx、TWSE 權證 0 開頭 → prefix 即市場判別。
+    無 TPEx 的日檔 = se=EW 時代殘檔或 daily R3 窗口檔,是兩線自癒的觸發條件。"""
+    return any(k.startswith("7") for k in warrants)
+
+
 def _day_file(date_iso: str) -> Path:
     return _history_dir() / f"{date_iso}.json"
 
@@ -207,20 +213,36 @@ def _iv_pair(
 
 
 async def archive_from_snapshot(snap: dict) -> bool:
-    """當日 distilled archive;存在即 False(immutable)。TPEx 落後日不寫入(R3)。"""
+    """當日 distilled archive;TPEx 落後日不寫入(R3)。
+
+    存在即 False(immutable)的唯一例外:檔無 TPEx 且本次 tpex_date == as_of
+    → 只補 TPEx 列(TWSE 值保留不重算)。R3 窗口(TWSE 已發布、TPEx 未發布)
+    寫出的 TWSE-only 檔由隔日 keeper 首 build 自癒(2026-07-17 /bug)。
+    """
     as_of = snap.get("as_of_date")
     if not as_of:
         return False
     path = _day_file(as_of)
-    if path.exists():
-        return False
     tpex_current = snap.get("tpex_date") == as_of
+    existing: dict | None = None
+    if path.exists():
+        payload = read_json(path)
+        if (
+            not isinstance(payload, dict)
+            or payload.get("_cache_version") != _CACHE_VERSION
+            or not tpex_current
+            or _has_tpex(payload.get("warrants") or {})
+        ):
+            return False
+        existing = payload
     warrants_out: dict[str, dict] = {}
     n = 0
     for rows in snap["by_underlying"].values():
         for w in rows:
             if w["market"] == "tpex" and not tpex_current:
                 continue
+            if existing is not None and w["market"] != "tpex":
+                continue  # merge 模式:既有 TWSE 資料保留,只補 TPEx
             ivb, iva = _iv_pair(
                 w["eod_bid"], w["eod_ask"], w["underlying_eod_close"],
                 w["strike"], w["exercise_ratio"], w["kind"], w["is_reset"],
@@ -233,11 +255,17 @@ async def archive_from_snapshot(snap: dict) -> bool:
             n += 1
             if n % IV_YIELD_EVERY == 0:
                 await asyncio.sleep(0)
-    atomic_write_json(
-        path,
-        {"_cache_version": _CACHE_VERSION, "date": as_of, "terms_approx": False,
-         "warrants": warrants_out},
-    )
+    if existing is not None:
+        if not warrants_out:
+            return False  # snapshot 也無 TPEx 列 → 無事可補,不重寫不觸發 rebuild
+        existing["warrants"].update(warrants_out)
+        atomic_write_json(path, existing)
+    else:
+        atomic_write_json(
+            path,
+            {"_cache_version": _CACHE_VERSION, "date": as_of, "terms_approx": False,
+             "warrants": warrants_out},
+        )
     _prune_history()
     return True
 
@@ -453,8 +481,10 @@ def parse_wn1430(body: dict, date_iso: str) -> list[dict]:
 
 async def _fetch_wn1430_rows(date_iso: str) -> list[dict]:
     y, m, d = date_iso.split("-")
+    # se=WW = 權證表;EW 是「上櫃股票+ETF(不含權證、牛熊證)」— 用 EW 時
+    # TPEx 權證線靜默全滅(2026-07-17 /bug root cause)
     resp = await _get_client().get(
-        WN1430_URL, params={"l": "zh-tw", "d": f"{int(y) - 1911}/{m}/{d}", "se": "EW"}
+        WN1430_URL, params={"l": "zh-tw", "d": f"{int(y) - 1911}/{m}/{d}", "se": "WW"}
     )
     resp.raise_for_status()
     return parse_wn1430(resp.json(), date_iso)
@@ -562,8 +592,13 @@ async def _backfill() -> None:
             continue
         date_iso = d.isoformat()
         if _day_file(date_iso).exists():
-            found += 1
-            continue
+            payload = read_json(_day_file(date_iso))
+            valid = isinstance(payload, dict) and payload.get("_cache_version") == _CACHE_VERSION
+            if not valid or _has_tpex(payload.get("warrants") or {}):
+                found += 1
+                continue
+            # 無 TPEx 殘檔(se=EW 時代 / daily R3 窗口)→ 視同缺檔全量重建自癒;
+            # 版本不符檔維持舊行為(跳過),不在本 fix 擴 scope
         checked = nontrading.get(date_iso)
         if checked is not None and _nontrading_fresh(checked, today):
             continue  # marker TTL 內:已確認非交易日,不重掃(過期則重驗)
