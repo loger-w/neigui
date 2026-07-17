@@ -32,6 +32,7 @@ SNAPSHOT_LOOKBACK_DAYS = 7
 # 跨午夜 stale 後最遲一個 tick 內背景重 build(每日首請求不付冷 build)
 SNAPSHOT_FRESHNESS_INTERVAL_SEC = 300.0
 BUILD_RETRY_COOLDOWN_SEC = 60.0  # R2-1:build 失敗/空回後的重試 backoff
+_PARTIAL_RETRY_SLEEP = 5.0  # 單邊空 transient retry 間隔(backfill R15 同值)
 IV_YIELD_EVERY = 500  # IV 反解純 CPU,每 N 檔讓出 event loop(R7)
 _UA = "Mozilla/5.0 (neigui-backend)"
 MI_INDEX_URL = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"
@@ -316,6 +317,23 @@ async def _build_snapshot() -> dict:
         call_rows, put_rows = await asyncio.gather(
             fetch_mi_index(d, "0999"), fetch_mi_index(d, "0999P")
         )
+        if bool(call_rows) != bool(put_rows):
+            # 交易日兩型別必都有行情:單邊空 = transient「stat=OK 空表」嫌疑
+            # (backfill R15 同病)→ retry 只重抓空側
+            await asyncio.sleep(_PARTIAL_RETRY_SLEEP)
+            if not call_rows:
+                call_rows = await fetch_mi_index(d, "0999")
+            else:
+                put_rows = await fetch_mi_index(d, "0999P")
+        if bool(call_rows) != bool(put_rows):
+            # 仍單邊 = transient partial:接受會讓 UI 服務半宇宙一整天
+            # (fetched_on 當日恆 fresh)+ archive 寫 immutable 殘檔
+            # (06-08 / 07-02 backfill 實錘同類)→ 視同該日無資料回退
+            logger.warning(
+                "warrants snapshot: %s partial empty (call=%d put=%d), skip day",
+                d, len(call_rows), len(put_rows),
+            )
+            continue
         if call_rows or put_rows:
             as_of = d
             break
