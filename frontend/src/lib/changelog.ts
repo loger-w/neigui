@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.34.1",
+    date: "2026-07-17",
+    changes: [
+      {
+        kind: "fix",
+        scope: "global",
+        text: "線上版切換個股或頁面時,尚未完成的舊資料請求現在會真正中止 — 不再在背景白耗資料額度,新目標的載入不再被拖慢",
+      },
+    ],
+  },
+  {
     version: "0.34.0",
     date: "2026-07-16",
     highlights: "個股頁更快更省:主力買賣超改為看多遠、載多遠",

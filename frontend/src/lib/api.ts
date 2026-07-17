@@ -8,6 +8,7 @@ import type {
   WarrantsPayload,
 } from "./warrant-data";
 import type { WarrantFlowPayload } from "./warrant-flow-data";
+import { apiOrigin } from "./api-base";
 
 const BASE = "/api";
 
@@ -51,7 +52,7 @@ async function get<T>(
     }
   }
 
-  const url = new URL(path, window.location.origin);
+  const url = new URL(path, apiOrigin());
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       if (v != null && v !== "") url.searchParams.set(k, v);
