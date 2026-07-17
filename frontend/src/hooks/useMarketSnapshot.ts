@@ -1,7 +1,7 @@
-import { useRef } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { fetchMarketSnapshot } from "../lib/market-api";
 import type { MarketSnapshot } from "../lib/market-types";
+import { useForceRefreshQuery } from "./useForceRefreshQuery";
 
 export type UseMarketSnapshot = {
   data: MarketSnapshot | null;
@@ -14,16 +14,11 @@ export type UseMarketSnapshot = {
 };
 
 export function useMarketSnapshot(enabled: boolean): UseMarketSnapshot {
-  const forceRefreshRef = useRef(false);
   const queryClient = useQueryClient();
 
-  const { data, isFetching, error, refetch } = useQuery<MarketSnapshot, Error>({
+  const { data, isFetching, error, refresh } = useForceRefreshQuery<MarketSnapshot>({
     queryKey: ["market", "snapshot"],
-    queryFn: async ({ signal }) => {
-      const force = forceRefreshRef.current;
-      forceRefreshRef.current = false;
-      return fetchMarketSnapshot(force, { signal });
-    },
+    queryFn: async (force, { signal }) => fetchMarketSnapshot(force, { signal }),
     enabled,
     refetchInterval: (query) => {
       const d = query.state.data;
@@ -36,20 +31,19 @@ export function useMarketSnapshot(enabled: boolean): UseMarketSnapshot {
     refetchIntervalInBackground: false,
     retry: 1,
     staleTime: 0,
+    // Phase 4 R8: 取消 in-flight polling 確保 user click 不被 polling 吃掉
+    // (TanStack Query dedupes in-flight queryFn,不 cancel 就讓本次 refresh
+    // 等下一個 tick 才生效)。
+    onBeforeRefetch: () => {
+      queryClient.cancelQueries({ queryKey: ["market", "snapshot"] });
+    },
   });
 
   return {
     data: data ?? null,
     loading: isFetching,
     error: error ? error.message : null,
-    refresh: () => {
-      forceRefreshRef.current = true;
-      // Phase 4 R8: 取消 in-flight polling 確保 user click 不被 polling 吃掉
-      // (TanStack Query dedupes in-flight queryFn,不 cancel 就讓本次 refresh
-      // 等下一個 tick 才生效)。
-      queryClient.cancelQueries({ queryKey: ["market", "snapshot"] });
-      refetch();
-    },
+    refresh,
     lastUpdated: data?.last_tick ?? null,
     isStale: data?.stale ?? false,
     isTradingSession: data?.is_trading_session ?? false,
