@@ -70,8 +70,8 @@ const mk = (over?: Partial<WarrantFlowPayload>): WarrantFlowPayload => ({
   unmapped_count: 1,
   empty_reason: null,
   summary: {
-    call: { buy_value: 50_460_000, sell_value: 30_030_000 },
-    put: { buy_value: 4_000_000, sell_value: 1_000_000 },
+    call: { trade_value: 50_460_000, external_net: 16_950_000 },
+    put: { trade_value: 4_000_000, external_net: null },
   },
   top_buy_branches: [branch()],
   top_sell_branches: [
@@ -95,11 +95,13 @@ const mk = (over?: Partial<WarrantFlowPayload>): WarrantFlowPayload => ({
   ],
   warrants: [
     { warrant_id: "030011", name: "台積凱基61購01", kind: "call",
-      trading_money: 50_000_000, net_value: 16_950_000 },
+      trading_money: 50_000_000, external_net: 16_950_000 },
     { warrant_id: "030012", name: "台積元大61購02", kind: "call",
-      trading_money: 30_000_000, net_value: 3_480_000 },
+      trading_money: 30_000_000, external_net: 3_480_000 },
     { warrant_id: "03001P", name: "台積國泰61售01", kind: "put",
-      trading_money: 12_000_000, net_value: -3_000_000 },
+      trading_money: 12_000_000, external_net: -3_000_000 },
+    { warrant_id: "030013", name: "台積富邦61購03", kind: "call",
+      trading_money: 800_000, external_net: null },
   ],
   ...over,
 });
@@ -120,7 +122,7 @@ describe("WarrantFlowPanel", () => {
     expect(screen.getByText(/彙整分點資料中/)).toBeTruthy();
   });
 
-  it("SC-2:資料日 badge + 認購/認售買賣四數字", () => {
+  it("SC-2:資料日 badge + 認購/認售 成交額+外部淨額(null → —)", () => {
     flowState.data = mk();
     renderPanel();
     const badge = screen.getByTestId("flow-date-badge");
@@ -128,10 +130,24 @@ describe("WarrantFlowPanel", () => {
     const summary = screen.getByTestId("flow-summary");
     expect(summary.textContent).toContain("認購");
     expect(summary.textContent).toContain("認售");
-    expect(summary.textContent).toContain("5,046 萬"); // call buy
-    expect(summary.textContent).toContain("3,003 萬"); // call sell
-    expect(summary.textContent).toContain("400 萬"); // put buy
-    expect(summary.textContent).toContain("100 萬"); // put sell
+    expect(summary.textContent).toContain("成交額");
+    expect(summary.textContent).toContain("外部淨額");
+    expect(summary.textContent).toContain("5,046 萬"); // call trade_value
+    expect(summary.textContent).toContain("1,695 萬"); // call external_net
+    expect(summary.textContent).toContain("400 萬"); // put trade_value
+    expect(summary.textContent).toContain("—"); // put external_net null
+    // 定義說明行(語意變更的使用者可讀錨點)
+    expect(summary.textContent).toContain("排除發行商造市");
+  });
+
+  it("SC-2:summary 外部淨額 null 不套 bull/bear;非 null 套 netClass", () => {
+    flowState.data = mk();
+    renderPanel();
+    const nets = screen.getAllByTestId("flow-summary-net");
+    expect(nets).toHaveLength(2);
+    expect(nets[0]!.className).toMatch(/bull/); // call +16,950,000
+    expect(nets[1]!.textContent).toBe("—"); // put null
+    expect(nets[1]!.className).not.toMatch(/bull|bear/);
   });
 
   it("SC-3:買賣超兩欄 + 點分點展開權證明細(零 API)", () => {
@@ -152,17 +168,18 @@ describe("WarrantFlowPanel", () => {
     expect(within(buyCol).queryByText("台積凱基61購01")).toBeNull();
   });
 
-  it("SC-4:權證明細表成交金額降序 + 欄位齊全", () => {
+  it("SC-4:權證明細表成交金額降序 + 欄位齊全(外部淨額取代淨買賣超)", () => {
     flowState.data = mk();
     renderPanel();
     const table = screen.getByTestId("flow-warrant-table");
-    for (const h of ["代號", "名稱", "類型", "成交金額", "淨買賣超"]) {
+    for (const h of ["代號", "名稱", "類型", "成交金額", "外部淨額"]) {
       expect(within(table).getByText(h)).toBeTruthy();
     }
+    expect(within(table).queryByText("淨買賣超")).toBeNull();
     const ids = within(table)
       .getAllByTestId("flow-warrant-row")
       .map((tr) => tr.getAttribute("data-warrant-id"));
-    expect(ids).toEqual(["030011", "030012", "03001P"]);
+    expect(ids).toEqual(["030011", "030012", "03001P", "030013"]);
   });
 
   it("SC-5:淨買超 bull / 淨賣超 bear;類型 badge 零紅綠;無方向性文案", () => {
@@ -174,10 +191,12 @@ describe("WarrantFlowPanel", () => {
     for (const el of buyAmounts) expect(el.className).toMatch(/bull/);
     const sellAmounts = screen.getAllByTestId("flow-sell-amount");
     for (const el of sellAmounts) expect(el.className).toMatch(/bear/);
-    // 明細表淨值色
+    // 明細表外部淨額色;null → 「—」中性(SC-C:不冒充 0、不套方向色)
     const nets = screen.getAllByTestId("flow-warrant-net");
     expect(nets[0]!.className).toMatch(/bull/); // +16,950,000
     expect(nets[2]!.className).toMatch(/bear/); // -3,000,000
+    expect(nets[3]!.textContent).toBe("—"); // 030013 null
+    expect(nets[3]!.className).not.toMatch(/bull|bear/);
     // 認購/認售 badge 不用紅綠(accent==bull 同色值也禁)
     for (const el of screen.getAllByTestId("flow-kind-badge")) {
       expect(el.className).not.toMatch(/accent|bull|bear/);
