@@ -1,0 +1,26 @@
+{
+  "slug": "warrant-flow-net-history",
+  "start_sha": "2dcc6ec164c37f1a5df313d9c665a8f44aa4f719",
+  "branch": "feat/warrant-flow-net-history",
+  "worktree_path": null,
+  "current_phase": 8,
+  "completed_phases": [-1, 0, 1, 2, 3, 4, 5, 6, 7],
+  "phase_3_impl_mode": "[auto-default] main-agent TDD(節間強依賴非獨立檔)",
+  "scope": "L",
+  "phase_2_mode": "condensed",
+  "pending_review_rounds": { "phase_1": 2, "phase_2": 0, "phase_4": 0 },
+  "blockers": [],
+  "phase_6_blocked_reason": "UI 截圖 infra_fail:chrome-devtools MCP profile 遭並行 session 鎖定 + claude-in-chrome extension 未連線;視覺面由 E22 playwright + RTL 替代覆蓋,DevTools 截圖 next session 補",
+  "scope_overrides": { "goal_efficiency_mode": false },
+  "last_updated": "2026-07-18T16:30:00+08:00",
+  "project_shape": "fullstack",
+  "last_commit_sha": "b706505",
+  "final_merge_sha": null,
+  "self_review_head": "19307e7",
+  "self_review_head_note": "tag reword 重建後對應原 10cfffd;增量 = b26c43c(tsc)+ b706505(E10),收尾節補增量 review",
+  "artifact_commit": null,
+  "sc_cycle_counts": {
+    "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 }
+  },
+  "paused": null
+}

@@ -1,0 +1,24 @@
+{
+  "round": 1,
+  "mode": "medium, 5 finder(haiku)雙焦點(impl bug + missing-from-spec)+ test-coverage/conventions lens",
+  "exit": "單輪退場:accepted 5(全 P2)≤ 5、無 P0、fix 後測試綠",
+  "accepted": [
+    {"id": "F1", "sev": "P2", "summary": "backfill 進行中無 loading 文案(data 有值時蓋掉)", "fix": "補建中... 分支"},
+    {"id": "F4", "sev": "P2", "summary": "svg width=100% 與 viewBox 寬可微幅不同步", "fix": "width={chartW} 精確同步(零軸 x2 同步)"},
+    {"id": "T2", "sev": "P2", "summary": "fmtTick 三分支零覆蓋", "fix": "lock test + mutation-verified(1e8→1e9 紅/還原綠)"},
+    {"id": "T3", "sev": "P2", "summary": "寬 < 320 降級路徑零覆蓋", "fix": "lock test + mutation-verified(MIN_WIDTH 0 紅/還原綠)"},
+    {"id": "M1", "sev": "P2", "summary": "_built 命名誤導", "fix": "改 _ + 註解(槽值單一組裝路徑)"}
+  ],
+  "rejected_or_refuted": [
+    {"id": "F2", "why": "REFUTED — resize 重算全量 re-render,text 重掛無可觀察差異"},
+    {"id": "F3", "why": "REFUTED — React 元素型別變更是 replace 不是 DOM 複用,宣稱機制錯誤"},
+    {"id": "T1", "why": "REFUTED — tests_e2e contract test 的 sorted/last-date/20 日 assert 已覆蓋 _fake_history 過濾排序截窗"},
+    {"id": "T4", "why": "rejected — 推測性 what-if 改動,無現行 failure"},
+    {"id": "T5", "why": "rejected — backfill 多日場景測試已間接覆蓋 mapped_all 傳遞"},
+    {"id": "T6", "why": "REFUTED — marker 反向會紅 test_backfill_marks_nontrading_and_refills + test_scan_cap_truncates_window"},
+    {"id": "M2", "why": "rejected — 防禦性冗餘條件之不可達路徑,保留防禦不測"},
+    {"id": "M3", "why": "REFUTED — testid 就在元件 root div"}
+  ],
+  "p2_summary": "conventions/cleanup finder:0 違規;fmtTick/LegendItem 各為第 2 份複本,照「第 3 份才收斂」政策不動(既記 next-time 複本收斂類)",
+  "backend_correctness": "0 findings"
+}
