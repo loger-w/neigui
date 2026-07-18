@@ -103,6 +103,24 @@ describe("WarrantFlowNetHistory", () => {
     expect(screen.getByRole("button", { name: /補建缺日/ })).toBeTruthy();
   });
 
+  it("容器寬 < 320 → 不畫圖、顯累積文案(窄螢幕降級,lock)", async () => {
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+      width: 200,
+      height: 200,
+      top: 0,
+      left: 0,
+      right: 200,
+      bottom: 200,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    vi.spyOn(api, "warrantFlowHistory").mockResolvedValue(mk());
+    renderPanel();
+    await waitFor(() => expect(screen.getByText(/資料累積中/)).toBeTruthy());
+    expect(screen.queryByTestId("flow-net-history-chart")).toBeNull();
+  });
+
   it("no_warrants → 整區塊不 render", async () => {
     vi.spyOn(api, "warrantFlowHistory").mockResolvedValue(
       mk({ empty_reason: "no_warrants", built: 0, missing_count: 0, days: [] }),

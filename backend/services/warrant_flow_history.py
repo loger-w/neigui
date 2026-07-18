@@ -88,7 +88,8 @@ async def _backfill(stock_id: str, slots: list[dict], snap: dict, winfo: dict[st
         async def _build(d: str = d, m: set[str] | None = mapped_all):
             return await wf.try_build_day(stock_id, d, snap, winfo, m, False)
 
-        status, _built, mapped_all = await wf._run_once(f"flow_build_{stock_id}_{d}", _build)
+        # payload 不直接用 — 槽值一律經 _slot_from_cache 重讀(單一組裝路徑)
+        status, _, mapped_all = await wf._run_once(f"flow_build_{stock_id}_{d}", _build)
         if status == "built":
             slot.update(_slot_from_cache(stock_id, d) or {})
             built += 1

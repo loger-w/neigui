@@ -22,10 +22,9 @@ export function WarrantFlowNetHistory({ symbol, active }: { symbol: string; acti
 
   if (!symbol || data?.empty_reason === "no_warrants") return null;
 
+  const chartW = Math.min(width, 900);
   const geom =
-    data && width >= MIN_WIDTH
-      ? computeNetHistoryChart(data.days, Math.min(width, 900), CHART_H)
-      : null;
+    data && width >= MIN_WIDTH ? computeNetHistoryChart(data.days, chartW, CHART_H) : null;
 
   return (
     <div
@@ -64,8 +63,8 @@ export function WarrantFlowNetHistory({ symbol, active }: { symbol: string; acti
       ) : geom ? (
         <svg
           data-testid="flow-net-history-chart"
-          width="100%"
-          viewBox={`0 0 ${Math.min(width, 900)} ${CHART_H}`}
+          width={chartW}
+          viewBox={`0 0 ${chartW} ${CHART_H}`}
           height={CHART_H}
           role="img"
           aria-label="認購與認售外部淨額近二十交易日走勢"
@@ -74,7 +73,7 @@ export function WarrantFlowNetHistory({ symbol, active }: { symbol: string; acti
           {/* 零軸(方向分界) */}
           <line
             x1={0}
-            x2="100%"
+            x2={chartW}
             y1={geom.zeroY}
             y2={geom.zeroY}
             stroke="currentColor"
@@ -117,7 +116,9 @@ export function WarrantFlowNetHistory({ symbol, active }: { symbol: string; acti
       ) : (
         <div className="mt-2 text-xs text-ink-dim">
           {data
-            ? `資料累積中(已累積 ${data.built}/${data.window} 日)— 每日檢視自動累積,或按補建缺日`
+            ? loading
+              ? "補建中..."
+              : `資料累積中(已累積 ${data.built}/${data.window} 日)— 每日檢視自動累積,或按補建缺日`
             : loading
               ? "載入中..."
               : null}
