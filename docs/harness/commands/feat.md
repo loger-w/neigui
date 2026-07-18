@@ -108,7 +108,7 @@
 
 ## Phase 8:整合與收尾
 
-1. 收尾路徑:**預設走 `branch-lifecycle` 收尾節**(push → PR → review 補齊 → merge 確認 → auto-merge;2026-07-07 拍板)— **顯式覆寫** `superpowers:finishing-a-development-branch` 的三選一互動,理由:solo 無 reviewer,user 拍板自動化。執行順序:步驟 2 tag 驗證 → 步驟 3 artifact commit → 收尾節
+1. 收尾路徑:**預設走 `branch-lifecycle` 收尾節**(push → PR → review 補齊 → 自動 merge;2026-07-18 拍板全自動無確認)— **顯式覆寫** `superpowers:finishing-a-development-branch` 的三選一互動,理由:solo 無 reviewer,user 拍板自動化。執行順序:步驟 2 tag 驗證 → 步驟 3 artifact commit → 收尾節
 2. **Commit tag 機械化驗證(script 化,2026-07-06)**:
    ```bash
    python ~/.claude/hooks/check_feat_tags.py --state .claude/feat/<slug>/state.json
@@ -171,8 +171,8 @@
 ## 自主模式建議
 - 完整契約見 `~/.claude/commands/auto.md`
 - **S 級**想全自動:`/auto Phase 8.5 完成 /feat <desc>`
-- 中段自動(merge 確認天然停在收尾):`/auto Phase 7 結構化表格全綠 /feat <desc>`
-- **L 級不建議全自動**(Phase 0 對齊 + 收尾 merge 確認前人工試用價值高)
+- 中段自動:`/auto Phase 7 結構化表格全綠 /feat <desc>`(2026-07-18 起收尾自動 merge 到底,不再天然停在 merge 確認)
+- **L 級不建議全自動**(Phase 0 對齊價值高;merge 確認已移除,想在 merge 前人工試用就不要疊 /auto 跑完收尾)
 
 ## Done
 **Phase 8 完成 + Phase 8.5 (A)(B)(C) 都處理**才算結束:Phase 7 表格全綠 / Phase 8 tag 驗證過 + artifact commit / 沉澱寫入 + GC pass + meta-review 檢查,缺一不可。

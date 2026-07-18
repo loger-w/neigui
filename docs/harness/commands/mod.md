@@ -57,7 +57,7 @@
 
 ## Done
 目標成功條件全綠 + 既有行為白名單全保留 + 三類 commit 分明 + migration 可逆(若有)。
-**全過後呼叫 `branch-lifecycle` 收尾節**(push → PR → merge 確認 → auto-merge),再做最終回報。
+**全過後呼叫 `branch-lifecycle` 收尾節**(push → PR → 自動 merge,2026-07-18 起無確認),再做最終回報。
 
 ## 禁止(本流程特有,共通禁止見 CLAUDE.md)
 - ❌ 「順手」refactor / rename / 風格修正(寫進 `docs/next-time.md`)
