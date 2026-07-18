@@ -1,0 +1,224 @@
+{
+ "days": [
+  {
+   "date": "2026-06-01",
+   "call": {
+    "trade_value": 215000000.0,
+    "external_net": 20640000.0
+   },
+   "put": {
+    "trade_value": 17300000.0,
+    "external_net": -3240000.0
+   }
+  },
+  {
+   "date": "2026-06-02",
+   "call": {
+    "trade_value": 202000000.0,
+    "external_net": -12320000.0
+   },
+   "put": {
+    "trade_value": 15200000.0,
+    "external_net": -2400000.0
+   }
+  },
+  {
+   "date": "2026-06-03",
+   "call": {
+    "trade_value": 189000000.0,
+    "external_net": 16320000.0
+   },
+   "put": {
+    "trade_value": 13100000.0,
+    "external_net": -4080000.0
+   }
+  },
+  {
+   "date": "2026-06-04",
+   "call": {
+    "trade_value": 176000000.0,
+    "external_net": 14160000.0
+   },
+   "put": {
+    "trade_value": 11000000.0,
+    "external_net": 4185000.0
+   }
+  },
+  {
+   "date": "2026-06-05",
+   "call": {
+    "trade_value": 163000000.0,
+    "external_net": -8000000.0
+   },
+   "put": {
+    "trade_value": 17300000.0,
+    "external_net": -2400000.0
+   }
+  },
+  {
+   "date": "2026-06-08",
+   "call": {
+    "trade_value": 150000000.0,
+    "external_net": 20640000.0
+   },
+   "put": {
+    "trade_value": 15200000.0,
+    "external_net": -4080000.0
+   }
+  },
+  {
+   "date": "2026-06-09",
+   "call": {
+    "trade_value": 228000000.0,
+    "external_net": 18480000.0
+   },
+   "put": {
+    "trade_value": 13100000.0,
+    "external_net": null
+   }
+  },
+  {
+   "date": "2026-06-10",
+   "call": {
+    "trade_value": 215000000.0,
+    "external_net": -10880000.0
+   },
+   "put": {
+    "trade_value": 11000000.0,
+    "external_net": 3100000.0
+   }
+  },
+  {
+   "date": "2026-06-11",
+   "call": {
+    "trade_value": 202000000.0,
+    "external_net": 14160000.0
+   },
+   "put": {
+    "trade_value": 17300000.0,
+    "external_net": -4080000.0
+   }
+  },
+  {
+   "date": "2026-06-12",
+   "call": {
+    "trade_value": 189000000.0,
+    "external_net": 12000000.0
+   },
+   "put": {
+    "trade_value": 15200000.0,
+    "external_net": -3240000.0
+   }
+  },
+  {
+   "date": "2026-06-15",
+   "call": {
+    "trade_value": 176000000.0,
+    "external_net": -13760000.0
+   },
+   "put": {
+    "trade_value": 13100000.0,
+    "external_net": -2400000.0
+   }
+  },
+  {
+   "date": "2026-06-16",
+   "call": {
+    "trade_value": 163000000.0,
+    "external_net": 18480000.0
+   },
+   "put": {
+    "trade_value": 11000000.0,
+    "external_net": 5270000.0
+   }
+  },
+  {
+   "date": "2026-06-17",
+   "call": {
+    "trade_value": 150000000.0,
+    "external_net": null
+   },
+   "put": {
+    "trade_value": 17300000.0,
+    "external_net": -3240000.0
+   }
+  },
+  {
+   "date": "2026-06-18",
+   "call": {
+    "trade_value": 228000000.0,
+    "external_net": -9440000.0
+   },
+   "put": {
+    "trade_value": 15200000.0,
+    "external_net": -2400000.0
+   }
+  },
+  {
+   "date": "2026-06-19",
+   "call": {
+    "trade_value": 215000000.0,
+    "external_net": 12000000.0
+   },
+   "put": {
+    "trade_value": 13100000.0,
+    "external_net": -4080000.0
+   }
+  },
+  {
+   "date": "2026-06-22",
+   "call": {
+    "trade_value": 202000000.0,
+    "external_net": 20640000.0
+   },
+   "put": {
+    "trade_value": 11000000.0,
+    "external_net": 4185000.0
+   }
+  },
+  {
+   "date": "2026-06-23",
+   "call": {
+    "trade_value": 189000000.0,
+    "external_net": -12320000.0
+   },
+   "put": {
+    "trade_value": 17300000.0,
+    "external_net": -2400000.0
+   }
+  },
+  {
+   "date": "2026-06-24",
+   "call": {
+    "trade_value": 176000000.0,
+    "external_net": 16320000.0
+   },
+   "put": {
+    "trade_value": 15200000.0,
+    "external_net": -4080000.0
+   }
+  },
+  {
+   "date": "2026-06-25",
+   "call": {
+    "trade_value": 163000000.0,
+    "external_net": 14160000.0
+   },
+   "put": {
+    "trade_value": 13100000.0,
+    "external_net": -3240000.0
+   }
+  },
+  {
+   "date": "2026-06-26",
+   "call": {
+    "trade_value": 150000000.0,
+    "external_net": -8000000.0
+   },
+   "put": {
+    "trade_value": 11000000.0,
+    "external_net": 3100000.0
+   }
+  }
+ ]
+}

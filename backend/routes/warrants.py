@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from services import (
     warrant_flow,
+    warrant_flow_history,
     warrant_iv_history,
     warrant_quotes,
     warrants,
@@ -82,6 +83,17 @@ async def get_warrant_iv_history(request: Request, warrant_id: str, refresh: boo
     if payload is None:
         raise HTTPException(status_code=404, detail={"error": "not_found"})
     return payload
+
+
+@router.get("/api/warrants/{stock_id}/flow/history")
+async def get_warrant_flow_history(request: Request, stock_id: str, backfill: bool = False) -> dict:
+    """外部淨額時序(近 20 交易日槽位)。backfill 不用 refresh 語意 —
+    refresh = 跳 cache 全重抓,對 20 日 series ≈ 4000 req(design §3.2 divergence)。"""
+    _validate_id(stock_id)
+    # FinMind httpx 不 catch(中央 handler);快照錯誤 service 內轉 502(同 flow)
+    return await run_with_disconnect(
+        request, warrant_flow_history.get_flow_history(stock_id, backfill)
+    )
 
 
 @router.get("/api/warrants/{stock_id}/flow")
