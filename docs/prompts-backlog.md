@@ -37,14 +37,7 @@ Phase 1 實證方法(照 finmind-conventions「在場證明」判讀法):user_in
 紀律:兩批分開評估是否同分支;fmtSigned 行為微異處若合併需改行為 → 那條升級成 /mod 或當場排除,不硬併。每步單獨綠;Phase 2 先盤測試覆蓋。
 ```
 
-### B4. 明細表補「分點淨流動」輔欄(觸發:看外部淨額時想分辨「單邊進出貨 vs 當沖來回」再貼)
-
-```
-/mod warrant flow 明細表加輔欄「分點淨流動比率」= Σ 正 net / 總買進金額(0-100%,拍板時的候選 (a),當時明確遞延「/mod brainstorm 再議」— .claude/mod/warrant-flow-external-net/change-spec.md Out of scope 條):高 = 分點單邊進出貨(有人在建/出部位)、低 = 同分點來回當沖(無方向)。與外部淨額互補:外部淨額給方向、淨流動比率給「這方向是真部位還是當沖噪音」。
-
-2026-07-18 probe 樣本(2330 top30):多數 80-100%、當沖票 48-62%,鑑別度靠低值 outlier — brainstorm 先拍「值不值得佔一欄」(可能答案是不值得,砍掉這個 prompt 也是合法結論)。
-實作面(若拍板做):_aggregate per-warrant 累計 Σ max(0, seat net) 一行級;報表空 → null 同 SC-C;中性色欄(比率無方向,不套 bull/bear);契約加欄位 = 對外契約改動,SC/e2e 照 e2e-conventions 判準。
-```
+(原 B4「分點淨流動輔欄」已於 2026-07-18 /mod 評估結案刪除:**不做** — 40-req 實測跨日零持續性(|Δratio| median 0.27、低值 Jaccard 0/9),比率屬日內噪音;完整數據與重開條件在 docs/decisions.md「刻意不採納」節)
 
 ---
 

@@ -30,6 +30,7 @@
 ## 4. Out of scope
 
 - (a) 分點淨流動欄(拍板未採,不夾帶)。
+  - 2026-07-18 /mod 再議結案:**不做**(backlog B4)— 40-req 實測(2330 top20 × 2 日)跨日 |Δratio| median 0.27、低值身分 Jaccard 0/9 零持續性,單日欄位無法承載「真部位 vs 當沖」判讀;詳 docs/decisions.md。
 - HO 量占比降級守衛(v1 不做 → Known risk R-2)。
 - 快照歷史化、branch 層語意改動、覆蓋率視覺化、alias 自動發現。
 - 順手 refactor(`_run_once` 複本收斂等 → 已在 next-time)。
