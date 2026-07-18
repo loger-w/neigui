@@ -7,18 +7,7 @@
 
 ## A. 立即可開
 
-(上一批 A1-A3 已於 2026-07-17/18 全數完成並刪除:A1 = fix/tpex-warrant-iv-empty、A2 = fix/warrants-snapshot-partial-empty、A3 = chore/backlog-a3-cleanup)
-
-### A4. 中信/元富/兆豐 HO alias 實測補驗(消 mod/warrant-flow-external-net Known risk R-1,~15 分鐘)
-
-```
-/bug warrant flow 外部淨額 — 中信/元富/兆豐三家發行商的 HO seat 精確名未經真實樣本驗證(docs/next-time.md「中信/元富/兆豐 HO seat 精確名未驗證」條;alias 表現值:中國信託/元富/兆豐,按命名慣例推定):錯 → 該三家權證外部淨額恆 null(安全降級但白丟資料)。
-
-Phase 1 實證(probe,~6 requests,照 finmind-conventions Bearer header):從 warrants_snapshot_latest.json 的 by_underlying["2330"] 各抽該三家發行、近日有量的權證 1-2 檔,打 TaiwanStockWarrantTradingDailyReport(data_id + start_date 單日),列出全部 4 碼 id + 名稱屬 brand 家族的 seat,確認總公司席位精確名與 id。參考樣板:scratchpad probe_flow_metrics2.py(上一輪已驗:元大9800/凱基9200/台新證券9B00/永豐金9A00/統一5850/富邦9600/群益9100/國泰綜合8880/國票綜合7790)。
-Phase 2 修法:名不符 → services/warrant_flow.py `_ISSUER_ALIASES` 對應行補正(一行級);相符 → 零改動,只把 next-time 條目收割刪除 + 在該條註記實測結果。
-驗收:三家各至少 1 檔權證 external_net 非 null(real-env curl /api/warrants/2330/flow?refresh=true 抽驗)+ pytest 全綠;next-time 條目刪除。
-注意:這是驗證優先的小任務,別擴 scope(量占比守衛、alias 自動發現都已拍板 out of scope)。
-```
+(上一批 A1-A4 已於 2026-07-17/18 全數完成並刪除:A1 = fix/tpex-warrant-iv-empty、A2 = fix/warrants-snapshot-partial-empty、A3 = chore/backlog-a3-cleanup、A4 = fix/warrant-ho-alias-verify — 中信/兆豐推定相符,元富因券商合併改對映台新證券 9B00)
 
 ---
 
