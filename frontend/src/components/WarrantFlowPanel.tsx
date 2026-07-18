@@ -131,7 +131,8 @@ function FlowBody({
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {/* summary(SC-2):認購/認售 badge 中性;買賣金額走 bull/bear */}
+        {/* summary(SC-2):認購/認售 badge 中性;成交額中性、外部淨額走 bull/bear
+            (RE-1:買/賣對恆等無資訊量,改外部淨額口徑)*/}
         <div
           data-testid="flow-summary"
           className="px-4 py-3 border-b border-line flex flex-wrap gap-x-8 gap-y-2 text-xs"
@@ -143,16 +144,29 @@ function FlowBody({
               >
                 {KIND_TEXT[k]}
               </span>
-              <span className="text-ink-dim">買進</span>
-              <span className="text-bull tabular-nums">
-                {formatValue(data.summary[k].buy_value)}
+              <span className="text-ink-dim">成交額</span>
+              <span className="text-ink-muted tabular-nums">
+                {formatValue(data.summary[k].trade_value)}
               </span>
-              <span className="text-ink-dim">賣出</span>
-              <span className="text-bear tabular-nums">
-                {formatValue(data.summary[k].sell_value)}
+              <span className="text-ink-dim">外部淨額</span>
+              <span
+                data-testid="flow-summary-net"
+                className={cn(
+                  "tabular-nums",
+                  data.summary[k].external_net == null
+                    ? "text-ink-dim"
+                    : netClass(data.summary[k].external_net),
+                )}
+              >
+                {data.summary[k].external_net == null
+                  ? "—"
+                  : formatNet(data.summary[k].external_net)}
               </span>
             </div>
           ))}
+          <div className="basis-full text-[0.7rem] text-ink-dim">
+            外部淨額:排除發行商造市(總公司)席位後之分點淨買賣;— 為無法對映
+          </div>
         </div>
 
         {/* 兩欄 top15(SC-3):窄容器疊直 */}
@@ -181,7 +195,7 @@ function FlowBody({
                 <th scope="col" className="px-2 py-1.5 text-left font-normal">名稱</th>
                 <th scope="col" className="px-2 py-1.5 text-left font-normal">類型</th>
                 <th scope="col" className="px-2 py-1.5 text-right font-normal">成交金額</th>
-                <th scope="col" className="px-2 py-1.5 text-right font-normal">淨買賣超</th>
+                <th scope="col" className="px-2 py-1.5 text-right font-normal">外部淨額</th>
               </tr>
             </thead>
             <tbody>
@@ -210,9 +224,12 @@ function FlowBody({
                   </td>
                   <td
                     data-testid="flow-warrant-net"
-                    className={cn("px-2 py-1 text-right tabular-nums", netClass(w.net_value))}
+                    className={cn(
+                      "px-2 py-1 text-right tabular-nums",
+                      w.external_net == null ? "text-ink-dim" : netClass(w.external_net),
+                    )}
                   >
-                    {formatNet(w.net_value)}
+                    {w.external_net == null ? "—" : formatNet(w.external_net)}
                   </td>
                 </tr>
               ))}

@@ -19,8 +19,8 @@ const mk = (over?: Partial<WarrantFlowPayload>): WarrantFlowPayload => ({
   unmapped_count: 1,
   empty_reason: null,
   summary: {
-    call: { buy_value: 5046, sell_value: 3003 },
-    put: { buy_value: 400, sell_value: 100 },
+    call: { trade_value: 8_000_000, external_net: 2667 },
+    put: { trade_value: 1_200_000, external_net: null },
   },
   top_buy_branches: [],
   top_sell_branches: [],

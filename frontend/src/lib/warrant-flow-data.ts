@@ -2,8 +2,10 @@
 import { fmtAmount } from "./chip-data";
 
 export interface WarrantFlowSideValue {
-  buy_value: number;
-  sell_value: number;
+  /** 該 kind 有量權證成交額合計(未受 cap 限制,對齊「有量權證 N 檔」口徑) */
+  trade_value: number;
+  /** 外部人淨買賣 = −(發行商造市總公司席位 net);null = 無法對映,非 0 */
+  external_net: number | null;
 }
 
 export interface WarrantFlowSummary {
@@ -34,7 +36,8 @@ export interface WarrantFlowWarrantRow {
   name: string;
   kind: "call" | "put";
   trading_money: number;
-  net_value: number;
+  /** RE-1:跨全分點 net 恆 0,故此處為外部淨額口徑;null = 無法對映 */
+  external_net: number | null;
 }
 
 export interface WarrantFlowPayload {
