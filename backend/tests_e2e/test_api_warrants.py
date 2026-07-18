@@ -170,11 +170,34 @@ async def test_flow_bad_date_400(client):
         assert r.json()["detail"]["error"] == "bad_date"
 
 
+async def test_flow_history_contract(client):
+    # warrant-flow-net-history SC-1/SC-6 contract:FAKE distilled fixture 滿窗 20 日
+    # (design v3 §2.4:全 built、missing_count 0、shape 與真實路徑同構)
+    r = await client.get("/api/warrants/2330/flow/history")
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body) == {"window", "built", "missing_count", "backfilled", "empty_reason", "days"}
+    assert body["window"] == 20
+    assert body["built"] == 20 and body["missing_count"] == 0 and body["backfilled"] == 0
+    assert body["empty_reason"] is None
+    dates = [d["date"] for d in body["days"]]
+    assert len(dates) == 20 and dates == sorted(dates)  # 舊→新
+    assert dates[-1] == "2026-06-26"  # FAKE_TODAY
+    assert all(d["status"] == "built" for d in body["days"])
+    # 資料級:null 斷點日存在(e2e E22 同 fixture 口徑)
+    by_date = {d["date"]: d for d in body["days"]}
+    assert by_date["2026-06-17"]["call"]["external_net"] is None
+    assert by_date["2026-06-26"]["call"]["external_net"] is not None
+
+
 async def test_bad_symbol_400_all_paths(client):
     r = await client.get("/api/warrants/abc!!")
     assert r.status_code == 400
     assert r.json()["detail"]["error"] == "bad_symbol"
     # review P2 補鎖:/flow 原缺專屬 bad_symbol 契約證據(共用 _validate_id)
     r = await client.get("/api/warrants/abc!!/flow")
+    assert r.status_code == 400
+    assert r.json()["detail"]["error"] == "bad_symbol"
+    r = await client.get("/api/warrants/abc!!/flow/history")
     assert r.status_code == 400
     assert r.json()["detail"]["error"] == "bad_symbol"
