@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.36.0",
+    date: "2026-07-18",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證分點新增「外部淨額時序」:認購/認售外部淨額近 20 個交易日雙線走勢,一眼看出外部人在持續加碼還是撤退;資料隨每日檢視自動累積,缺日可按「補建缺日」逐步補齊(每次最多補 3 天),缺資料的日子留空不補零",
+      },
+    ],
+  },
+  {
     version: "0.35.0",
     date: "2026-07-18",
     changes: [
