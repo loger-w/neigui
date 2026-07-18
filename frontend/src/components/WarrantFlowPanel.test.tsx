@@ -25,6 +25,17 @@ vi.mock("../hooks/useContainerSize", () => ({
   useContainerSize: () => sizeState,
 }));
 
+// 時序區塊自帶 hook(TanStack Query)— Panel 測試無 QueryClientProvider,
+// mock 成空態隔離(區塊自身行為由 WarrantFlowNetHistory.test.tsx 覆蓋)
+vi.mock("../hooks/useWarrantFlowHistory", () => ({
+  useWarrantFlowHistory: () => ({
+    data: null,
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+  }),
+}));
+
 vi.mock("../hooks/useWarrantFlow", () => ({
   useWarrantFlow: () => ({
     data: flowState.data,
