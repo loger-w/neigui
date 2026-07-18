@@ -128,18 +128,21 @@ async def test_flow_happy_path_shape_and_values(client):
     assert body["truncated"] is False
     assert body["unmapped_count"] == 1  # 03998B 牛熊形狀
     assert body["empty_reason"] is None
-    # 聚合數值(fixtures 手算:凱基 4080−120、元大 144−2268)
-    assert body["summary"]["call"] == {"buy_value": 5046.0, "sell_value": 3003.0}
-    assert body["summary"]["put"] == {"buy_value": 400.0, "sell_value": 100.0}
+    # 聚合數值(fixtures 手算,external_net 口徑:030011 +1695、030012 +972、
+    # 03001P +300;trade_value = price_day Σ per kind,未 cap)
+    assert body["summary"]["call"] == {"trade_value": 8_000_000.0, "external_net": 2667.0}
+    assert body["summary"]["put"] == {"trade_value": 1_200_000.0, "external_net": 300.0}
     top_buy = body["top_buy_branches"]
-    assert top_buy[0]["broker_name"] == "凱基-台北"
+    assert top_buy[0]["broker_name"] == "凱基台北"
     assert top_buy[0]["net_value"] == 3960.0
     assert [w["warrant_id"] for w in top_buy[0]["warrants"]] == ["030011", "030012"]
-    assert body["top_sell_branches"][0]["broker_name"] == "元大-總公司"
-    assert body["top_sell_branches"][0]["net_value"] == -2124.0
+    assert body["top_sell_branches"][0]["broker_name"] == "元大"
+    assert body["top_sell_branches"][0]["net_value"] == -2472.0
     assert [w["warrant_id"] for w in body["warrants"]] == ["030011", "030012", "03001P"]
     assert body["warrants"][0]["trading_money"] == 5000000
     assert body["warrants"][0]["kind"] == "call"
+    assert body["warrants"][0]["external_net"] == 1695.0
+    assert "net_value" not in body["warrants"][0]
 
 
 async def test_flow_explicit_date_no_trading_day(client):
