@@ -23,7 +23,7 @@
 
 - (原「forceRefreshRef pattern 第 20 個複本門檻」條目已由 refactor/force-refresh-query 收割刪除,2026-07-17:18 個 hook 收斂到 `useForceRefreshQuery`,排除 useBrokerHistory / useChipData 兩個異形樣板)
 - (原「forceRefresh 旗標時序 race」條目已由 fix/force-refresh-race 解決刪除,2026-07-17:helper 與 useChipData 收 cancel-before-refetch,紅測試實證 in-flight dedupe 機制;**useBrokerHistory 第 3 修點為誤報** — diagnostic 實證竊取窗口是 sub-microtask,使用者事件不可達,不修)
-- **e2e E10(搜尋 combobox option 5s 內未出現)負載型 flake**(2026-07-18 mod/warrant-flow-external-net Phase 6 實證:全套跑紅、單獨重跑綠、全套再跑綠;當時機器有他 session python/node 進程):與 test_finmind_realtime 同模式。觸發重評估:E10 再紅時考慮放寬 option timeout 或改走 Enter 路徑不等 option
+- (原「e2e E10 負載型 flake」條目已由 feat/warrant-flow-net-history 收割,2026-07-18:同日再紅 ×2(全套紅/單獨綠)觸發重評估條件 → option timeout 放寬至 15s;Enter 路徑原已採用。再紅升級方向 = 查 SymbolSearch dropdown 在高負載下的重渲染節流)
 - **tests/test_finmind_realtime.py 在機器高負載下 flaky**(真實 asyncio 短 sleep 0.02s + wait_for timeout=1.0;2026-07-11 全套跑兩輪各紅 15/8 個、單檔跑與後續全套皆綠):改假鐘或放寬 timeout。觸發重評估:CI 或平常開發再看到該檔紅時
 
 ## From /feat warrant-broker-flow(2026-07-14)
