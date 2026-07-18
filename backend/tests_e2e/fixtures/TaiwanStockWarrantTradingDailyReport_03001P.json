@@ -1,6 +1,7 @@
 {
   "data": [
-    {"date": "2026-06-25", "stock_id": "03001P", "securities_trader": "統一-台北", "securities_trader_id": "9700", "price": 0.5, "buy": 800, "sell": 0},
-    {"date": "2026-06-25", "stock_id": "03001P", "securities_trader": "元大-總公司", "securities_trader_id": "9800", "price": 0.5, "buy": 0, "sell": 200}
+    {"date": "2026-06-25", "stock_id": "03001P", "securities_trader": "統一台北", "securities_trader_id": "9700", "price": 0.5, "buy": 800, "sell": 0},
+    {"date": "2026-06-25", "stock_id": "03001P", "securities_trader": "元大", "securities_trader_id": "9800", "price": 0.5, "buy": 0, "sell": 200},
+    {"date": "2026-06-25", "stock_id": "03001P", "securities_trader": "國泰綜合", "securities_trader_id": "8880", "price": 0.5, "buy": 0, "sell": 600}
   ]
 }

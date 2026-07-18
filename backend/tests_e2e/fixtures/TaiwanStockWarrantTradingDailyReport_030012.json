@@ -3,8 +3,8 @@
     {
       "date": "2026-06-25",
       "stock_id": "030012",
-      "securities_trader": "凱基-台北",
-      "securities_trader_id": "9200",
+      "securities_trader": "凱基台北",
+      "securities_trader_id": "920A",
       "price": 1.2,
       "buy": 900,
       "sell": 100
@@ -12,7 +12,7 @@
     {
       "date": "2026-06-25",
       "stock_id": "030012",
-      "securities_trader": "元大-總公司",
+      "securities_trader": "元大",
       "securities_trader_id": "9800",
       "price": 1.2,
       "buy": 120,
@@ -21,11 +21,20 @@
     {
       "date": "2026-06-25",
       "stock_id": "030012",
-      "securities_trader": "富邦-建國",
+      "securities_trader": "富邦建國",
       "securities_trader_id": "9600",
       "price": 1.2,
       "buy": 210,
       "sell": 200
+    },
+    {
+      "date": "2026-06-25",
+      "stock_id": "030012",
+      "securities_trader": "元大",
+      "securities_trader_id": "9800",
+      "price": 1.2,
+      "buy": 0,
+      "sell": 290
     }
   ]
 }

@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from datetime import date as date_type, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
@@ -28,7 +29,7 @@ from utils.cache import atomic_write_json, chip_cache_dir, read_json
 
 logger = logging.getLogger(__name__)
 
-_CACHE_VERSION = 1
+_CACHE_VERSION = 2  # 2:external_net 口徑(mod/warrant-flow-external-net)取代恆零 net_value
 FLOW_CAP = 200  # spike L-2:cap 200 最壞覆蓋 95.69%(2330);文案由 payload analyzed 插值
 FLOW_LOOKBACK_DAYS = 10  # R8:春節級連假也要能回退到最近交易日
 _PRICE_DAY_KEEP_KEYS = ("stock_id", "Trading_money")
@@ -39,6 +40,45 @@ _RESULT_RETAIN_DAYS = 30
 _WARRANT_PREFIXES = ("03", "04", "05", "06", "07", "08", "09", "72", "73", "74")
 
 _inflight: dict[str, dict[str, Any]] = {}
+
+# 發行商造市總公司(HO)seat 精確名 alias(2026-07-17 2330 top30 probe:27/27 單一
+# 命中、HO 量占比中位 49.2%;prompts-backlog B2)。seat 精確名單匹配是唯一鑑別 —
+# 分點 id 也是 4 碼(980C)且 HO id 含字母(9B00),長度/isdigit 都無鑑別力。
+# brand 不在表 → external_net null(新發行商安全降級,change-spec R-1)。
+_ISSUER_ALIASES: dict[str, tuple[str, ...]] = {
+    "元大": ("元大",),
+    "凱基": ("凱基",),
+    "統一": ("統一",),
+    "富邦": ("富邦",),
+    "群益": ("群益", "群益金鼎"),
+    "台新": ("台新證券", "台新"),
+    "永豐": ("永豐金", "永豐"),
+    "國泰": ("國泰綜合", "國泰"),
+    "國票": ("國票綜合", "國票"),
+    "中信": ("中國信託", "中信"),
+    "元富": ("元富",),
+    "兆豐": ("兆豐",),
+}
+_BRAND_RE = re.compile(r"^[^0-9A-Z]+")
+
+
+def _issuer_brand(name: str, underlying_name: str) -> str | None:
+    """權證名抽發行商 brand:去 underlying_name 前綴(全稱不中則縮短到 2 字容錯,
+    兼容「台積凱基61購01」式縮寫命名)→ 取首個 [0-9A-Z] 前的字元;brand 必須在
+    alias 白名單內,否則 None(防錯配)。2330 全 1087 檔實測全數抽取成功。"""
+    if not name or not underlying_name:
+        return None
+    for plen in range(len(underlying_name), 1, -1):
+        if name.startswith(underlying_name[:plen]):
+            m = _BRAND_RE.match(name[plen:])
+            brand = m.group(0) if m else None
+            return brand if brand in _ISSUER_ALIASES else None
+    return None
+
+
+def _ho_seat_names(brand: str) -> set[str]:
+    """HO seat 可接受精確名集合(alias 與 alias+「證券」變体)。"""
+    return {v for a in _ISSUER_ALIASES[brand] for v in (a, a + "證券")}
 
 
 def get_finmind() -> "FinMindClient":
@@ -179,14 +219,20 @@ def _aggregate(
     reports: dict[str, list[dict]],
     winfo: dict[str, dict],
     money: dict[str, float],
+    trade_value_by_kind: dict[str, float],
 ) -> dict:
-    """三層聚合(spec §3)。金額 = price × 股數,輸出四捨五入到分(2 位)。"""
-    summary = {
-        "call": {"buy_value": 0.0, "sell_value": 0.0},
-        "put": {"buy_value": 0.0, "sell_value": 0.0},
-    }
+    """三層聚合(spec §3;external_net 口徑 change-spec D1)。金額 = price × 股數,
+    輸出四捨五入到分(2 位)。RE-1:跨全分點 net ≡ 0 → per-warrant「淨買賣超」
+    無資訊量,改 external_net = −(發行商 HO seat net) = 外部人(散戶/主力/他券商)
+    淨買賣;HO 無法對映(brand 抽取失敗/報表空/無 HO row)→ None,不冒充 0。"""
     branches: dict[str, dict] = {}
-    per_warrant: dict[str, list[float]] = {wid: [0.0, 0.0] for wid in reports}
+    # per-warrant HO seat 名集(None = brand 不可得 → external_net None)
+    ho_names: dict[str, set[str] | None] = {}
+    for wid in reports:
+        w = winfo[wid]
+        brand = _issuer_brand(str(w.get("name") or ""), str(w.get("underlying_name") or ""))
+        ho_names[wid] = _ho_seat_names(brand) if brand else None
+    ho_net: dict[str, float] = {}  # 只在見到 HO row 時建 key(缺 key = 無 HO → None)
     for wid, rows in reports.items():
         kind = winfo[wid]["kind"]
         name = winfo[wid]["name"]
@@ -201,10 +247,9 @@ def _aggregate(
                 logger.warning("skip bad warrant flow row: %r", r)
                 continue
             bv, sv = price * buy, price * sell
-            summary[kind]["buy_value"] += bv
-            summary[kind]["sell_value"] += sv
-            per_warrant[wid][0] += bv
-            per_warrant[wid][1] += sv
+            names = ho_names[wid]
+            if names is not None and len(tid) == 4 and tname in names:
+                ho_net[wid] = ho_net.get(wid, 0.0) + (bv - sv)
             b = branches.setdefault(
                 tid,
                 {
@@ -230,9 +275,23 @@ def _aggregate(
             w["buy_value"] += bv
             w["sell_value"] += sv
 
-    for side in summary.values():
-        side["buy_value"] = round(side["buy_value"], 2)
-        side["sell_value"] = round(side["sell_value"], 2)
+    # summary external_net:Σ 非 null 權證;該 kind 全 null → None(SC-B/SC-C)
+    kind_sum: dict[str, list] = {"call": [0.0, False], "put": [0.0, False]}
+    external: dict[str, float | None] = {}
+    for wid in reports:
+        ext = round(-ho_net[wid], 2) if wid in ho_net else None
+        external[wid] = ext
+        if ext is not None:
+            acc = kind_sum[winfo[wid]["kind"]]
+            acc[0] += ext
+            acc[1] = True
+    summary = {
+        k: {
+            "trade_value": round(trade_value_by_kind.get(k, 0.0), 2),
+            "external_net": round(acc[0], 2) if acc[1] else None,
+        }
+        for k, acc in kind_sum.items()
+    }
 
     finalized: list[dict] = []
     for b in branches.values():
@@ -267,7 +326,7 @@ def _aggregate(
             "name": winfo[wid]["name"],
             "kind": winfo[wid]["kind"],
             "trading_money": money.get(wid, 0.0),
-            "net_value": round(per_warrant[wid][0] - per_warrant[wid][1], 2),
+            "external_net": external[wid],
         }
         for wid in reports
     ]
@@ -290,8 +349,8 @@ def _empty_payload(reason: str, as_of: str | None, unmapped: int) -> dict:
         "unmapped_count": unmapped,
         "empty_reason": reason,
         "summary": {
-            "call": {"buy_value": 0.0, "sell_value": 0.0},
-            "put": {"buy_value": 0.0, "sell_value": 0.0},
+            "call": {"trade_value": 0.0, "external_net": None},
+            "put": {"trade_value": 0.0, "external_net": None},
         },
         "top_buy_branches": [],
         "top_sell_branches": [],
@@ -359,6 +418,11 @@ async def get_flow(stock_id: str, date: str | None = None, refresh: bool = False
                 payload = _empty_payload("no_volume", d, unmapped)
                 _write_result_cache(stock_id, d, payload)
                 return payload
+            # summary trade_value:mapped 有量權證全集合(未 cap;SC-B —
+            # 與 header「有量權證 N 檔」同口徑,external_net 才受 cap 限制)
+            trade_value_by_kind: dict[str, float] = {"call": 0.0, "put": 0.0}
+            for sid, m in traded:
+                trade_value_by_kind[winfo[sid]["kind"]] += m
             traded.sort(key=lambda t: -t[1])
             total = len(traded)
             analyzed = traded[:FLOW_CAP]
@@ -380,7 +444,9 @@ async def get_flow(stock_id: str, date: str | None = None, refresh: bool = False
             # 聚合是純 Python 迴圈(cap 200 × 熱門權證 ~290 rows ≈ 58k 列),
             # 丟 to_thread 讓 event loop 不被單 tick 佔滿(market-pipeline
             # hot-path 教訓;純函式無共享狀態,thread 安全)
-            aggregated = await asyncio.to_thread(_aggregate, reports, winfo, dict(analyzed))
+            aggregated = await asyncio.to_thread(
+                _aggregate, reports, winfo, dict(analyzed), trade_value_by_kind
+            )
             payload = {
                 "as_of_date": d,
                 "truncated": total > FLOW_CAP,
