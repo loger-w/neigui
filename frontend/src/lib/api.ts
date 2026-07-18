@@ -7,7 +7,7 @@ import type {
   WarrantIvHistoryPayload, WarrantQuotesPayload,
   WarrantsPayload,
 } from "./warrant-data";
-import type { WarrantFlowPayload } from "./warrant-flow-data";
+import type { WarrantFlowHistoryPayload, WarrantFlowPayload } from "./warrant-flow-data";
 import { apiOrigin } from "./api-base";
 
 const BASE = "/api";
@@ -244,6 +244,15 @@ export const api = {
     const params: Record<string, string> = {};
     if (refresh) params.refresh = "true";
     return get(`${BASE}/warrants/${stockId}/flow`, params, options);
+  },
+  warrantFlowHistory(
+    stockId: string, backfill?: boolean, options?: RequestOptions,
+  ): Promise<WarrantFlowHistoryPayload> {
+    // divergence(design §3.2):backfill ≠ refresh — refresh 契約義「跳 cache 全重抓」
+    // 對 20 日 series ≈ 4000 req;backfill 只補缺、絕不重建已建日
+    const params: Record<string, string> = {};
+    if (backfill) params.backfill = "true";
+    return get(`${BASE}/warrants/${stockId}/flow/history`, params, options);
   },
   warrantIvHistory(
     warrantId: string, refresh?: boolean, options?: RequestOptions,
