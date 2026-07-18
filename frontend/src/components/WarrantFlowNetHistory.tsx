@@ -2,7 +2,6 @@ import { useRef } from "react";
 import { useWarrantFlowHistory } from "../hooks/useWarrantFlowHistory";
 import { useContainerSize } from "../hooks/useContainerSize";
 import { computeNetHistoryChart } from "../lib/warrant-flow-history-svg";
-import { cn } from "../lib/utils";
 
 // 外部淨額時序區塊(design warrant-flow-net-history v3 §3.5):
 // summary 級認購/認售雙線,中性線型區分(ink 實線 / ink-muted 虛線)+ 零軸 —
@@ -142,7 +141,7 @@ function Series({
   return (
     <>
       {segments.map((seg, i) =>
-        seg.length === 1 ? (
+        seg.length === 1 && seg[0] ? (
           <circle
             key={i}
             data-testid={testId}
