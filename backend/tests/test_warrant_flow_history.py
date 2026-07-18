@@ -94,7 +94,9 @@ class StubFinMind:
         val = self.reports.get(wid, [])
         if isinstance(val, Exception):
             raise val
-        return val
+        # _fetch_report caller 會過濾 row["date"] == d(open-ended 多日語意)—
+        # stub 以查詢日蓋章,模擬「該日有資料」
+        return [{**row, "date": d} for row in val]
 
 
 DUMP_ROW = [{"stock_id": "030011", "Trading_money": 5_000_000, "close": 2.0}]
