@@ -221,6 +221,24 @@ async def test_external_net_null_when_brand_unknown(monkeypatch):
     assert payload["summary"]["call"] == {"trade_value": 1_000_000.0, "external_net": None}
 
 
+async def test_external_net_masterlink_brand_maps_to_taishin_ho(monkeypatch):
+    # 元富證券 2026-04-06 併入台新證券(存續)— 元富 brand 權證的 HO seat 實測為
+    # 9B00「台新證券」(2026-07-18 probe:4 檔 × 2 日,6/6 樣本 9B00 造市、零「元富」seat)
+    snap = _snap({"2330": [_w("030097", "call", "台積元富61購07")]})
+    dump = [{"stock_id": "030097", "Trading_money": 2_000_000}]
+    reports = {
+        "030097": [
+            _row("9B00", "台新證券", 1.0, 120, 640),  # HO net −520 → external +520
+            _row("9B2Q", "台新敦南", 1.0, 300, 0),  # 分點不入 HO 口徑
+        ]
+    }
+    stub = StubFinMind({D1: dump}, reports)
+    _install(monkeypatch, stub, snap)
+    payload = await wf.get_flow("2330")
+    assert payload["warrants"][0]["external_net"] == 520.0
+    assert payload["summary"]["call"] == {"trade_value": 2_000_000.0, "external_net": 520.0}
+
+
 async def test_external_net_null_when_brand_unextractable(monkeypatch):
     # 權證名不含標的前綴(brand 抽不出)→ null
     snap = _snap({"2330": [_w("030098", "call", "怪名購01")]})

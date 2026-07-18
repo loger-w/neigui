@@ -45,6 +45,7 @@ _inflight: dict[str, dict[str, Any]] = {}
 # 命中、HO 量占比中位 49.2%;prompts-backlog B2)。seat 精確名單匹配是唯一鑑別 —
 # 分點 id 也是 4 碼(980C)且 HO id 含字母(9B00),長度/isdigit 都無鑑別力。
 # brand 不在表 → external_net null(新發行商安全降級,change-spec R-1)。
+# 2026-07-18 R-1 補驗:中國信託 6160 / 兆豐 7000 實測相符;元富見下行 merger 註記。
 _ISSUER_ALIASES: dict[str, tuple[str, ...]] = {
     "元大": ("元大",),
     "凱基": ("凱基",),
@@ -56,7 +57,9 @@ _ISSUER_ALIASES: dict[str, tuple[str, ...]] = {
     "國泰": ("國泰綜合", "國泰"),
     "國票": ("國票綜合", "國票"),
     "中信": ("中國信託", "中信"),
-    "元富": ("元富",),
+    # 元富證券 2026-04-06 併入台新證券(存續)— 元富 brand 權證 HO 實測 9B00「台新證券」
+    # (2026-07-18 probe 4 檔 × 2 日 6/6);保留「元富」兼容合併前歷史日期報表
+    "元富": ("台新", "元富"),
     "兆豐": ("兆豐",),
 }
 _BRAND_RE = re.compile(r"^[^0-9A-Z]+")
