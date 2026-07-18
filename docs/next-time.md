@@ -33,7 +33,7 @@
 - **flow 對映用「當下快照」查歷史候選日**:權證在 (d, 快照 as_of] 間到期下市 → 該權證當日成交不入統計、計入 unmapped_count(訊號在但不歸屬)。預設查詢(d = 快照 as_of)零影響;顯式舊 date / 深度回退才失真。修法 = 快照歷史化(per-date terms archive),v1 out of scope。觸發重評估:user 用顯式 date 查歷史流向、或 unmapped_count 異常飆高時
 - **`_cleanup_flow_caches` 每次冷聚合跑一次全目錄 iterdir**:目前冷聚合本身 200 req 網路成本 >> 1 次 iterdir,不值得節流;cache 目錄檔案數若破萬再加 last-cleanup 時戳門檻。觸發重評估:chip cache 目錄檔案數 >5k 或 real-env 量到 cleanup 佔時
 - (原「[需 user 拍板] flow 淨買賣超欄恆退化」條目已由 mod/warrant-flow-external-net 解決刪除,2026-07-18:拍板 (b) 外部淨額口徑 = −(發行商造市 HO seat net),12 家 alias 白名單 + seat 精確名對映,無法對映 → null;probe 實證 27/27 單一命中)
-- (原「中信/元富/兆豐 HO seat 精確名未經真實樣本驗證」R-1 條目已由 fix/warrant-ho-alias-verify 實測收割,2026-07-18:中國信託 6160 / 兆豐 7000 與推定相符零改動;元富因 2026-04-06 併入台新證券(存續),HO 實為 9B00「台新證券」→ alias 補「台新」,real-env 三家 external_net 皆非 null)
+- (原「中信/元富/兆豐 HO seat 精確名未經真實樣本驗證」R-1 條目已由 fix/warrant-ho-alias-verify 實測收割,2026-07-18:中國信託 6160 / 兆豐 7000 與推定相符零改動;元富因 2026-04-06 併入台新證券(存續),HO 實為 9B00「台新證券」→ alias 補「台新」,real-env 三家 external_net 皆非 null。已知殘餘邊角(review P2 接受):顯式 date < 2026-04-06 查歷史時,元富 brand 權證上的台新外部 seat 會被誤歸 HO — 該路徑本已因「當下快照對映歷史候選日」條標記失真,不另做日期條件 alias)
 - **flow warm 路徑每次查詢付 1 個 T+0 dump request(~2s,44k rows)**:自適應設計的常數成本;若嫌慢,候選 = 當日空 dump 短 TTL(如 30 分)cache。觸發重評估:user 抱怨 tab 切換慢、或午後高頻使用場景出現
 
 ## From /mod warrant-iv-redesign(2026-07-16)
