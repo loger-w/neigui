@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.35.0",
+    date: "2026-07-18",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證分點的「淨買賣超」先前恆為零(全分點買賣天生互相抵銷,無資訊量)— 改為「外部淨額」:排除發行商造市席位後,市場對每檔權證的實際淨買賣;頂部統計同步改為認購/認售的成交額與外部淨額,無法對映的權證以「—」呈現",
+      },
+    ],
+  },
+  {
     version: "0.34.4",
     date: "2026-07-18",
     changes: [
