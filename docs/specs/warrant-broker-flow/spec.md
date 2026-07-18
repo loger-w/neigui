@@ -38,21 +38,22 @@
 ## 3. 計算 / 聚合口徑
 
 - 金額 = Σ(`price` × 股數);每分點每權證:買金額、賣金額、淨額 = 買 − 賣。
-- **⚠ 2026-07-14 real-env 發現(RE-1)**:分點報表為全分點覆蓋 → 守恆恆等式:**單一權證跨全分點淨額 ≡ 0**(2330 真資料 200 檔全部精確 0.0)、summary 每 kind 買金額 == 賣金額。分點層 net(top15 兩欄,本 feature 核心)不受影響、有效。per-warrant「淨買賣超」欄與 summary 四數字按本節公式實作正確但恆退化 — **替代口徑待 user 拍板**(候選見 docs/next-time.md),v1 照拍板欄位出貨。
+- **⚠ 2026-07-14 real-env 發現(RE-1)**:分點報表為全分點覆蓋 → 守恆恆等式:**單一權證跨全分點淨額 ≡ 0**(2330 真資料 200 檔全部精確 0.0)、summary 每 kind 買金額 == 賣金額。分點層 net(top15 兩欄,本 feature 核心)不受影響、有效。
+- **2026-07-18 口徑變更(mod/warrant-flow-external-net,user 拍板;決策與 probe 全文 `.claude/mod/warrant-flow-external-net/change-spec.md`)**:per-warrant 欄與 summary 改「外部淨額」口徑 — `external_net = −(發行商造市總公司席位 net)` = 散戶/主力/他券商合計淨買賣。HO 席位對映 = 權證名抽發行商 brand(underlying_name 前綴容錯)→ 12 家 alias 白名單 → seat 精確名;無法對映(報表空 / brand 不明 / 無 HO row)→ `null`,UI「—」,不冒充 0。probe 實證(2330 top30):27/27 單一命中、HO 量占比中位 49.2%。
 - 三層聚合(backend 一次算完,前端只呈現):
-  1. **summary**:認購 / 認售各自的總買金額、總賣金額(四數字)
-  2. **per-branch**(跨該標的全部有量權證合計):買金額、賣金額、淨額 → 淨買超 top 15、淨賣超 top 15;每分點附「其進出的權證明細」(展開用)
-  3. **per-warrant**:代號、名稱、類型(認購/認售)、成交金額、分點淨買賣超
+  1. **summary**:認購 / 認售各自的 `trade_value`(有量權證成交額合計,**未受 cap 限制**)+ `external_net`(Σ analyzed 內非 null;全 null → null)
+  2. **per-branch**(跨該標的全部有量權證合計):買金額、賣金額、淨額 → 淨買超 top 15、淨賣超 top 15;每分點附「其進出的權證明細」(展開用);HO 席位照常入排行
+  3. **per-warrant**:代號、名稱、類型(認購/認售)、成交金額、外部淨額(null =「—」)
 
 ---
 
 ## 4. 成功條件(SC,可驗收)
 
 1. **SC-1** equity mode 新 tab「權證分點」(總覽 / 泡泡圖右側);**切到 tab 才發請求**,首次載入顯示進度文案(繁中,如「彙整分點資料中…」)。
-2. **SC-2** 頂部 summary:資料日 badge(如「資料日 07-09」)+ 認購買/賣金額、認售買/賣金額。
+2. **SC-2** 頂部 summary:資料日 badge(如「資料日 07-09」)+ 認購/認售各「成交額 + 外部淨額」與定義說明行(2026-07-18 口徑變更,原買/賣四數字恆等退化)。
 3. **SC-3** 「買超 15 大 / 賣超 15 大」並排兩欄:分點名 + 依金額比例的水平 bar + 金額;**點分點展開其買賣的權證清單**(權證代號/名稱/買賣金額)。窄版面兩欄疊直(`useContainerSize` 慣例)。
-4. **SC-4** 權證明細表:成交金額降序;欄位 = 代號、名稱、類型、成交金額、淨買賣超。
-5. **SC-5** 色彩紀律:淨買超 = bull(紅)/ 淨賣超 = bear(綠)(台股慣例);認購/認售類型 badge 不用紅綠;不寫方向性文案;data-testid + 正向 assertion 鎖色彩 binding。
+4. **SC-4** 權證明細表:成交金額降序;欄位 = 代號、名稱、類型、成交金額、外部淨額(null 顯示「—」)。
+5. **SC-5** 色彩紀律:淨買超 = bull(紅)/ 淨賣超 = bear(綠)(台股慣例);外部淨額同紀律、null 中性(ink-dim);認購/認售類型 badge 不用紅綠;不寫方向性文案;data-testid + 正向 assertion 鎖色彩 binding。
 6. **SC-6** `truncated` 時 UI 註記「僅統計成交金額前 150 檔權證」。
 7. **SC-7** 空狀態(繁中):標的無掛牌權證 / 該日全部權證零成交,分開文案。
 8. **SC-8** `no_trading_day` / `refresh=true` / cache(key = stock_id + date,`_cache_version`)慣例沿用;date 預設最近可得日(往前回退)。
