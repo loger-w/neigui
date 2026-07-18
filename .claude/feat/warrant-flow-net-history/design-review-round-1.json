@@ -1,0 +1,13 @@
+{
+  "round": 1,
+  "design_version_reviewed": "v1",
+  "findings": [
+    {"id": "R1", "severity": "P0", "summary": "marker 寫入無近日 guard — 盤中 backfill 會把 today 永久標假日", "resolution": "accepted — v2 §2.2:no_dump 且 d < today−1 才寫 marker;近日 no_dump 槽保持 missing"},
+    {"id": "R2", "severity": "P1", "summary": "_try_build_day 抽取三差異點未定義(mapped_all / cleanup 落點 / 同日雙建)", "resolution": "accepted — v2 §2.1 明文:mapped_all 進簽名回傳重用;cleanup 留 get_flow + backfill 尾另呼;backfill 建前重讀 cache + per-day _run_once,殘餘窗口進 R-D"},
+    {"id": "R3", "severity": "P1", "summary": "遞補槽規則未定義(重判定 / cap 約束 / 候選集)", "resolution": "accepted — v2 §2.2:遞補重跑同一判定、同受 SCAN_WEEKDAY_CAP、候選集掃描時固定"},
+    {"id": "R4", "severity": "P2", "summary": "FAKE 組裝欄位未定 + SC-5 覆蓋歸屬未聲明", "resolution": "accepted — v2 §2.4 定型欄位;SC-5 僅 RTL"},
+    {"id": "R5", "severity": "P2", "summary": "live-contract L# 結論懸空", "resolution": "accepted — v2 §4:不加,理由 cache 組裝層無新上游"},
+    {"id": "R6", "severity": "P2", "summary": "no_warrants payload shape 未定", "resolution": "accepted — v2 §2.2 步驟 3 定型"},
+    {"id": "R7", "severity": "P2", "summary": "built 計數含 no_volume 日,文案與圖面可矛盾", "resolution": "accepted — v2 §2.3 註記為已知呈現特性"}
+  ]
+}

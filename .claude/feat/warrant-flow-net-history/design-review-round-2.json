@@ -1,0 +1,13 @@
+{
+  "round": 2,
+  "design_version_reviewed": "v2",
+  "exit": "0 P0 / 2 P1 — 達退出條件;P1/P2 全數以 v3 設計修正處理(R9 記 Known Risks R-E)",
+  "findings": [
+    {"id": "R8", "severity": "P1", "summary": "近日 guard 使 backfill 候選被不可解槽(today no_dump / 昨日 report_pending)燒光,實效可為 0", "resolution": "accepted — v3 §2.2:候選排除 d >= today−1(與 marker guard 對稱);近日由主 panel 天然建置;補 pytest 場景"},
+    {"id": "R9", "severity": "P1", "summary": "backfill 用今日快照重建 ~40 日前歷史,到期下市權證歸 unmapped → 左端系統性偏低(口徑漂移)", "resolution": "accepted — v3 Known Risks R-E 明文偏差方向;觀測沿既有 unmapped log;評估後不加 payload 欄位(v1 無消費者);根治 = 快照歷史化,out of scope"},
+    {"id": "R10", "severity": "P2", "summary": "簽名 2-tuple 與 3-tuple 自相矛盾", "resolution": "accepted — v3 統一 tuple[str, dict | None, set[str] | None]"},
+    {"id": "R11", "severity": "P2", "summary": "missing_count 真實/FAKE 兩式分歧 + shape 差異", "resolution": "accepted — v3 統一定義 = days 中 missing 槽數;FAKE fixture 滿窗 20 日 shape 同構"},
+    {"id": "R12", "severity": "P2", "summary": "舊日 marker 依單次空回應永久化 45 天,誤標無自癒", "resolution": "accepted — v3 marker retention 14 天(自癒窗 + 重判成本 1 req)"},
+    {"id": "R13", "severity": "P2", "summary": "跨模組私有借用違反 twse-tpex 慣例未給理由", "resolution": "accepted — v3 try_build_day 公開命名;其餘私有借用豁免明文(同 domain 緊耦合)+ 兩檔互註"}
+  ]
+}

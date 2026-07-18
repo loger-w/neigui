@@ -1,0 +1,10 @@
+{
+  "round": 1,
+  "mode": "condensed",
+  "exit": "0 P0 / 1 P1 — 達退出條件;全數修入 PLAN",
+  "findings": [
+    {"id": "R1", "severity": "P1", "summary": "🔴 cleanup 行為改動無紅測試", "resolution": "accepted — 節 4 加 test_cleanup_retention_windows,掛 commit 2 [red] 前"},
+    {"id": "R2", "severity": "P2", "summary": "SCAN_WEEKDAY_CAP 截斷 edge 無測試", "resolution": "accepted — 節 4 加 test_scan_cap_truncates_window"},
+    {"id": "R3", "severity": "P2", "summary": "FlowBody 簽名無 symbol/active,『一行級』低估", "resolution": "accepted — 節 11 明寫 props 擴充與 render 語意"}
+  ]
+}
