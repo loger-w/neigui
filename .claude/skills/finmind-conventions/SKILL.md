@@ -24,6 +24,7 @@ description: FinMind 接入慣例與配額真相。接新 FinMind dataset、寫 
 - **Probe-first**:fan-out 前先對「最具代表性的單一 data_id」打 1 request 探可得性(如成交金額最大權證的分點報表),0 rows = 該日資料未上料 → 直接換候選日,省掉整包白燒(cap 200 場景省 199 req)。樣板 `services/warrant_flow.py::get_flow` 步驟 3e。Trigger:設計任何「多 data_id × 同日」fan-out 時。
 - **fan-out 失敗語意用 `asyncio.TaskGroup` 不用 gather**:gather 首錯 propagate 後其餘 in-flight 照打(結果全丟 = 白燒配額);TaskGroup 首錯自動 cancel siblings。`except* httpx.HTTPError as eg: raise eg.exceptions[0]`。Trigger:「任一失敗整包放棄」語意的 fan-out。
 - **候選日自適應**:資料上料時點未知(如權證分點「當晚幾點」)不要 hardcode 起點 — 從 today 起試 + probe 偵測 + 空結果不落 cache(晚間上料自動吃到),消除對未知時點的依賴。代價 = 每查詢 ≤2 request。Trigger:接 T+1 lag 且上料時點不明的 dataset。
+- **非交易日 negative cache(marker)必帶 recent-floor guard + 短 retention**(2026-07-18 warrant-flow-net-history 沉澱):判「dump 空 = 假日」寫 marker 前,`d >= today−1` 一律不寫(近日空可能只是未上料,誤標會把真交易日永久踢出序列);marker retention 短窗(14 天)= transient 空回應的自癒窗。實證:2026-07-10 真假日 marker 正確、當日/昨日槽保持 missing 明日自然重判。樣板 `services/warrant_flow_history.py::_backfill`。Trigger:任何「以單次空回應推斷非交易日/無資料」的 negative cache 設計。
 
 ## 共用 window 設計
 

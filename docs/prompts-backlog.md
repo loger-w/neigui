@@ -26,17 +26,7 @@ Phase 1 實證方法(照 finmind-conventions「在場證明」判讀法):user_in
 
 (原 B2「flow 淨買賣超口徑」已由 mod/warrant-flow-external-net 執行完畢刪除,2026-07-18;拍板紀錄與 probe 實證全文遷至 `.claude/mod/warrant-flow-external-net/change-spec.md` 與 `docs/specs/warrant-broker-flow/spec.md` §3)
 
-### B2. flow 外部淨額時序化(觸發:用了幾天單日快照後,想看趨勢再貼)
-
-```
-/feat warrant flow 外部淨額時序:權證分點 tab 目前只有單日快照(mod/warrant-flow-external-net 落地),把 summary 的認購/認售外部淨額拉成 per-day 時序(如近 20 交易日雙線圖),回答「外部人這陣子在持續加碼還是撤退」。
-
-拍板點(brainstorm Phase 0 必談,一次帶齊):
-1. 資料成本策略:冷抓一日 = 1 dump + cap 200 報表 fan-out ≈ 201 req → 20 日冷建 ≈ 4000 req(配額 6000/hr,幾乎吃滿一小時)。候選:(i) 只從既有 warrant_flow_<stock>_<date> result cache 累積(30 天 retention,零新增請求,但只有查過的日子有資料 → 圖有洞);(ii) 背景逐日補建 + 進度回饋(貴但完整);(iii) 混合 — cache 有的先畫、缺日惰性補。我傾向 (iii),但 (ii)/(iii) 的配額佔用要你點頭。
-2. 時序落點:新 panel 區塊(flow tab 頂部)vs 併入既有 WarrantIvHistory 式展開 — UI 位階你挑。
-3. 只做 summary 級雙線(認購/認售)v1,per-warrant 時序 out of scope — 同意與否。
-注意:每日值直接取 result cache payload 的 summary.external_net,口徑零重算;null 日(該日全 kind null)畫斷點不補 0(SC-C 紀律延伸)。e2e 歸屬照 e2e-conventions(新 UI 區塊,大概率 E# 加 spec)。
-```
+(原 B2「flow 外部淨額時序化」已由 feat/warrant-flow-net-history 執行完畢刪除,2026-07-18:拍板 (iii) 混合 + K=3 bounded backfill + `backfill` param 隔離 refresh 語意;design/評審全文在 `.claude/feat/warrant-flow-net-history/`)
 
 ### B3. options + chip-bubble 積欠 P2/P3 收割(觸發:下次想排 /refactor 時)
 
