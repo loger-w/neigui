@@ -368,6 +368,86 @@ def _is_warrant_shaped(stock_id: str) -> bool:
     return len(stock_id) == 6 and stock_id[:2] in _WARRANT_PREFIXES
 
 
+async def try_build_day(
+    stock_id: str,
+    d: str,
+    snap: dict,
+    winfo: dict[str, dict],
+    mapped_all: set[str] | None,
+    refresh: bool,
+) -> tuple[str, dict | None, set[str] | None]:
+    """單日建置(dump → traded 過濾 → probe → fan-out → aggregate → 落 cache)。
+
+    自 get_flow 候選日迴圈抽出的共用點(warrant_flow_history 也用,公開命名)。
+    status:``built``(payload 已落 cache,含 no_volume)/ ``no_dump``(dump 空 —
+    假日或未上料)/ ``report_pending``(dump 有、probe 0 rows — 報表未上料)。
+    mapped_all 由 caller 跨日重用(首個非空 dump 時自建並隨 tuple 回傳)。
+    """
+    dump = await _fetch_price_day(d, refresh)
+    if not dump:
+        return ("no_dump", None, mapped_all)
+    if mapped_all is None:
+        mapped_all = {w["warrant_id"] for rows in snap["by_underlying"].values() for w in rows}
+    mapped = mapped_all  # narrowed 別名(pyright 迴圈 back-edge 不保 narrowing)
+    traded: list[tuple[str, float]] = []
+    unmapped = 0
+    for r in dump:
+        sid = str(r.get("stock_id", ""))
+        m = r.get("Trading_money") or 0
+        if m <= 0:
+            continue
+        if sid in winfo:
+            traded.append((sid, float(m)))
+        elif _is_warrant_shaped(sid) and sid not in mapped:
+            unmapped += 1
+    if unmapped:
+        logger.info("warrant flow %s %s: %d traded warrants unmapped", stock_id, d, unmapped)
+    if not traded:
+        payload = _empty_payload("no_volume", d, unmapped)
+        _write_result_cache(stock_id, d, payload)
+        return ("built", payload, mapped_all)
+    # summary trade_value:mapped 有量權證全集合(未 cap;SC-B —
+    # 與 header「有量權證 N 檔」同口徑,external_net 才受 cap 限制)
+    trade_value_by_kind: dict[str, float] = {"call": 0.0, "put": 0.0}
+    for sid, m in traded:
+        trade_value_by_kind[winfo[sid]["kind"]] += m
+    traded.sort(key=lambda t: -t[1])
+    total = len(traded)
+    analyzed = traded[:FLOW_CAP]
+    # 可得性 probe:top-1 一發,0 rows = 報表未上料 → 下一候選日
+    top_wid = analyzed[0][0]
+    probe_rows = await _fetch_report(top_wid, d)
+    if not probe_rows:
+        return ("report_pending", None, mapped_all)
+    reports: dict[str, list[dict]] = {top_wid: probe_rows}
+    rest = [wid for wid, _ in analyzed[1:]]
+    try:
+        async with asyncio.TaskGroup() as tg:
+            tasks = {wid: tg.create_task(_fetch_report(wid, d)) for wid in rest}
+    except* httpx.HTTPError as eg:
+        # 整包放棄(不 cache 部分結果);TaskGroup 已取消 siblings
+        raise eg.exceptions[0] from None
+    for wid, task in tasks.items():
+        reports[wid] = task.result()
+    # 聚合是純 Python 迴圈(cap 200 × 熱門權證 ~290 rows ≈ 58k 列),
+    # 丟 to_thread 讓 event loop 不被單 tick 佔滿(market-pipeline
+    # hot-path 教訓;純函式無共享狀態,thread 安全)
+    aggregated = await asyncio.to_thread(
+        _aggregate, reports, winfo, dict(analyzed), trade_value_by_kind
+    )
+    payload = {
+        "as_of_date": d,
+        "truncated": total > FLOW_CAP,
+        "total_traded": total,
+        "analyzed": len(analyzed),
+        "unmapped_count": unmapped,
+        "empty_reason": None,
+        **aggregated,
+    }
+    _write_result_cache(stock_id, d, payload)
+    return ("built", payload, mapped_all)
+
+
 async def get_flow(stock_id: str, date: str | None = None, refresh: bool = False) -> dict:
     """標的權證買賣超分點聚合(route 入口)。"""
 
@@ -394,75 +474,16 @@ async def get_flow(stock_id: str, date: str | None = None, refresh: bool = False
                 if cached is not None:
                     cached.pop("_cache_version", None)
                     return cached
-            dump = await _fetch_price_day(d, refresh)
-            if not dump:
-                continue
-            if mapped_all is None:
-                mapped_all = {
-                    w["warrant_id"] for rows in snap["by_underlying"].values() for w in rows
-                }
-            mapped = mapped_all  # narrowed 別名(pyright 迴圈 back-edge 不保narrowing)
-            traded: list[tuple[str, float]] = []
-            unmapped = 0
-            for r in dump:
-                sid = str(r.get("stock_id", ""))
-                m = r.get("Trading_money") or 0
-                if m <= 0:
-                    continue
-                if sid in winfo:
-                    traded.append((sid, float(m)))
-                elif _is_warrant_shaped(sid) and sid not in mapped:
-                    unmapped += 1
-            if unmapped:
-                logger.info(
-                    "warrant flow %s %s: %d traded warrants unmapped", stock_id, d, unmapped
-                )
-            if not traded:
-                payload = _empty_payload("no_volume", d, unmapped)
-                _write_result_cache(stock_id, d, payload)
-                return payload
-            # summary trade_value:mapped 有量權證全集合(未 cap;SC-B —
-            # 與 header「有量權證 N 檔」同口徑,external_net 才受 cap 限制)
-            trade_value_by_kind: dict[str, float] = {"call": 0.0, "put": 0.0}
-            for sid, m in traded:
-                trade_value_by_kind[winfo[sid]["kind"]] += m
-            traded.sort(key=lambda t: -t[1])
-            total = len(traded)
-            analyzed = traded[:FLOW_CAP]
-            # 可得性 probe:top-1 一發,0 rows = 報表未上料 → 下一候選日
-            top_wid = analyzed[0][0]
-            probe_rows = await _fetch_report(top_wid, d)
-            if not probe_rows:
-                continue
-            reports: dict[str, list[dict]] = {top_wid: probe_rows}
-            rest = [wid for wid, _ in analyzed[1:]]
-            try:
-                async with asyncio.TaskGroup() as tg:
-                    tasks = {wid: tg.create_task(_fetch_report(wid, d)) for wid in rest}
-            except* httpx.HTTPError as eg:
-                # 整包放棄(不 cache 部分結果);TaskGroup 已取消 siblings
-                raise eg.exceptions[0] from None
-            for wid, task in tasks.items():
-                reports[wid] = task.result()
-            # 聚合是純 Python 迴圈(cap 200 × 熱門權證 ~290 rows ≈ 58k 列),
-            # 丟 to_thread 讓 event loop 不被單 tick 佔滿(market-pipeline
-            # hot-path 教訓;純函式無共享狀態,thread 安全)
-            aggregated = await asyncio.to_thread(
-                _aggregate, reports, winfo, dict(analyzed), trade_value_by_kind
+            status, payload, mapped_all = await try_build_day(
+                stock_id, d, snap, winfo, mapped_all, refresh
             )
-            payload = {
-                "as_of_date": d,
-                "truncated": total > FLOW_CAP,
-                "total_traded": total,
-                "analyzed": len(analyzed),
-                "unmapped_count": unmapped,
-                "empty_reason": None,
-                **aggregated,
-            }
-            _write_result_cache(stock_id, d, payload)
-            removed = _cleanup_flow_caches(clock.today())
-            if removed:
-                logger.info("warrant flow cache cleanup removed %d files", removed)
+            if payload is None:  # no_dump / report_pending → 下一候選日
+                continue
+            # cleanup 僅在 full-build 路徑跑(no_volume return 不跑 — 抽出前行為照舊)
+            if status == "built" and payload.get("empty_reason") is None:
+                removed = _cleanup_flow_caches(clock.today())
+                if removed:
+                    logger.info("warrant flow cache cleanup removed %d files", removed)
             return payload
         raise HTTPException(status_code=404, detail={"error": "no_data"})
 
