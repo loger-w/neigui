@@ -68,7 +68,7 @@ export function computeNetHistoryChart(
     callSegments: segments(callVals, x, y),
     putSegments: segments(putVals, x, y),
     zeroY: y(0),
-    xTicks: [...new Set(tickIdx)].map((i) => ({ x: x(i), label: built[i].date.slice(5) })),
+    xTicks: [...new Set(tickIdx)].map((i) => ({ x: x(i), label: built[i]!.date.slice(5) })),
     yTicks: [hi, 0, lo]
       .filter((v, i, arr) => arr.indexOf(v) === i)
       .map((v) => ({ y: y(v), label: fmtTick(v) })),

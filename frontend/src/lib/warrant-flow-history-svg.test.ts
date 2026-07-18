@@ -32,8 +32,8 @@ describe("computeNetHistoryChart", () => {
     const geom = computeNetHistoryChart(days, W, H);
     expect(geom).toBeTruthy();
     expect(geom!.callSegments.length).toBe(2);
-    expect(geom!.callSegments[0].length).toBe(2);
-    expect(geom!.callSegments[1].length).toBe(2);
+    expect(geom!.callSegments[0]!.length).toBe(2);
+    expect(geom!.callSegments[1]!.length).toBe(2);
   });
 
   test("全 null 線 → 0 段(另一線正常)", () => {
@@ -66,7 +66,7 @@ describe("computeNetHistoryChart", () => {
     ];
     const geom = computeNetHistoryChart(days, W, H);
     // 兩個 built 點:x 距離 = 整個繪圖寬(missing 不插空位)
-    const seg = geom!.callSegments[0];
+    const seg = geom!.callSegments[0]!;
     expect(seg.length).toBe(2);
     const xs = geom!.xTicks.map((t) => t.label);
     expect(xs).not.toContain("06-25");
