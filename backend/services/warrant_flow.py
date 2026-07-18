@@ -34,7 +34,8 @@ FLOW_CAP = 200  # spike L-2:cap 200 最壞覆蓋 95.69%(2330);文案由 payload 
 FLOW_LOOKBACK_DAYS = 10  # R8:春節級連假也要能回退到最近交易日
 _PRICE_DAY_KEEP_KEYS = ("stock_id", "Trading_money")
 _DUMP_RETAIN_DAYS = 7
-_RESULT_RETAIN_DAYS = 30
+_RESULT_RETAIN_DAYS = 45  # 30 → 45:history 20 交易日 ≈ 28-30 曆日貼邊(design v3 §2.1)
+_NONTRADING_RETAIN_DAYS = 14  # marker 誤標自癒窗(transient 空 dump;design review R12)
 # 與 Phase 0 spike 腳本同一口徑(memory reference_finmind_warrant_dataset 代號區間);
 # 含字尾字母的 6 碼牛熊/展延證天然命中,71 等非權證 prefix 排除(R10)
 _WARRANT_PREFIXES = ("03", "04", "05", "06", "07", "08", "09", "72", "73", "74")
@@ -148,13 +149,16 @@ def _cleanup_flow_caches(today: date_type) -> int:
     失敗 skip(Windows 檔案佔用)— _cleanup_stale_window_files 慣例。"""
     dump_floor = (today - timedelta(days=_DUMP_RETAIN_DAYS)).isoformat()
     result_floor = (today - timedelta(days=_RESULT_RETAIN_DAYS)).isoformat()
+    nontrading_floor = (today - timedelta(days=_NONTRADING_RETAIN_DAYS)).isoformat()
     removed = 0
     for p in chip_cache_dir().iterdir():
         if p.suffix != ".json":
             continue
         stem = p.stem
-        stale = (stem.startswith("flow_prices_") and stem.rsplit("_", 1)[-1] < dump_floor) or (
-            stem.startswith("warrant_flow_") and stem.rsplit("_", 1)[-1] < result_floor
+        stale = (
+            (stem.startswith("flow_prices_") and stem.rsplit("_", 1)[-1] < dump_floor)
+            or (stem.startswith("warrant_flow_") and stem.rsplit("_", 1)[-1] < result_floor)
+            or (stem.startswith("flow_nontrading_") and stem.rsplit("_", 1)[-1] < nontrading_floor)
         )
         if not stale:
             continue
