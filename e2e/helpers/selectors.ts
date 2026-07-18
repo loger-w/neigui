@@ -56,6 +56,7 @@ export const TESTIDS = {
   // 權證分點 tab(feat/warrant-broker-flow)
   warrantFlowPanel: "warrant-flow-panel",
   flowDateBadge: "flow-date-badge",
+  flowSummary: "flow-summary",
   flowBuyCol: "flow-buy-col",
   flowSellCol: "flow-sell-col",
   flowWarrantTable: "flow-warrant-table",

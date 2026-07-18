@@ -140,18 +140,28 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     // 金額(030011 凱基 3000 + 030012 凱基 960 = 3960 元)防 visibility 假綠。
     await page.getByRole("button", { name: /^權證分點$/ }).click();
     await expect(page.getByTestId(TESTIDS.flowDateBadge)).toContainText("06-25"); // FAKE_TODAY−1 回退
+    // summary 外部淨額口徑(mod/warrant-flow-external-net):HO seat 對映鏈
+    // (brand 抽取 → alias → HO row)任一環壞掉會退化成「—」,鎖具體數字
+    const summary = page.getByTestId(TESTIDS.flowSummary);
+    await expect(summary).toContainText("成交額");
+    await expect(summary).toContainText("800 萬"); // call trade_value(未 cap)
+    await expect(summary).toContainText("2,667 元"); // call external_net(1695+972)
+    await expect(summary).toContainText("300 元"); // put external_net
     const buyCol = page.getByTestId(TESTIDS.flowBuyCol);
-    await expect(buyCol).toContainText("凱基-台北");
+    await expect(buyCol).toContainText("凱基台北");
     await expect(buyCol).toContainText("3,960 元"); // 淨買超金額(fixtures 手算)
-    await expect(page.getByTestId(TESTIDS.flowSellCol)).toContainText("元大-總公司");
+    await expect(page.getByTestId(TESTIDS.flowSellCol)).toContainText("元大");
     // 展開分點 → 權證明細(payload 內嵌,零額外 API)
-    await buyCol.getByRole("button", { name: /展開 凱基-台北/ }).click();
+    await buyCol.getByRole("button", { name: /展開 凱基台北/ }).click();
     await expect(buyCol).toContainText("030011");
     await expect(buyCol).toContainText("台積凱基61購01");
-    // 明細表金額降序首列 = 030011(5,000,000)
-    await expect(
-      page.getByTestId(TESTIDS.flowWarrantTable).getByTestId("flow-warrant-row").first(),
-    ).toHaveAttribute("data-warrant-id", "030011");
+    // 明細表金額降序首列 = 030011(5,000,000)+ 外部淨額 −(凱基 HO −1695)
+    const firstRow = page
+      .getByTestId(TESTIDS.flowWarrantTable)
+      .getByTestId("flow-warrant-row")
+      .first();
+    await expect(firstRow).toHaveAttribute("data-warrant-id", "030011");
+    await expect(firstRow.getByTestId("flow-warrant-net")).toHaveText("1,695 元");
   });
 
   test("E10: 無權證標的空狀態(SC-7)", async ({ page }) => {
