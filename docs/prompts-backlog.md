@@ -24,16 +24,19 @@ Phase 1 實證方法(照 finmind-conventions「在場證明」判讀法):user_in
 驗收:實證情境下 user_count 不再釘上限;正常路徑(EOD 成功)行為不變(pytest 全綠)。
 ```
 
-### B2. flow 淨買賣超口徑(需 user 先拍板,拍完填入再貼)
+### B2. flow 淨買賣超口徑(2026-07-18 已拍板 (b),已啟動 /mod)
 
 ```
 /mod warrant flow 明細表「淨買賣超」欄與 summary 買/賣對口徑重設計:RE-1 守恆恆等式 — 全分點報表下單權證跨全分點 net ≡ 0、每 kind 買==賣(2330 實測精確 0.0),現行欄位恆為零無資訊量。
 
 條目:docs/next-time.md「From /feat warrant-broker-flow」[需 user 拍板] 條。
-我拍板採用口徑:[選一,拍板後填入]
-  (a) per-warrant「分點淨流動」= Σ 正 net,量測換手集中度
-  (b) 發行商造市 seat 反向 net(散戶/主力 vs 造市商,需權證名 → 發行商 seat 對映 heuristic)
-  (c) 砍欄位,summary 改「認購/認售成交額」兩數字
+我拍板採用口徑:(b) 發行商造市 seat 反向 net = 外部人(散戶/主力)淨買賣;per-warrant 欄位取代 net_value,summary 買/賣對改為「認購外部淨額 / 認售外部淨額」(= 跨權證加總),bull/bear 配色語意恢復。
+
+2026-07-18 probe 實證(2330 / 07-17,top 30 細算;腳本 scratchpad probe_flow_metrics2.py):
+- 發行商 brand 從權證名抽取:去 underlying_name 前綴、取首個數字前字串,1087/1087 全成功(12 brands:中信/元大/元富/兆豐/凱基/台新/國泰/國票/富邦/永豐/統一/群益)。
+- 造市 seat(總公司)對映規則:securities_trader_id 恰 4 碼 + 名稱屬 brand 家族精確名(alias 表:元大=元大9800、凱基=凱基9200、台新=台新證券9B00、永豐=永豐金9A00、統一=統一5850、富邦=富邦9600、群益=群益9100、國泰=國泰綜合8880、國票=國票綜合7790;中信/元富/兆豐未入樣本,alias 待實測補)。27/27 有報表權證恰命中一個 seat,零多配零漏配;HO 量占比中位 49.2%(造市雙邊掛單先驗吻合)。
+- 已知缺口:top 30 有 3 檔(10%)報表當日空(FinMind 部分權證 T+1 上料 lag)→ 該權證外部淨額顯示「—」(null),不得以 0 冒充。
+- 降級守衛候選:HO seat 量占比異常(如 <10%)或 zero-match 時該權證輸出 null,不硬給錯值。
 注意:動口徑 = 對外契約 + SC 改寫,Phase 1 現況表要列 flow payload 所有 consumer;e2e 歸屬依 e2e-conventions 判準(UI 欄位語意變更,大概率要動 spec)。
 ```
 
