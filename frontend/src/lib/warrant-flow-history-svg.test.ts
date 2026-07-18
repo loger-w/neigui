@@ -72,6 +72,22 @@ describe("computeNetHistoryChart", () => {
     expect(xs).not.toContain("06-25");
   });
 
+  test("yTicks 標籤格式:億/萬/元三分支帶號(lock)", () => {
+    const days = [day("2026-06-25", -2.5e8), day("2026-06-26", 1.2e8)];
+    const geom = computeNetHistoryChart(days, W, H);
+    const labels = geom!.yTicks.map((t) => t.label);
+    expect(labels).toContain("1.2億");
+    expect(labels).toContain("-2.5億");
+    const small = computeNetHistoryChart(
+      [day("2026-06-25", 30_000), day("2026-06-26", -500)],
+      W,
+      H,
+    );
+    const smallLabels = small!.yTicks.map((t) => t.label);
+    expect(smallLabels).toContain("3萬");
+    expect(smallLabels).toContain("-500");
+  });
+
   test("單點段回報為孤點(圓點 marker 由元件畫)", () => {
     const days = [
       day("2026-06-23", 100),
