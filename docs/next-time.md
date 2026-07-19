@@ -73,33 +73,13 @@
 
 - **`parse_institutional` 的 `day_change` 欄位恆 0**(註解宣稱 caller 回填但從未發生;design.md KR-1):前端已改用 series 末兩點差,該欄位成死欄位 — 下次動 institutional payload 時移除(連動 options-types.ts + 測試)。觸發重評估:動 fetch_institutional 或 InstitutionalSide 型別時
 - **`finmind_realtime._run_once` 測試層跨 event loop 污染**:asyncio_mode=auto 每測試新 loop,前一測試 wait_for timeout 留下的 pending shielded task 卡在模組級 inflight cache → 後續測試 `got Future attached to a different loop` 連環炸(2026-07-07 pre-push 負載下實測,單獨重跑即綠)。修法候選:conftest autouse fixture 清 `_INFLIGHT` cache。觸發重評估:test_finmind_realtime 再 flake 或動 _run_once 時
-- **Phase 4 code-review P2 reuse 批次**(5 條,留待 /refactor):fmtSigned(options-range-svg vs OptionsNetTable,行為微異)、fmtPct ×3 卡片重複、距現價 % 計算(options-conclusion vs OptionsMaxPainCard,含 0.0005 門檻)、finmind_futures `_inst_by_date` vs parse_foreign_futures 聚合重複(可加 institutions 參數收斂)、RangeMapSvg spot 插入迴圈沿襲 StrikeLadder 舊寫法(loop-invariant 可 hoist)。觸發重評估:動任一相關檔或開 options 專屬 /refactor 時
+- **fmtSigned 兩份行為真不同,不可直接合併**(refactor/options-p2-reuse 2026-07-19 拍板踢出:OptionsNetTable 版全數字 `+12,345`、options-range-svg 版 ≥1000 縮寫 `+12.3k`,合併必動一邊顯示 = mod 不是 refactor)。要合併需先拍板統一成哪種顯示(或帶 abbrev 參數合併,兩 call site 各帶模式)。觸發重評估:第三份 fmtSigned 出現、或想統一 OI± 顯示格式時(其餘 4 條 P2 reuse 已由該分支收割:fmtPct → lib/options-format、距現價 → maxPainDistance、futures 聚合 → institutions 參數、RangeMapSvg hoist)
 
 ## From /perf cold-start(2026-07-07)
 
 - **`routes/symbols.py::load_symbols` 未走 FinMind 接入慣例**:直接裸 httpx 呼叫,沒過 `FinMindClient._get` / TokenBucket / per-module `get_finmind()` wrap(conventions 制定前的既有債)。觸發重評估:下次動 symbols route 或 FinMind 客戶端重構時,順路收編
 
-## From /mod chip-bubble-intraday-overlay(2026-06-29)
-
-Phase 5 code review(workflow `wc2wlfiym`)未處理的 P2/P3,留待下次 /refactor:
-
-### 視覺 / 主題集中
-- **F-P3-9** `intraday-line-svg.tsx:15-16` `STROKE = "#7c6f55"` → 移到 `chip-theme.ts` 加 `CHIP.intradayLine`,集中色票
-- **F-P3-8/8b** `chip-bubble-svg.tsx:429` 註解 z-order 改成一致版:`grid → time-line → close-dashed → bubbles`
-
-### 命名 / 微簡化
-- **F-P3-14** `chip-bubble-svg.tsx:437` `chartWidth={width - PADDING.left - PADDING.right}` → `chartWidth={cW}`
-- **F-P3-15** `intraday-line-svg.tsx:12-13` `SESSION_START_MIN` / `SESSION_RANGE_MIN` 去 `export`,test 移除常數 tautology assertion
-- **F-P3-10** `intraday-line-svg.tsx` rename → `chip-intraday-line-svg.tsx`,`interface Props` → `export interface IntradayLineLayerProps`
-- **F-P3-13** `chip-bubble-svg.tsx:430` 外層改 `{intradayPoints && <IntradayLineLayer ... />}`(子元件自己 guard)
-
-### 測試補強
-- **F-P2-4** `test_finmind.py` 補 `test_fetch_chip_intraday_today_cache_refetches_when_stale`
-- **F-P3-16** `chip-bubble-svg.test.tsx` 加 `selectedBroker + intradayPoints` combined-case 鎖 fallback Y 軸來源
-- **F-P3-17** `test_finmind.py` 加 `test_fetch_chip_intraday_raises_on_upstream_failure`
-- **F-P3-18** `test_chip_routes.py:151-158` default-date case 強化:鎖 `_today()` 路徑
-- **F-P3-19** `useChipIntraday.test.ts` 加 date-change rerender 測試
-- **F-P3-20** `useChipIntraday.test.ts` 加 `forceRefreshRef` reset 測試
+(原「From /mod chip-bubble-intraday-overlay」P2/P3 整段已由 refactor/chip-bubble-p3-harvest 收割刪除,2026-07-19:F-P3-8/9/10/13/14/15 + F-P2-4 + F-P3-16~19 全收;F-P3-20 moot — useChipIntraday 已於 force-refresh-query 收割改寫,forceRefreshRef 不存在)
 
 ## From /mod bubble-chip-ux(2026-07-02)
 

@@ -28,14 +28,7 @@ Phase 1 實證方法(照 finmind-conventions「在場證明」判讀法):user_in
 
 (原 B2「flow 外部淨額時序化」已由 feat/warrant-flow-net-history 執行完畢刪除,2026-07-18:拍板 (iii) 混合 + K=3 bounded backfill + `backfill` param 隔離 refresh 語意;design/評審全文在 `.claude/feat/warrant-flow-net-history/`)
 
-### B3. options + chip-bubble 積欠 P2/P3 收割(觸發:下次想排 /refactor 時)
-
-```
-/refactor 收割兩批積欠的 review P2/P3(純結構,行為不變):
-批 A — docs/next-time.md「From /feat options-page-v2」P2 reuse 批次 5 條:fmtSigned(options-range-svg vs OptionsNetTable,注意行為微異要先 characterization)、fmtPct ×3、距現價 % 計算(含 0.0005 門檻)、finmind_futures _inst_by_date vs parse_foreign_futures 聚合重複、RangeMapSvg spot 插入迴圈 hoist。
-批 B — 「From /mod chip-bubble-intraday-overlay」的視覺/命名/測試補強清單(F-P3-9 色票進 chip-theme、F-P3-10/13/14/15 命名微簡化、F-P2-4 + F-P3-16~20 測試補強;測試補強標 🟢 與 🔵 分開 commit)。
-紀律:兩批分開評估是否同分支;fmtSigned 行為微異處若合併需改行為 → 那條升級成 /mod 或當場排除,不硬併。每步單獨綠;Phase 2 先盤測試覆蓋。
-```
+(原 B3「options + chip-bubble 積欠 P2/P3 收割」已於 2026-07-19 兩條 /refactor 執行完畢刪除:批 A = refactor/options-p2-reuse(PR #42,fmtSigned 因行為真不同踢出寫回 next-time)、批 B = refactor/chip-bubble-p3-harvest(PR #43,F-P3-20 moot))
 
 (原 B4「分點淨流動輔欄」已於 2026-07-18 /mod 評估結案刪除:**不做** — 40-req 實測跨日零持續性(|Δratio| median 0.27、低值 Jaccard 0/9),比率屬日內噪音;完整數據與重開條件在 docs/decisions.md「刻意不採納」節)
 
