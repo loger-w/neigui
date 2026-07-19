@@ -149,12 +149,15 @@ def test_chip_intraday_route_returns_payload(mock_fm):
 
 
 def test_chip_intraday_default_date(mock_fm):
-    """無 date param → 走 _today() default,refresh=False。"""
+    """無 date param → 走 _today() default,refresh=False(F-P3-18:鎖 clock
+    路徑的實值,route 若退回 wall-clock 或亂傳日期會紅)。"""
+    from routes.chip import _today
+
     resp = TestClient(app).get("/api/chip/2330/intraday")
     assert resp.status_code == 200
-    # called with (symbol, some_date_string, False); just check signature length
     call = mock_fm.fetch_chip_intraday.await_args
     assert call.args[0] == "2330"
+    assert call.args[1] == _today()
     assert call.args[2] is False
 
 

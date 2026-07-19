@@ -1007,6 +1007,59 @@ async def test_fetch_chip_intraday_refresh_bypasses_cache():
     assert mc.get.await_count == first_calls + 1
 
 
+@pytest.mark.asyncio
+async def test_fetch_chip_intraday_today_cache_refetches_when_stale():
+    """今日盤中 cache 逾 30 分鐘 → 視為 stale 重抓(F-P2-4:非今日走
+    cache-hit 測試已鎖,這裡鎖 `_is_today and _is_stale` 的重抓分支)。"""
+    from services import clock
+    from services.finmind import FinMindClient
+
+    today = clock.today().isoformat()
+    mc = _mock_http(
+        _fm_response(KBAR_GOLDEN_ROWS),
+        _fm_response(KBAR_GOLDEN_ROWS),
+    )
+    client = FinMindClient()
+    client._http = mc
+    await client.fetch_chip_intraday("2330", today)
+    first_calls = mc.get.await_count
+
+    # 把 cache 的 fetched_at 改到 31 分鐘前(> 30min stale 門檻)
+    key = f"2330_{today}_intraday"
+    cached = client._read_cache(key)
+    assert cached is not None
+    cached["fetched_at"] = (datetime.now() - timedelta(minutes=31)).isoformat(timespec="seconds")
+    client._write_cache(key, cached)
+
+    await client.fetch_chip_intraday("2330", today)
+    assert mc.get.await_count == first_calls + 1  # stale → 重打 FinMind
+
+
+@pytest.mark.asyncio
+async def test_fetch_chip_intraday_raises_on_upstream_failure():
+    """FinMind 4xx/5xx → HTTPStatusError 上拋到 route 邊界轉 502,不吞
+    (F-P3-17;對齊 fetch_chip_history 同款 no-cache 失敗測試)。"""
+    import httpx
+
+    from services.finmind import FinMindClient
+
+    fail_resp = MagicMock()
+    fail_resp.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "400 Bad Request",
+            request=MagicMock(),
+            response=MagicMock(),
+        )
+    )
+    mc = AsyncMock()
+    mc.get = AsyncMock(return_value=fail_resp)
+    client = FinMindClient()
+    client._http = mc
+
+    with pytest.raises(httpx.HTTPError):
+        await client.fetch_chip_intraday("2330", "2026-06-26")
+
+
 async def test_stock_price_range_calls_taiwan_stock_price_dataset(monkeypatch):
     # warrant-iv-drift SC-2:backfill 標的價缺口補抓的 dataset/參數契約鎖
     from services.finmind import FinMindClient
