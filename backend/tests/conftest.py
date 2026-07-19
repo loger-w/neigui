@@ -67,6 +67,31 @@ def _reset_warrant_prewarm_task(monkeypatch):
     monkeypatch.setattr(ws, "_prewarm_task", None)
 
 
+@pytest.fixture(autouse=True)
+def _reset_realtime_task_registries():
+    """market snapshot 鏈的模組級 task dict 同款跨 event loop 殘留 — 每測試起點清空。
+
+    負載下 wait_for(_EOD_INLINE_BUDGET_SEC) 超時會把 pending EOD task 留在
+    _eod_background;pytest-asyncio 的 loop teardown 不 cancel pending task,
+    下一測試(新 loop)同 key 撿到死 loop 的 task → RuntimeError
+    "got Future attached to a different loop" 連環炸(2026-07-07/11/14/17
+    四次 pre-push 實證)。market_breadth / market_universe 的 _inflight 同
+    class 一併清(warrant* / daytrade_fee 的 _inflight 由各測試檔既有
+    fixture 自清)。
+    注意用 .clear() 不用 monkeypatch.setattr({}):setattr 會在 teardown 還原
+    「原 dict 物件」,殘留條目跟著回魂。
+    """
+    import services.finmind_realtime as fr
+    import services.market_breadth as mb
+    import services.market_universe as mu
+
+    fr._inflight.clear()
+    fr._eod_background.clear()
+    mb._inflight.clear()
+    mu._inflight.clear()
+    yield
+
+
 @pytest.fixture
 def bypass_finmind_rate_limiter(monkeypatch):
     """Opt-in: swap the rate limiter for a no-op + force client rebuild.
