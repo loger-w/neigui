@@ -51,6 +51,11 @@ ORPHAN_SCOPES: list[tuple[str, str]] = [
 ]
 
 
+def _normalized(raw: bytes) -> bytes:
+    # 鏡像經 git checkout 會轉 CRLF(core.autocrlf);行尾差異不是內容漂移
+    return raw.replace(b"\r\n", b"\n")
+
+
 def build_pairs(claude_home: Path, mirror: Path) -> list[tuple[Path, Path]]:
     pairs: list[tuple[Path, Path]] = []
     for src_rel, pattern, dst_rel in DIR_MAPS:
@@ -114,7 +119,7 @@ def main(
             else:
                 print(f"MISSING  {dst.relative_to(mirror)}")
                 issues += 1
-        elif dst.read_bytes() != src_bytes:
+        elif _normalized(dst.read_bytes()) != _normalized(src_bytes):
             if args.fix:
                 dst.write_bytes(src_bytes)
                 print(f"UPDATED  {dst.relative_to(mirror)}")

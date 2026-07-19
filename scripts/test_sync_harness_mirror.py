@@ -16,7 +16,9 @@ _spec.loader.exec_module(sync)
 def make_home(tmp_path: Path) -> Path:
     home = tmp_path / "claude-home"
     (home / "commands").mkdir(parents=True)
-    (home / "commands" / "feat.md").write_text("feat v1", encoding="utf-8")
+    (home / "commands" / "feat.md").write_text(
+        "feat v1\nsecond line\n", encoding="utf-8", newline="\n"
+    )
     (home / "hooks" / "tests").mkdir(parents=True)
     (home / "hooks" / "safety-hooks.py").write_text("hook v1", encoding="utf-8")
     (home / "hooks" / "tests" / "test_safety_hooks.py").write_text(
@@ -83,6 +85,22 @@ def test_orphan_in_mirror_detected(tmp_path, capsys):
     capsys.readouterr()
     assert run("--check", home, mirror) == 1
     assert "ORPHAN" in capsys.readouterr().out
+
+
+def test_crlf_only_difference_is_not_drift(tmp_path, capsys):
+    # 鏡像經 git checkout 會轉 CRLF;行尾差異不是內容漂移,不可誤報
+    home = make_home(tmp_path)
+    mirror = tmp_path / "mirror"
+    run("--fix", home, mirror)
+    crlf = (
+        (mirror / "commands" / "feat.md")
+        .read_bytes()
+        .replace(b"\n", b"\r\n")
+        .replace(b"\r\r\n", b"\r\n")
+    )
+    (mirror / "commands" / "feat.md").write_bytes(crlf)
+    capsys.readouterr()
+    assert run("--check", home, mirror) == 0
 
 
 def test_excluded_retired_hook_not_synced(tmp_path):
