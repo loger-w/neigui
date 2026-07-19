@@ -1653,3 +1653,77 @@ async def test_snapshot_eod_slow_compute_detaches_to_background(monkeypatch) -> 
 
     assert r2["eod_pending"] is False
     assert r2["breadth"] == _FAKE_BREADTH_PAYLOAD
+
+
+# ---------------------------------------------------------------------------
+# bug test-finmind-realtime-flake(2026-07-19)— 模組級 task dict 跨 event loop 污染
+#
+# 負載下 wait_for(_EOD_INLINE_BUDGET_SEC) 超時 → pending EOD task 留在模組級
+# _eod_background;pytest-asyncio 的 per-test loop teardown 只 shutdown_asyncgens
+# + close,不 cancel pending task(0.26 plugin.py::_provide_event_loop)→ 死 loop
+# 的 task 永遠 pending。下一測試(新 loop)_ensure_eod_task 以同 key 撿到它 →
+# asyncio.shield → RuntimeError "got Future attached to a different loop";該檔
+# ~20 個 snapshot 測試共用同一 key(today + digest({"2330"}))→ 連環炸 8-19 個
+# (2026-07-07 / 07-11 / 07-14 / 07-17 四次 pre-push 實證,單檔重跑必綠)。
+#
+# 兩測試務必相鄰且依此定義順序(pytest 依定義序執行):A 走真實 timeout 路徑
+# 製造污染;B 驗證下一測試免疫(conftest autouse registry 清理)。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_pending_eod_task_pollution_setup(monkeypatch) -> None:
+    """(pair A)模擬負載超時:EOD compute 慢於 inline budget → eod_pending 回傳
+    後測試即結束,pending task 留在 _eod_background — flake 的第一張骨牌。
+    本測試恆綠;它的職責是把污染留給 pair B 驗證免疫。"""
+    import services.finmind_realtime as fr
+
+    monkeypatch.setattr(fr, "_EOD_INLINE_BUDGET_SEC", 0.01)
+
+    async def never_breadth(*args, **kwargs):
+        await asyncio.Event().wait()  # 永不完成 = 負載下慢到超時的極限型
+
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=_C1_FAKE_UNIVERSE)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=_C1_FAKE_SECTOR_ROWS)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth", new=never_breadth):
+        result = await fetch_market_snapshot(refresh=False)
+
+    assert result["eod_pending"] is True
+    # 污染已就位:pending task 以本測試的 event loop 掛在模組級 dict
+    assert any(not t.done() for t in fr._eod_background.values())
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_immune_to_prior_test_pending_eod_task() -> None:
+    """(pair B,紅測試)前一測試殘留的 pending EOD task 不得波及本測試。
+
+    修正前:_ensure_eod_task 撿到死 loop 的 task → RuntimeError
+    "got Future attached to a different loop"(四次 pre-push 連環炸的每一發)。
+    修正後:conftest autouse 清 _inflight / _eod_background → 本測試照常全綠。"""
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=_C1_FAKE_UNIVERSE)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=_C1_FAKE_SECTOR_ROWS)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth",
+               new=AsyncMock(return_value=_FAKE_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_breadth",
+               new=AsyncMock(return_value=_FAKE_SECTOR_BREADTH_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio",
+               new=AsyncMock(return_value=_FAKE_SECTOR_VOL_PAYLOAD)), \
+         patch("services.finmind_realtime._fetch_sector_amount_share",
+               new=AsyncMock(return_value=_FAKE_AMOUNT_SHARE_PAYLOAD)):
+        result = await fetch_market_snapshot(refresh=False)
+
+    assert result["eod_pending"] is False
+    assert result["breadth"] == _FAKE_BREADTH_PAYLOAD
+    assert result["stale"] is False
