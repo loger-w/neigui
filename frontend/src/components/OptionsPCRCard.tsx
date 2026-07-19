@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import type { OptionsPCR, PCRRegion } from "../lib/options-types";
+import { fmtPct, fmtPctFraction } from "../lib/options-format";
 
 interface Props {
   data: OptionsPCR | null;
@@ -25,16 +26,6 @@ function regionClasses(region: PCRRegion): { chip: string; label: string } {
     default:
       return { chip: "bg-ink/5 text-ink-dim", label: "資料不足" };
   }
-}
-
-function fmtPct(p: number | null | undefined, digits = 1): string {
-  if (p === null || p === undefined || !isFinite(p)) return "—";
-  return `${p.toFixed(digits)}%`;
-}
-
-function fmtRatio(p: number | null | undefined, digits = 1): string {
-  if (p === null || p === undefined || !isFinite(p)) return "—";
-  return (p * 100).toFixed(digits) + "%";
 }
 
 export function OptionsPCRCard({
@@ -106,7 +97,7 @@ export function OptionsPCRCard({
                           </td>
                           <td className="text-right">{fmtPct(stats.mean_pct, 2)}</td>
                           <td className="text-right">{fmtPct(stats.std_pct, 2)}</td>
-                          <td className="text-right">{fmtRatio(stats.hit_positive)}</td>
+                          <td className="text-right">{fmtPctFraction(stats.hit_positive)}</td>
                           <td className="text-right text-ink-dim">{stats.samples}</td>
                         </tr>
                       );
