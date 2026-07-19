@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 import { OptionsInfoHint } from "./OptionsInfoHint";
 import type { OptionsMaxPain } from "../lib/options-types";
+import { fmtPctFraction } from "../lib/options-format";
 
 interface Props {
   data: OptionsMaxPain | null;
@@ -9,11 +10,6 @@ interface Props {
   onRefresh: () => void;
   /** SC-10:主數字旁顯示「距現價 ±x.x%」;null 省略 */
   spot?: number | null;
-}
-
-function fmtPct(p: number | null | undefined, digits = 1): string {
-  if (p === null || p === undefined || !isFinite(p)) return "—";
-  return `${(p * 100).toFixed(digits)}%`;
 }
 
 function fmtNTD(n: number): string {
@@ -91,9 +87,9 @@ export function OptionsMaxPainCard({
                 過去 {data.hit_rate.samples} 期 結算與 T-1 Max Pain 乖離
               </div>
               <div className="flex gap-3 text-xs">
-                <span>中位數 <span className="tabular-nums text-ink">{fmtPct(data.hit_rate.median_abs_deviation_pct)}</span></span>
-                <span>±1% <span className="tabular-nums text-ink">{fmtPct(data.hit_rate.hit_within_1pct, 0)}</span></span>
-                <span>±2% <span className="tabular-nums text-ink">{fmtPct(data.hit_rate.hit_within_2pct, 0)}</span></span>
+                <span>中位數 <span className="tabular-nums text-ink">{fmtPctFraction(data.hit_rate.median_abs_deviation_pct)}</span></span>
+                <span>±1% <span className="tabular-nums text-ink">{fmtPctFraction(data.hit_rate.hit_within_1pct, 0)}</span></span>
+                <span>±2% <span className="tabular-nums text-ink">{fmtPctFraction(data.hit_rate.hit_within_2pct, 0)}</span></span>
               </div>
             </div>
           ) : (

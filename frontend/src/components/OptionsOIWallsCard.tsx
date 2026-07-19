@@ -1,16 +1,12 @@
 import type { ReactElement } from "react";
 import type { OptionsOIWalls } from "../lib/options-types";
+import { fmtPct } from "../lib/options-format";
 
 interface Props {
   data: OptionsOIWalls | null;
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
-}
-
-function fmtPct(p: number | null | undefined, digits = 1): string {
-  if (p === null || p === undefined || !isFinite(p)) return "—";
-  return `${p.toFixed(digits)}%`;
 }
 
 export function OptionsOIWallsCard({
