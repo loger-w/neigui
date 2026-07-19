@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import {
   IntradayLineLayer, pointsToPolyline, parseMinute,
-} from "./intraday-line-svg";
+} from "./chip-intraday-line-svg";
 import type { IntradayPoint } from "./chip-data";
 
 afterEach(() => cleanup());
