@@ -85,18 +85,18 @@ export function RangeMapSvg({
     ...strikesDesc.map((s) => Math.max(valueOf(callByStrike.get(s)), valueOf(putByStrike.get(s)))),
   );
 
-  // spot 插入列(沿 StrikeLadder 慣例:desc 掃描,第一個低於 spot 的 strike 前插)
-  const rows: Array<{ kind: "strike"; strike: number } | { kind: "spot" }> = [];
-  let spotInserted = false;
-  for (const k of strikesDesc) {
-    if (!spotInserted && spot != null && k < spot && spot < strikesDesc[0]! + 1) {
-      rows.push({ kind: "spot" });
-      spotInserted = true;
+  // spot 插入列:第一個低於 spot 的 strike 前插;spot 不低於最高 strike 則置頂,
+  // 低於全部 strike 則不插(loop-invariant hoist 自 StrikeLadder 舊逐列掃描)
+  const rows: Array<{ kind: "strike"; strike: number } | { kind: "spot" }> =
+    strikesDesc.map((strike) => ({ kind: "strike", strike }));
+  if (spot != null) {
+    const insertIdx =
+      spot < strikesDesc[0]! + 1 ? strikesDesc.findIndex((k) => k < spot) : -1;
+    if (insertIdx >= 0) {
+      rows.splice(insertIdx, 0, { kind: "spot" });
+    } else if (spot >= strikesDesc[0]!) {
+      rows.unshift({ kind: "spot" });
     }
-    rows.push({ kind: "strike", strike: k });
-  }
-  if (!spotInserted && spot != null && spot >= strikesDesc[0]!) {
-    rows.unshift({ kind: "spot" });
   }
 
   return (
