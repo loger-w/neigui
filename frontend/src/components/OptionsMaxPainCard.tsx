@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { OptionsInfoHint } from "./OptionsInfoHint";
 import type { OptionsMaxPain } from "../lib/options-types";
 import { fmtPctFraction } from "../lib/options-format";
+import { maxPainDistance } from "../lib/options-conclusion";
 
 interface Props {
   data: OptionsMaxPain | null;
@@ -67,15 +68,15 @@ export function OptionsMaxPainCard({
                 : "—"}
             </div>
             {spot !== null && spot > 0 && data.current.max_pain !== null && (() => {
-              const diff = (data.current.max_pain - spot) / spot;
+              const d = maxPainDistance(spot, data.current.max_pain);
               return (
                 <span
                   data-testid="max-pain-distance"
                   className="text-xs text-ink-dim tabular-nums"
                 >
-                  {Math.abs(diff) < 0.0005
+                  {d.coincident
                     ? "與現價幾乎重合"
-                    : `距現價${diff > 0 ? "上方" : "下方"} ${(Math.abs(diff) * 100).toFixed(1)}%`}
+                    : `距現價${d.direction} ${d.absPct}%`}
                 </span>
               );
             })()}

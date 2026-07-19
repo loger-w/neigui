@@ -19,6 +19,25 @@ const fmt = (n: number): string => n.toLocaleString("zh-TW");
 /** |現價 − Max Pain| / 現價 低於此值視為「幾乎重合」 */
 const NEAR_COINCIDENT = 0.0005;
 
+export interface MaxPainDistance {
+  /** |diff| < NEAR_COINCIDENT → 顯示「幾乎重合」文案,不顯示 % */
+  coincident: boolean;
+  direction: "上方" | "下方";
+  /** |diff| 百分比字串,一位小數(如 "2.3")*/
+  absPct: string;
+}
+
+/** Max Pain 距現價的共用計算核心(結論句 + OptionsMaxPainCard 兩處呼叫,
+ * 0.0005 門檻單一來源 — refactor/options-p2-reuse)。 */
+export function maxPainDistance(spot: number, maxPain: number): MaxPainDistance {
+  const diff = (maxPain - spot) / spot;
+  return {
+    coincident: Math.abs(diff) < NEAR_COINCIDENT,
+    direction: diff > 0 ? "上方" : "下方",
+    absPct: (Math.abs(diff) * 100).toFixed(1),
+  };
+}
+
 function positionSentence(
   spot: number, putWall: number | null, callWall: number | null,
 ): string {
@@ -44,12 +63,9 @@ function positionSentence(
 }
 
 function maxPainSentence(spot: number, maxPain: number): string {
-  const diff = (maxPain - spot) / spot;
-  if (Math.abs(diff) < NEAR_COINCIDENT) {
-    return `Max Pain ${fmt(maxPain)} 與現價幾乎重合`;
-  }
-  const dir = diff > 0 ? "上方" : "下方";
-  return `Max Pain ${fmt(maxPain)} 在現價${dir} ${(Math.abs(diff) * 100).toFixed(1)}%`;
+  const d = maxPainDistance(spot, maxPain);
+  if (d.coincident) return `Max Pain ${fmt(maxPain)} 與現價幾乎重合`;
+  return `Max Pain ${fmt(maxPain)} 在現價${d.direction} ${d.absPct}%`;
 }
 
 export function buildConclusion(input: ConclusionInput): string[] {
