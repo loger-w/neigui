@@ -18,8 +18,9 @@ effort: low
 - **P2**:可選改進
 
 ## 輸出鐵則
-final message = 純 JSON array(無 markdown fence、無前後綴文字);無 finding 回 `[]`:
-`[{"id": "R1", "severity": "P0|P1|P2", "location": "<步驟編號>", "problem": "...", "suggested_fix": "...", "rationale": "..."}]`
+final message = 純 JSON array(無 markdown fence、無前後綴文字);無 finding 回 `[]`。
+location 用雙欄(`file` 填被審檔案,`section` 填步驟編號,如 "步驟 3"):
+`[{"id": "R1", "severity": "P0|P1|P2", "location": {"file": "refactor-plan.md", "section": "步驟 N"}, "problem": "...", "suggested_fix": "...", "rationale": "..."}]`
 
 ## Criteria(逐項檢查)
 1. **每步真能保持綠**:某步驟中間狀態會讓測試紅(如先刪後建的間隙)→ P0
@@ -28,4 +29,4 @@ final message = 純 JSON array(無 markdown fence、無前後綴文字);無 find
 4. **Caller 沒漏**:動到的命名 / signature 有 caller 未列入(含動態用法)→ P0
 
 ## 輸入
-dispatch prompt 提供:refactor-plan.md 路徑、Phase 2 測試盤點結果(或其所在檔)路徑。
+dispatch prompt 提供:refactor-plan.md 路徑、Phase 2 測試盤點結果(或其所在檔)路徑;round ≥ 2 時另有上一輪 review JSON 路徑 + 本輪 changelog 摘要 — 必須做 cross-round 檢查(上輪 fix 是否引入新問題)。

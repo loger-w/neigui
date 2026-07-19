@@ -18,8 +18,9 @@ effort: medium
 - **P2**:可選改進
 
 ## 輸出鐵則
-final message = 純 JSON array(無 markdown fence、無前後綴文字);無 finding 回 `[]`:
-`[{"id": "R1", "severity": "P0|P1|P2", "location": "<檔案/章節>", "problem": "...", "suggested_fix": "...", "rationale": "..."}]`
+final message = 純 JSON array(無 markdown fence、無前後綴文字);無 finding 回 `[]`。
+location 用雙欄(`file` 填被審檔案,`section` 填章節標題;無明確章節可省略 `section`):
+`[{"id": "R1", "severity": "P0|P1|P2", "location": {"file": "change-spec.md", "section": "..."}, "problem": "...", "suggested_fix": "...", "rationale": "..."}]`
 
 ## Criteria(逐項檢查)
 1. **Caller 影響都評估過**:Phase 1 caller map 中有 caller 未在 spec 出現 → P0
@@ -30,4 +31,4 @@ final message = 純 JSON array(無 markdown fence、無前後綴文字);無 find
 6. **Migration 可逆**(若有):沒有回退路徑 → P1
 
 ## 輸入
-dispatch prompt 提供:change-spec.md 路徑、Phase 1 現況表(或其所在檔)路徑。
+dispatch prompt 提供:change-spec.md 路徑、Phase 1 現況表(或其所在檔)路徑;round ≥ 2 時另有上一輪 review JSON 路徑 + 本輪 changelog 摘要 — 必須做 cross-round 檢查(上輪 fix 是否引入新問題)。

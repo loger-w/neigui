@@ -62,12 +62,15 @@
 - **券差表點代號跳 equity 分析**:券差 tab 的 stock_id 可連到 equity mode 該股籌碼頁(跨 mode 導航目前無先例,需設計 mode+symbol 的 state 傳遞)。觸發重評估:券差查詢 /feat 完成後
 - **TWSE MI_INDEX `type=0999` 牛熊證與認售 type 枚舉**若 S-1 spike 發現牛熊證需求自然浮現,v2 再評(TPEx 對應 wcb/wxy 端點已知)。觸發重評估:user 提到牛熊證時
 
-## From harness review(2026-07-06,12-agent 體檢;token 減負六項已於 mod/harness-token-slim 落地)
+## From harness review(2026-07-06,12-agent 體檢;2026-07-19 全批拍板收割)
 
-- **[harness P0] Batch 1 強制層剩餘**(阻擋 hook pytest、PowerShell matcher + tool_name + PS pattern 已於 2026-07-07 落地):自我保護 hook(PreToolUse Write|Edit 守 hooks/settings/harness.json/.git/hooks/**agents/**,`ask` 不 deny;shell 面 pattern 同批補)→ pre_push fail-closed(git tracked 但缺檔 / 空 verify 需顯式 flag)→ **`permissions.deny` 加 `Read(**/.env)` 需 user 手動**(2026-07-07 classifier 擋 Claude 改 permissions 自身;user 在 `~/.claude/settings.json` 的 permissions 加 `"deny": ["Read(**/.env)", "Read(**/.env.*)"]` 即可)
-- **[harness P1] Batch 2 一行級修正包**(auto-verify 移除 `ruff check --fix` 與 harness.json ruff 插槽已於 2026-07-07 契約掃描落地):鐵則 G 改「預設 + command 可覆寫」+ mod.md Phase 3 刪「同 /feat 慣例」誤導句、perf.md Phase 1 補 auto-verify 呼叫、feat.md Phase 6 infra_fail 已改引用(done)、4 agent location schema 統一 {file, section?} + 其餘三 agent 補 round≥2 cross-round 條款
-- **[harness P2] Batch 3 剩餘**:`scripts/sync-harness-mirror.py`(--check/--fix,消 README cp 塊 + 文字清單漏列雙源)、Phase 6 deferred 證據追蹤(state.json `deferred_evidence` + harness-context 注入)、/chore 輕量入口(一頁內:升級 / 補測試 / docs / 研究腳本 + 分支政策)
-- **[harness P2] Batch 4 第二期**:`derive_phase_from_artifacts` advisory(附進 stop-audit block reason,不 auto-patch)、final_merge_sha 向 git log 驗真、SubagentStop spike(payload 可判 agent 身分?)後才立案 schema 機驗、條件式 e2e 進機讀 gate **需 user 裁決**(撞 pre_push「e2e 不在此跑」已拍板決策)
+2026-07-19 一次拍板做/緩/砍並落地:**已做** = 自我保護 hook(protect-harness.py,ask 不 deny,Write|Edit + shell 雙面)、pre_push fail-closed 補洞(tracked 缺檔 / 空 verify 需 `allow_empty_verify`)、mod.md Phase 3 刪誤導句、4 agent location schema 統一 `{file, section?}` + cross-round 條款補齊、`scripts/sync-harness-mirror.py`(--check/--fix,首跑即揪出 5 個舊漂移檔)、/chore 輕量入口。**已被先前工作順路做掉** = 鐵則 G 覆寫條款、perf.md Phase 1 auto-verify、feat.md Phase 6 infra_fail。**砍** = 條件式 e2e 進機讀 gate(A 案拍板:e2e 歸屬是語意判斷機器判不了,維持 pre_push 不跑 e2e;殘餘風險由 /chore 檔第 3 步「e2e 判準檢查」補)。剩餘:
+
+- **[待 user 動手] `permissions.deny` 加 `Read(**/.env)`**:classifier 擋 Claude 改 permissions 自身;user 在 `~/.claude/settings.json` 的 permissions 加 `"deny": ["Read(**/.env)", "Read(**/.env.*)"]` 即可(確切 JSON 已於 2026-07-19 session 提供)
+- **[緩] Phase 6 deferred 證據追蹤**(state.json `deferred_evidence` + harness-context 注入)。觸發重評估:再次發生 deferred 證據漏補事故
+- **[緩] `derive_phase_from_artifacts` advisory**(附進 stop-audit block reason,不 auto-patch)。觸發重評估:state.json phase 標記與 artifact 實況錯亂再發
+- **[緩] final_merge_sha 向 git log 驗真**。觸發重評估:state.json 出現對不上 git log 的 final_merge_sha
+- **[緩] SubagentStop spike**(payload 可判 agent 身分?)後才立案 schema 機驗。觸發重評估:出現需要審計 subagent 行為的實際需求
 
 ## From /feat options-page-v2(2026-07-07)
 

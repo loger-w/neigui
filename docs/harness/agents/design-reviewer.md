@@ -18,8 +18,9 @@ effort: medium
 - **P2**:可選改進
 
 ## 輸出鐵則
-final message = 純 JSON array(無 markdown fence、無前後綴文字);無 finding 回 `[]`:
-`[{"id": "R1", "severity": "P0|P1|P2", "location": "<檔案/章節>", "problem": "...", "suggested_fix": "...", "rationale": "..."}]`
+final message = 純 JSON array(無 markdown fence、無前後綴文字);無 finding 回 `[]`。
+location 用雙欄(`file` 填被審檔案,`section` 填章節標題;無明確章節可省略 `section`):
+`[{"id": "R1", "severity": "P0|P1|P2", "location": {"file": "design.md", "section": "..."}, "problem": "...", "suggested_fix": "...", "rationale": "..."}]`
 
 ## Criteria(逐項檢查)
 1. **Goal 全覆蓋**:每條 SC-N 都有對應設計章節;漏 → P0

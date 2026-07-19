@@ -17,6 +17,7 @@
 │   /refactor — why gate → characterization test → 小步保綠
 │   /perf — 量化目標 gate → profile → 一策略一 commit → 重量測
 │   /auto — 自主模式契約(退出條件 / 自動核准邊界 / 必停清單)
+│   /chore — 輕量入口(升級 / 補測試 / docs / 研究腳本,不套多 phase)
 │
 ├─ 驗證 skill(skills/auto-verify.md,~/.claude/skills/)
 │   專案形狀偵測 → 自動化五步驟 + 真實環境驗證分流(單一 source of truth)
@@ -50,6 +51,8 @@
 │                        escape / printf 重組 flag 等 20+ 種繞過手法
 │   safety-hooks.py    — 攔截危險 rm -rf / bulk git add / 讀寫 secrets /
 │                        curl|bash / chmod 777
+│   protect-harness.py — 自我保護:改強制層本體(hooks / settings /
+│                        agents / harness.json / git hooks)→ ask 經 user 核准
 │   format-on-edit.py  — 編輯後自動 format
 │   harness-context.py — SessionStart/UserPromptSubmit 注入進行中 /feat
 │                        的 phase 與 gate(soft reminder,弱模型防遺忘)
@@ -97,14 +100,9 @@
 
 ## 檔案同步說明
 
-`commands/`、`hooks/`、`skills/auto-verify.md`、`global-rules.md` 為鏡像,**不要直接改這裡** — 改 `~/.claude/` 原檔後執行:
+`commands/`、`hooks/`、`agents/`、`skills/`、`global-rules.md` 為鏡像,**不要直接改這裡** — 改 `~/.claude/` 原檔後執行同步器(對映清單以腳本內 `DIR_MAPS` / `SINGLE_MAPS` 為準;原檔側新增檔案 glob 自動入列,鏡像側多出的檔報 ORPHAN):
 
 ```bash
-cp ~/.claude/commands/{feat,bug,mod,perf,refactor,auto}.md docs/harness/commands/
-cp ~/.claude/hooks/{block-no-verify,safety-hooks,format-on-edit,harness_lib,harness-context,harness-stop-audit,check_feat_tags}.py docs/harness/hooks/
-cp ~/.claude/hooks/tests/test_*.py docs/harness/hooks/tests/
-cp ~/.claude/skills/auto-verify/SKILL.md docs/harness/skills/auto-verify.md
-cp ~/.claude/skills/branch-lifecycle/SKILL.md docs/harness/skills/branch-lifecycle.md
-cp ~/.claude/agents/{design-reviewer,impl-spec-reviewer,change-spec-reviewer,refactor-plan-reviewer}.md docs/harness/agents/
-cp ~/.claude/CLAUDE.md docs/harness/global-rules.md
+python scripts/sync-harness-mirror.py --check   # 只報告,不一致 exit 1
+python scripts/sync-harness-mirror.py --fix     # 原檔 → 鏡像 覆蓋同步
 ```

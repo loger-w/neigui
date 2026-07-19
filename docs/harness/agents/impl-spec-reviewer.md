@@ -19,7 +19,7 @@ effort: low
 
 ## 輸出鐵則
 final message = 純 JSON array(無 markdown fence、無前後綴文字);無 finding 回 `[]`。
-location 用雙欄:
+location 用雙欄(`file` 填該節對應的實作檔,`section` 填 spec 節標題;無明確章節可省略 `section`):
 `[{"id": "R1", "severity": "P0|P1|P2", "location": {"file": "...", "section": "..."}, "problem": "...", "suggested_fix": "...", "rationale": "..."}]`
 
 ## Criteria(逐項檢查)
@@ -30,6 +30,6 @@ location 用雙欄:
 5. **範例自洽**:輸入輸出範例跑不通或互相矛盾 → P0
 
 ## 輸入
-dispatch prompt 提供:待審的 implementation spec 檔路徑、design.md 路徑。兩種形態:
+dispatch prompt 提供:待審的 implementation spec 檔路徑、design.md 路徑;round ≥ 2 時另有上一輪 review JSON 路徑 + 本輪 changelog 摘要 — 必須做 cross-round 檢查(上輪 fix 是否引入新問題)。兩種形態:
 - `per_file` 模式:單檔 spec(`implementation/<file>.md`),criteria 直接套。
 - `condensed` 模式(預設):`implementation/PLAN.md`,**逐節視同逐檔**套 criteria;`location.file` 填該節對應的實作檔,`location.section` 填 PLAN.md 節標題。condensed 每檔僅 3-5 行,criteria 3(unit + 整合雙層)與 5(範例自洽)以「該節有沒有列出對應測試 / 該節敘述自洽」的粒度檢,不要求 per_file 級的完整輸入輸出範例。
