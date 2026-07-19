@@ -303,6 +303,33 @@ describe("BubbleChartSvg intraday line overlay (additive optional prop)", () => 
     expect(line!.getAttribute("fill")).toBe("none");
   });
 
+  it("quiet day + selectedBroker fallback 軸下 intraday line 用 broker 自身 price scale (F-P3-16)", () => {
+    // 全 trades ≤ VOLUME_THRESHOLD → 全局軸空;selectedBroker 觸發 F2 fallback,
+    // yLow/yHigh 從 broker A 自身資料(price 100 ± pad 1 → [99, 101])。
+    // 若 fallback 軸沒接到 intraday layer,此情境根本是 HintSvg(無 polyline 可言)。
+    const quiet: BrokerTrade[] = [
+      mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 3, sell: 0 }),
+      mkTrade({ broker: "B", broker_id: "B1", price: 500, buy: 4, sell: 0 }),
+    ];
+    const { container } = render(
+      <BubbleChartSvg
+        trades={quiet}
+        width={400}
+        height={300}
+        selectedBroker="A"
+        intradayPoints={[
+          { t: "09:00", price: 100.5 },  // broker 軸 [99,101] 內 → 保留
+          { t: "11:00", price: 100.8 },  // 內 → 保留
+          { t: "13:30", price: 200 },    // 外(但在全局 [100,500] 內)→ clip
+        ]}
+      />,
+    );
+    const line = container.querySelector('[data-testid="intraday-line"]');
+    expect(line).not.toBeNull();
+    // 200 被 broker 軸 clip 掉 → 只剩 2 個座標;若誤用全局軸會是 3 個
+    expect(line!.getAttribute("points")!.split(" ").length).toBe(2);
+  });
+
   it("crosshair group + 6 child elements exist, all opacity=0 by default (hidden)", () => {
     const { container } = render(
       <BubbleChartSvg trades={baseTrades} width={400} height={300} />,

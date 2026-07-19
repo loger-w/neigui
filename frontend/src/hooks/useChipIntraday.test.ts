@@ -52,6 +52,18 @@ describe("useChipIntraday", () => {
     expect(spy.mock.calls[1]?.[2]).toBe(true);
   });
 
+  it("date 改變 → 以新 date 重抓(F-P3-19:queryKey 含 date 的接線鎖)", async () => {
+    const spy = vi.spyOn(api, "chipIntraday").mockResolvedValue(mk("2330"));
+    const { rerender } = renderHook(
+      ({ date }: { date: string }) => useChipIntraday("2330", date),
+      { wrapper: makeQueryWrapper(), initialProps: { date: "2026-06-26" } },
+    );
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    rerender({ date: "2026-06-27" });
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect(spy.mock.calls[1]?.[1]).toBe("2026-06-27");
+  });
+
   it("sets error on rejection", async () => {
     vi.spyOn(api, "chipIntraday").mockRejectedValue(new Error("boom"));
     const { result } = renderHook(() => useChipIntraday("2330", "2026-06-26"), {
