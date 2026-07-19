@@ -149,8 +149,8 @@ def test_chip_intraday_route_returns_payload(mock_fm):
 
 
 def test_chip_intraday_default_date(mock_fm):
-    """無 date param → 走 _today() default,refresh=False(F-P3-18:鎖 clock
-    路徑的實值,route 若退回 wall-clock 或亂傳日期會紅)。"""
+    """無 date param → default 為今日實值字串,refresh=False(F-P3-18;
+    亂傳日期 / 空字串會紅。wall-clock 退回在無 FAKE_TODAY 環境不可分辨)。"""
     from routes.chip import _today
 
     resp = TestClient(app).get("/api/chip/2330/intraday")
