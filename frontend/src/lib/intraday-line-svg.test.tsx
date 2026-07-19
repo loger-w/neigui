@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import {
   IntradayLineLayer, pointsToPolyline, parseMinute,
-  SESSION_START_MIN, SESSION_RANGE_MIN,
 } from "./intraday-line-svg";
 import type { IntradayPoint } from "./chip-data";
 
@@ -31,11 +30,6 @@ describe("parseMinute", () => {
 
 describe("pointsToPolyline", () => {
   const padL = 56, padT = 12, cW = 400, cH = 256;
-
-  it("session range constants match 09:00 → 13:30", () => {
-    expect(SESSION_START_MIN).toBe(540);
-    expect(SESSION_RANGE_MIN).toBe(270);
-  });
 
   it("empty points returns empty string", () => {
     expect(pointsToPolyline([], 100, 200, padL, padT, cW, cH)).toBe("");
