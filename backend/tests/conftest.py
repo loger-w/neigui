@@ -81,10 +81,25 @@ def _reset_realtime_task_registries():
     注意用 .clear() 不用 monkeypatch.setattr({}):setattr 會在 teardown 還原
     「原 dict 物件」,殘留條目跟著回魂。
     """
+    import asyncio
+
     import services.finmind_realtime as fr
     import services.market_breadth as mb
     import services.market_universe as mu
 
+    def _drop_silently(tasks) -> None:
+        # 死 loop 的 pending task 無法 cancel(cancel 會 call_soon 到已關閉
+        # 的 loop → RuntimeError),只能丟引用;先關掉 Task.__del__ 的
+        # "Task was destroyed but it is pending!" 警告 — 這裡的丟棄是已知
+        # 安全(該 task 永遠不可能再跑),留噪音只會誤導 triage(review P1)。
+        for t in tasks:
+            if isinstance(t, asyncio.Task) and not t.done():
+                t._log_destroy_pending = False  # type: ignore[attr-defined]  # CPython 私有旗標
+
+    _drop_silently(e["task"] for e in fr._inflight.values())
+    _drop_silently(fr._eod_background.values())
+    _drop_silently(mb._inflight.values())
+    _drop_silently(mu._inflight.values())
     fr._inflight.clear()
     fr._eod_background.clear()
     mb._inflight.clear()
