@@ -29,6 +29,18 @@ function makeData(dropped: number): OptionsOIWalls {
   };
 }
 
+describe("OptionsOIWallsCard % 格式化(characterization,refactor/options-p2-reuse)", () => {
+  it("區間寬度 / 平均寬度以既是百分比的值直接格式化(不 ×100)", () => {
+    render(
+      <OptionsOIWallsCard data={makeData(0)} loading={false} error={null} onRefresh={() => {}} />,
+    );
+    // band_width_pct: 4.5 → "4.5%"(值已是百分比)
+    expect(screen.getByText("4.5%")).toBeTruthy();
+    // avg_band_width_pct: 5.2 → "平均寬度 5.2%"
+    expect(screen.getByText(/平均寬度 5\.2%/)).toBeTruthy();
+  });
+});
+
 describe("OptionsOIWallsCard hit rate 剔除數(CR3)", () => {
   it("dropped_no_close > 0 → 顯示剔除數", () => {
     render(
