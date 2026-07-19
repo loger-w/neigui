@@ -1,6 +1,6 @@
 import type { ReactElement } from "react";
 import type { OptionsOIWalls } from "../lib/options-types";
-import { fmtPct } from "../lib/options-format";
+import { fmtPct, fmtPctFraction } from "../lib/options-format";
 
 interface Props {
   data: OptionsOIWalls | null;
@@ -75,7 +75,7 @@ export function OptionsOIWallsCard({
               </div>
               <div className="flex gap-3 text-xs">
                 <span className="tabular-nums text-ink">
-                  {(data.hit_rate.pct_settled_inside_band * 100).toFixed(0)}%
+                  {fmtPctFraction(data.hit_rate.pct_settled_inside_band, 0)}
                 </span>
                 <span className="text-ink-dim">
                   平均寬度 {fmtPct(data.hit_rate.avg_band_width_pct)}
