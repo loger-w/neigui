@@ -28,6 +28,16 @@ def _find_root() -> Path:
     return Path(res.stdout.strip())
 
 
+def _is_git_tracked(root: Path, rel: str) -> bool:
+    res = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "--error-unmatch", rel],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return res.returncode == 0
+
+
 def main(root: Path | None = None) -> int:
     # Windows pipe 預設 locale 編碼(cp950),繁中輸出會變亂碼 — 強制 UTF-8
     for stream in (sys.stdout, sys.stderr):
@@ -37,6 +47,13 @@ def main(root: Path | None = None) -> int:
     root = root or _find_root()
     config_path = root / ".claude" / "harness.json"
     if not config_path.is_file():
+        if _is_git_tracked(root, ".claude/harness.json"):
+            print(
+                "pre-push: harness.json 被 git 追蹤但 working tree 缺檔 — "
+                "防線被拔,拒絕放行(fail-closed)",
+                file=sys.stderr,
+            )
+            return 1
         print(f"pre-push: {config_path} 不存在,跳過驗證(警告)", file=sys.stderr)
         return 0
     try:
@@ -44,6 +61,13 @@ def main(root: Path | None = None) -> int:
         steps = config["verify"]
     except (json.JSONDecodeError, KeyError, UnicodeDecodeError) as e:
         print(f"pre-push: harness.json 解析失敗(fail-closed):{e}", file=sys.stderr)
+        return 1
+    if not steps and not config.get("allow_empty_verify"):
+        print(
+            "pre-push: verify 步驟為空 — 空防線視同壞防線(fail-closed);"
+            '確為刻意請在 harness.json 設 "allow_empty_verify": true',
+            file=sys.stderr,
+        )
         return 1
     for step in steps:
         name = step["name"]
