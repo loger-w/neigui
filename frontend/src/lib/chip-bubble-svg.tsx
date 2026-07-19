@@ -639,15 +639,15 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
 
       {/* Background intraday close-price line — Y reuse sY price scale,
           X 軸獨立(時間 09:00→13:30)。pointer-events: none,不擋互動。
-          位於 close dashed line 之前(close line 顏色較深可辨)、bubbles 之後。 */}
-      {intradayPoints && intradayPoints.length > 0 && (
+          z-order:grid → time-line → close-dashed → bubbles。 */}
+      {intradayPoints && (
         <IntradayLineLayer
           points={intradayPoints}
           yLow={yLow}
           yHigh={yHigh}
           paddingLeft={PADDING.left}
           paddingTop={PADDING.top}
-          chartWidth={width - PADDING.left - PADDING.right}
+          chartWidth={cW}
           chartHeight={cH}
         />
       )}
