@@ -8,6 +8,7 @@ export const CHIP = {
   lineStrong: "#4a4234",
   ma5: "#f0b429",
   ma20: "#b794f4",
+  intradayLine: "#7c6f55",
   font: '"Inter Tight", system-ui, sans-serif',
 } as const;
 

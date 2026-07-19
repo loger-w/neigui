@@ -5,6 +5,7 @@
 
 import { memo } from "react";
 import type { IntradayPoint } from "./chip-data";
+import { CHIP } from "./chip-theme";
 
 // 09:00 = 540 min from midnight; 13:30 = 810 min; range = 270 min.
 // 1 分 K 第一根實際標 09:00(probe verified 2026-06-26 2330);最後一根
@@ -12,7 +13,6 @@ import type { IntradayPoint } from "./chip-data";
 export const SESSION_START_MIN = 9 * 60;
 export const SESSION_RANGE_MIN = (13 * 60 + 30) - 9 * 60;
 
-const STROKE = "#7c6f55";
 const STROKE_WIDTH = 1;
 
 export function parseMinute(t: string): number {
@@ -69,7 +69,7 @@ export const IntradayLineLayer = memo(function IntradayLineLayer({
   return (
     <polyline
       points={d}
-      stroke={STROKE}
+      stroke={CHIP.intradayLine}
       strokeWidth={STROKE_WIDTH}
       fill="none"
       pointerEvents="none"
