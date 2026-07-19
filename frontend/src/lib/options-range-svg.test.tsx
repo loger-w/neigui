@@ -47,6 +47,12 @@ describe("RangeMapSvg 基本渲染(自 StrikeLadder 遷移)", () => {
       .toContain("53,420");
   });
 
+  it("spot 高於最高 strike → spot 列排最上(characterization,unshift 分支)", () => {
+    const { container } = renderMap({ spot: 54500 });
+    const rows = container.querySelectorAll("[data-testid='rangemap-row']");
+    expect(rows[0]!.querySelector("[data-testid='rangemap-spot']")).toBeTruthy();
+  });
+
   it("omits spot row when spot is null", () => {
     const { container } = renderMap({ spot: null });
     expect(container.querySelector("[data-testid='rangemap-spot']")).toBeNull();

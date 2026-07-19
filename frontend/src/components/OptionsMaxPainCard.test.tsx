@@ -45,6 +45,37 @@ describe("OptionsMaxPainCard(SC-10)", () => {
     expect(screen.queryByTestId("max-pain-distance")).toBeNull();
   });
 
+  it("與現價幾乎重合(|diff| < 0.0005)", () => {
+    render(
+      <OptionsMaxPainCard
+        data={data} loading={false} error={null} onRefresh={() => {}}
+        spot={21505}
+      />,
+    );
+    // (21500 - 21505) / 21505 ≈ -0.00023 → 重合文案,不顯示 %
+    expect(screen.getByTestId("max-pain-distance").textContent).toBe("與現價幾乎重合");
+  });
+
+  it("hit_rate 百分比以小數 ×100 格式化(characterization)", () => {
+    render(
+      <OptionsMaxPainCard
+        data={{
+          ...data,
+          hit_rate: {
+            samples: 8, median_abs_deviation_pct: 0.012,
+            hit_within_1pct: 0.45, hit_within_2pct: 0.62,
+            history: [], latest_settlement_pending: false,
+          },
+        }}
+        loading={false} error={null} onRefresh={() => {}} spot={null}
+      />,
+    );
+    // median 0.012 → "1.2%"(digits 1);hit_within 0.45 → "45%"(digits 0)、0.62 → "62%"
+    expect(screen.getByText("1.2%")).toBeTruthy();
+    expect(screen.getByText("45%")).toBeTruthy();
+    expect(screen.getByText("62%")).toBeTruthy();
+  });
+
   it("diagnostics (賣方總賠付/履約價數) not visible on first paint", () => {
     render(
       <OptionsMaxPainCard
