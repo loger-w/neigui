@@ -29,12 +29,16 @@ _SINGLE_CONTRACT = re.compile(r"\d{6}(W\d)?")
 _INSTITUTIONS = ("外資", "自營商", "投信")
 
 
-def _inst_by_date(rows_inst: list[dict]) -> dict[str, dict[str, int]]:
-    """Aggregate institutional long/short OI per date (三法人合計)."""
+def _inst_by_date(
+    rows_inst: list[dict],
+    institutions: tuple[str, ...] = _INSTITUTIONS,
+) -> dict[str, dict[str, int]]:
+    """Aggregate institutional long/short OI per date(預設三法人合計,
+    ``institutions`` 可縮口徑 — 如 SC-5 外資 only)."""
     out: dict[str, dict[str, int]] = {}
     for r in rows_inst:
         d = r.get("date", "")
-        if not d or r.get("institutional_investors") not in _INSTITUTIONS:
+        if not d or r.get("institutional_investors") not in institutions:
             continue
         try:
             long_oi = int(r.get("long_open_interest_balance_volume", 0) or 0)
@@ -143,19 +147,7 @@ def parse_foreign_futures(rows_inst: list[dict]) -> dict:
           series: [{date, net_oi}](≤20, asc), as_of_date,
           data_quality_warnings}``
     """
-    by_date: dict[str, dict[str, int]] = {}
-    for r in rows_inst:
-        d = r.get("date", "")
-        if not d or r.get("institutional_investors") != "外資":
-            continue
-        try:
-            long_oi = int(r.get("long_open_interest_balance_volume", 0) or 0)
-            short_oi = int(r.get("short_open_interest_balance_volume", 0) or 0)
-        except (TypeError, ValueError):
-            continue
-        bucket = by_date.setdefault(d, {"long": 0, "short": 0})
-        bucket["long"] += long_oi
-        bucket["short"] += short_oi
+    by_date = _inst_by_date(rows_inst, institutions=("外資",))
 
     if not by_date:
         return {
