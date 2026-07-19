@@ -17,6 +17,25 @@ from services.finmind_realtime import (
     fetch_market_snapshot,
 )
 
+
+@pytest.fixture(autouse=True)
+def _no_network_prices_window(monkeypatch):
+    """bug test-finmind-realtime-flake:C3b prices prefetch(_fetch_eod_results
+    →mb._fetch_daily_prices_window)是本檔 mock 佈局唯一沒蓋到的真實網路呼叫 —
+    平時 test-token 400 快失敗掩蓋了它,多 session 燒配額 FinMind 變慢時
+    >_EOD_INLINE_BUDGET_SEC → eod_pending 假紅 + pending task 留 registry。
+    改 raise ConnectError = 與 400 同一條 httpx.HTTPError 降級路徑(prices=None),
+    行為零差異但決定性、零網路。需要真 prices 的測試(test_eod_results_*)
+    在測試體內 monkeypatch 覆蓋本 fixture。"""
+    import httpx
+
+    import services.market_breadth as mb
+
+    async def _refuse_network(start, end, refresh=False):
+        raise httpx.ConnectError("test isolation: no real FinMind call")
+
+    monkeypatch.setattr(mb, "_fetch_daily_prices_window", _refuse_network)
+
 # --------------------------------------------------------------------------
 # _dedup_sector_map (E4 / F6 deterministic / v3 B4)
 # --------------------------------------------------------------------------
@@ -1556,14 +1575,19 @@ async def test_snapshot_empty_universe_sector_amount_share_none() -> None:
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
 async def test_run_once_shared_task_survives_subscriber_cancel() -> None:
-    """共乘 subscriber 之一被 cancel(client 斷線)→ 其餘 subscriber 仍拿到結果。"""
+    """共乘 subscriber 之一被 cancel(client 斷線)→ 其餘 subscriber 仍拿到結果。
+
+    bug test-finmind-realtime-flake:原版 sleep(0.02) 賭 t2 掛上共用 task、
+    sleep(0.2) 賭 cancel 先於完成,負載下時序漂移 → 改事件同步 + refs 實證,
+    零 wall-clock 依賴且共乘條件從「賭中」升級為「驗證」。"""
     import services.finmind_realtime as fr
 
     started = asyncio.Event()
+    release = asyncio.Event()
 
     async def slow() -> dict:
         started.set()
-        await asyncio.sleep(0.2)
+        await release.wait()
         return {"ok": True}
 
     key = "test_survive_cancel"
@@ -1574,10 +1598,14 @@ async def test_run_once_shared_task_survives_subscriber_cancel() -> None:
     t1 = asyncio.create_task(subscribe())
     await started.wait()
     t2 = asyncio.create_task(subscribe())
-    await asyncio.sleep(0.02)  # 讓 t2 進入 await 共用 task
+    await asyncio.sleep(0)  # 單步 yield:t2 同步跑到 await shield 掛上共用 task
+    assert fr._inflight[key]["refs"] == 2  # 共乘成立(原版只能賭時序)
     t1.cancel()
-    result = await t2  # 修正前:CancelledError(共用 task 被 t1 的取消毒殺)
-    assert result == {"ok": True}
+    with pytest.raises(asyncio.CancelledError):
+        await t1  # 修正前:t1 的取消毒殺共用 task
+    assert fr._inflight[key]["refs"] == 1  # 底層 task 仍活著,t2 還掛著
+    release.set()
+    assert await t2 == {"ok": True}
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
@@ -1603,7 +1631,9 @@ async def test_run_once_last_subscriber_cancel_cancels_underlying() -> None:
     t1.cancel()
     with pytest.raises(asyncio.CancelledError):
         await t1
-    await asyncio.wait_for(cancelled.wait(), timeout=1.0)
+    # timeout 是純上限(正常 ms 級完成);1.0 在 pre-push 全套負載下曾被吃穿,
+    # 放寬到 10.0 不影響綠路徑速度(bug test-finmind-realtime-flake)
+    await asyncio.wait_for(cancelled.wait(), timeout=10.0)
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
