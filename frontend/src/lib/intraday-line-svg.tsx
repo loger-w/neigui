@@ -10,8 +10,8 @@ import { CHIP } from "./chip-theme";
 // 09:00 = 540 min from midnight; 13:30 = 810 min; range = 270 min.
 // 1 分 K 第一根實際標 09:00(probe verified 2026-06-26 2330);最後一根
 // 13:30。實測首末對齊整點,不需動態 first/last fallback。
-export const SESSION_START_MIN = 9 * 60;
-export const SESSION_RANGE_MIN = (13 * 60 + 30) - 9 * 60;
+const SESSION_START_MIN = 9 * 60;
+const SESSION_RANGE_MIN = (13 * 60 + 30) - 9 * 60;
 
 const STROKE_WIDTH = 1;
 
