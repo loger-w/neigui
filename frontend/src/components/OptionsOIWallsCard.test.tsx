@@ -38,6 +38,8 @@ describe("OptionsOIWallsCard % 格式化(characterization,refactor/options-p2-re
     expect(screen.getByText("4.5%")).toBeTruthy();
     // avg_band_width_pct: 5.2 → "平均寬度 5.2%"
     expect(screen.getByText(/平均寬度 5\.2%/)).toBeTruthy();
+    // pct_settled_inside_band: 0.75(小數)→ "75%"(×100、digits 0)
+    expect(screen.getByText("75%")).toBeTruthy();
   });
 });
 
