@@ -48,7 +48,7 @@ export function pointsToPolyline(
   return coords.join(" ");
 }
 
-interface Props {
+export interface IntradayLineLayerProps {
   points: IntradayPoint[];
   yLow: number;
   yHigh: number;
@@ -60,7 +60,7 @@ interface Props {
 
 export const IntradayLineLayer = memo(function IntradayLineLayer({
   points, yLow, yHigh, paddingLeft, paddingTop, chartWidth, chartHeight,
-}: Props) {
+}: IntradayLineLayerProps) {
   if (points.length === 0) return null;
   const d = pointsToPolyline(
     points, yLow, yHigh, paddingLeft, paddingTop, chartWidth, chartHeight,

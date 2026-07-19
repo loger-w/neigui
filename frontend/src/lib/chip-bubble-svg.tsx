@@ -8,7 +8,7 @@ import {
 } from "react";
 import type { BrokerTrade, IntradayPoint } from "./chip-data";
 import { CHIP } from "./chip-theme";
-import { IntradayLineLayer } from "./intraday-line-svg";
+import { IntradayLineLayer } from "./chip-intraday-line-svg";
 
 // ---------------------------------------------------------------------------
 // Pure helpers
