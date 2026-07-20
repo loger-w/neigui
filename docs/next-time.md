@@ -10,7 +10,9 @@
 
 - (原「prd cancel 鏈斷在 Vercel rewrite 層」條目已由 fix/prd-cancel-propagation 解決刪除,2026-07-17:prd 正式域名直連 Railway,abort 直達;cancel-chain skill 第五環已翻新)
 - (原「prd ~0.7-1.2 req/s 常駐 FinMind 消耗」條目已由 /bug prd-idle-finmind-drain 結案刪除,2026-07-17:誤歸因 — 實為殭屍 fan-out(已修)+ 瀏覽/probe 活動;零活動時 user_count 實測連續 57 分鐘平零,app 無常駐 FinMind 迴圈;tick_snapshot / user_info 均不計入配額,判讀方法沉澱至 skill `finmind-conventions`)
-- **[設計風險,未實證] 大盤 tab 開著 + 配額耗盡 = EOD retry 放大器**:`eod_pending` 時前端每 15s poll,每次 poll 會重觸發失敗的 EOD 背景計算(`_ensure_eod_task` done_callback 自移除 → 下一請求重試);402 期間失敗日不落 cache → 每輪重抓,以配額再生速率持續燒、把 user_count 釘在上限。修法候選:EOD task 失敗後加 backoff 標記(如 60s 內不重觸發)。觸發:prd 再現「配額貼上限 + 大盤分頁開著」情境時實證並修
+- (原「EOD retry 放大器」條目已由 fix/eod-retry-backoff 解決刪除,2026-07-20:失敗 task 保留佔位 + `_EOD_RETRY_BACKOFF_SEC` 60s 冷卻窗口,窗口內請求重用失敗結果不重觸發;`failure_not_pinned` 契約修訂為「窗口過期後重算」。402 情境未在 prd 實證,由確定性測試鎖行為)
+- **EOD backoff 佔位 entry 的微量殘留**(fix/eod-retry-backoff 拍板接受):失敗 task 保留在 `_eod_background` + `_eod_backoff_until` 至下一請求替換;若當日失敗後再無同 key 請求,entry 殘留至 process 重啟(每日至多數個 dict entry)。觸發重評估:長跑 server 記憶體被質疑、或第三個模組級 registry 需要統一清理策略時
+- **「失敗即刪 → 高頻重觸發」同構檢查**:`routes/symbols.py::_load_task`(失敗後下一請求重試,無 backoff)同結構但無 15s poll 放大器,係數低不修。觸發重評估:任何高頻 poll 的前端 hook 接上 symbols 或其他「失敗自刪」task registry 時
 
 ## From /bug prd-cancel-propagation(2026-07-17)
 
