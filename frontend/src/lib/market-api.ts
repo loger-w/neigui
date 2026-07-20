@@ -1,6 +1,6 @@
 import type { RequestOptions } from "./api";
 import { apiOrigin } from "./api-base";
-import type { MarketSnapshot } from "./market-types";
+import type { MarketSnapshot, SectorMembers } from "./market-types";
 
 const BASE = "/api/market";
 
@@ -29,4 +29,29 @@ export async function fetchMarketSnapshot(
     throw new Error(body?.detail?.error ?? `HTTP ${resp.status}`);
   }
   return resp.json() as Promise<MarketSnapshot>;
+}
+
+/**
+ * SC-3 族群輪動三層鑽取:`GET /api/market/sector_members`(不經 __apiGet 5-min
+ * cache,理由同 fetchMarketSnapshot;5s snapshot cache 已由 backend 保證同步)。
+ * 未知 industry/sub_industry → 404 unknown_sector,轉一般 Error 讓 caller 顯示
+ * 繁中錯誤字。
+ */
+export async function fetchSectorMembers(
+  industry: string,
+  subIndustry: string | null,
+  options?: RequestOptions,
+): Promise<SectorMembers> {
+  const url = new URL(`${BASE}/sector_members`, apiOrigin());
+  url.searchParams.set("industry", industry);
+  if (subIndustry !== null) url.searchParams.set("sub_industry", subIndustry);
+
+  const resp = await fetch(url.toString(), { signal: options?.signal });
+  if (!resp.ok) {
+    const body = (await resp.json().catch(() => null)) as
+      | { detail?: { error?: string } }
+      | null;
+    throw new Error(body?.detail?.error ?? `HTTP ${resp.status}`);
+  }
+  return resp.json() as Promise<SectorMembers>;
 }

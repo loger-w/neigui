@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { lotsToWan, pctText, signedPctPoints } from "./market-format";
+import {
+  changeColorClass,
+  formatAmount,
+  formatRatio,
+  lotsToWan,
+  pctText,
+  signedPctPoints,
+  signedPercent,
+} from "./market-format";
 
 describe("lotsToWan", () => {
   it("converts lots to 萬張 with 1 decimal", () => {
@@ -36,5 +44,61 @@ describe("signedPctPoints", () => {
 
   it("returns em-dash for null", () => {
     expect(signedPctPoints(null)).toBe("—");
+  });
+});
+
+describe("signedPercent (R7 單位契約:輸入已是百分比數值,不 ×100)", () => {
+  it("prefixes + for positive change_rate", () => {
+    expect(signedPercent(1.2)).toBe("+1.20%");
+  });
+
+  it("keeps - sign for negative change_rate", () => {
+    expect(signedPercent(-2.11)).toBe("-2.11%");
+  });
+
+  it("shows 0.00% without + prefix for zero", () => {
+    expect(signedPercent(0)).toBe("0.00%");
+  });
+
+  it("returns em-dash for null (SC-1 spread 缺席)", () => {
+    expect(signedPercent(null)).toBe("—");
+  });
+});
+
+describe("formatRatio", () => {
+  it("formats with x suffix", () => {
+    expect(formatRatio(1.314)).toBe("1.31x");
+  });
+
+  it("returns em-dash for null (SC-3 分母 0 降級)", () => {
+    expect(formatRatio(null)).toBe("—");
+  });
+});
+
+describe("formatAmount", () => {
+  it("converts TWD to million with 1 decimal", () => {
+    expect(formatAmount(123_456_789)).toBe("123.5M");
+  });
+
+  it("returns em-dash for null", () => {
+    expect(formatAmount(null)).toBe("—");
+  });
+});
+
+describe("changeColorClass", () => {
+  it("returns text-bull for positive", () => {
+    expect(changeColorClass(1.2)).toBe("text-bull");
+  });
+
+  it("returns text-bear for negative", () => {
+    expect(changeColorClass(-2.11)).toBe("text-bear");
+  });
+
+  it("returns neutral for zero", () => {
+    expect(changeColorClass(0)).toBe("text-ink-dim");
+  });
+
+  it("returns neutral for null", () => {
+    expect(changeColorClass(null)).toBe("text-ink-dim");
   });
 });
