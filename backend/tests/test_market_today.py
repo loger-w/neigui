@@ -111,6 +111,18 @@ def test_compute_index_strength_both_index_rows_missing() -> None:
     assert out["tsmc"] == {"change_rate": 2.0, "contrib_points": None}
 
 
+def test_compute_index_strength_mv_map_empty_contrib_null() -> None:
+    """SC-5(review P2#1):mv_map 整包缺席(mv 來源降級)→ contrib 兩側 null
+    (前端「資料暫缺」),不是空 up/down 清單(那是「mv 有料但無 eligible」的
+    合法空);index 側 close/median/spread 不受 mv 影響照常。"""
+    out = compute_index_strength(_INDEX_ROWS, _UNIVERSE_ROWS, {}, _TYPE_MAP, _NAME_MAP)
+
+    assert out["twse"]["close"] == 20100
+    assert out["twse"]["median_change_rate"] == -1.0
+    assert out["contrib"] == {"twse": None, "tpex": None}
+    assert out["tsmc"] == {"change_rate": 2.0, "contrib_points": None}
+
+
 def test_compute_index_strength_empty_universe() -> None:
     """空 universe:index 側 close/change_rate 仍在,median/spread 因無樣本 → None;
     contrib 兩側皆空 up/down;tsmc 全 None(2330 不在 universe)。"""
