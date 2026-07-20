@@ -69,21 +69,29 @@ def _reset_warrant_prewarm_task(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _reset_realtime_task_registries():
-    """market snapshot 鏈的模組級 task dict 同款跨 event loop 殘留 — 每測試起點清空。
+    """全部模組級 task registry(_inflight)跨 event loop 殘留 — 每測試起點統一清空。
 
     負載下背景 task 若留在模組級 registry;pytest-asyncio 的 loop teardown
     不 cancel pending task,下一測試(新 loop)同 key 撿到死 loop 的 task →
     RuntimeError "got Future attached to a different loop" 連環炸
-    (2026-07-07/11/14/17 四次 pre-push 實證)。market_universe 的 _inflight
-    同 class 一併清(warrant* / daytrade_fee 的 _inflight 由各測試檔既有
-    fixture 自清)。
+    (2026-07-07/11/14/17 四次 pre-push 實證)。原本只清 market snapshot 鏈
+    (finmind_realtime / market_universe),warrant* / daytrade_fee /
+    industry_chain 由各測試檔自清 — 2026-07-20 集中到這裡,suite 全域防護
+    (檔內自清只保護該檔自己的測試順序)。
+    **新增模組級 task registry 時必須加進下方 module tuple。**
     注意用 .clear() 不用 monkeypatch.setattr({}):setattr 會在 teardown 還原
     「原 dict 物件」,殘留條目跟著回魂。
     """
     import asyncio
 
+    import services.daytrade_fee as df
     import services.finmind_realtime as fr
+    import services.industry_chain as ic
     import services.market_universe as mu
+    import services.warrant_flow as wf
+    import services.warrant_iv_history as ivh
+    import services.warrant_quotes as wq
+    import services.warrants as ws
 
     def _drop_silently(tasks) -> None:
         # 死 loop 的 pending task 無法 cancel(cancel 會 call_soon 到已關閉
@@ -94,10 +102,10 @@ def _reset_realtime_task_registries():
             if isinstance(t, asyncio.Task) and not t.done():
                 t._log_destroy_pending = False  # type: ignore[attr-defined]  # CPython 私有旗標
 
-    _drop_silently(e["task"] for e in fr._inflight.values())
-    _drop_silently(mu._inflight.values())
-    fr._inflight.clear()
-    mu._inflight.clear()
+    # entry 兩種形狀並存:{"task": Task, "refs": int}(_run_once 同構)或裸 Task
+    for mod in (fr, mu, ic, wf, ivh, wq, ws, df):
+        _drop_silently(e.get("task") if isinstance(e, dict) else e for e in mod._inflight.values())
+        mod._inflight.clear()
     yield
 
 

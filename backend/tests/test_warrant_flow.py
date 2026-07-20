@@ -117,7 +117,6 @@ class StubFinMind:
 
 @pytest.fixture(autouse=True)
 def _flow_env(monkeypatch):
-    monkeypatch.setattr(wf, "_inflight", {})
     monkeypatch.setattr(wf.clock, "today", lambda: TODAY)
 
 

@@ -22,12 +22,10 @@ import services.industry_chain as ic
 
 @pytest.fixture(autouse=True)
 def _reset_industry_chain_module_state(monkeypatch):
-    """每測試起點清 module-level mem cache + inflight registry(FAKE 分支專用
-    mem cache 沒有 conftest autouse 覆蓋,需要自己重置避免跨測試汙染)。"""
+    """每測試起點清 module-level mem cache(FAKE 分支專用 mem cache 沒有
+    conftest autouse 覆蓋,需要自己重置;_inflight 已由 conftest
+    _reset_realtime_task_registries 統一清)。"""
     monkeypatch.setattr(ic, "_mem_cache", None)
-    ic._inflight.clear()
-    yield
-    ic._inflight.clear()
 
 
 # ---------------------------------------------------------------------------

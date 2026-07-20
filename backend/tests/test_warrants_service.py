@@ -31,11 +31,9 @@ def _reset_warrants_state(monkeypatch):
     monkeypatch.setattr(ws, "_snapshot_mem", None)
     monkeypatch.setattr(ws, "_last_build_attempt", None)
     monkeypatch.setattr(ws, "_prewarm_task", None, raising=False)
-    ws._inflight.clear()
     monkeypatch.setattr(ivh, "ensure_post_build_task", lambda snap: None)
     monkeypatch.setattr(ivh, "_drift_mem", None)
     ivh._series_lru.clear()
-    ivh._inflight.clear()
 
 
 @pytest.fixture(autouse=True)

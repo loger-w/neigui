@@ -20,7 +20,6 @@ from services.warrant_pricing import RISK_FREE_RATE, bs_delta, bs_price, implied
 @pytest.fixture(autouse=True)
 def _reset_state(monkeypatch):
     monkeypatch.setattr(wq, "_client", None)
-    wq._inflight.clear()
     wq._cooldown.clear()
 
 
