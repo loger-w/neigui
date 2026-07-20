@@ -1263,8 +1263,14 @@ async def test_snapshot_eod_result_cache_skips_recompute() -> None:
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
 async def test_snapshot_eod_result_cache_failure_not_pinned() -> None:
     """C1 invalidation:component compute 失敗(None)不得寫入 cache —
-    下一 request 必須重算,不能 pin 失敗一整天;其餘成功 component 照常 cache。"""
+    backoff 窗口過後必須重算,不能 pin 失敗一整天;其餘成功 component 照常 cache。
+
+    (bug eod-retry-backoff 修訂:原「下一 request 立即重算」放大 402 期間的
+    配額燃燒,改為 _EOD_RETRY_BACKOFF_SEC 冷卻後重算 — docs/next-time.md
+    事前標記的行為變更;本測試以手動清空窗口模擬過期。)"""
     import httpx
+
+    import services.finmind_realtime as fr
 
     breadth_mock = AsyncMock(
         side_effect=[httpx.HTTPError("transient"), _FAKE_BREADTH_PAYLOAD]
@@ -1285,6 +1291,7 @@ async def test_snapshot_eod_result_cache_failure_not_pinned() -> None:
          patch("services.finmind_realtime._fetch_sector_volume_ratio", new=vr_mock), \
          patch("services.finmind_realtime._fetch_sector_amount_share", new=amt_mock):
         r1 = await fetch_market_snapshot(refresh=False)
+        fr._eod_backoff_until.clear()  # 模擬 backoff 窗口過期
         r2 = await fetch_market_snapshot(refresh=False)
 
     assert r1["breadth"] is None  # 第一次失敗 → None(F6 降級不變)
@@ -1683,6 +1690,79 @@ async def test_snapshot_eod_slow_compute_detaches_to_background(monkeypatch) -> 
 
     assert r2["eod_pending"] is False
     assert r2["breadth"] == _FAKE_BREADTH_PAYLOAD
+
+
+# ---------------------------------------------------------------------------
+# bug eod-retry-backoff(2026-07-20)— EOD 失敗 retry 放大器
+# 402 配額耗盡時 _fetch_eod_results 各 component 全 None、不落 cache,
+# _cleanup 又把 task 自移除 → eod_pending 期間前端每 15s poll 都重觸發
+# 全套 EOD fan-out(含 prices window prefetch),以配額再生速率持續燒。
+# 修法:失敗 task 保留佔位 + backoff 窗口(_EOD_RETRY_BACKOFF_SEC)內
+# 不重觸發;窗口內請求重用失敗 task 的(降級)結果 / 原樣 re-raise。
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_eod_failure_backoff_no_retrigger() -> None:
+    """(紅測試)EOD compute 失敗後,backoff 窗口內的下一請求不重觸發計算。
+
+    修正前:_cleanup 無條件自移除 + 失敗 component 不落 cache → 每次 poll
+    全套重跑(await_count == 2)— 放大器本體。
+    修正後:失敗 task 保留佔位,窗口內重用其降級結果,compute 只跑一次。"""
+    import httpx
+
+    breadth_mock = AsyncMock(side_effect=httpx.HTTPError("402 quota exhausted"))
+    sb_mock = AsyncMock(side_effect=httpx.HTTPError("402 quota exhausted"))
+    vr_mock = AsyncMock(side_effect=httpx.HTTPError("402 quota exhausted"))
+    amt_mock = AsyncMock(side_effect=httpx.HTTPError("402 quota exhausted"))
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=_C1_FAKE_UNIVERSE)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=_C1_FAKE_SECTOR_ROWS)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth", new=breadth_mock), \
+         patch("services.finmind_realtime._fetch_sector_breadth", new=sb_mock), \
+         patch("services.finmind_realtime._fetch_sector_volume_ratio", new=vr_mock), \
+         patch("services.finmind_realtime._fetch_sector_amount_share", new=amt_mock):
+        r1 = await fetch_market_snapshot(refresh=False)
+        r2 = await fetch_market_snapshot(refresh=False)
+
+    # 降級契約不變:失敗 component → None,盤中資料照給
+    assert r1["breadth"] is None
+    assert r2["breadth"] is None
+    assert r2["eod_pending"] is False
+    assert r2["sectors"]
+    # 放大器判準:窗口內 4 個 compute 各只跑一次(修正前 = 2)
+    assert breadth_mock.await_count == 1
+    assert sb_mock.await_count == 1
+    assert vr_mock.await_count == 1
+    assert amt_mock.await_count == 1
+
+
+@pytest.mark.usefixtures("bypass_finmind_rate_limiter")
+async def test_snapshot_eod_exception_backoff_reraises_without_recompute() -> None:
+    """(紅測試)EOD task 以非 httpx 例外結束(fail-loud propagate 路徑)同樣
+    進 backoff:窗口內請求重用同一失敗 task 原樣 re-raise,不重跑計算。"""
+    boom = AsyncMock(side_effect=RuntimeError("boom"))
+    with patch("services.finmind_realtime._fetch_universe",
+               new=AsyncMock(return_value=_C1_FAKE_UNIVERSE)), \
+         patch("services.finmind_realtime._fetch_sector_map",
+               new=AsyncMock(return_value=_C1_FAKE_SECTOR_ROWS)), \
+         patch("services.finmind_realtime._fetch_market_value_map",
+               new=AsyncMock(return_value={"2330": 6e13})), \
+         patch("services.finmind_realtime._fetch_watch_list",
+               new=AsyncMock(return_value=set())), \
+         patch("services.finmind_realtime._fetch_breadth", new=boom):
+        with pytest.raises(RuntimeError, match="boom"):
+            await fetch_market_snapshot(refresh=False)
+        with pytest.raises(RuntimeError, match="boom"):
+            await fetch_market_snapshot(refresh=False)
+
+    # 原樣 re-raise 契約保留,但計算只跑一次(修正前 = 2)
+    assert boom.await_count == 1
 
 
 # ---------------------------------------------------------------------------
