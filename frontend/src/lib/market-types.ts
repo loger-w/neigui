@@ -1,4 +1,4 @@
-/** API contract types for /api/market/snapshot — design.md §10 v3. */
+/** API contract types for /api/market/snapshot — market-today-only change-spec §3. */
 
 export type MarketSnapshot = {
   as_of: string;
@@ -10,40 +10,87 @@ export type MarketSnapshot = {
   leaderboards: Leaderboards;
   universe_size: number;
   excluded_count: ExcludedCount;
-  eod_as_of: string | null;
-  /** EOD 背景計算尚未完成(冷啟動期間);optional — 舊後端無此欄。 */
-  eod_pending?: boolean;
-  breadth: Breadth | null;
-  sector_breadth: SectorBreadthRow[] | null;
-  sector_volume_ratio: SectorVolumeRatioRow[] | null;
-  sector_amount_share: SectorAmountShareRow[] | null;
+  index_strength: IndexStrength;
+  cap_tiers: CapTier[] | null;
+  sector_rotation: SectorRotation | null;
 };
 
 export type ExcludedCount = { etf: number; warrant: number; watch_list: number };
 
-export type BreadthPoint = { date: string; value: number | null };
+// ---------------------------------------------------------------------------
+// SC-1 — 大盤強弱卡(index_strength)
+// ---------------------------------------------------------------------------
 
-export type Breadth = {
-  ad_line_value: number | null;
-  mcclellan_oscillator: number | null;
-  ad_line_series: BreadthPoint[];
-  mcclellan_series: BreadthPoint[];
-  thrust_dot: "above_plus_100" | "below_minus_100" | null;
-  centerline_cross: "above" | "below" | null;
-  divergence_dot: "bearish" | "bullish" | null;
-  known_gaps: string[];
+export type IndexSide = {
+  close: number;
+  change_rate: number;
+  median_change_rate: number | null;
+  spread: number | null;
 };
 
-export type SectorBreadthRow = { sector: string; members: number; above_ma20: number; pct: number };
+export type IndexContribEntry = {
+  stock_id: string;
+  name: string;
+  change_rate: number;
+  contrib_points: number;
+};
 
-export type SectorVolumeRatioRow = {
-  sector: string;
-  today_vol_lots: number;
+export type IndexContribGroup = { up: IndexContribEntry[]; down: IndexContribEntry[] };
+
+export type IndexStrength = {
+  twse: IndexSide | null;
+  tpex: IndexSide | null;
+  tsmc: { change_rate: number | null; contrib_points: number | null };
+  contrib: { twse: IndexContribGroup | null; tpex: IndexContribGroup | null };
+};
+
+// ---------------------------------------------------------------------------
+// SC-2 — 權值 vs 中小分層(cap_tiers)
+// ---------------------------------------------------------------------------
+
+export type CapTier = {
+  tier: "top50" | "mid100" | "rest";
+  members: number;
+  avg_change_rate: number;
+  up_ratio: number;
+};
+
+// ---------------------------------------------------------------------------
+// SC-3 — 族群輪動三層(sector_rotation + sector_members drill-down)
+// ---------------------------------------------------------------------------
+
+export type SectorRotationGroup = {
+  name: string;
+  members: number;
+  avg_change_rate: number;
   vol_ratio: number | null;
-  flag: "hot" | "cold" | null;
 };
 
-export type SectorAmountShareRow = { sector: string; today_share: number; share_delta_20ma: number | null };
+export type SectorRotationIndustry = SectorRotationGroup & { subs: SectorRotationGroup[] };
+
+export type SectorRotation = {
+  as_of: string;
+  industries: SectorRotationIndustry[];
+};
+
+export type SectorMemberRow = {
+  stock_id: string;
+  name: string;
+  change_rate: number | null;
+  vol_ratio: number | null;
+  total_amount: number | null;
+};
+
+/** GET /api/market/sector_members response shape (not part of snapshot payload). */
+export type SectorMembers = {
+  industry: string;
+  sub_industry: string | null;
+  members: SectorMemberRow[];
+};
+
+// ---------------------------------------------------------------------------
+// 經典檢視(heatmap / leaderboard)— 不動
+// ---------------------------------------------------------------------------
 
 export type Sector = {
   id: string;

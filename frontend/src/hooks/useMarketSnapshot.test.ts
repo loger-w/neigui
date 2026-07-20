@@ -18,11 +18,14 @@ const mockSnapshot: MarketSnapshot = {
   leaderboards: { gainers: [], losers: [], amount: [], volume_ratio: [] },
   universe_size: 1917,
   excluded_count: { etf: 347, warrant: 67, watch_list: 57 },
-  eod_as_of: "2026-07-02",
-  breadth: null,
-  sector_breadth: null,
-  sector_volume_ratio: null,
-  sector_amount_share: null,
+  index_strength: {
+    twse: null,
+    tpex: null,
+    tsmc: { change_rate: null, contrib_points: null },
+    contrib: { twse: null, tpex: null },
+  },
+  cap_tiers: null,
+  sector_rotation: null,
 };
 
 beforeEach(() => vi.restoreAllMocks());

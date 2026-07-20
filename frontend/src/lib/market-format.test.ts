@@ -1,15 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { eodLabel, lotsToWan, pctText, signedPctPoints } from "./market-format";
-
-describe("eodLabel", () => {
-  it("returns 資料至 <date> for non-null date", () => {
-    expect(eodLabel("2026-07-02")).toBe("資料至 2026-07-02");
-  });
-
-  it("returns 最近交易日 for null (SC-10b: 不寫「今日」)", () => {
-    expect(eodLabel(null)).toBe("最近交易日");
-  });
-});
+import { lotsToWan, pctText, signedPctPoints } from "./market-format";
 
 describe("lotsToWan", () => {
   it("converts lots to 萬張 with 1 decimal", () => {

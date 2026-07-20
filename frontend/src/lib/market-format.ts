@@ -1,10 +1,5 @@
 /** Pure formatting helpers for market snapshot UI — design v3 §12. No React import. */
 
-/** eod 日期標籤:null → 「最近交易日」(SC-10b:不寫「今日」) */
-export function eodLabel(eodAsOf: string | null): string {
-  return eodAsOf === null ? "最近交易日" : `資料至 ${eodAsOf}`;
-}
-
 /** 張 → 萬張,一位小數(SC-7) */
 export function lotsToWan(lots: number): string {
   return (lots / 10000).toFixed(1);
