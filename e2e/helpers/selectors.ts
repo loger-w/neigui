@@ -30,12 +30,11 @@ export const TESTIDS = {
   // market mode roots(Wave 1 已加)
   marketHeatmap: "market-heatmap",
   marketLeaderboard: "market-leaderboard",
-  // market v2 panels(feat/market-page-v2-frontend)
+  // market v2 panels(mod/market-today-only:舊 EOD 四卡退役,換今日三卡)
   marketUniverseBanner: "market-universe-banner",
-  marketBreadthPanel: "market-breadth-panel",
-  marketSectorBreadthHeatmap: "market-sector-breadth-heatmap",
-  marketSectorAmountShare: "market-sector-amount-share",
-  marketSectorVolRatio: "market-sector-vol-ratio",
+  marketIndexStrength: "market-index-strength",
+  marketCapTiers: "market-cap-tiers",
+  marketSectorRotation: "market-sector-rotation",
   marketClassicToggle: "market-classic-toggle",
   // borrow mode roots(feat/daytrade-borrow-fee)
   borrowFeePage: "borrow-fee-page",

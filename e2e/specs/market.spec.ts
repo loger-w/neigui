@@ -40,42 +40,95 @@ test.describe("market mode", () => {
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
   });
 
-  test("M4: v2 panels 渲染不 crash(SC-11b)", async ({ page }) => {
-    // 痛點:五個 v2 panel root 必須同時 visible(頁級 error 不得 key 在
-    // EOD 四欄 — 契約事實 2)。2026-07-20 populated fixture 後 EOD 有料,
-    // null 降級路徑(「資料暫缺」)改由 MarketPage.test.tsx vitest 覆蓋。
-    await expect(page.getByTestId(TESTIDS.marketBreadthPanel)).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.marketSectorBreadthHeatmap)).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.marketSectorAmountShare)).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.marketSectorVolRatio)).toBeVisible();
+  test("M4: 今日三卡渲染不 crash(mod/market-today-only)", async ({ page }) => {
+    // 痛點:EOD 四卡退役後,四個 root 必須同時 visible(頁級 error 不得 key
+    // 在任一卡)。null 降級路徑(「資料暫缺」)改由各卡 *.test.tsx vitest 覆蓋,
+    // 這裡只鎖「populated fixture 下不 crash + 都掛上」。
+    await expect(page.getByTestId(TESTIDS.marketIndexStrength)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.marketCapTiers)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.marketSectorRotation)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.marketUniverseBanner)).toBeVisible();
   });
 
-  test("M9: EOD 四欄 populated 資料級 assertion(next-time D-3 收割)", async ({ page }) => {
+  test("M9: 今日三卡 populated 資料級 assertion(mod/market-today-only)", async ({ page }) => {
     // 痛點:visibility-only 會被「資料暫缺」蓋住(options fixture 事故同型)
-    // — 鎖 populated fixture 手算值。fixture 設計(TaiwanStockPrice_universe
-    // 2025-12-10..2026-06-26,143 交易日 × 5 檔):前段 2330/2454 反相交錯
-    // ±1(每日 rana=0)、末日 3 up 2 down → rana=1000×(3-2)/5=200,前段
-    // EMA 全 0 → McClellan = 200×(2/20 − 2/40) = 10.0 整。
-    // 量比:半導體(2330+2454)末日 5M / 前 20 日均 2M = 2.50 hot;
-    // 其他電子(2317+3008)1.3M / 2M = 0.65 cold。
-    // 資金流向:半導體 6e9/10e9 = 60.0%(sector 歸屬含 _PRIMARY_INDUSTRY
-    // _OVERRIDE:2317→其他電子、2412→通信網路)。
-    const breadthPanel = page.getByTestId(TESTIDS.marketBreadthPanel);
-    await expect(breadthPanel).toContainText("McClellan 10.0");
-    await expect(breadthPanel).not.toContainText("資料暫缺");
-    await expect(breadthPanel).not.toContainText("TAIEX 資料缺"); // TAIEX fixture 有料
-    await expect(breadthPanel).toContainText("資料至 2026-06-26"); // eod_as_of 貫通
+    // — 鎖 populated tick fixture 手算值(見 scripts/gen-market-e2e-fixtures.py
+    // 頂部同源手算基準,改任一常數要雙邊同步)。
+    //
+    // 個股 change_rate(百分比語意,R7):2330 +0.90 / 2454 +0.50 / 2317 -1.20 /
+    // 2412 +0.30 / 3008 -2.00。001 close=19820 change_price=-180 →
+    // prev_close=20000 → change_rate=-0.90%;median(twse)=0.30 →
+    // spread=-0.90-0.30=-1.20(中小強於指數)。101 close=392 change_price=-8
+    // → change_rate=-2.00%(fixture 無 tpex-type 個股 → median/spread null,
+    // contrib 兩側空陣列,見下方「無法資料級」註記)。
+    // 貢獻點數(prev_close×Σmv_i×chg_i/100÷Σmv,twse Σmv=33.63e12):
+    // 2330 +149.9(mv 最大+chg 最大)/ 2454 +5.4 / 2412 +1.7 上漲側;
+    // 2317 -17.8 / 3008 -4.5 下跌側。
+    // cap_tiers:mv 全 5 檔覆蓋、5 檔 < top50 門檻(50)全落 top50 —
+    // avg=(0.9+0.5-1.2+0.3-2.0)/5=-0.30、up_ratio=3/5=60%(mid100/rest 無
+    // 樣本,分桶邊界另有 backend/tests/test_market_today.py 201 檔 unit test
+    // 覆蓋,fixture 只需鎖「可達桶有值」)。
+    // sector_rotation(taiwan_stock_industry_chain.json 3 產業×2 子產業):
+    // 半導體業 avg=(0.5+0.9)/2=0.70(desc 最高,vol_ratio=(20M+30M)/(10M+20M)
+    // =1.67x hot)、電子零組件業 avg=-0.45(0.44x cold)、光電業 avg=-0.55
+    // (1.07x)。
 
-    const svrSemi = page.getByTestId("svr-row-半導體業");
-    await expect(svrSemi).toContainText("2.50");
-    await expect(svrSemi.locator('[data-flag="hot"]')).toBeVisible();
-    const svrOther = page.getByTestId("svr-row-其他電子業");
-    await expect(svrOther).toContainText("0.65");
-    await expect(svrOther.locator('[data-flag="cold"]')).toBeVisible();
+    const twseSide = page.getByTestId("idx-side-twse");
+    await expect(twseSide).toContainText("19,820");
+    await expect(twseSide).toContainText("-0.90%");
+    await expect(twseSide).toContainText("中小強於指數(-1.20pp)");
 
-    await expect(page.getByTestId("sas-row-半導體業")).toContainText("60.0%");
-    await expect(page.getByTestId("sb-cell-半導體業")).toContainText("100%");
+    const tpexSide = page.getByTestId("idx-side-tpex");
+    await expect(tpexSide).toContainText("392");
+    await expect(tpexSide).toContainText("-2.00%");
+
+    const tsmcRow = page.getByTestId("idx-tsmc");
+    await expect(tsmcRow).toContainText("+0.90%");
+    await expect(tsmcRow).toContainText("+149.9 點");
+
+    const twseUp = page.getByTestId("idx-contrib-twse-up");
+    await expect(twseUp).toContainText("台積電");
+    await expect(twseUp).toContainText("+149.9");
+    await expect(twseUp).toContainText("聯發科");
+    await expect(twseUp).toContainText("中華電");
+    const twseDown = page.getByTestId("idx-contrib-twse-down");
+    await expect(twseDown).toContainText("鴻海");
+    await expect(twseDown).toContainText("-17.8");
+    await expect(twseDown).toContainText("大立光");
+
+    // 無法資料級:fixture 5 檔 TaiwanStockInfo 皆 type=twse,無 tpex 個股 →
+    // tpex 貢獻 top5 只能鎖「空陣列渲染」而非非空數值(見 change-spec 執行
+    // 報告);median/spread 同理鎖 "—" 佔位。
+    await expect(page.getByTestId("idx-contrib-tpex")).toContainText("無資料");
+
+    await expect(page.getByTestId(TESTIDS.marketIndexStrength)).not.toContainText("資料暫缺");
+
+    const capTierTop50 = page.getByTestId("cap-tier-top50");
+    await expect(capTierTop50).toContainText("-0.30%");
+    await expect(capTierTop50).toContainText("上漲比例 60%");
+
+    const rotationList = page.getByTestId(TESTIDS.marketSectorRotation);
+    const firstRow = page.locator('[data-testid^="sector-row-"]').first();
+    await expect(firstRow).toHaveAttribute("data-testid", "sector-row-半導體業");
+    await expect(firstRow).toContainText("+0.70%");
+    await expect(firstRow.locator('[data-flag="hot"]')).toBeVisible();
+
+    // R14:展開第一個產業 → 子產業列可見,再鑽取成員股(走真 sector_members
+    // fetch,不 mock)— assert 成員列表非空。404 contract 由 backend
+    // tests_e2e/test_api_market.py 覆蓋,e2e 只鎖 happy path。
+    await page.getByTestId("sector-toggle-半導體業").click();
+    const subRow = page.getByTestId("sub-row-半導體業-晶圓代工");
+    await expect(subRow).toBeVisible();
+    await expect(subRow).toContainText("+0.90%");
+
+    await page.getByTestId("sector-drill-半導體業").click();
+    const membersPanel = page.getByTestId("sector-members-panel");
+    await expect(membersPanel).toBeVisible();
+    const membersTable = page.getByTestId("sector-members-table");
+    await expect(membersTable).toBeVisible();
+    await expect(page.getByTestId("sector-member-2330")).toContainText("台積電");
+    await expect(page.getByTestId("sector-member-2454")).toContainText("聯發科");
+    await expect(rotationList).not.toContainText("資料暫缺");
   });
 
   test("M5: 經典檢視預設展開,舊 heatmap/leaderboard 可見(D-2,M1 顯性防回歸)", async ({ page }) => {
