@@ -18,6 +18,7 @@
 
 - **窗外孤兒 txo_daily_* 殘檔**:raw→slim 遷移只涵蓋當前 250 日 window 內的日子;更舊的 raw 檔(本機實測 33 檔 ~45MB)永不被讀也不被刪(舊設計本來就會累積,非本次退化)。txo_sv_* 與 txo_slim_* 同樣隨日子累積無 retention。觸發重評估:cache 目錄體積被質疑、或第三個 per-day cache prefix 需要統一 retention 策略時(參考 warrant_flow `_cleanup_flow_caches` 樣板)
 - **pcr per-day 預聚合 / window in-memory memo**(S1+S2 達標後不做):再往下砍要動 parse 函式簽名或吃記憶體。觸發重評估:prd 實測 stale wall 仍 >2s、或 window 拉長超過 250 日時
+- **review P2×2(0 P0/P1,接受入庫)**:(1) 歷史日若被永凍為「有 rows 但全零 OI」(僅單次早晨到訪且當日不再被訪問才會發生),slim 下該日從 hit_rate 的 `oi_by_trading_day` 消失 → t_minus_1 回溯改抓 T-2(raw 版是 parse 回 None 丟樣本)— 兩者皆既有降級路徑,差異限單一 hit_rate 樣本;觸發重評估:hit_rate 數字被質疑、或加「全零日 sentinel」慣例時。(2) strike_volume 的 `_r{refresh}` dedup key 無併發 regression test(oi_lt 有);觸發:任何人再動 sv 的 dedup/refresh 語意時先補
 
 ## From /bug prd-cancel-propagation(2026-07-17)
 
