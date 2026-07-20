@@ -131,6 +131,11 @@ def compute_index_strength(
         if sides[market] is None:
             contrib_out[market] = None
             continue
+        # SC-5(review P2#1):mv_map 整包缺席 = mv 來源降級,contrib 該側 null
+        # (前端顯示「資料暫缺」);mv 有料但該市場無 eligible 才是合法空清單。
+        if not mv_map:
+            contrib_out[market] = None
+            continue
         entries = list(contrib_entries.get(market, {}).values())
         up = sorted(
             (e for e in entries if e["contrib_points"] > 0),
