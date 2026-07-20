@@ -1,13 +1,16 @@
 """Market dashboard API routes.
 
-Single endpoint:
+Endpoints:
 - GET /api/market/snapshot — 整盤 + sectors + leaderboards 派生
+- GET /api/market/sector_members — 族群輪動三層鑽取的成員股列表(SC-3)
 
 Error contract(對齊 routes/options.py 慣例):
-- 502 detail={"error": "finmind_unreachable"} — services raise ValueError
+- 502 detail={"error": "finmind_unreachable"} — services raise ValueError /
+  httpx 上游錯誤穿出
 - 503 detail={"error": "snapshot_unavailable"} — service 尚未 ready
+- 404 detail={"error": "unknown_sector"} — sector_members 未知 industry/sub
 
-design.md §4 §9
+design.md §4 §9 / .claude/mod/market-today-only/change-spec.md §3 §4
 """
 
 from __future__ import annotations
@@ -15,9 +18,10 @@ from __future__ import annotations
 import asyncio
 import logging
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from services.finmind_realtime import fetch_market_snapshot
+from services.finmind_realtime import fetch_market_snapshot, fetch_sector_members
 from utils.cancel import run_with_disconnect
 
 logger = logging.getLogger(__name__)
@@ -64,3 +68,49 @@ async def get_market_snapshot(
             status_code=503,
             detail={"error": "snapshot_unavailable"},
         ) from exc
+
+
+@router.get("/sector_members")
+async def get_sector_members(
+    request: Request,
+    industry: str = Query(...),
+    sub_industry: str | None = Query(default=None),
+) -> dict:
+    """SC-3 drill-down:族群 → 子族群(optional)→ 成員股列表。
+
+    change-spec.md §3:未知 industry/sub_industry → 404 unknown_sector;
+    上游(FinMind universe / chain)失敗 → 502 finmind_unreachable(對齊
+    snapshot route 慣例);cancel 鏈同 snapshot 走 run_with_disconnect。
+    """
+    try:
+        result = await run_with_disconnect(request, fetch_sector_members(industry, sub_industry))
+    except asyncio.CancelledError:
+        if await request.is_disconnected():
+            raise
+        logger.warning("sector_members shared task cancelled while client still connected")
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "snapshot_unavailable"},
+        ) from None
+    except httpx.HTTPError as exc:
+        logger.exception("sector_members upstream FinMind failure")
+        raise HTTPException(
+            status_code=502,
+            detail={"error": "finmind_unreachable"},
+        ) from exc
+    except ValueError as exc:
+        msg = str(exc)
+        if msg == "finmind_unreachable":
+            raise HTTPException(
+                status_code=502,
+                detail={"error": "finmind_unreachable"},
+            ) from exc
+        logger.exception("sector_members service raised unexpected ValueError")
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "snapshot_unavailable"},
+        ) from exc
+
+    if result is None:
+        raise HTTPException(status_code=404, detail={"error": "unknown_sector"})
+    return result

@@ -102,5 +102,10 @@
     "dataset": "TaiwanStockWarrantTradingDailyReport",
     "data_id": "03001P",
     "_note": "warrant-broker-flow:put summary 驗證;rows 日期 = 2026-06-25(R18)"
+  },
+  "taiwan_stock_industry_chain.json": {
+    "dataset": "TaiwanStockIndustryChain",
+    "data_id": "",
+    "_note": "market-today-only SC-3:3 industry × 2 sub 縮樣,stock_id 取自 taiwan_stock_tick_snapshot_2026-06-26 既有 5 檔;2330 同產業(半導體業)跨 2 sub 測 in-industry dedup,另跨產業(光電業)出現一次測允許重複"
   }
 }

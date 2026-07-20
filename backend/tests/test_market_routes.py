@@ -202,3 +202,69 @@ def test_snapshot_returns_503_when_shared_task_cancelled_but_client_connected() 
         resp = TestClient(app).get("/api/market/snapshot")
     assert resp.status_code == 503
     assert resp.json()["detail"]["error"] == "snapshot_unavailable"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/market/sector_members — SC-3 drill-down(change-spec.md §3 / §4 D)
+# ---------------------------------------------------------------------------
+
+
+_SECTOR_MEMBERS_PAYLOAD = {
+    "industry": "半導體業",
+    "sub_industry": "IC設計",
+    "members": [
+        {"stock_id": "2454", "name": "聯發科", "change_rate": 3.1,
+         "vol_ratio": 1.5, "total_amount": 12_000_000_000},
+    ],
+}
+
+
+def test_sector_members_happy_path_returns_200_and_shape() -> None:
+    mock_svc = AsyncMock(return_value=_SECTOR_MEMBERS_PAYLOAD)
+    with patch("routes.market.fetch_sector_members", new=mock_svc):
+        resp = TestClient(app).get(
+            "/api/market/sector_members?industry=%E5%8D%8A%E5%B0%8E%E9%AB%94%E6%A5%AD&sub_industry=IC%E8%A8%AD%E8%A8%88"
+        )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["industry"] == "半導體業"
+    assert body["sub_industry"] == "IC設計"
+    assert len(body["members"]) == 1
+    mock_svc.assert_awaited_once_with("半導體業", "IC設計")
+
+
+def test_sector_members_no_sub_industry_passes_none() -> None:
+    mock_svc = AsyncMock(return_value=_SECTOR_MEMBERS_PAYLOAD)
+    with patch("routes.market.fetch_sector_members", new=mock_svc):
+        resp = TestClient(app).get(
+            "/api/market/sector_members?industry=%E5%8D%8A%E5%B0%8E%E9%AB%94%E6%A5%AD"
+        )
+    assert resp.status_code == 200
+    mock_svc.assert_awaited_once_with("半導體業", None)
+
+
+def test_sector_members_unknown_sector_returns_404() -> None:
+    with patch(
+        "routes.market.fetch_sector_members",
+        new=AsyncMock(return_value=None),
+    ):
+        resp = TestClient(app).get("/api/market/sector_members?industry=%E4%B8%8D%E5%AD%98%E5%9C%A8")
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["error"] == "unknown_sector"
+
+
+def test_sector_members_upstream_httpx_failure_returns_502() -> None:
+    import httpx
+
+    with patch(
+        "routes.market.fetch_sector_members",
+        new=AsyncMock(side_effect=httpx.ConnectError("simulated upstream blip")),
+    ):
+        resp = TestClient(app).get("/api/market/sector_members?industry=%E5%8D%8A%E5%B0%8E%E9%AB%94%E6%A5%AD")
+    assert resp.status_code == 502
+    assert resp.json()["detail"]["error"] == "finmind_unreachable"
+
+
+def test_sector_members_missing_industry_param_returns_422() -> None:
+    resp = TestClient(app).get("/api/market/sector_members")
+    assert resp.status_code == 422

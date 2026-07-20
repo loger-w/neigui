@@ -24,6 +24,9 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+import httpx
+
+from services import industry_chain, market_today
 from services.finmind import get_finmind
 from services.market_universe import fetch_disposition_stocks, filter_universe
 from services.trading_calendar import get_trading_days
@@ -145,6 +148,23 @@ def _build_name_map(rows: list[dict]) -> dict[str, str]:
         name = row.get("stock_name")
         if sid and name and sid not in out:
             out[sid] = name
+    return out
+
+
+def _build_type_map(rows: list[dict]) -> dict[str, str]:
+    """Build stock_id -> "twse"/"tpex" lookup from TaiwanStockInfo rows.
+
+    market-today-only §4 C:market_today.compute_index_strength 需要按市場
+    (twse/tpex)分桶算 median / 貢獻,靠此 map 判斷個股屬於哪個市場。同
+    `_build_name_map` 排序慣例:同 stock_id 多 row 取最新 date 那筆。
+    """
+    out: dict[str, str] = {}
+    sorted_rows = sorted(rows, key=lambda r: r.get("date") or "", reverse=True)
+    for row in sorted_rows:
+        sid = row.get("stock_id")
+        t = row.get("type")
+        if sid and t in ("twse", "tpex") and sid not in out:
+            out[sid] = t
     return out
 
 
@@ -498,6 +518,13 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
 
     primary_sector = _dedup_sector_map(sector_rows)
     name_map = _build_name_map(sector_rows)
+    type_map = _build_type_map(sector_rows)
+    # market-today-only R12:在 universe filter(whitelist + structural)之前
+    # 從 raw tick snapshot 抽 001/101 index rows — 白名單第 2 條「filter 排除
+    # index rows」只約束普通股 universe,不約束這個獨立抽取(§4 Backend B)。
+    index_rows: dict[str, dict] = {
+        r.get("stock_id"): r for r in universe if r.get("stock_id") in ("001", "101")
+    }
     last_tick = _max_tick_date(universe)
     now = datetime.now(tz=TPE_TZ)
     in_session, lag = is_in_session(now, last_tick)
@@ -525,6 +552,26 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     stock_universe = [r for r in stock_universe if r.get("stock_id") in allowed]
     sectors = _group_by_sector(stock_universe, primary_sector, mv_map, name_map=name_map)
     leaderboards = _compute_leaderboards(stock_universe, primary_sector, name_map=name_map)
+
+    # market-today-only SC-5:IndustryChain fetch 失敗 → sector_rotation 降級
+    # null,其餘欄位照常(不 500)。7 天 disk cache 命中時零 FinMind call。
+    try:
+        chain = await industry_chain.get_chain()
+    except httpx.HTTPError:
+        logger.warning("market snapshot: industry chain fetch failed", exc_info=True)
+        chain = None
+
+    index_strength = market_today.compute_index_strength(
+        index_rows=index_rows,
+        universe_rows=stock_universe,
+        mv_map=mv_map,
+        type_map=type_map,
+        name_map=name_map,
+    )
+    cap_tiers = market_today.compute_cap_tiers(stock_universe, mv_map)
+    sector_rotation = market_today.compute_sector_rotation(stock_universe, chain)
+    if sector_rotation is not None:
+        sector_rotation = {**sector_rotation, "as_of": now.isoformat()}
 
     # Stale 規則(Phase 4 R3 + Audit X1):
     # - universe failure(intraday tick 不推進)→ user 體感「資料停滯」 → stale=True
@@ -554,9 +601,37 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
             "warrant": len(excluded["warrant"]),
             "watch_list": len(excluded["watch_list"]),
         },
-        # market-today 🟢 commit 接線 — 目前以 None 佔位,值由 market_today
-        # compute 補上(change-spec.md §3 / §4 R15 commit 拆法)
-        "index_strength": None,
-        "cap_tiers": None,
-        "sector_rotation": None,
+        # market-today-only 🟢 commit 接線(change-spec.md §3 / §4 R15)
+        "index_strength": index_strength,
+        "cap_tiers": cap_tiers,
+        "sector_rotation": sector_rotation,
     }
+
+
+async def fetch_sector_members(industry: str, sub_industry: str | None = None) -> dict | None:
+    """SC-3 drill-down:`/api/market/sector_members` 用。
+
+    走既有 `_fetch_universe`(5s cache)+ `_fetch_sector_map`(24h cache)+
+    `_fetch_watch_list` 組出跟 snapshot 一致的 filtered universe(否則成員數
+    會跟 sector_rotation payload 對不上),再套 chain 對映組成員列表。
+    未知 industry / sub_industry → None(caller 轉 404)。
+    """
+    universe, sector_rows, watch_list = await asyncio.gather(
+        _fetch_universe(refresh=False),
+        _fetch_sector_map(refresh=False),
+        _fetch_watch_list(refresh=False),
+    )
+    primary_sector = _dedup_sector_map(sector_rows)
+    name_map = _build_name_map(sector_rows)
+    stock_universe = [r for r in universe if r.get("stock_id") in primary_sector]
+    universe_filter = filter_universe(
+        [r.get("stock_id", "") for r in stock_universe],
+        watch_list=watch_list,
+    )
+    allowed = universe_filter["universe"]
+    stock_universe = [r for r in stock_universe if r.get("stock_id") in allowed]
+
+    chain = await industry_chain.get_chain()
+    return market_today.compute_sector_members(
+        stock_universe, chain, name_map, industry, sub_industry
+    )
