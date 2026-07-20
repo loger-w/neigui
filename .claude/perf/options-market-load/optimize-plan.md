@@ -79,6 +79,23 @@ materialize 帶 date 欄(parse 以 (date, cp, strike) 分組)。
 
 預期:stale strike_volume 0.84s → ~0.3s;9 支並發 wall 2.20s → < 1.5s。
 
+## Phase 5/7 結果(2026-07-20,同 Phase 1 量測方式:bench_options_page.py)
+
+| Metric | Before | After(S1+S2) | 改善 |
+|---|---|---|---|
+| options 9 支並發 stale 再訪 wall | 6.12s | **0.60s** | **10.3x**(目標 <2.0s ✓)|
+| 單支 stale max_pain | 2.20s | 0.59s | 3.7x(目標 <0.8s ✓)|
+| 單支 stale pcr | 4.61s | 0.59s | 7.8x |
+| stale strike_volume(並發下) | 6.05s | 0.36s | 16.8x |
+| market /snapshot(options stale 同場) | 4.5s+(starved) | 0.37s | 12x+ |
+| 溫路徑 9 支 wall | ~0.5s | 0.08s | 無退化 |
+| window disk cache | 402.5MB | 20.9MB | 19x 縮 |
+
+- 行為零差異證據:`evidence/before_*.json` vs `after_*.json` 四支 endpoint byte-identical(排除 fetched_at)。
+- 其他 metric 無退化:backend 745 passed / ruff clean / frontend 888 passed / build 過;e2e O# 6 passed + M# 9 passed(FAKE 路徑含 raw→slim migration 實跑);refresh=true 與 400 邊界 curl 實測正常。
+- FinMind 配額:sv 首次 build +7 req(一次性),之後每日 1 小 call 取代每 30 分 1 大 call — 淨節省。
+- 一次性遷移成本:deploy 後首個 stale 請求 ~3.9s(讀 283 raw → 寫 slim → 刪 raw),之後穩態。
+
 ## 不做(記 next-time)
 
 - window 結果 in-memory memo(記憶體風險,S1 達標即不需要)
