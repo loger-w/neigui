@@ -26,7 +26,6 @@ def _reset_state(monkeypatch):
     monkeypatch.setattr(ivh, "_backfill_task", None)
     monkeypatch.setattr(ivh, "_rebuild_bg_task", None)
     ivh._series_lru.clear()
-    ivh._inflight.clear()
 
 
 @pytest.fixture(autouse=True)

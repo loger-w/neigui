@@ -102,7 +102,6 @@ def _reset_ivh(monkeypatch):
     monkeypatch.setattr(ivh, "_drift_mem", None)
     monkeypatch.setattr(ivh, "_rebuild_bg_task", None)
     ivh._series_lru.clear()
-    ivh._inflight.clear()
     return ivh
 
 

@@ -19,10 +19,8 @@ from services import clock
 @pytest.fixture(autouse=True)
 def _reset_daytrade_fee_module(monkeypatch):
     """module-level 狀態隔離(impl-spec R1-2):對齊 conftest 的 fm._client
-    reset 慣例 — conftest 不管新 module,檔內自帶。_inflight 殘留 task 會
-    綁死舊 event loop(asyncio_mode=auto 每測試新 loop)。"""
+    reset 慣例(_inflight 已由 conftest _reset_realtime_task_registries 統一清)。"""
     monkeypatch.setattr(df, "_client", None)
-    df._inflight.clear()
 
 
 @pytest.fixture()
