@@ -53,6 +53,16 @@ export const TESTIDS = {
   warrantIvChart: "warrant-iv-chart",
   // 權證挑選強化(mod/warrant-selector-enhance)
   columnMenuBtn: "column-menu-btn",
+  // 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux;E23-E29 補課 2026-07-20)
+  chipSelectedBar: "chip-selected-bar",
+  chipBrokerRow: "chip-broker-row",
+  bubbleJumpToOverview: "bubble-jump-to-overview",
+  bubbleBrokerTotals: "bubble-broker-totals",
+  bubbleLoadingBadge: "bubble-loading-badge",
+  brushSummary: "brush-summary",
+  brushApplyFilter: "brush-apply-filter",
+  bubbleYaxisBrush: "bubble-yaxis-brush",
+  brokerSearchItem: "broker-search-item",
   // 權證分點 tab(feat/warrant-broker-flow)
   warrantFlowPanel: "warrant-flow-panel",
   flowDateBadge: "flow-date-badge",
