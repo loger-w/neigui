@@ -90,7 +90,13 @@ class FakeFinMindClient(FinMindClient):
 
         rows = self._store.get((dataset, data_id))
         if rows is None and data_id:
-            rows = self._store.get((dataset, ""))  # 退一步試 universe fixture
+            # 退一步試 universe fixture — 但必須複製上游查詢語意(真實 API 帶
+            # data_id 只回該檔):universe rows 按 stock_id == data_id 過濾,
+            # 否則單股查詢(如 2412 kline)會拿到整包全市場 rows(2026-07-20
+            # populated market fixture 加入後此 fallback 首次真的會命中)
+            universe_rows = self._store.get((dataset, ""))
+            if universe_rows is not None:
+                rows = [r for r in universe_rows if r.get("stock_id") == data_id]
         if rows is None:
             logger.info(
                 "fake-finmind MISS dataset=%s data_id=%s start=%s end=%s",
