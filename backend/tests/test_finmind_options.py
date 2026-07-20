@@ -681,13 +681,16 @@ async def test_fetch_oi_large_traders_per_day_cache_amortises_date_step():
 async def test_fetch_strike_volume_writes_cache_and_returns_shape():
     from services.finmind import FinMindClient
     today = "2026-06-23"
-    rows = [
-        _od_row("2026-06-20", "202607", "call", 22000, 14000, 33100),
-        _od_row(today, "202607", "call", 22000, 18500, 35200),
-        _od_row(today, "202607", "call", 22100, 12100, 30000),
-        _od_row(today, "202607", "put",  21500, 14200, 28100),
-    ]
-    mc = _mock_http(_fm_resp(rows))
+    # S2 (perf/options-market-load): the range fetch became a per-calendar-day
+    # fan-out with txo_sv_* caches, so responses are keyed by start_date.
+    mc = _mock_http_by_start_date({
+        "2026-06-20": [_od_row("2026-06-20", "202607", "call", 22000, 14000, 33100)],
+        today: [
+            _od_row(today, "202607", "call", 22000, 18500, 35200),
+            _od_row(today, "202607", "call", 22100, 12100, 30000),
+            _od_row(today, "202607", "put",  21500, 14200, 28100),
+        ],
+    })
     fm = FinMindClient()
     fm._http = mc
     contract = {"option_id": "TXO", "contract_date": "202607", "contract_type": "202607"}

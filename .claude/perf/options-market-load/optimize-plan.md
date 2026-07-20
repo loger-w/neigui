@@ -56,6 +56,29 @@ raw `txo_daily_{date}` → 改存 build 時預聚合的 slim 檔 `txo_slim_{date
 - API 對外 payload:max_pain / oi_walls / pcr / strike_volume / spot 回應欄位與數值完全相同
 - FinMind call 次數契約:冷 fan-out / overlap 重用 / refresh trailing-2 / today 30-min stale,全部維持
 
+## S2:strike_volume per-day cache(S1 量測後補,2026-07-20)
+
+S1 後重量測:9 支並發 stale wall 2.20s,殘餘瓶頸 = `strike_volume` 2195ms(profile:
+標準單跑 0.84s 幾乎全網路 — 每次 stale 都重抓 7 天 × 全 TXO chain ~8MB;並發時與其他
+FinMind 請求搶頻寬放大)。改 per-day cache `txo_sv_{date}`:6 個歷史日凍結,stale 只重抓
+今天 1 天(payload 1/7)。
+
+**語意注意**:parse_strike_volume 的 session 聚合 = volume 加總 + OI 取 **MAX**(跨
+session),與 window slim 的 OI 加總**不同構** — 不能共用 txo_slim,獨立 per-day 檔存
+per (option_id, contract_date, call_put, strike) 的 {v: vol_sum, o: oi_max},保留
+vol>0 OR oi>0 entries(兩者皆 0 的 entry parse 本來就 drop,prev-day lookup 語意不變)。
+materialize 帶 date 欄(parse 以 (date, cp, strike) 分組)。
+
+### Cache invalidation 三欄
+
+| 欄 | 內容 |
+|---|---|
+| 失效時機 | 歷史日(< today)txo_sv 檔不朽;today 檔 30-min `_is_stale`;refresh=True 重抓 trailing(today+昨天,同 oi_lt 慣例);`_cache_version` ≠ `_CACHE_VERSION_STRIKE_VOL_DAY` → miss |
+| bust 觸發點 | (a) fetch_strike_volume 內 today/refresh 日重抓後覆寫;(b) `_CACHE_VERSION_STRIKE_VOL_DAY` bump(人工);result cache(`*_strike_vol`)沿用既有 `_CACHE_VERSION_STRIKE_VOL` 不動 |
+| 驗證測試名 | `test_finmind_window_cache.py::test_strike_volume_per_day_cache_only_refetches_today`、`::test_strike_volume_day_cache_vol_sum_oi_max` |
+
+預期:stale strike_volume 0.84s → ~0.3s;9 支並發 wall 2.20s → < 1.5s。
+
 ## 不做(記 next-time)
 
 - window 結果 in-memory memo(記憶體風險,S1 達標即不需要)

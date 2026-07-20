@@ -300,3 +300,85 @@ async def test_window_slim_aggregates_sessions_and_drops_zero_oi(
             "open_interest": 7,
         },
     ]
+
+
+# ---------------------------------------------------------------------------
+# S2: strike_volume per-day cache (txo_sv_*) — perf/options-market-load
+# ---------------------------------------------------------------------------
+
+
+_SV_CONTRACT = {"option_id": "TXO", "contract_date": "202607", "contract_type": "202607"}
+
+
+async def test_strike_volume_per_day_cache_only_refetches_today(patched_finmind):
+    """First fetch fans out one call per calendar day in the 8-day range;
+    sliding end_date forward one day re-uses 7 cached days → exactly 1 new
+    FinMind call (mirrors the oi_lt / window per-day amortisation contract).
+    """
+    client, get_mock = patched_finmind
+    end = date(2026, 6, 26)
+
+    await client.fetch_strike_volume(_SV_CONTRACT, end.isoformat())
+    first = get_mock.await_count
+    assert first == 8, f"8-calendar-day range should fan out 8 per-day calls, got {first}"
+
+    await client.fetch_strike_volume(_SV_CONTRACT, (end + timedelta(days=1)).isoformat())
+    assert get_mock.await_count == first + 1, "7 overlapping days must come from txo_sv cache"
+
+
+async def test_strike_volume_day_cache_vol_sum_oi_max(
+    monkeypatch,
+    bypass_finmind_rate_limiter,
+):
+    """Per-day slim keeps parse_strike_volume's session semantics — volume
+    SUMMED, OI MAXed across trading_session — and drops rows whose own date
+    differs from the requested day (defensive against upstream range bleed).
+    """
+    import services.finmind as fm
+
+    client = fm.get_finmind()
+    end = date(2026, 6, 25)
+
+    async def fake_get(url: str, params: dict) -> list:
+        d_iso = params["start_date"]
+        if d_iso != end.isoformat():
+            return []
+        base = {
+            "option_id": "TXO",
+            "contract_date": "202607",
+            "call_put": "call",
+            "strike_price": 21000,
+        }
+        return [
+            {
+                **base,
+                "date": d_iso,
+                "volume": 10,
+                "open_interest": 100,
+                "trading_session": "position",
+            },
+            {
+                **base,
+                "date": d_iso,
+                "volume": 5,
+                "open_interest": 40,
+                "trading_session": "after_market",
+            },
+            # range-bleed row: wrong date → must be excluded from this day
+            {
+                **base,
+                "date": "2026-06-30",
+                "volume": 99,
+                "open_interest": 999,
+                "trading_session": "position",
+            },
+        ]
+
+    monkeypatch.setattr(client, "_get", AsyncMock(side_effect=fake_get))
+
+    out = await client.fetch_strike_volume(_SV_CONTRACT, end.isoformat())
+
+    assert out["as_of_date"] == end.isoformat()
+    assert out["call"] == [
+        {"strike": 21000, "volume": 15, "oi": 100, "oi_change": 0},
+    ]
