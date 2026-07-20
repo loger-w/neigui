@@ -474,9 +474,9 @@ def mock_fm_with_inst():
             "fetched_at": "x",
             "as_of_date": today,
             "current": {
-                "foreign": {"call_net": 500, "put_net": -300, "total_net": 200, "day_change": 0},
-                "dealer": {"call_net": 100, "put_net": 50, "total_net": 150, "day_change": 0},
-                "trust": {"call_net": 20, "put_net": -10, "total_net": 10, "day_change": 0},
+                "foreign": {"call_net": 500, "put_net": -300, "total_net": 200},
+                "dealer": {"call_net": 100, "put_net": 50, "total_net": 150},
+                "trust": {"call_net": 20, "put_net": -10, "total_net": 10},
                 "session_breakdown": {"day_session": {}, "after_hours": None},
             },
             "correlation": None,
