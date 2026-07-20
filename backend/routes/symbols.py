@@ -14,7 +14,8 @@ router = APIRouter()
 
 _symbols: list[dict] = []
 # perf/cold-start:共用載入 task(inflight dedup)。module 持有引用,client 斷線
-# 或 request 結束都不取消它(樣板:finmind_realtime._ensure_eod_task)。
+# 或 request 結束都不取消它(樣板:finmind_realtime._run_once 的 module-level
+# 引用慣例)。
 _load_task: asyncio.Task | None = None
 
 

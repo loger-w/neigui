@@ -71,12 +71,11 @@ def _reset_warrant_prewarm_task(monkeypatch):
 def _reset_realtime_task_registries():
     """market snapshot 鏈的模組級 task dict 同款跨 event loop 殘留 — 每測試起點清空。
 
-    負載下 wait_for(_EOD_INLINE_BUDGET_SEC) 超時會把 pending EOD task 留在
-    _eod_background;pytest-asyncio 的 loop teardown 不 cancel pending task,
-    下一測試(新 loop)同 key 撿到死 loop 的 task → RuntimeError
-    "got Future attached to a different loop" 連環炸(2026-07-07/11/14/17
-    四次 pre-push 實證)。market_breadth / market_universe 的 _inflight 同
-    class 一併清(warrant* / daytrade_fee 的 _inflight 由各測試檔既有
+    負載下背景 task 若留在模組級 registry;pytest-asyncio 的 loop teardown
+    不 cancel pending task,下一測試(新 loop)同 key 撿到死 loop 的 task →
+    RuntimeError "got Future attached to a different loop" 連環炸
+    (2026-07-07/11/14/17 四次 pre-push 實證)。market_universe 的 _inflight
+    同 class 一併清(warrant* / daytrade_fee 的 _inflight 由各測試檔既有
     fixture 自清)。
     注意用 .clear() 不用 monkeypatch.setattr({}):setattr 會在 teardown 還原
     「原 dict 物件」,殘留條目跟著回魂。
@@ -84,7 +83,6 @@ def _reset_realtime_task_registries():
     import asyncio
 
     import services.finmind_realtime as fr
-    import services.market_breadth as mb
     import services.market_universe as mu
 
     def _drop_silently(tasks) -> None:
@@ -97,13 +95,8 @@ def _reset_realtime_task_registries():
                 t._log_destroy_pending = False  # type: ignore[attr-defined]  # CPython 私有旗標
 
     _drop_silently(e["task"] for e in fr._inflight.values())
-    _drop_silently(fr._eod_background.values())
-    _drop_silently(mb._inflight.values())
     _drop_silently(mu._inflight.values())
     fr._inflight.clear()
-    fr._eod_background.clear()
-    fr._eod_backoff_until.clear()  # 失敗 backoff 窗口(bug eod-retry-backoff)一併清
-    mb._inflight.clear()
     mu._inflight.clear()
     yield
 
