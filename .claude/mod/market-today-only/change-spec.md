@@ -140,3 +140,6 @@ Review 記錄:round 1 R1-R10、round 2 R11-R15 全數修入(P0×2 / P1×8 / P2×
 ## §7 規模
 
 L 級(≥5 檔、對外 payload 契約、跨 backend/frontend/e2e)→ Phase 3 review max 2 輪,退出條件無 P0/P1。
+
+
+self_review_head: 8eb33d7fe8b763eada28424815f3ebaab1d9498a
