@@ -1086,7 +1086,7 @@ def parse_institutional(
             pn += after_hours_agg[inst]["put_net"]
         totals[inst] = {
             "call_net": cn, "put_net": pn,
-            "total_net": cn + pn, "day_change": 0,  # day_change populated by caller
+            "total_net": cn + pn,
         }
 
     return {

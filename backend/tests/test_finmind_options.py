@@ -1680,6 +1680,18 @@ def test_parse_institutional_uses_dealer_not_prop():
     assert result["current"]["dealer"]["call_net"] == 200 - 100
 
 
+def test_parse_institutional_has_no_day_change_field():
+    """KR-1 cleanup: day_change 恆 0 且 caller 從未回填(前端改用 series
+    末兩點差),死欄位不得再出現在 payload。"""
+    from services.finmind_options import parse_institutional
+    rows_day = [_inst_row("2026-06-25", "外資", "call", 1000, 500)]
+    result = parse_institutional(
+        rows_day=rows_day, rows_night=[], target_date=date(2026, 6, 25),
+    )
+    for inst in ("foreign", "dealer", "trust"):
+        assert "day_change" not in result["current"][inst]
+
+
 def test_parse_institutional_after_hours_none_pre_2021_10():
     """SC-4 / F12: AfterHours unavailable before 2021-10-13.
     Target date pre-cutoff → session_breakdown.after_hours = None."""

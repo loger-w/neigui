@@ -18,15 +18,15 @@ import type {
 afterEach(() => cleanup());
 
 // 痛點:SC-8 溫度計四格 — 每格「誰站哪邊」一句判讀;「較昨日」必須取
-// series 末兩點差(day_change 恆 0 是死欄位,KR-1);PCR 資料不足顯示
+// series 末兩點差(舊 day_change 死欄位已移除,KR-1 cleanup);PCR 資料不足顯示
 // 「資料不足」、其他格 error 顯示「—」(impl-review R6);禁方向性文案。
 
 const inst: OptionsInstitutional = {
   date: "2026-06-26", fetched_at: "x", as_of_date: "2026-06-26",
   current: {
-    foreign: { call_net: 1500, put_net: -800, total_net: 700, day_change: 0 },
-    dealer: { call_net: 0, put_net: 0, total_net: 0, day_change: 0 },
-    trust: { call_net: 0, put_net: 0, total_net: 0, day_change: 0 },
+    foreign: { call_net: 1500, put_net: -800, total_net: 700 },
+    dealer: { call_net: 0, put_net: 0, total_net: 0 },
+    trust: { call_net: 0, put_net: 0, total_net: 0 },
     session_breakdown: { day_session: {}, after_hours: null },
   },
   series: [

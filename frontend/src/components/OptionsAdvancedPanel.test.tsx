@@ -56,9 +56,9 @@ const mockPcr: OptionsPCR = {
 const mockInst: OptionsInstitutional = {
   date: TODAY, fetched_at: "x", as_of_date: TODAY,
   current: {
-    foreign: { call_net: 1500, put_net: -800, total_net: 700, day_change: 0 },
-    dealer: { call_net: 100, put_net: 50, total_net: 150, day_change: 0 },
-    trust: { call_net: 30, put_net: -10, total_net: 20, day_change: 0 },
+    foreign: { call_net: 1500, put_net: -800, total_net: 700 },
+    dealer: { call_net: 100, put_net: 50, total_net: 150 },
+    trust: { call_net: 30, put_net: -10, total_net: 20 },
     session_breakdown: { day_session: {}, after_hours: null },
   },
   series: [{ date: TODAY, foreign_total_net: 700 }],

@@ -209,7 +209,6 @@ export interface InstitutionalSide {
   call_net: number;
   put_net: number;
   total_net: number;
-  day_change: number;
 }
 
 export interface OptionsInstitutional {
@@ -226,7 +225,7 @@ export interface OptionsInstitutional {
     };
   };
   /** options-page-v2 SC-8:外資 call+put 全側淨部位 20 日 tail(R3a)。
-   * 「較昨日」一律取末兩點差 — current.*.day_change 恆 0 是已知死欄位(KR-1),不要用。 */
+   * 「較昨日」一律取末兩點差(舊 day_change 死欄位已移除,KR-1 cleanup)。 */
   series: Array<{ date: string; foreign_total_net: number }>;
   correlation: {
     samples: number;
