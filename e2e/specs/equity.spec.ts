@@ -304,6 +304,129 @@ test.describe("equity mode — 泡泡圖提示", () => {
     await expect(page.getByTestId("bubble-brush-hint")).toBeVisible();
   });
 });
+// mod bubble-chip-ux(2026-07-02)的 e2e 補課(2026-07-20):當時 port 佔用
+// 未跑,依判準表 equity UI 改動必加 E# spec。Fixture 基準(2026-06-26):
+// 3 個分點 BROKER001-003(分點001-003),各買 100 張 / 賣 80 張,單一價位
+// 1100 → 買額 1.10 億 / 賣額 8,800 萬(手算對照,資料級 assertion)。
+test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", () => {
+  test.beforeEach(async ({ page }) => {
+    await installFixtureClock(page);
+    await page.goto("/");
+    await page.getByPlaceholder(/搜尋代號/).fill("2330");
+    await page.getByRole("option").first().click();
+    await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
+  });
+
+  test("E23: 泡泡圖選分點 → 「查看於籌碼總覽」跳轉 + 已選帶入(A2)", async ({ page }) => {
+    // 痛點:跳轉鏈 = BrokerSearch name→id 轉換 → onJumpToOverview → App
+    // setTab + setSelectedBrokerIds → chip bar。任一環斷 = button 有但跳過去
+    // 是空選擇(silent broken,vitest 只鎖到 callback 參數層)。
+    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    await page.getByPlaceholder("搜尋分點...").fill("分點001");
+    await page.getByTestId(TESTIDS.brokerSearchItem).first().click();
+    const jump = page.getByTestId(TESTIDS.bubbleJumpToOverview);
+    await expect(jump).toContainText("查看 分點001 於籌碼總覽");
+    await jump.click();
+    // tab 已切回籌碼總覽 + 該分點在已選 chip bar
+    await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.chipSelectedBar)).toContainText("分點001");
+    await expect(page.getByTestId(TESTIDS.chipSelectedBar)).not.toContainText("未選擇分點");
+  });
+
+  test("E24: 泡泡圖選分點 → 總買/賣張與金額資料級 assertion(A3)", async ({ page }) => {
+    // 痛點:computeBrokerTotals 全鏈(trades → 聚合 → fmtVol/fmtAmount)。
+    // visibility-only 會被「顯示 0 張」蓋住 — 鎖 fixture 手算值:
+    // 買 100 張 / 賣 80 張、買額 100×1000×1100 = 1.10 億、賣額 8,800 萬。
+    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    await page.getByPlaceholder("搜尋分點...").fill("分點001");
+    await page.getByTestId(TESTIDS.brokerSearchItem).first().click();
+    const totals = page.getByTestId(TESTIDS.bubbleBrokerTotals);
+    await expect(totals).toContainText("買 100 張");
+    await expect(totals).toContainText("賣 80 張");
+    await expect(totals).toContainText("1.10 億");
+    await expect(totals).toContainText("8,800 萬");
+  });
+
+  test("E25: 換股載入時泡泡圖 loading badge 出現後消失(A5)", async ({ page }) => {
+    // 痛點:loading feedback 鏈 = bubbleHook.loading → App loading prop →
+    // badge render。FAKE fixture 回太快窗口極窄 → route delay 撐開;badge
+    // 永不出現(prop 沒接)或永不消失(loading 卡住)都會紅。
+    await page.route("**/api/chip/2412/bubble**", async (route) => {
+      await new Promise((r) => setTimeout(r, 1500));
+      await route.continue();
+    });
+    // 換標的用 Enter(E10 同款:dropdown option 在已載資料頁面上重渲染,
+    // click retry 撞 detach;Enter 路徑不依賴 option 元素穩定性)
+    await page.getByPlaceholder(/搜尋代號/).fill("2412");
+    await expect(page.getByRole("option")).toHaveCount(1, { timeout: 15000 });
+    await page.getByPlaceholder(/搜尋代號/).press("Enter");
+    await page.getByRole("button", { name: "泡泡圖" }).click();
+    const badge = page.getByTestId(TESTIDS.bubbleLoadingBadge);
+    await expect(badge).toBeVisible();
+    await expect(badge).toContainText("載入 2412 泡泡圖中");
+    await expect(badge).toBeHidden({ timeout: 5000 });
+  });
+
+  test("E26: 籌碼總覽 chip bar 容器常駐 + 未選 placeholder(B2)", async ({ page }) => {
+    // 痛點:anti-CLS — 容器改常駐後若回退成條件 render,選分點瞬間版面
+    // 位移回歸(vitest 鎖了 DOM 存在,這裡鎖真瀏覽器 render 路徑)。
+    const bar = page.getByTestId(TESTIDS.chipSelectedBar);
+    await expect(bar).toBeVisible();
+    await expect(bar).toContainText("未選擇分點");
+  });
+
+  test("E27: K 線下 broker row 容器常駐 + 未選 placeholder(B3)", async ({ page }) => {
+    // 痛點:同 E26 anti-CLS,K 線 grid 固定 6 subchart 的容器分支;placeholder
+    // 在但「清除」button 不該在(未選狀態誤現 = showBrokerData 分支錯)。
+    const row = page.getByTestId(TESTIDS.chipBrokerRow);
+    await expect(row).toBeVisible();
+    await expect(row).toContainText("未選擇分點");
+    await expect(row.getByRole("button", { name: "清除" })).toHaveCount(0);
+  });
+
+  test("E28: 分點 row 整列可點 + checkbox 不 double-toggle(B1)", async ({ page }) => {
+    // 痛點:row 升格可點後,checkbox click bubble 到 row 會 double-toggle
+    // (選了又立刻取消,體感 = 點 checkbox 沒反應)。row 點空白處選中 →
+    // 點 checkbox 取消 → 各恰好一次 toggle 才會回到未選 placeholder。
+    const bar = page.getByTestId(TESTIDS.chipSelectedBar);
+    const row = page.locator('div[role="button"]').filter({ hasText: "分點001" }).first();
+    await row.click();
+    await expect(bar).toContainText("分點001");
+    // checkbox 本體 sr-only(1px 不可點)→ force(E18 同款前例);click 事件
+    // 仍真實從 input 冒泡到 stopPropagation wrapper,double-toggle 語意照驗
+    await row.getByRole("checkbox", { name: "勾選 分點001" }).click({ force: true });
+    await expect(bar).toContainText("未選擇分點");
+  });
+
+  test("E29: Y 軸 brush 拖曳 → summary → 篩選跳轉籌碼總覽(A1 端到端)", async ({ page }) => {
+    // 痛點:brush 全鏈 = pointer drag → yToPrice 反算 → summarize → 篩選
+    // button → App 批次帶入。fixture 單一價位 1100(pricePad=1 → domain
+    // [1099,1101]),整段拖曳必涵蓋 → 3 分點、買 300 / 賣 240 張(手算)。
+    await page.getByRole("button", { name: "泡泡圖" }).click();
+    const overlay = page.getByTestId(TESTIDS.bubbleYaxisBrush);
+    await expect(overlay).toBeVisible();
+    const box = await overlay.boundingBox();
+    if (!box) throw new Error("bubble-yaxis-brush boundingBox null");
+    const cx = box.x + box.width / 2;
+    await page.mouse.move(cx, box.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(cx, box.y + box.height - 8, { steps: 5 });
+    await page.mouse.up();
+    const summary = page.getByTestId(TESTIDS.brushSummary);
+    await expect(summary).toBeVisible();
+    await expect(summary).toContainText("涵蓋 3 個分點");
+    await expect(summary).toContainText("買 300 / 賣 240 張");
+    await page.getByTestId(TESTIDS.brushApplyFilter).click();
+    await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
+    const bar = page.getByTestId(TESTIDS.chipSelectedBar);
+    await expect(bar).toContainText("分點001");
+    await expect(bar).toContainText("分點002");
+    await expect(bar).toContainText("分點003");
+  });
+});
+
 test.describe("equity mode — 主力線階梯補抓(mod chip-major-lazy-window)", () => {
   test.beforeEach(async ({ page }) => {
     await installFixtureClock(page);
