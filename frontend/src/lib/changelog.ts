@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.37.0",
+    date: "2026-07-20",
+    changes: [
+      {
+        kind: "feature",
+        scope: "global",
+        text: "大盤頁分析區全面改版,不再看歷史平均,直接看「今天」:加權與上櫃指數即時強弱對比、資金究竟集中在權值股還是中小型股、資金流向哪些產業族群,並可逐層點開產業、子產業一路看到成員股表現",
+      },
+    ],
+  },
+  {
     version: "0.36.2",
     date: "2026-07-20",
     changes: [
