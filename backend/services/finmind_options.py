@@ -15,6 +15,9 @@ _CACHE_VERSION_OPTIONS_CHIP = 2  # bumped: options-page-v2 SC-1/2/3 (OTM walls /
 # strike_volume 專用(options-page-v2 §1.4 R11):從 2 起跳使共用 _CACHE_VERSION_OPTIONS=1
 # 時代的舊 entry 失效;spot / oi_large_traders 沿用 _CACHE_VERSION_OPTIONS 不波及。
 _CACHE_VERSION_STRIKE_VOL = 2
+# per-day slim window cache(txo_slim_*,perf 2026-07-20):預聚合 5 欄 columnar,
+# 取代 raw txo_daily_*。bump 即整窗重抓 FinMind(~250 req),歷史日無 raw 可回退。
+_CACHE_VERSION_OPTIONS_SLIM = 1
 
 
 def _third_wednesday(year: int, month: int) -> date:

@@ -1165,13 +1165,74 @@ class FinMindClient:
     def _day_cache_key(d: date) -> str:
         return f"txo_daily_{d.isoformat()}"
 
+    @staticmethod
+    def _slim_day_cache_key(d: date) -> str:
+        return f"txo_slim_{d.isoformat()}"
+
+    @staticmethod
+    def _slim_from_rows(rows: list[dict]) -> dict:
+        """Aggregate raw TaiwanOptionDaily rows into the slim columnar form.
+
+        Window consumers (max_pain / oi_walls / pcr parsers) only read
+        (option_id, contract_date, call_put, strike_price, open_interest),
+        skip oi<=0 rows and sum OI additively across trading_session — so
+        pre-aggregating here is semantically lossless for them while cutting
+        the on-disk window from ~400MB to ~15MB (13 fields × ~5.5k rows/day
+        → 5 columns × ~2.5k entries/day).
+        """
+        agg: dict[tuple[str, str, str, float], int] = {}
+        for r in rows:
+            side = r.get("call_put")
+            if side not in ("call", "put"):
+                continue
+            try:
+                strike = float(r.get("strike_price", 0))
+                oi = int(r.get("open_interest", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if oi <= 0:
+                continue
+            key = (str(r.get("option_id", "")), str(r.get("contract_date", "")), side, strike)
+            agg[key] = agg.get(key, 0) + oi
+        keys = sorted(agg)
+        return {
+            "oid": [k[0] for k in keys],
+            "cd": [k[1] for k in keys],
+            "cp": [k[2] for k in keys],
+            "k": [k[3] for k in keys],
+            "oi": [agg[k] for k in keys],
+        }
+
+    @staticmethod
+    def _materialize_slim(payload: dict) -> list[dict]:
+        """Columnar slim payload → row dicts in the 5-field shape parsers read."""
+        return [
+            {
+                "option_id": o,
+                "contract_date": c,
+                "call_put": p,
+                "strike_price": k,
+                "open_interest": oi,
+            }
+            for o, c, p, k, oi in zip(
+                payload.get("oid", []),
+                payload.get("cd", []),
+                payload.get("cp", []),
+                payload.get("k", []),
+                payload.get("oi", []),
+            )
+        ]
+
     async def _do_fetch_window(
         self,
         sorted_dates: list[date],
         end_date: date,
         refresh: bool,
     ) -> dict[str, list[dict]]:
-        from services.finmind_options import _CACHE_VERSION_OPTIONS_CHIP
+        from services.finmind_options import (
+            _CACHE_VERSION_OPTIONS_CHIP,
+            _CACHE_VERSION_OPTIONS_SLIM,
+        )
 
         today = clock.today()
 
@@ -1190,21 +1251,50 @@ class FinMindClient:
 
         by_date_iso: dict[str, list[dict]] = {}
         to_fetch: list[date] = []
+        migrated = 0
         for d in sorted_dates:
             if d in refresh_days:
                 to_fetch.append(d)
                 continue
-            cached = self._read_cache_v(
-                self._day_cache_key(d),
-                _CACHE_VERSION_OPTIONS_CHIP,
+            slim = self._read_cache_v(
+                self._slim_day_cache_key(d),
+                _CACHE_VERSION_OPTIONS_SLIM,
             )
-            if cached is None:
+            if slim is None:
+                raw = self._read_cache_v(
+                    self._day_cache_key(d),
+                    _CACHE_VERSION_OPTIONS_CHIP,
+                )
+                if raw is None:
+                    to_fetch.append(d)
+                    continue
+                # One-time migration: build slim from the pre-existing raw
+                # day cache (no FinMind call), keep the raw fetched_at so
+                # today's 30-min staleness decision carries over unchanged.
+                slim = {
+                    **self._slim_from_rows(raw.get("rows", [])),
+                    "fetched_at": raw.get("fetched_at", ""),
+                }
+                self._write_cache_v(
+                    self._slim_day_cache_key(d),
+                    slim,
+                    _CACHE_VERSION_OPTIONS_SLIM,
+                )
+                # The raw file has no readers left — best-effort delete
+                # reclaims ~1.4MB/day; on failure it just lingers unread.
+                try:
+                    self._cache_path(self._day_cache_key(d)).unlink(missing_ok=True)
+                except OSError as exc:
+                    logger.warning("raw window cache delete failed for %s: %s", d, exc)
+                migrated += 1
+                if migrated % 25 == 0:
+                    # Migration parses the fat raw files in a sync loop; yield
+                    # for real (sleep(0) would not run pending timers/IO).
+                    await asyncio.sleep(0.005)
+            if d == today and self._is_stale(slim):
                 to_fetch.append(d)
                 continue
-            if d == today and self._is_stale(cached):
-                to_fetch.append(d)
-                continue
-            by_date_iso[d.isoformat()] = cached.get("rows", [])
+            by_date_iso[d.isoformat()] = self._materialize_slim(slim)
 
         if to_fetch:
             results = await asyncio.gather(
@@ -1225,11 +1315,12 @@ class FinMindClient:
             fetched_at = datetime.now().isoformat(timespec="seconds")
             for d, res in zip(to_fetch, results):
                 rows = [] if isinstance(res, BaseException) else (res or [])
-                by_date_iso[d.isoformat()] = rows
+                slim = {**self._slim_from_rows(rows), "fetched_at": fetched_at}
+                by_date_iso[d.isoformat()] = self._materialize_slim(slim)
                 self._write_cache_v(
-                    self._day_cache_key(d),
-                    {"rows": rows, "fetched_at": fetched_at},
-                    _CACHE_VERSION_OPTIONS_CHIP,
+                    self._slim_day_cache_key(d),
+                    slim,
+                    _CACHE_VERSION_OPTIONS_SLIM,
                 )
 
         return by_date_iso

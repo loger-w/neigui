@@ -7,7 +7,11 @@ Behaviour contract (perf 2026-06-26):
 - ``refresh=True`` re-fetches the most-recent ~2 days (today + yesterday) to
   pick up publication-lag updates, but does NOT re-fetch frozen historical
   days.
-- Return shape is unchanged: ``{date_iso: list[dict]}``.
+- Return shape is ``{date_iso: list[dict]}``; rows are the slim 5-field form
+  (perf 2026-07-20): aggregated OI per (option_id, contract_date, call_put,
+  strike_price) across trading_session, zero-OI entries dropped. Consumers
+  (max_pain / oi_walls / pcr parsers) only ever read those 5 fields and
+  re-aggregate additively, so slim rows are semantically equivalent to raw.
 """
 
 from __future__ import annotations
@@ -27,6 +31,17 @@ def _row(d: date, strike: int = 21000, oi: int = 100) -> dict:
         "strike_price": strike,
         "open_interest": oi,
         "trading_session": "position",
+    }
+
+
+def _slim_row(strike: int = 21000, oi: int = 100) -> dict:
+    """Expected materialized slim row for a single ``_row`` fetch."""
+    return {
+        "option_id": "TXO",
+        "contract_date": "202607",
+        "call_put": "call",
+        "strike_price": float(strike),
+        "open_interest": oi,
     }
 
 
@@ -64,7 +79,7 @@ async def test_window_first_fetch_calls_finmind_once_per_date(patched_finmind):
     assert get_mock.await_count == 5
     assert set(out.keys()) == {d.isoformat() for d in dates}
     for d in dates:
-        assert out[d.isoformat()] == [_row(d)]
+        assert out[d.isoformat()] == [_slim_row()]
 
 
 async def test_window_second_fetch_overlap_only_refetches_new_days(
@@ -158,3 +173,130 @@ async def test_window_today_30min_stale_window(monkeypatch, patched_finmind):
     new = get_mock.await_count - 3
     # Only today's row should refetch (historical days remain final)
     assert new == 1, f"expected only today to refetch on stale, got {new}"
+
+
+async def test_window_slim_migrates_from_raw_without_finmind_call(patched_finmind):
+    """A pre-slim raw ``txo_daily_{d}`` cache must be converted to the slim
+    form in place (slim file written, raw deleted) WITHOUT hitting FinMind —
+    otherwise every deploy would re-burn a 250-call fan-out.
+    """
+    from services.finmind_options import _CACHE_VERSION_OPTIONS_CHIP
+
+    client, get_mock = patched_finmind
+    d = date(2026, 6, 24)
+    raw_rows = [
+        {**_row(d, strike=21000, oi=100), "trading_session": "position"},
+        {**_row(d, strike=21000, oi=50), "trading_session": "after_market"},
+        {**_row(d, strike=21200, oi=0)},  # zero-OI → dropped in slim
+    ]
+    client._write_cache_v(
+        f"txo_daily_{d.isoformat()}",
+        {"rows": raw_rows, "fetched_at": "2026-06-24T15:00:00"},
+        _CACHE_VERSION_OPTIONS_CHIP,
+    )
+
+    out = await client.fetch_taiwan_option_daily_window(
+        [d],
+        end_date=d,
+        refresh=False,
+    )
+
+    assert get_mock.await_count == 0, "migration must not call FinMind"
+    assert out[d.isoformat()] == [_slim_row(strike=21000, oi=150)]
+    assert client._cache_path(f"txo_slim_{d.isoformat()}").exists()
+    assert not client._cache_path(f"txo_daily_{d.isoformat()}").exists(), (
+        "raw per-day cache must be deleted after slim migration (402MB reclaim)"
+    )
+
+    # Second read must be served from the slim file alone.
+    out2 = await client.fetch_taiwan_option_daily_window([d], end_date=d, refresh=False)
+    assert get_mock.await_count == 0
+    assert out2[d.isoformat()] == [_slim_row(strike=21000, oi=150)]
+
+
+async def test_window_slim_aggregates_sessions_and_drops_zero_oi(
+    monkeypatch,
+    bypass_finmind_rate_limiter,
+):
+    """Fresh FinMind fetch → slim rows: OI summed across sessions per
+    (option_id, contract_date, call_put, strike), zero-OI and unknown
+    call_put entries dropped, deterministic sort order.
+    """
+    import services.finmind as fm
+
+    client = fm.get_finmind()
+    d = date(2026, 6, 25)
+
+    async def fake_get(url: str, params: dict) -> list:
+        base = {"date": d.isoformat(), "option_id": "TXO"}
+        return [
+            {
+                **base,
+                "contract_date": "202607",
+                "call_put": "call",
+                "strike_price": 21000,
+                "open_interest": 100,
+                "trading_session": "position",
+            },
+            {
+                **base,
+                "contract_date": "202607",
+                "call_put": "call",
+                "strike_price": 21000,
+                "open_interest": 40,
+                "trading_session": "after_market",
+            },
+            {
+                **base,
+                "contract_date": "202607",
+                "call_put": "put",
+                "strike_price": 20800,
+                "open_interest": 7,
+                "trading_session": "position",
+            },
+            {
+                **base,
+                "contract_date": "202607",
+                "call_put": "call",
+                "strike_price": 21400,
+                "open_interest": 0,
+                "trading_session": "position",
+            },
+            {
+                **base,
+                "contract_date": "202607",
+                "call_put": "otc",
+                "strike_price": 21000,
+                "open_interest": 9,
+                "trading_session": "position",
+            },
+            {
+                **base,
+                "contract_date": "202607",
+                "call_put": "put",
+                "strike_price": "bad",
+                "open_interest": 5,
+                "trading_session": "position",
+            },
+        ]
+
+    monkeypatch.setattr(client, "_get", AsyncMock(side_effect=fake_get))
+
+    out = await client.fetch_taiwan_option_daily_window([d], end_date=d, refresh=False)
+
+    assert out[d.isoformat()] == [
+        {
+            "option_id": "TXO",
+            "contract_date": "202607",
+            "call_put": "call",
+            "strike_price": 21000.0,
+            "open_interest": 140,
+        },
+        {
+            "option_id": "TXO",
+            "contract_date": "202607",
+            "call_put": "put",
+            "strike_price": 20800.0,
+            "open_interest": 7,
+        },
+    ]
