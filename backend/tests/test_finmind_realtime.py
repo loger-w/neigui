@@ -812,22 +812,28 @@ async def test_run_once_last_subscriber_cancel_cancels_underlying() -> None:
 
 
 # ---------------------------------------------------------------------------
-# mod/market-today-only(2026-07-20)— EOD 管線退役後的 payload shape placeholder
+# mod/market-today-only(2026-07-20)— EOD 管線退役後的今日三卡 payload shape。
 # breadth / sector_breadth / sector_volume_ratio / sector_amount_share /
 # eod_pending / eod_as_of 六鍵隨 EOD 管線整段刪除;三個新鍵(index_strength /
-# cap_tiers / sector_rotation)以 None 佔位入 payload shape,值由後續
-# market_today 🟢 commit 接線(change-spec.md §3 / §4 R15 commit 拆法)。
+# cap_tiers / sector_rotation)由 market_today 🟢 commit 接線出真值
+# (change-spec.md §3 / §4 R15 commit 拆法)。
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
-async def test_snapshot_payload_today_fields_placeholder() -> None:
-    """SC-4/SC-5: 舊六鍵移除,新三鍵以 None 佔位存在。"""
-    fake_universe = [{
-        "stock_id": "2330", "close": 2390, "change_rate": 1.92,
-        "total_amount": 36e9, "volume_ratio": 1.14,
-        "date": "2026-06-29 10:30:00.123456",
-    }]
+async def test_snapshot_payload_today_fields_shape() -> None:
+    """SC-1/SC-4/SC-5: 舊六鍵移除;新三鍵接線後有真值 — 001/101 index rows
+    在 fixture 內時 index_strength.twse/.tpex 非 null,cap_tiers/sector_rotation
+    依 mv_map / chain 是否存在而定。"""
+    fake_universe = [
+        {"stock_id": "001", "close": 20100, "change_price": 100, "change_rate": 0.5,
+         "date": "2026-06-29 10:30:00.123456"},
+        {"stock_id": "101", "close": 200, "change_price": 1, "change_rate": -0.3,
+         "date": "2026-06-29 10:30:00.123456"},
+        {"stock_id": "2330", "close": 2390, "change_rate": 1.92,
+         "total_amount": 36e9, "volume_ratio": 1.14,
+         "date": "2026-06-29 10:30:00.123456"},
+    ]
     fake_sector_rows = [{
         "stock_id": "2330", "industry_category": "半導體業",
         "type": "twse", "date": "2026-06-26", "stock_name": "台積電",
@@ -839,12 +845,21 @@ async def test_snapshot_payload_today_fields_placeholder() -> None:
          patch("services.finmind_realtime._fetch_market_value_map",
                new=AsyncMock(return_value={"2330": 6e13})), \
          patch("services.finmind_realtime._fetch_watch_list",
-               new=AsyncMock(return_value=set())):
+               new=AsyncMock(return_value=set())), \
+         patch("services.industry_chain.get_chain",
+               new=AsyncMock(return_value=None)):
         result = await fetch_market_snapshot(refresh=False)
 
     for k in ("breadth", "sector_breadth", "sector_volume_ratio",
               "sector_amount_share", "eod_pending", "eod_as_of"):
         assert k not in result, f"EOD 舊鍵 {k} 應已隨管線移除"
     for k in ("index_strength", "cap_tiers", "sector_rotation"):
-        assert k in result, f"新鍵 {k} 應存在(此階段值 = None)"
-        assert result[k] is None
+        assert k in result, f"新鍵 {k} 應存在:{list(result.keys())}"
+
+    # index_rows 有 001/101 → 兩側非 null(SC-1)
+    assert result["index_strength"]["twse"] is not None
+    assert result["index_strength"]["tpex"] is not None
+    # mv_map 只有 2330 → cap_tiers 非 None(至少一桶)
+    assert result["cap_tiers"] is not None
+    # chain mocked 回 None → sector_rotation 降級 null(SC-5)
+    assert result["sector_rotation"] is None

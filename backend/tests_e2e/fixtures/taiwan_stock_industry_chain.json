@@ -1,0 +1,9 @@
+[
+  {"stock_id": "2454", "industry": "半導體業", "sub_industry": "IC設計", "date": "2026-06-26"},
+  {"stock_id": "2330", "industry": "半導體業", "sub_industry": "IC設計", "date": "2026-06-26"},
+  {"stock_id": "2330", "industry": "半導體業", "sub_industry": "晶圓代工", "date": "2026-06-26"},
+  {"stock_id": "2412", "industry": "電子零組件業", "sub_industry": "被動元件", "date": "2026-06-26"},
+  {"stock_id": "2317", "industry": "電子零組件業", "sub_industry": "連接器", "date": "2026-06-26"},
+  {"stock_id": "3008", "industry": "光電業", "sub_industry": "光學元件", "date": "2026-06-26"},
+  {"stock_id": "2330", "industry": "光電業", "sub_industry": "影像感測", "date": "2026-06-26"}
+]

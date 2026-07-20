@@ -60,7 +60,12 @@ def test_manifest_keys_match_real_get_call_shapes():
       fallback)
     """
     manifest = _load_manifest()
-    src = "\n".join(p.read_text(encoding="utf-8") for p in _SERVICES_DIR.glob("finmind*.py"))
+    # market-today-only(2026-07-20):services/industry_chain.py 呼叫 FinMind
+    # 但檔名不合 `finmind*.py` glob(finmind-conventions per-module wrap 慣例
+    # 允許任意檔名)。顯式併入掃描來源,否則新 dataset 永遠被判 unknown_in_manifest
+    # 誤殺(非真的 typo / 失效 fixture)。
+    scan_paths = list(_SERVICES_DIR.glob("finmind*.py")) + [_SERVICES_DIR / "industry_chain.py"]
+    src = "\n".join(p.read_text(encoding="utf-8") for p in scan_paths)
     literal_datasets = set(re.findall(r'["\']dataset["\']\s*:\s*["\']([A-Za-z_][\w]*)["\']', src))
     url_datasets = set(re.findall(r"_FINMIND_BASE\}/([a-z][\w]*)", src))
     real_datasets = literal_datasets | url_datasets
