@@ -14,6 +14,11 @@
 - **EOD backoff 佔位 entry 的微量殘留**(fix/eod-retry-backoff 拍板接受):失敗 task 保留在 `_eod_background` + `_eod_backoff_until` 至下一請求替換;若當日失敗後再無同 key 請求,entry 殘留至 process 重啟(每日至多數個 dict entry)。觸發重評估:長跑 server 記憶體被質疑、或第三個模組級 registry 需要統一清理策略時
 - **「失敗即刪 → 高頻重觸發」同構檢查**:`routes/symbols.py::_load_task`(失敗後下一請求重試,無 backoff)同結構但無 15s poll 放大器,係數低不修。觸發重評估:任何高頻 poll 的前端 hook 接上 symbols 或其他「失敗自刪」task registry 時
 
+## From /perf options-market-load(2026-07-20)
+
+- **窗外孤兒 txo_daily_* 殘檔**:raw→slim 遷移只涵蓋當前 250 日 window 內的日子;更舊的 raw 檔(本機實測 33 檔 ~45MB)永不被讀也不被刪(舊設計本來就會累積,非本次退化)。txo_sv_* 與 txo_slim_* 同樣隨日子累積無 retention。觸發重評估:cache 目錄體積被質疑、或第三個 per-day cache prefix 需要統一 retention 策略時(參考 warrant_flow `_cleanup_flow_caches` 樣板)
+- **pcr per-day 預聚合 / window in-memory memo**(S1+S2 達標後不做):再往下砍要動 parse 函式簽名或吃記憶體。觸發重評估:prd 實測 stale wall 仍 >2s、或 window 拉長超過 250 日時
+
 ## From /bug prd-cancel-propagation(2026-07-17)
 
 - **prd 域名判定寫死 `neigui.vercel.app`**(`frontend/src/lib/api-base.ts`):未來若綁自訂網域,PRD_HOSTNAME 沒同步會**靜默**回退 rewrite 路徑 — 站能用但殭屍 fan-out 回歸,不易察覺。觸發:綁任何新網域時同步 api-base.ts + vercel.json
