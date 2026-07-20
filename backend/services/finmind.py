@@ -1032,37 +1032,134 @@ class FinMindClient:
                 if not self._is_today(date_str) or not self._is_stale(cached):
                     return cached
 
+        # `_r{int(refresh)}` in the dedup key so a concurrent refresh=True
+        # caller never awaits an in-flight refresh=False task (mirrors oi_lt).
         return await self._run_once(
-            f"strike_vol_{cache_key}",
-            lambda: self._do_fetch_strike_volume(contract, date_str, cache_key),
+            f"strike_vol_{cache_key}_r{int(refresh)}",
+            lambda: self._do_fetch_strike_volume(contract, date_str, cache_key, refresh),
         )
+
+    @staticmethod
+    def _sv_day_cache_key(option_id: str, d: date) -> str:
+        return f"txo_sv_{option_id}_{d.isoformat()}"
+
+    @staticmethod
+    def _sv_slim_from_rows(rows: list[dict], d_iso: str) -> dict:
+        """Aggregate one day's TaiwanOptionDaily rows for strike_volume.
+
+        Keeps parse_strike_volume's session semantics — volume SUMMED, OI
+        MAXed across trading_session — per (option_id, contract_date,
+        call_put, strike). Rows whose own date differs from the requested
+        day are dropped (defensive against upstream range bleed), as are
+        entries with volume==0 AND oi==0 (parse drops them anyway and the
+        prev-day oi_change lookup treats missing as 0 — identical result).
+        NOT interchangeable with ``_slim_from_rows`` (additive OI).
+        """
+        agg: dict[tuple[str, str, str, float], list[int]] = {}
+        for r in rows:
+            if r.get("date") != d_iso:
+                continue
+            cp = str(r.get("call_put", "")).lower()
+            if cp not in ("call", "put"):
+                continue
+            try:
+                strike = float(r["strike_price"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            vol = int(r.get("volume", 0) or 0)
+            oi = int(r.get("open_interest", 0) or 0)
+            key = (str(r.get("option_id", "")), str(r.get("contract_date", "")), cp, strike)
+            b = agg.setdefault(key, [0, 0])
+            b[0] += vol
+            if oi > b[1]:
+                b[1] = oi
+        keys = sorted(k for k, v in agg.items() if v[0] > 0 or v[1] > 0)
+        return {
+            "oid": [k[0] for k in keys],
+            "cd": [k[1] for k in keys],
+            "cp": [k[2] for k in keys],
+            "k": [k[3] for k in keys],
+            "v": [agg[k][0] for k in keys],
+            "o": [agg[k][1] for k in keys],
+        }
+
+    @staticmethod
+    def _materialize_sv(payload: dict, d_iso: str) -> list[dict]:
+        """Columnar sv payload → row dicts parse_strike_volume can consume."""
+        return [
+            {
+                "date": d_iso,
+                "option_id": o,
+                "contract_date": c,
+                "call_put": p,
+                "strike_price": k,
+                "volume": v,
+                "open_interest": oi,
+            }
+            for o, c, p, k, v, oi in zip(
+                payload.get("oid", []),
+                payload.get("cd", []),
+                payload.get("cp", []),
+                payload.get("k", []),
+                payload.get("v", []),
+                payload.get("o", []),
+            )
+        ]
 
     async def _do_fetch_strike_volume(
         self,
         contract: dict,
         date_str: str,
         cache_key: str,
+        refresh: bool = False,
     ) -> dict:
         from services.finmind_options import (
             _CACHE_VERSION_STRIKE_VOL,
+            _CACHE_VERSION_STRIKE_VOL_DAY,
             parse_strike_volume,
         )
 
         end = date.fromisoformat(date_str)
-        start = end - timedelta(days=7)
-        raw = await self._get(
-            f"{_FINMIND_BASE}/data",
-            {
-                "dataset": "TaiwanOptionDaily",
-                "data_id": contract["option_id"],
-                "start_date": start.isoformat(),
-                "end_date": end.isoformat(),
-            },
-        )
+        today = clock.today()
+        option_id = contract["option_id"]
+        # Same 8-calendar-day span as the old start=end-7d range fetch, but
+        # per-day cached: frozen historical days never refetch, so a stale
+        # revisit refetches ONLY today (payload 1/8 of the old range call).
+        days = [end - timedelta(days=i) for i in range(8)]
+
+        async def fetch_day(d: date) -> list[dict]:
+            d_iso = d.isoformat()
+            day_key = self._sv_day_cache_key(option_id, d)
+            # refresh=True forces the trailing 1-2 days (publication lag can
+            # update them); frozen historical days always trust cache.
+            force = refresh and d >= (today - timedelta(days=1))
+            if not force:
+                cached_day = self._read_cache_v(day_key, _CACHE_VERSION_STRIKE_VOL_DAY)
+                if cached_day is not None:
+                    if d != today or not self._is_stale(cached_day):
+                        return self._materialize_sv(cached_day, d_iso)
+            rows = await self._get(
+                f"{_FINMIND_BASE}/data",
+                {
+                    "dataset": "TaiwanOptionDaily",
+                    "data_id": option_id,
+                    "start_date": d_iso,
+                    "end_date": d_iso,
+                },
+            )
+            slim = {
+                **self._sv_slim_from_rows(rows, d_iso),
+                "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            }
+            self._write_cache_v(day_key, slim, _CACHE_VERSION_STRIKE_VOL_DAY)
+            return self._materialize_sv(slim, d_iso)
+
+        batches = await asyncio.gather(*[fetch_day(d) for d in days])
+        raw = [r for batch in batches for r in batch]
         parsed = parse_strike_volume(
             raw,
             contract["contract_date"],
-            option_id=contract["option_id"],
+            option_id=option_id,
         )
         result = {
             "contract": f"{contract['option_id']}{contract['contract_date']}",

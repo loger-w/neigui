@@ -18,6 +18,10 @@ _CACHE_VERSION_STRIKE_VOL = 2
 # per-day slim window cache(txo_slim_*,perf 2026-07-20):預聚合 5 欄 columnar,
 # 取代 raw txo_daily_*。bump 即整窗重抓 FinMind(~250 req),歷史日無 raw 可回退。
 _CACHE_VERSION_OPTIONS_SLIM = 1
+# strike_volume per-day cache(txo_sv_*,perf 2026-07-20 S2):per (oid, cd, cp, k)
+# 的 {vol 加總, oi 取 MAX}(parse_strike_volume 的 session 語意,與 txo_slim 的
+# OI 加總不同構,不可共用)。bump 即 8 日範圍重抓。
+_CACHE_VERSION_STRIKE_VOL_DAY = 1
 
 
 def _third_wednesday(year: int, month: int) -> date:
