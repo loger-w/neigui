@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import time
 
 from services import clock
 import logging
@@ -602,8 +603,15 @@ async def _fetch_eod_results(
 # ---------------------------------------------------------------------------
 
 _EOD_INLINE_BUDGET_SEC = 5.0
+# bug eod-retry-backoff:失敗後的重試冷卻窗口。402 配額耗盡時失敗 component
+# 不落 cache(不 pin 失敗),若 task 又即結即刪,前端 15s poll 每輪重觸發
+# 全套 EOD fan-out → 以配額再生速率持續燒。窗口內重用失敗 task 的結果。
+_EOD_RETRY_BACKOFF_SEC = 60.0
+_EOD_COMPONENT_KEYS = ("breadth", "sector_breadth", "sector_volume_ratio", "sector_amount_share")
 # {cache_key: Task} — module-level 引用讓背景 task 不被 GC / 不受 request 取消
 _eod_background: dict[str, asyncio.Task] = {}
+# {cache_key: monotonic deadline} — 失敗 task 的 backoff 截止時間
+_eod_backoff_until: dict[str, float] = {}
 
 
 def _ensure_eod_task(
@@ -614,8 +622,11 @@ def _ensure_eod_task(
     """取得(或建立)該 (end_date, universe) 的 EOD 背景計算 task。
 
     - 同 key 進行中 → 直接共用(不重複 fan-out)
-    - task 結束後 done_callback 自我移除 → 失敗時下一請求自然重試
-      (與舊 inline 版「每請求重算失敗 component」的重試頻率一致)
+    - 成功結束 → done_callback 自我移除(下一請求走 result cache,不重算)
+    - 失敗結束(例外、或任一 component None)→ task 保留佔位 +
+      _EOD_RETRY_BACKOFF_SEC 冷卻:窗口內請求直接重用其結果(含已合併
+      cache 的成功 component),不重觸發計算;窗口過後下一請求重試。
+      (bug eod-retry-backoff:舊版即結即刪 → 15s poll 每輪全套重跑)
     - task 不吞例外:inline 路徑 await 到的請求原樣 re-raise(保留
       「非 httpx 例外 fail-loud propagate」既有契約,P4 T-INT-4 鎖);
       背景路徑(無人 await)由 done_callback logger.exception 留 traceback,
@@ -623,8 +634,12 @@ def _ensure_eod_task(
     """
     key = f"eod_results_{end_date.isoformat()}_{_universe_digest(allowed)}"
     task = _eod_background.get(key)
-    if task is not None and not task.done():
-        return task
+    if task is not None:
+        if not task.done():
+            return task
+        # done 還留在 registry = 失敗佔位;窗口內重用,不重觸發
+        if time.monotonic() < _eod_backoff_until.get(key, 0.0):
+            return task
 
     task = asyncio.create_task(
         _fetch_eod_results(end_date, allowed, primary_sector, refresh=False)
@@ -632,13 +647,27 @@ def _ensure_eod_task(
     _eod_background[key] = task
 
     def _cleanup(t: asyncio.Task, k: str = key) -> None:
-        if _eod_background.get(k) is t:
-            _eod_background.pop(k, None)
-        if not t.cancelled() and t.exception() is not None:
+        if t.cancelled():
+            if _eod_background.get(k) is t:
+                _eod_background.pop(k, None)
+            return
+        if t.exception() is not None:
             logger.error(
                 "market snapshot: background EOD compute failed",
                 exc_info=t.exception(),
             )
+            failed = True
+        else:
+            # component None = compute 失敗降級(F6);empty-universe 的
+            # 合法 None 也會進 backoff — 重算結果相同,冷卻無害
+            result = t.result() or {}
+            failed = any(result.get(c) is None for c in _EOD_COMPONENT_KEYS)
+        if failed:
+            _eod_backoff_until[k] = time.monotonic() + _EOD_RETRY_BACKOFF_SEC
+            return  # 保留 task 佔位:窗口內請求重用其結果 / 原樣 re-raise
+        _eod_backoff_until.pop(k, None)
+        if _eod_background.get(k) is t:
+            _eod_background.pop(k, None)
 
     task.add_done_callback(_cleanup)
     return task

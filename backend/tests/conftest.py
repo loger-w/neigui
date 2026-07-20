@@ -102,6 +102,7 @@ def _reset_realtime_task_registries():
     _drop_silently(mu._inflight.values())
     fr._inflight.clear()
     fr._eod_background.clear()
+    fr._eod_backoff_until.clear()  # 失敗 backoff 窗口(bug eod-retry-backoff)一併清
     mb._inflight.clear()
     mu._inflight.clear()
     yield
