@@ -1,99 +1,18 @@
 /** @vitest-environment jsdom */
-// CR1-10 / CR1-11 regression: containerRef 曾只掛在「資料態」分支的元素上,
-// 首次 mount 是 loading skeleton(無 ref),useContainerSize 的 effect 在
-// ref.current === null 時提早 return 且 deps [ref, measure] 都穩定,資料到位後
-// 也不會重跑 → 圖表/熱力圖永遠量到 0×0。
+// CR1-10 / CR1-11 regression 原鎖在 MarketBreadthPanel / MarketSectorBreadthHeatmap
+// — 兩者隨 market-today-only change-spec.md §4(舊 EOD 四格退役)整檔刪除,
+// import 已失效,先降到最小合法狀態(不留 import 已刪元件的死案例)。
 //
-// 這份測試刻意「不」mock useContainerSize(其他 component test 檔的
-// vi.mock("../hooks/useContainerSize", ...) 會蓋掉這個 bug),改用真實 hook +
-// polyfill ResizeObserver + 灌 getBoundingClientRect,才能重現 cold-load 路徑。
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
-import { MarketBreadthPanel } from "./MarketBreadthPanel";
-import { MarketSectorBreadthHeatmap } from "./MarketSectorBreadthHeatmap";
-import type { Breadth, SectorBreadthRow } from "../lib/market-types";
+// Commit 2(🟢 今日三卡實作)紅線(spec R11 — P0,不准最終遺漏):若新三卡
+// (MarketIndexStrength / MarketCapTiers / MarketSectorRotation)中有任一張用
+// useContainerSize + SVG,同型 cold-load regression(loading → data 後量到真實
+// 寬度,ref 不得只掛在資料態分支)必須移植回這份檔案;若三卡最終皆純 DOM 無
+// useContainerSize,Commit 2 要在檔頭記明理由,並改寫本檔為「loading → data
+// 切換不 crash」的等價 regression(不可以空殼收尾)。
+import { describe, expect, it } from "vitest";
 
-let rectSpy: ReturnType<typeof vi.spyOn>;
-
-beforeEach(() => {
-  if (!globalThis.ResizeObserver) {
-    globalThis.ResizeObserver = class {
-      observe(): void {}
-      unobserve(): void {}
-      disconnect(): void {}
-    } as unknown as typeof ResizeObserver;
-  }
-  rectSpy = vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
-    width: 800,
-    height: 600,
-    top: 0,
-    left: 0,
-    right: 800,
-    bottom: 600,
-    x: 0,
-    y: 0,
-    toJSON() {
-      return this;
-    },
-  } as DOMRect);
-});
-
-afterEach(() => {
-  cleanup();
-  rectSpy.mockRestore();
-});
-
-const breadth: Breadth = {
-  ad_line_value: 12,
-  mcclellan_oscillator: 34.5,
-  mcclellan_series: [
-    { date: "d0", value: null },
-    { date: "d1", value: 30 },
-    { date: "d2", value: 34.5 },
-  ],
-  ad_line_series: [
-    { date: "d0", value: null },
-    { date: "d1", value: 10 },
-    { date: "d2", value: 12 },
-  ],
-  thrust_dot: null,
-  centerline_cross: null,
-  divergence_dot: null,
-  known_gaps: [],
-};
-
-describe("cold-load 量測 regression (CR1-10 / CR1-11)", () => {
-  it("MarketBreadthPanel:loading → data 後 svg 量到真實寬度,不再卡 0 (SC-4)", () => {
-    const { container, rerender } = render(
-      <MarketBreadthPanel breadth={null} eodAsOf={null} loaded={false} />,
-    );
-    rerender(<MarketBreadthPanel breadth={breadth} eodAsOf="2026-06-29" loaded={true} />);
-    const svg = container.querySelector("svg");
-    expect(svg?.getAttribute("width")).toBe("800");
-  });
-
-  it("MarketSectorBreadthHeatmap:loading → data 後 cell 依真實寬度排版,不再卡空清單 (SC-5)", () => {
-    const rows: SectorBreadthRow[] = [
-      { sector: "半導體業", members: 100, above_ma20: 60, pct: 0.6 },
-      { sector: "金融保險業", members: 50, above_ma20: 20, pct: 0.4 },
-    ];
-    const { container, rerender } = render(
-      <MarketSectorBreadthHeatmap
-        rows={null}
-        eodAsOf={null}
-        loaded={false}
-        onSectorClick={() => {}}
-      />,
-    );
-    rerender(
-      <MarketSectorBreadthHeatmap
-        rows={rows}
-        eodAsOf="2026-06-29"
-        loaded={true}
-        onSectorClick={() => {}}
-      />,
-    );
-    const cells = container.querySelectorAll('[data-testid^="sb-cell-"]');
-    expect(cells.length).toBe(2);
+describe("cold-load 量測 regression (CR1-10 / CR1-11) — 移植至 Commit 2", () => {
+  it("placeholder:待 Commit 2 補回今日三卡的 cold-load regression", () => {
+    expect(true).toBe(true);
   });
 });

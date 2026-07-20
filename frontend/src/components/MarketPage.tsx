@@ -3,10 +3,9 @@ import { useMarketSnapshot } from "../hooks/useMarketSnapshot";
 import { MarketHeader } from "./MarketHeader";
 import { MarketHeatmap } from "./MarketHeatmap";
 import { MarketLeaderboard } from "./MarketLeaderboard";
-import { MarketBreadthPanel } from "./MarketBreadthPanel";
-import { MarketSectorBreadthHeatmap } from "./MarketSectorBreadthHeatmap";
-import { MarketSectorAmountShare } from "./MarketSectorAmountShare";
-import { MarketSectorVolRatio } from "./MarketSectorVolRatio";
+import { MarketIndexStrength } from "./MarketIndexStrength";
+import { MarketCapTiers } from "./MarketCapTiers";
+import { MarketSectorRotation } from "./MarketSectorRotation";
 import { MarketUniverseBanner } from "./MarketUniverseBanner";
 
 type Props = {
@@ -64,35 +63,15 @@ export function MarketPage({ isActive, onSymbolPick }: Props): ReactElement {
         />
       )}
       <div className="flex-1 overflow-y-auto min-h-0">
-        {/* eod_pending(後端冷啟動背景計算中)→ EOD 四面板維持載入骨架,
-            hook 會短輪詢至完成;不 pending 才把 null 視為「無資料」降級。 */}
+        {/* market-today-only(change-spec.md §1):舊 EOD 四格全部退役,今日
+            三卡改吃 tick snapshot 當下欄位,無背景計算、無 eod_pending 輪詢。 */}
         <div
           data-testid="market-v2-grid"
-          className="lg:h-full grid grid-cols-1 lg:grid-cols-[3fr_4fr_3fr]"
+          className="lg:h-full grid grid-cols-1 lg:grid-cols-[4fr_2fr_6fr]"
         >
-          <MarketBreadthPanel
-            breadth={data?.breadth ?? null}
-            eodAsOf={data?.eod_as_of ?? null}
-            loaded={!!data && !data.eod_pending}
-          />
-          <MarketSectorBreadthHeatmap
-            rows={data?.sector_breadth ?? null}
-            eodAsOf={data?.eod_as_of ?? null}
-            loaded={!!data && !data.eod_pending}
-            onSectorClick={() => {}} // concept-drill 接點,本輪 no-op
-          />
-          <div className="flex flex-col min-h-0 border-l border-line">
-            <MarketSectorAmountShare
-              rows={data?.sector_amount_share ?? null}
-              eodAsOf={data?.eod_as_of ?? null}
-              loaded={!!data && !data.eod_pending}
-            />
-            <MarketSectorVolRatio
-              rows={data?.sector_volume_ratio ?? null}
-              eodAsOf={data?.eod_as_of ?? null}
-              loaded={!!data && !data.eod_pending}
-            />
-          </div>
+          <MarketIndexStrength data={data?.index_strength ?? null} loading={!data} />
+          <MarketCapTiers data={data?.cap_tiers ?? null} loading={!data} />
+          <MarketSectorRotation data={data?.sector_rotation ?? null} loading={!data} />
         </div>
         <section className="border-t border-line">
           <button
