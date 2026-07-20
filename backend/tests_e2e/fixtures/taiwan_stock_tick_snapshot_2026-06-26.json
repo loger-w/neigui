@@ -8,13 +8,15 @@
   "low": 1090,
   "close": 1105,
   "change_price": 5.0,
-  "change_rate": 0.009,
+  "change_rate": 0.9,
   "amount": 25000000000,
   "volume": 22000000,
   "average_price": 1102.5,
   "last_updated": "2026-06-26 13:30:00",
   "total_amount": 25000000000,
-  "volume_ratio": 2.5
+  "volume_ratio": 2.5,
+  "total_volume": 30000000,
+  "yesterday_volume": 20000000
  },
  {
   "date": "2026-06-26",
@@ -25,13 +27,15 @@
   "low": 1090,
   "close": 1105,
   "change_price": 5.0,
-  "change_rate": 0.005,
+  "change_rate": 0.5,
   "amount": 25000000000,
   "volume": 22000000,
   "average_price": 1102.5,
   "last_updated": "2026-06-26 13:30:00",
   "total_amount": 8000000000,
-  "volume_ratio": 1.8
+  "volume_ratio": 1.8,
+  "total_volume": 20000000,
+  "yesterday_volume": 10000000
  },
  {
   "date": "2026-06-26",
@@ -42,13 +46,15 @@
   "low": 1090,
   "close": 1105,
   "change_price": 5.0,
-  "change_rate": -0.012,
+  "change_rate": -1.2,
   "amount": 25000000000,
   "volume": 22000000,
   "average_price": 1102.5,
   "last_updated": "2026-06-26 13:30:00",
   "total_amount": 5000000000,
-  "volume_ratio": 0.3
+  "volume_ratio": 0.3,
+  "total_volume": 3000000,
+  "yesterday_volume": 15000000
  },
  {
   "date": "2026-06-26",
@@ -59,13 +65,15 @@
   "low": 1090,
   "close": 1105,
   "change_price": 5.0,
-  "change_rate": 0.003,
+  "change_rate": 0.3,
   "amount": 25000000000,
   "volume": 22000000,
   "average_price": 1102.5,
   "last_updated": "2026-06-26 13:30:00",
   "total_amount": 3000000000,
-  "volume_ratio": 1.0
+  "volume_ratio": 1.0,
+  "total_volume": 8000000,
+  "yesterday_volume": 10000000
  },
  {
   "date": "2026-06-26",
@@ -76,12 +84,34 @@
   "low": 1090,
   "close": 1105,
   "change_price": 5.0,
-  "change_rate": -0.02,
+  "change_rate": -2.0,
   "amount": 25000000000,
   "volume": 22000000,
   "average_price": 1102.5,
   "last_updated": "2026-06-26 13:30:00",
   "total_amount": 2000000000,
-  "volume_ratio": 0.6
+  "volume_ratio": 0.6,
+  "total_volume": 2000000,
+  "yesterday_volume": 10000000
+ },
+ {
+  "stock_id": "001",
+  "type": "INDEX",
+  "date": "2026-06-26",
+  "last_updated": "2026-06-26 13:30:00",
+  "close": 19820.0,
+  "change_price": -180.0,
+  "change_rate": -0.9,
+  "total_amount": 320000000000
+ },
+ {
+  "stock_id": "101",
+  "type": "INDEX",
+  "date": "2026-06-26",
+  "last_updated": "2026-06-26 13:30:00",
+  "close": 392.0,
+  "change_price": -8.0,
+  "change_rate": -2.0,
+  "total_amount": 45000000000
  }
 ]

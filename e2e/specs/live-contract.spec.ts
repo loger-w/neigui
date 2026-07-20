@@ -72,15 +72,15 @@ test.describe("@live upstream contract", () => {
     const body = await r.json();
     expect(body).toHaveProperty("sectors");
     expect(body).toHaveProperty("leaderboards");
-    // v2 四欄存在性(值可 null — EOD 降級獨立);known_gaps shape
-    expect(body).toHaveProperty("breadth");
-    expect(body).toHaveProperty("sector_breadth");
-    expect(body).toHaveProperty("sector_volume_ratio");
-    expect(body).toHaveProperty("sector_amount_share");
+    // mod/market-today-only:EOD 四欄(breadth/sector_breadth/
+    // sector_volume_ratio/sector_amount_share)隨管線移除退役,改今日三欄
+    // 存在性(值可 null — 降級語意見 change-spec §1 SC-5)。
+    expect(body).toHaveProperty("index_strength");
+    expect(body).toHaveProperty("cap_tiers");
+    expect(body).toHaveProperty("sector_rotation");
     expect(body).toHaveProperty("universe_size");
-    if (body.breadth != null) {
-      expect(Array.isArray(body.breadth.known_gaps)).toBe(true);
-      expect(Array.isArray(body.breadth.mcclellan_series)).toBe(true);
+    if (body.sector_rotation != null) {
+      expect(Array.isArray(body.sector_rotation.industries)).toBe(true);
     }
   });
 });

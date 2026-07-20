@@ -14,16 +14,6 @@
     "dataset": "TaiwanStockPrice",
     "data_id": "2330"
   },
-  "TaiwanStockPrice_universe_2025-12-10_2026-06-26.json": {
-    "dataset": "TaiwanStockPrice",
-    "data_id": "",
-    "_note": "populated market EOD(2026-07-20):market_breadth per-day loop 用;窗口 = FAKE_TODAY − 198d((60+39)*2)。手算基準:末日 rana 200 → McClellan 10.0、半導體 vol ratio 2.5 hot / 電腦及週邊 0.3 cold、amount share 60/10/10/20%。生成邏輯見 spec M9 痛點註解;rotate FAKE_TODAY 時本檔連動重生"
-  },
-  "TaiwanStockPrice_TAIEX_2025-12-10_2026-06-26.json": {
-    "dataset": "TaiwanStockPrice",
-    "data_id": "TAIEX",
-    "_note": "TAIEX 恆值 17000 → divergence 嚴格新高不觸發、known_gaps 無 taiex_unavailable。必須顯式存在:缺檔時 data_id fallback 會把 universe fixture 整包當 TAIEX 序列"
-  },
   "TaiwanStockInstitutionalInvestorsBuySellWide_2330_2026-06-26.json": {
     "dataset": "TaiwanStockInstitutionalInvestorsBuySellWide",
     "data_id": "2330"
