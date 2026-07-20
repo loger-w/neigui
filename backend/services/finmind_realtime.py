@@ -501,10 +501,7 @@ async def _fetch_eod_results(
         cached = _read_cache(cache_key)
         if cached is not None:
             results = cached.get("results", {})
-            if all(
-                k in results
-                for k in ("breadth", "sector_breadth", "sector_volume_ratio", "sector_amount_share")
-            ):
+            if all(k in results for k in _EOD_COMPONENT_KEYS):
                 return results
 
     # perf C3b:4 個 compute 共用同一 prices window(T35/T36 鎖常數同值 +
@@ -637,7 +634,11 @@ def _ensure_eod_task(
     if task is not None:
         if not task.done():
             return task
-        # done 還留在 registry = 失敗佔位;窗口內重用,不重觸發
+        # done 還留在 registry = 失敗佔位;窗口內重用,不重觸發。
+        # 已知良性 race:task 完成到 _cleanup 執行的排程間隙,同 iteration
+        # 已 ready 的另一 coroutine 可能看到 done 但 backoff 未寫入 → 多建
+        # 一次 task(= 單次舊行為);inline awaiter 的 shield callback 註冊
+        # 晚於 _cleanup,循序 poll 不會踩到,不鎖死也無雙跑(review P2)。
         if time.monotonic() < _eod_backoff_until.get(key, 0.0):
             return task
 
