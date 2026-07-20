@@ -20,31 +20,62 @@ test.describe("market mode", () => {
     await expect(page.getByTestId(TESTIDS.marketLeaderboard)).toBeVisible();
   });
 
-  test.skip("M2: heatmap 至少 1 個 tile(anti-empty)— 待 fixture 補真實 universe join", async ({ page }) => {
-    // 痛點:fixture data 太薄(5 stocks),market_value × tick_snapshot ×
-    // sector_map 三向 join 後 sectors[].stocks 為空 → 無 tile。
-    // 待 Phase 8.5 fixture rotation 時補 — 真實 universe ~1700 stocks。
-    await expect(page.locator('[data-testid^="tile-"]').first()).toBeVisible();
+  test("M2: heatmap 5 tiles(populated fixture 三向 join)", async ({ page }) => {
+    // 痛點:market_value × tick_snapshot × sector_map(TaiwanStockInfo 入
+    // _store,2026-07-20 populated fixture)三向 join;tile 數 5 是
+    // discriminative 訊號 — 任一 join 環斷(如 TaiwanStockInfo 回退
+    // skip_store)→ universe 全滅 tile 0 個。
+    await expect(page.getByTestId("tile-2330")).toBeVisible();
+    await expect(page.locator('[data-testid^="tile-"]')).toHaveCount(5);
   });
 
-  test.skip("M3: leaderboard 點股 → pivot — 待 fixture 補 leaderboards 資料", async ({ page }) => {
-    // 痛點:fixture 5 stocks 平等 change_rate=0.0045,服務 layer 可能因
-    // is_trading_session=false / stale=true 過濾 → leaderboards.gainers=[]。
-    // 待 fixture 補完整 snapshot 解。
-    await expect(page.getByTestId(TESTIDS.marketLeaderboard)).toBeVisible();
-    await page.locator('[data-testid^="lb-row-"]').first().click();
+  test("M3: leaderboard 首列 2330 → 點擊 pivot 到 equity", async ({ page }) => {
+    // 痛點:tick fixture distinct change_rate(2330 +0.9% 最大)→ gainers
+    // 排序首列必為 2330;點擊走 App pivot 鏈(mode 切換 + symbol 帶入),
+    // equity 資料管線(2330 全套 fixture)真的載起來才算通。
+    const first = page.locator('[data-testid^="lb-row-"]').first();
+    await expect(first).toHaveAttribute("data-testid", "lb-row-2330");
+    await first.click();
     await expect(page.getByRole("heading", { name: "籌碼分析" })).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
   });
 
-  test("M4: v2 panels 空狀態渲染不 crash(SC-11b)", async ({ page }) => {
-    // 痛點:FAKE_FINMIND 缺全市場 TaiwanStockPrice window + TAIEX fixture,
-    // 四個 EOD 欄位必 null → panel 走「資料暫缺」降級。此 spec 鎖「null 不炸頁」
-    // (契約事實 2:頁級 error 不得 key 在四欄)。populated fixture 列 next-time(D-3)。
+  test("M4: v2 panels 渲染不 crash(SC-11b)", async ({ page }) => {
+    // 痛點:五個 v2 panel root 必須同時 visible(頁級 error 不得 key 在
+    // EOD 四欄 — 契約事實 2)。2026-07-20 populated fixture 後 EOD 有料,
+    // null 降級路徑(「資料暫缺」)改由 MarketPage.test.tsx vitest 覆蓋。
     await expect(page.getByTestId(TESTIDS.marketBreadthPanel)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.marketSectorBreadthHeatmap)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.marketSectorAmountShare)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.marketSectorVolRatio)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.marketUniverseBanner)).toBeVisible();
+  });
+
+  test("M9: EOD 四欄 populated 資料級 assertion(next-time D-3 收割)", async ({ page }) => {
+    // 痛點:visibility-only 會被「資料暫缺」蓋住(options fixture 事故同型)
+    // — 鎖 populated fixture 手算值。fixture 設計(TaiwanStockPrice_universe
+    // 2025-12-10..2026-06-26,143 交易日 × 5 檔):前段 2330/2454 反相交錯
+    // ±1(每日 rana=0)、末日 3 up 2 down → rana=1000×(3-2)/5=200,前段
+    // EMA 全 0 → McClellan = 200×(2/20 − 2/40) = 10.0 整。
+    // 量比:半導體(2330+2454)末日 5M / 前 20 日均 2M = 2.50 hot;
+    // 其他電子(2317+3008)1.3M / 2M = 0.65 cold。
+    // 資金流向:半導體 6e9/10e9 = 60.0%(sector 歸屬含 _PRIMARY_INDUSTRY
+    // _OVERRIDE:2317→其他電子、2412→通信網路)。
+    const breadthPanel = page.getByTestId(TESTIDS.marketBreadthPanel);
+    await expect(breadthPanel).toContainText("McClellan 10.0");
+    await expect(breadthPanel).not.toContainText("資料暫缺");
+    await expect(breadthPanel).not.toContainText("TAIEX 資料缺"); // TAIEX fixture 有料
+    await expect(breadthPanel).toContainText("資料至 2026-06-26"); // eod_as_of 貫通
+
+    const svrSemi = page.getByTestId("svr-row-半導體業");
+    await expect(svrSemi).toContainText("2.50");
+    await expect(svrSemi.locator('[data-flag="hot"]')).toBeVisible();
+    const svrOther = page.getByTestId("svr-row-其他電子業");
+    await expect(svrOther).toContainText("0.65");
+    await expect(svrOther.locator('[data-flag="cold"]')).toBeVisible();
+
+    await expect(page.getByTestId("sas-row-半導體業")).toContainText("60.0%");
+    await expect(page.getByTestId("sb-cell-半導體業")).toContainText("100%");
   });
 
   test("M5: 經典檢視預設展開,舊 heatmap/leaderboard 可見(D-2,M1 顯性防回歸)", async ({ page }) => {
