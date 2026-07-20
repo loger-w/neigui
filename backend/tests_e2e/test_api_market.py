@@ -43,9 +43,10 @@ async def test_market_snapshot_sectors_exclude_index_rows(client):
 
 async def test_market_snapshot_v2_keys(client):
     """痛點:前端 panel 依賴 universe meta + market-today 三欄位;後端 drop
-    任一 key 前端 panel 全滅。EOD 管線退役後三新鍵(index_strength / cap_tiers /
-    sector_rotation)此階段值允許 null(尚未接線 — market_today 🟢 commit 補值),
-    只鎖存在性(值 shape 由 frontend market-types.test.ts contract lock)。"""
+    任一 key 前端 panel 全滅。三新鍵(index_strength / cap_tiers /
+    sector_rotation)已接線出真值,但降級語意允許 null(SC-5),此測試只鎖
+    存在性(值 shape 由 frontend market-types.test.ts contract lock,FAKE
+    資料級由 e2e M9 lock)。"""
     r = await client.get("/api/market/snapshot")
     assert r.status_code == 200
     body = r.json()
