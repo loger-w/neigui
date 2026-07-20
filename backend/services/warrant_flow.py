@@ -175,7 +175,7 @@ def _cleanup_flow_caches(today: date_type) -> int:
 
 def _fake_price_day(d: str) -> list[dict]:
     """FAKE 分支:fixtures/warrants/ 子目錄直讀(不進 MANIFEST _store,避免汙染
-    market_breadth 的 FAKE per-day loop — design §2.3),以 D 過濾模擬 date-only 語意。"""
+    其他模組的 FAKE per-day loop — design §2.3),以 D 過濾模擬 date-only 語意。"""
     payload = read_json(warrants._fixtures_dir() / "warrants" / "price_day.json")
     if isinstance(payload, dict):
         rows = payload.get("data") or []
@@ -187,8 +187,8 @@ def _fake_price_day(d: str) -> list[dict]:
 async def _fetch_price_day(d: str, refresh: bool) -> list[dict]:
     """TaiwanStockPrice date-only 全市場 dump,per-date cache + 跨 stock dedup。
 
-    獨立 cache prefix(flow_prices_)— market_breadth 的 cleanup 會刪非當前
-    window 的 breadth_prices_*,共用必互踩(design R5/R7)。
+    獨立 cache prefix(flow_prices_)— 避免與其他模組的 per-day price cache
+    cleanup 邏輯共用 key 互踩(design R5/R7)。
     """
     if os.getenv("FAKE_FINMIND") == "1":
         return _fake_price_day(d)
@@ -208,7 +208,7 @@ async def _fetch_price_day(d: str, refresh: bool) -> list[dict]:
             )
         return trimmed
 
-    # R14:dedup key 帶 refresh 旗標(market_breadth F2 precedent),refresh 請求
+    # R14:dedup key 帶 refresh 旗標(F2 precedent),refresh 請求
     # 不得 join 到 cache-read 路徑的 in-flight task
     return await _run_once(f"flow_prices_{d}_r{int(refresh)}", _do_fetch)
 
