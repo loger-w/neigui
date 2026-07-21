@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Popover as PopoverPrimitive } from "radix-ui";
 import type { ColumnPrefs } from "../lib/warrant-column-prefs";
 import { moveColumn, reorderColumn } from "../lib/warrant-column-prefs";
 import type { WarrantColumnDef } from "../lib/warrant-columns";
 import { Checkbox } from "./ui/checkbox";
+import { PopoverPanel } from "./ui/PopoverPanel";
 
 interface Props {
   columns: WarrantColumnDef[];
@@ -29,8 +29,10 @@ export function WarrantColumnMenu({ columns, prefs, onChange }: Props) {
   };
 
   return (
-    <PopoverPrimitive.Root>
-      <PopoverPrimitive.Trigger asChild>
+    <PopoverPanel
+      contentTestId="column-menu"
+      contentClassName="w-[360px] max-h-[65vh]"
+      trigger={
         <button
           type="button"
           data-testid="column-menu-btn"
@@ -43,19 +45,22 @@ export function WarrantColumnMenu({ columns, prefs, onChange }: Props) {
             <span className="ml-1 tabular-nums text-ink-dim">−{prefs.hidden.length}</span>
           )}
         </button>
-      </PopoverPrimitive.Trigger>
-      <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Content
-          data-testid="column-menu"
-          sideOffset={6}
-          align="start"
-          className="z-50 w-[360px] max-w-[calc(100vw-2rem)] max-h-[65vh] bg-bg-deep border border-line-strong shadow-lg flex flex-col rounded"
+      }
+      headerClassName="text-xs text-ink-dim"
+      header={<>拖曳或 ▲▼ 調整順序;勾選控制顯示</>}
+      footerClassName="justify-end"
+      footer={
+        <button
+          type="button"
+          data-testid="column-menu-reset"
+          onClick={() => onChange({ order: columns.map((c) => c.id), hidden: [] })}
+          className="text-xs text-ink-dim hover:text-ink cursor-pointer"
         >
-          <div className="px-3 py-2 border-b border-line text-xs text-ink-dim">
-            拖曳或 ▲▼ 調整順序;勾選控制顯示
-          </div>
-          <div className="flex-1 min-h-0 overflow-y-auto scroll-editorial">
-            {rows.map((c, i) => (
+          恢復預設
+        </button>
+      }
+    >
+      {rows.map((c, i) => (
               <div
                 key={c.id}
                 data-testid="column-menu-row"
@@ -109,19 +114,6 @@ export function WarrantColumnMenu({ columns, prefs, onChange }: Props) {
                 </span>
               </div>
             ))}
-          </div>
-          <div className="px-3 py-2 border-t border-line flex items-center justify-end">
-            <button
-              type="button"
-              data-testid="column-menu-reset"
-              onClick={() => onChange({ order: columns.map((c) => c.id), hidden: [] })}
-              className="text-xs text-ink-dim hover:text-ink cursor-pointer"
-            >
-              恢復預設
-            </button>
-          </div>
-        </PopoverPrimitive.Content>
-      </PopoverPrimitive.Portal>
-    </PopoverPrimitive.Root>
+    </PopoverPanel>
   );
 }
