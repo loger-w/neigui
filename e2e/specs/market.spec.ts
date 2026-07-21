@@ -110,7 +110,9 @@ test.describe("market mode", () => {
     const firstRow = page.locator('[data-testid^="sector-row-"]').first();
     await expect(firstRow).toHaveAttribute("data-testid", "sector-row-半導體業");
     await expect(firstRow).toContainText("+0.70%");
-    await expect(firstRow.locator('[data-flag="hot"]')).toBeVisible();
+    // SC-5(mod/batch-ui-polish):過熱/冷清 tag 退役,量比數值保留
+    await expect(firstRow).toContainText("1.67x");
+    await expect(firstRow.locator("[data-flag]")).toHaveCount(0);
 
     // MK-3(mod/batch-ui-update):整列點擊展開 → 子產業列;點副族群列 →
     // 成員股表巢狀內嵌該列下(走真 sector_members fetch,不 mock)。
@@ -126,6 +128,31 @@ test.describe("market mode", () => {
     await expect(membersTable).toBeVisible();
     await expect(page.getByTestId("sector-member-2330")).toContainText("台積電");
     await expect(rotationList).not.toContainText("資料暫缺");
+  });
+
+  test("M11: 族群成員列點擊 → 跳 equity 並帶入該股(SC-5 mod/batch-ui-polish)", async ({ page }) => {
+    // 痛點:跳轉鏈 = MembersPanel tr onClick → MarketPage onSymbolPick →
+    // App handleSymbolPick(setMode equity + handlePick)。vitest 鎖元件回呼;
+    // 這裡鎖跨 mode 全鏈(equity 真的載入該股)。
+    await page.getByTestId("sector-row-btn-半導體業").click();
+    await page.getByTestId("sub-row-半導體業-晶圓代工").click();
+    await page.getByTestId("sector-member-2330").click();
+    await expect(page.locator("header")).toContainText("2330");
+    await expect(page.getByTestId("chip-brokers-panel")).toBeVisible();
+  });
+
+  test("M12: 量比排行點欄位標題排序,toggle 鈕退役(SC-6 mod/batch-ui-polish)", async ({ page }) => {
+    // 痛點:排序入口從獨立 toggle 鈕改為 th 標題鈕 — 鎖「舊鈕不殘留 + th
+    // aria-sort 生效 + 排序真的換鍵」(fixture change_rate:2330 +0.90 最高)。
+    await expect(page.getByRole("button", { name: "依漲跌幅排序" })).toHaveCount(0);
+    await page.getByLabel("量比門檻").fill("0");
+    await page.getByRole("button", { name: "依漲跌排序" }).click();
+    const th = page.getByRole("button", { name: "依漲跌排序" }).locator("xpath=ancestor::th");
+    await expect(th).toHaveAttribute("aria-sort", "descending");
+    await expect(page.locator('[data-testid^="vr-row-"]').first()).toHaveAttribute(
+      "data-testid",
+      "vr-row-2330",
+    );
   });
 
 });
