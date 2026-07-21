@@ -46,3 +46,4 @@
 
 - 對抗式 review(medium):無 P0/P1;P2 ×1(changelog 文案對純搜尋情境過度承諾 — 重新整理鈕僅在已選定分點時 render)→ accepted,文案改「檢視分點時按重新整理」。
 - self_review_head: 見下行(自評收斂後回填)。
+self_review_head: 172a8ee3367b83fd2b1076799bcf09e65e685502
