@@ -71,7 +71,11 @@ const WarrantFlowPanel = lazy(() =>
   import("./components/WarrantFlowPanel").then((m) => ({ default: m.WarrantFlowPanel })),
 );
 
-type Tab = "overview" | "bubble" | "warrants" | "warrant-flow";
+const BrokerFlowsPanel = lazy(() =>
+  import("./components/BrokerFlowsPanel").then((m) => ({ default: m.BrokerFlowsPanel })),
+);
+
+type Tab = "overview" | "bubble" | "warrants" | "warrant-flow" | "broker-flows";
 
 // equity tab 鈕樣板收斂(docs/next-time.md 2026-07-14 條目,第 5 個 tab 觸發):
 // 按鈕 JSX 逐字同構 → config + map;hidden div 內容各異,維持逐一列舉。
@@ -80,6 +84,7 @@ const EQUITY_TABS: { key: Tab; label: string }[] = [
   { key: "bubble", label: "泡泡圖" },
   { key: "warrants", label: "權證" },
   { key: "warrant-flow", label: "權證分點" },
+  { key: "broker-flows", label: "分點反查" },
 ];
 
 function todayStr(): string {
@@ -251,8 +256,20 @@ export default function App() {
   const handleSymbolPick = useCallback((sid: string) => {
     setMode("equity");
     handlePick(sid, null);
-     
+
   }, []);
+
+  // 分點反查跳轉(SC-5):切回總覽 + 設股票 + 預選該分點(handlePick 會
+  // reset selectedBrokerIds,預選必須在其後)→ K 線 overlay 顯示該分點
+  // 買賣超歷史。名稱顯示限制見 design v3 §3.5(不在該股 top list 時退 id)。
+  const handleFlowStockPick = useCallback(
+    (sid: string, name: string | null, brokerId: string) => {
+      setTab("overview");
+      handlePick(sid, name);
+      setSelectedBrokerIds(new Set([brokerId]));
+    },
+    [],
+  );
 
   const closePrice = useMemo(() => {
     const c = history?.candles.find((c) => c.date === date);
@@ -499,6 +516,22 @@ export default function App() {
             {/* SC-1 active gate:切到 tab 才發請求(useWarrantFlow enabled);
                 分點 hook 掛元件內部,同 WarrantSelector 不進全域 refresh */}
             <WarrantFlowPanel symbol={symbol} active={tab === "warrant-flow"} />
+          </Suspense>
+        </div>
+        <div hidden={tab !== "broker-flows"} className="h-full">
+          <Suspense
+            fallback={
+              <div className="h-full flex items-center justify-center text-ink-dim text-sm">
+                載入分點反查元件...
+              </div>
+            }
+          >
+            {/* 分點反查不綁 symbol(broker-centric);active gate 同權證分點,
+                不進全域 refresh(feat/broker-daily-flows SC-4) */}
+            <BrokerFlowsPanel
+              active={tab === "broker-flows"}
+              onPickStock={handleFlowStockPick}
+            />
           </Suspense>
         </div>
       </div>

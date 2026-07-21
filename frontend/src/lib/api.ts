@@ -8,6 +8,7 @@ import type {
   WarrantsPayload,
 } from "./warrant-data";
 import type { WarrantFlowHistoryPayload, WarrantFlowPayload } from "./warrant-flow-data";
+import type { BrokerFlowsPayload, TraderHit } from "./broker-flows-data";
 import { apiOrigin } from "./api-base";
 
 const BASE = "/api";
@@ -260,6 +261,18 @@ export const api = {
     const params: Record<string, string> = {};
     if (refresh) params.refresh = "true";
     return get(`${BASE}/warrants/${warrantId}/iv-history`, params, options);
+  },
+  brokerTraders(
+    search: string, options?: RequestOptions,
+  ): Promise<TraderHit[]> {
+    return get(`${BASE}/broker/traders`, { search }, options);
+  },
+  brokerDailyFlows(
+    brokerId: string, refresh?: boolean, options?: RequestOptions,
+  ): Promise<BrokerFlowsPayload> {
+    const params: Record<string, string> = { broker_id: brokerId };
+    if (refresh) params.refresh = "true";
+    return get(`${BASE}/broker/daily-flows`, params, options);
   },
   symbols(
     search: string, options?: RequestOptions,
