@@ -41,10 +41,21 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
     };
   }, [query]);
 
-  const search = useTraderSearch(open ? debounced : "");
+  // review V1:選定後 query = 「id name」echo,refocus 時不得拿 echo 去查
+  // (必然 0 命中 → 誤導性「查無符合分點」+ 白燒一次目錄查詢)
+  const selectedEcho = selected ? `${selected.broker_id} ${selected.broker_name}` : "";
+  const dropdownActive = open && !!debounced && debounced !== selectedEcho;
+  const search = useTraderSearch(dropdownActive ? debounced : "");
   const flows = useBrokerDailyFlows(selected?.broker_id ?? "", active);
 
   const hits = search.data ?? [];
+
+  // review V2:scroll 只在 activeIdx 實際變更時發生(inline ref callback 每
+  // render 重跑 detach/attach,會把使用者手動捲動位置拉回)
+  const activeItemRef = useRef<HTMLLIElement | null>(null);
+  useEffect(() => {
+    activeItemRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [activeIdx]);
 
   const pickTrader = (hit: TraderHit) => {
     setSelected(hit);
@@ -89,7 +100,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
             onKeyDown={handleKeyDown}
             className="w-full px-3 py-1.5 text-sm bg-bg border border-line text-ink placeholder:text-ink-dim focus:border-accent focus:outline-none"
           />
-          {open && debounced && (
+          {dropdownActive && (
             hits.length > 0 ? (
               <ul
                 role="listbox"
@@ -103,7 +114,9 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
                     aria-selected={i === activeIdx}
                     ref={
                       i === activeIdx
-                        ? (el) => el?.scrollIntoView?.({ block: "nearest" })
+                        ? (el) => {
+                            activeItemRef.current = el;
+                          }
                         : undefined
                     }
                     onMouseDown={(e) => {

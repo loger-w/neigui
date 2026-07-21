@@ -38,7 +38,7 @@ beforeEach(() => vi.restoreAllMocks());
 afterEach(() => cleanup());
 
 async function pickFubon(payload: BrokerFlowsPayload = mk()) {
-  vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+  const tradersSpy = vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
   const flowsSpy = vi.spyOn(api, "brokerDailyFlows").mockResolvedValue(payload);
   const onPickStock = vi.fn();
   render(<BrokerFlowsPanel active={true} onPickStock={onPickStock} />, {
@@ -52,7 +52,7 @@ async function pickFubon(payload: BrokerFlowsPayload = mk()) {
   await waitFor(() => expect(flowsSpy).toHaveBeenCalled());
   // fetch settle → 雙表渲染完才回傳(mutation resolve 是 microtask 之後)
   await screen.findByTestId("broker-flows-buy", undefined, { timeout: 3000 });
-  return { onPickStock, flowsSpy };
+  return { onPickStock, flowsSpy, tradersSpy };
 }
 
 describe("BrokerFlowsPanel", () => {
@@ -127,6 +127,16 @@ describe("BrokerFlowsPanel", () => {
     expect(
       await screen.findByText("分點目錄暫時無法取得", undefined, { timeout: 5000 }),
     ).toBeTruthy();
+  });
+
+  it("選定後 refocus 搜尋框:不以 echo 字串查詢、不開 dropdown(review V1)", async () => {
+    const { tradersSpy } = await pickFubon();
+    const input = screen.getByLabelText("搜尋分點");
+    fireEvent.focus(input); // query 此時 = 選定 echo「9600 富邦」
+    await new Promise((r) => setTimeout(r, 400)); // 過 debounce 窗
+    expect(tradersSpy).not.toHaveBeenCalledWith("9600 富邦", expect.anything());
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByText("查無符合分點")).toBeNull();
   });
 
   it("flows 錯誤碼映射繁中(review P2SUM-2)", async () => {
