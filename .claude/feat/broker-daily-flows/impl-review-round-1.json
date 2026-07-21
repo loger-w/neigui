@@ -1,0 +1,19 @@
+{
+  "round": 1,
+  "reviewer": "impl-spec-reviewer a41637213b62ea571",
+  "summary": { "P0": 0, "P1": 2, "P2": 3 },
+  "exit": "P0=0 且 P1=2 ≤ 2 → 退出條件成立;5 條全 accepted 落 PLAN,無殘留",
+  "findings": [
+    { "id": "R1", "severity": "P1", "classification": "accepted",
+      "verified": "grep market-format.ts:39-41 formatAmount = (v/1e6).toFixed(1)+'M' — 口徑不合屬實",
+      "resolution": "不重用;broker-flows-data.ts 新增 formatAmountZh(千/萬/億 + 負值/0)+ 單測 4 案" },
+    { "id": "R2", "severity": "P1", "classification": "accepted",
+      "resolution": "test_broker_flows.py 補 search_traders 4 案(id 前綴含大小寫 / 名稱 substring / >50 截斷 / 目錄不可得 503 error code)" },
+    { "id": "R3", "severity": "P2", "classification": "accepted",
+      "resolution": "test_broker_routes.py 加 traders 缺 search → 422 一案" },
+    { "id": "R4", "severity": "P2", "classification": "accepted",
+      "resolution": "PLAN 註明 broker_flows 自寫 module 級 _is_stale(payload, max_age_minutes)(對齊 FinMindClient._is_stale 判準);cache 測試含 TTL 過期案" },
+    { "id": "R5", "severity": "P2", "classification": "accepted",
+      "resolution": "trader fixture 的 2412/0050 rows 用獨特可辨識數值(如 buy=7777000)+ PLAN 註記 fallback 命中語意;汙染發生時 chip 測試以明確數字差異炸出" }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "round": 2,
+  "reviewer": "design-reviewer a4c889a7504e87912",
+  "summary": { "P0": 0, "P1": 1, "P2": 2 },
+  "exit": "P0=0 且 P1=1 ≤ 2 → 退出條件成立;三條全 accepted 落 v3,無殘留 Known Risk 化",
+  "findings": [
+    { "id": "R10", "severity": "P1", "classification": "accepted",
+      "resolution": "目錄取用走內部 _get_directory_or_none():except (httpx.HTTPError, HTTPException) → logger.warning + None;None/空 → 跳過 404 檢查 + broker_name fallback = broker_id(寫死進 payload 契約);測試補 status 路徑 + fallback 值斷言" },
+    { "id": "R11", "severity": "P2", "classification": "accepted",
+      "resolution": "useTraderSearch 補 refresh(refetch 包一層),對齊 CLAUDE.md §3 hook shape 契約" },
+    { "id": "R12", "severity": "P2", "classification": "accepted",
+      "verified": "probe 2026-07-20 實測目錄 9600 securities_trader = '富邦'(warrant fixture 的 '富邦建國' 為手造 artifact)",
+      "resolution": "目錄 fixture 9600 用真值「富邦」;§4.2 註記與 warrant fixture 異名為既存 artifact 非本輪引入" }
+  ]
+}

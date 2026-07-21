@@ -1,0 +1,26 @@
+{
+  "round": 1,
+  "reviewer": "design-reviewer a59dd1b6beeff0684",
+  "summary": { "P0": 0, "P1": 4, "P2": 5 },
+  "findings": [
+    { "id": "R1", "severity": "P1", "classification": "accepted",
+      "verified": "grep routes/symbols.py:144,151 raise ValueError('symbols_unavailable') — 屬實",
+      "resolution": "broker_flows 名稱 join catch ValueError 降級空 map(stock_name 全空,前端退代號);design §2.2 明寫 + 測試盤點補一條" },
+    { "id": "R2", "severity": "P1", "classification": "accepted",
+      "resolution": "service 層先 fromisoformat try/except → HTTPException(400, invalid_date);parse 成 date 型後才 min() clamp;route 測試補非法曆日 case" },
+    { "id": "R3", "severity": "P1", "classification": "accepted",
+      "resolution": "改沿 warrant_flow weekday-loop 候選日(自適應含 T+0),取前 3 個非週末日;不依賴 trading_calendar(消除 TaiwanFuturesDaily 上料時序假設,並少 1 request)" },
+    { "id": "R4", "severity": "P1", "classification": "accepted",
+      "resolution": "contract test 預期改 422 + detail list(validation error 不在 error contract 內 = 既有全站行為,design §4.3 記註);不動 main.py handler" },
+    { "id": "R5", "severity": "P2", "classification": "accepted",
+      "resolution": "分類鍵 = 排序鍵 = net_amount 固化;UI 表名「金額買超 / 金額賣超」;加符號背離單測(net_lots=0 但 net_amount<0 → 入賣超表)" },
+    { "id": "R6", "severity": "P2", "classification": "accepted",
+      "resolution": "§8 帳目改完整(directory 冷 +1 攤提;calendar 依 R3 移除);目錄不可得時降級跳過 404 前置檢查(fetch 照走,全空 → 503),解耦" },
+    { "id": "R7", "severity": "P2", "classification": "accepted",
+      "resolution": "取建議中的「接受現狀 + 明文記債」路徑:accessor 留 routes/symbols.py,design §2.2 標記 layering 債不在本 feature 修(單一 consumer,薄 wrapper YAGNI)" },
+    { "id": "R8", "severity": "P2", "classification": "accepted",
+      "resolution": "design 交付清單補 changelog.ts MINOR bump + VersionEntry 項" },
+    { "id": "R9", "severity": "P2", "classification": "accepted",
+      "resolution": "design §3.4 明寫 Panel 端 onPickStock(sid, row.stock_name || null, brokerId)" }
+  ]
+}
