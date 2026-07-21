@@ -64,6 +64,11 @@ export const TESTIDS = {
   bubbleBlocklistRow: "bubble-blocklist-row",
   // 分點反查 mode root(NAV-1 mod/batch-ui-update)
   brokerFlowsView: "broker-flows-view",
+  // 自選清單(WL-1 mod/batch-ui-update)
+  watchlistSidebar: "watchlist-sidebar",
+  watchlistAddCurrent: "watchlist-add-current",
+  watchlistItem: "watchlist-item",
+  watchlistItemPick: "watchlist-item-pick",
   // 權證分點 tab(feat/warrant-broker-flow)
   warrantFlowPanel: "warrant-flow-panel",
   flowDateBadge: "flow-date-badge",

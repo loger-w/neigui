@@ -18,6 +18,7 @@ import { useBrokerHistory } from "./hooks/useBrokerHistory";
 import { useChipBrokersWindow } from "./hooks/useChipBrokersWindow";
 import { ModeSwitch, type Mode } from "./components/ModeSwitch";
 import { VersionBadge } from "./components/VersionBadge";
+import { WatchlistSidebar } from "./components/WatchlistSidebar";
 import type { ChipSummary } from "./lib/chip-data";
 import { prevTradingDay, nextTradingDay } from "./lib/trading-days";
 
@@ -343,7 +344,16 @@ export default function App() {
         </div>
       </div>
       {mode === "equity" ? (
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
+      {/* WL-1: 自選清單 — 桌面固定左欄(可收合);手機改 header 下摺疊區塊 */}
+      {!isMobile && (
+        <WatchlistSidebar
+          currentSymbol={symbol}
+          currentSymbolName={symbolName}
+          onPick={handlePick}
+        />
+      )}
+      <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
       <header className="shrink-0 px-4 sm:px-6 pt-5 pb-3 border-b border-line">
         {/* F8: 籌碼分析 title + SymbolSearch + symbol/name + date + refresh
             on a single horizontal row on desktop; responsive spec §4.3 —
@@ -424,6 +434,15 @@ export default function App() {
           ))}
         </div>
       </header>
+
+      {isMobile && (
+        <WatchlistSidebar
+          mobile
+          currentSymbol={symbol}
+          currentSymbolName={symbolName}
+          onPick={handlePick}
+        />
+      )}
 
       {(error || bubbleHook.error) && (
         <div className="shrink-0 px-6 py-2 text-sm text-accent bg-accent/[0.06] border-b border-line">
@@ -540,6 +559,7 @@ export default function App() {
             <WarrantFlowPanel symbol={symbol} active={tab === "warrant-flow"} />
           </Suspense>
         </div>
+      </div>
       </div>
       </div>
       ) : mode === "flows" ? (

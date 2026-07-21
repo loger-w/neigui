@@ -392,6 +392,31 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(badge).toBeHidden({ timeout: 5000 });
   });
 
+  test("E34: 自選清單 — 加入當前 → 換股 → 點清單項切回 + reload 持久(WL-1)", async ({ page }) => {
+    // 痛點:切股鏈 = 清單項 onPick → App handlePick(重置 selectedBrokerIds/
+    // 日期錨定等 sibling state)。vitest 鎖 sidebar 內部 CRUD;這裡鎖「清單
+    // 項切股後整頁資料真的換到該股」+ localStorage 跨 reload。
+    const sidebar = page.getByTestId(TESTIDS.watchlistSidebar);
+    await expect(sidebar).toBeVisible();
+    await page.getByTestId(TESTIDS.watchlistAddCurrent).click();
+    await expect(page.getByTestId(TESTIDS.watchlistItem)).toContainText("2330");
+
+    // 換到另一檔(E25 同款 Enter 路徑)
+    await page.getByPlaceholder(/搜尋代號/).fill("2412");
+    await expect(page.getByRole("option")).toHaveCount(1, { timeout: 15000 });
+    await page.getByPlaceholder(/搜尋代號/).press("Enter");
+    await expect(page.locator("header")).toContainText("2412");
+
+    // 點清單項切回 2330
+    await page.getByTestId(TESTIDS.watchlistItemPick).click();
+    await expect(page.locator("header")).toContainText("2330");
+    await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
+
+    // reload → 清單持久
+    await page.reload();
+    await expect(page.getByTestId(TESTIDS.watchlistItem)).toContainText("2330");
+  });
+
   test("E33: 前 15 大列表「看泡泡圖」鈕 → 切 tab + 該分點自動聚焦(CH-1)", async ({ page }) => {
     // 痛點:跳轉鏈 = BrokerRow 動作鈕(stopPropagation)→ App setTab +
     // bubbleFocus(id+seq)→ ChipBubbleView focusRequest effect 選中。
