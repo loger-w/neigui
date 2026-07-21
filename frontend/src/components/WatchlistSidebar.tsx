@@ -56,7 +56,10 @@ export function WatchlistSidebar({
   const [groupName, setGroupName] = useState("");
   // 歸組選單:同時最多一個開啟(key = symbol)。
   const [menuFor, setMenuFor] = useState<string | null>(null);
-  const width = WIDTH_DEFAULT;
+  const [width, setWidth] = useState<number>(readStoredWidth);
+  useEffect(() => {
+    localStorage.setItem(WATCHLIST_WIDTH_KEY, String(width));
+  }, [width]);
 
   const alreadyAdded = watchlist.items.some((i) => i.symbol === currentSymbol);
   const ungrouped = useMemo(
@@ -76,6 +79,36 @@ export function WatchlistSidebar({
   const handleAssign = (symbol: string, groupId: string | null) => {
     setWatchlist((w) => assignGroup(w, symbol, groupId));
     setMenuFor(null);
+  };
+
+  // SC-1a:拖曳調寬(樣板 = App.tsx chip panel resize)。sidebar 左錨定,
+  // 往右拖 = 加寬。
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = width;
+    const onMove = (ev: MouseEvent) => {
+      const next = Math.max(
+        WIDTH_MIN,
+        Math.min(WIDTH_MAX, startW + (ev.clientX - startX)),
+      );
+      setWidth(Math.round(next));
+    };
+    const onUp = () => {
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
+  const handleResizeKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const delta = e.key === "ArrowRight" ? 16 : -16;
+      setWidth((w) => Math.max(WIDTH_MIN, Math.min(WIDTH_MAX, w + delta)));
+    }
   };
 
   const itemRow = (item: WatchlistItem) => (
@@ -168,6 +201,8 @@ export function WatchlistSidebar({
     </div>
   );
 
+  // SC-1b:群組快選 — 有分組時「加入」鈕旁多一顆選單鈕,直接加入指定分組。
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const canAdd = !!currentSymbol && !alreadyAdded;
 
   const listBody = (
@@ -178,7 +213,9 @@ export function WatchlistSidebar({
           data-testid="watchlist-add-current"
           onClick={() => handleAddCurrent(null)}
           disabled={!canAdd}
-          className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1 text-xs border border-line text-ink-muted hover:text-accent hover:border-accent disabled:opacity-50 disabled:cursor-default cursor-pointer rounded"
+          className={`flex-1 inline-flex items-center justify-center gap-1 px-2 py-1 text-xs border border-line text-ink-muted hover:text-accent hover:border-accent disabled:opacity-50 disabled:cursor-default cursor-pointer ${
+            watchlist.groups.length > 0 ? "rounded-l border-r-0" : "rounded"
+          }`}
         >
           {currentSymbol
             ? alreadyAdded
@@ -186,6 +223,48 @@ export function WatchlistSidebar({
               : `＋ 加入 ${currentSymbol}`
             : "＋ 加入(先選個股)"}
         </button>
+        {watchlist.groups.length > 0 && (
+          <button
+            type="button"
+            data-testid="watchlist-add-to-group"
+            aria-label="加入到分組"
+            aria-expanded={addMenuOpen}
+            disabled={!canAdd}
+            onClick={() => setAddMenuOpen((o) => !o)}
+            className="shrink-0 px-1.5 text-xs border border-line rounded-r text-ink-dim hover:text-accent hover:border-accent disabled:opacity-50 disabled:cursor-default cursor-pointer"
+          >
+            ▾
+          </button>
+        )}
+        {addMenuOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              aria-hidden="true"
+              onClick={() => setAddMenuOpen(false)}
+            />
+            <div
+              data-testid="watchlist-add-menu"
+              role="menu"
+              className="absolute right-0 top-full z-50 min-w-28 py-0.5 bg-bg-deep border border-line-strong rounded shadow-lg"
+            >
+              {watchlist.groups.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    handleAddCurrent(g.id);
+                    setAddMenuOpen(false);
+                  }}
+                  className="w-full px-2 py-1 text-left text-xs text-ink-muted cursor-pointer hover:bg-line-strong/20 hover:text-accent"
+                >
+                  加入到「{g.name}」
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto scroll-editorial">
         {watchlist.items.length === 0 && (
@@ -349,6 +428,20 @@ export function WatchlistSidebar({
         </span>
       </div>
       {listBody}
+      {/* SC-1a:右緣拖曳把手(180–320px clamp,localStorage 持久化) */}
+      <div
+        data-testid="watchlist-resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="調整自選清單寬度"
+        aria-valuenow={width}
+        aria-valuemin={WIDTH_MIN}
+        aria-valuemax={WIDTH_MAX}
+        tabIndex={0}
+        onMouseDown={handleResizeMouseDown}
+        onKeyDown={handleResizeKeyDown}
+        className="absolute inset-y-0 right-0 w-1 cursor-col-resize hover:bg-accent/40 focus-visible:bg-accent/60 focus-visible:outline-none"
+      />
     </aside>
   );
 }

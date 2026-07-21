@@ -178,6 +178,77 @@ describe("WatchlistSidebar — 清單互動", () => {
   });
 });
 
+// SC-1a/b(mod/batch-ui-polish 🟢):桌面拖曳調寬(clamp 180-320 + localStorage
+// 持久化)與「加入到分組」群組快選(addStock 第 4 參數一步入組)。
+describe("WatchlistSidebar — 調寬與群組快選", () => {
+  it("拖曳把手調寬:clamp 於 180-320,持久化 neigui.watchlist.width", () => {
+    const { container } = render(
+      <WatchlistSidebar currentSymbol="" currentSymbolName={null} onPick={vi.fn()} />,
+    );
+    const handle = container.querySelector(
+      "[data-testid=watchlist-resize-handle]",
+    ) as HTMLElement;
+    expect(handle).toBeTruthy();
+    fireEvent.mouseDown(handle, { clientX: 300 });
+    fireEvent.mouseMove(document, { clientX: 380 });
+    fireEvent.mouseUp(document);
+    const aside = container.querySelector(
+      "[data-testid=watchlist-sidebar]",
+    ) as HTMLElement;
+    // 210 + 80 = 290
+    expect(aside.style.width).toBe("290px");
+    expect(localStorage.getItem("neigui.watchlist.width")).toBe("290");
+    // 超出上限 clamp 到 320
+    fireEvent.mouseDown(handle, { clientX: 300 });
+    fireEvent.mouseMove(document, { clientX: 900 });
+    fireEvent.mouseUp(document);
+    expect(aside.style.width).toBe("320px");
+  });
+
+  it("鍵盤左右鍵調寬(a11y),clamp 於下限 180", () => {
+    localStorage.setItem("neigui.watchlist.width", "190");
+    const { container } = render(
+      <WatchlistSidebar currentSymbol="" currentSymbolName={null} onPick={vi.fn()} />,
+    );
+    const handle = container.querySelector(
+      "[data-testid=watchlist-resize-handle]",
+    ) as HTMLElement;
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    fireEvent.keyDown(handle, { key: "ArrowLeft" });
+    const aside = container.querySelector(
+      "[data-testid=watchlist-sidebar]",
+    ) as HTMLElement;
+    expect(aside.style.width).toBe("180px");
+  });
+
+  it("有分組時「加入到分組」快選:一步加入指定分組", () => {
+    seed({ groups: [{ id: "g1", name: "半導體" }], items: [] });
+    const { container } = render(
+      <WatchlistSidebar currentSymbol="2330" currentSymbolName="台積電" onPick={vi.fn()} />,
+    );
+    fireEvent.click(
+      container.querySelector("[data-testid=watchlist-add-to-group]") as HTMLButtonElement,
+    );
+    const menu = container.querySelector("[data-testid=watchlist-add-menu]")!;
+    const opt = Array.from(menu.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").includes("半導體"),
+    ) as HTMLButtonElement;
+    fireEvent.click(opt);
+    expect(stored().items).toEqual([
+      { symbol: "2330", name: "台積電", groupId: "g1" },
+    ]);
+  });
+
+  it("無分組時不顯示快選鈕", () => {
+    const { container } = render(
+      <WatchlistSidebar currentSymbol="2330" currentSymbolName="台積電" onPick={vi.fn()} />,
+    );
+    expect(
+      container.querySelector("[data-testid=watchlist-add-to-group]"),
+    ).toBeNull();
+  });
+});
+
 describe("WatchlistSidebar — 收合", () => {
   it("桌面:收合鈕 → 清單隱藏、展開鈕出現;再展開恢復", () => {
     seed({
