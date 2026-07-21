@@ -11,8 +11,6 @@ const fixture: MarketSnapshot = {
   is_trading_session: true,
   stale: false,
   lag_seconds: 5,
-  sectors: [],
-  leaderboards: { gainers: [], losers: [], amount: [], volume_ratio: [] },
   universe_size: 1917,
   excluded_count: { etf: 347, warrant: 67, watch_list: 57 },
   index_strength: {
@@ -47,15 +45,13 @@ const fixture: MarketSnapshot = {
 };
 
 describe("MarketSnapshot contract lock (market-today-only)", () => {
-  it("contract: 11 top-level keys 存在(舊 6 EOD 鍵已移除)", () => {
+  it("contract: 10 top-level keys 存在(MK-4:sectors/leaderboards 已隨經典檢視刪除)", () => {
     const keys = [
       "as_of",
       "last_tick",
       "is_trading_session",
       "stale",
       "lag_seconds",
-      "sectors",
-      "leaderboards",
       "universe_size",
       "excluded_count",
       "index_strength",
@@ -65,7 +61,11 @@ describe("MarketSnapshot contract lock (market-today-only)", () => {
     for (const k of keys) {
       expect(k in fixture).toBe(true);
     }
-    for (const removed of ["breadth", "sector_breadth", "sector_volume_ratio", "sector_amount_share", "eod_pending", "eod_as_of"]) {
+    for (const removed of [
+      "sectors", "leaderboards",
+      "breadth_legacy", "sector_breadth", "sector_volume_ratio", "sector_amount_share",
+      "eod_pending", "eod_as_of",
+    ]) {
       expect(removed in fixture).toBe(false);
     }
   });

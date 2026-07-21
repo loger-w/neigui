@@ -9,11 +9,8 @@ import pytest
 from services.finmind_realtime import (
     _PRIMARY_INDUSTRY_OVERRIDE,
     _build_name_map,
-    _compute_leaderboards,
     _dedup_sector_map,
-    _group_by_sector,
     _max_tick_date,
-    _trim,
     fetch_market_snapshot,
 )
 
@@ -147,128 +144,9 @@ def test_dedup_missing_industry_falls_to_qita() -> None:
 
 
 # --------------------------------------------------------------------------
-# _trim & _compute_leaderboards (SC-3 / F5)
+# (MK-4 mod/batch-ui-update:_trim / _compute_leaderboards / _group_by_sector
+# 隨經典檢視整刪,對應單元測試移除;snapshot keys 斷言改鎖「不得殘留」。)
 # --------------------------------------------------------------------------
-
-
-def _mk_row(sid: str, chg: float, amt: float, vr: float | None = None) -> dict:
-    return {
-        "stock_id": sid,
-        "name": sid,
-        "change_rate": chg,
-        "total_amount": amt,
-        "volume_ratio": vr,
-        "sector": "電子工業",
-    }
-
-
-def test_trim_includes_volume_ratio_field() -> None:
-    """v3 F5: _trim 必須含 volume_ratio key,None 也要保留。"""
-    rows = [{"stock_id": "9999", "name": "X", "change_rate": 1.0,
-             "total_amount": 1000, "volume_ratio": None,
-             "sector": "電子工業"}]
-    out = _trim(rows)
-    assert "volume_ratio" in out[0]
-    assert out[0]["volume_ratio"] is None
-
-
-def test_leaderboards_gainers_sorted_desc() -> None:
-    """SC-3: gainers by change_rate desc top size。"""
-    universe = [
-        {**_mk_row("A", 1.0, 100, 1.0)},
-        {**_mk_row("B", 5.0, 200, 2.0)},
-        {**_mk_row("C", 3.0, 300, 1.5)},
-    ]
-    out = _compute_leaderboards(universe, primary_sector={}, size=2)
-    assert [r["stock_id"] for r in out["gainers"]] == ["B", "C"]
-
-
-def test_leaderboards_losers_sorted_asc() -> None:
-    """SC-3: losers by change_rate asc。"""
-    universe = [
-        {**_mk_row("A", 1.0, 100)},
-        {**_mk_row("B", -5.0, 200)},
-        {**_mk_row("C", -3.0, 300)},
-    ]
-    out = _compute_leaderboards(universe, primary_sector={}, size=2)
-    assert [r["stock_id"] for r in out["losers"]] == ["B", "C"]
-
-
-def test_leaderboards_amount_sorted_desc() -> None:
-    """SC-3: amount by total_amount desc。"""
-    universe = [
-        {**_mk_row("A", 0, 1_000_000)},
-        {**_mk_row("B", 0, 3_000_000)},
-        {**_mk_row("C", 0, 2_000_000)},
-    ]
-    out = _compute_leaderboards(universe, primary_sector={}, size=2)
-    assert [r["stock_id"] for r in out["amount"]] == ["B", "C"]
-
-
-def test_leaderboards_volume_ratio_sorted_desc_null_as_zero() -> None:
-    """SC-3 / F5: volume_ratio desc;None 視為 0。"""
-    universe = [
-        {**_mk_row("A", 0, 100, 5.0)},
-        {**_mk_row("B", 0, 100, None)},
-        {**_mk_row("C", 0, 100, 2.0)},
-    ]
-    out = _compute_leaderboards(universe, primary_sector={}, size=3)
-    assert [r["stock_id"] for r in out["volume_ratio"]] == ["A", "C", "B"]
-
-
-def test_leaderboards_attach_sector_from_primary_map() -> None:
-    """SC-3: 排行榜每筆掛 sector 名(從 primary_sector lookup);未對到 → 其他。"""
-    universe = [_mk_row("X", 1.0, 100, 1.0), _mk_row("Y", 0.5, 50, 0.8)]
-    primary = {"X": "半導體業"}  # Y 沒在 primary
-    out = _compute_leaderboards(universe, primary_sector=primary, size=2)
-    sectors = {r["stock_id"]: r["sector"] for r in out["gainers"]}
-    assert sectors["X"] == "半導體業"
-    assert sectors["Y"] == "其他"
-
-
-# --------------------------------------------------------------------------
-# _group_by_sector (E1 / E2 / SC-2)
-# --------------------------------------------------------------------------
-
-
-def test_group_by_sector_caps_stocks() -> None:
-    """SC-2: 每 sector cap 30 個(取 market_value 大者)。"""
-    universe = [_mk_row(f"{i:04d}", 0, 1_000_000, 1.0) for i in range(50)]
-    mv_map = {f"{i:04d}": (50 - i) * 1_000_000_000 for i in range(50)}
-    # 全部歸同一 sector "電子工業"
-    primary = {f"{i:04d}": "電子工業" for i in range(50)}
-    sectors = _group_by_sector(universe, primary, mv_map, cap_per_sector=30)
-    assert len(sectors) == 1
-    assert sectors[0]["id"] == "電子工業"
-    assert len(sectors[0]["stocks"]) == 30
-    # 最大市值排在前(0000 mv=50e9 最大)
-    assert sectors[0]["stocks"][0]["stock_id"] == "0000"
-
-
-def test_group_by_sector_orphan_to_qita() -> None:
-    """E1: primary_sector 沒 mapping 的 stock_id → 進 '其他'。"""
-    universe = [_mk_row("orphan", 0, 100, 1.0)]
-    sectors = _group_by_sector(universe, primary_sector={}, mv_map={"orphan": 100})
-    sector_ids = [s["id"] for s in sectors]
-    assert "其他" in sector_ids
-
-
-def test_group_by_sector_market_value_fallback_to_median() -> None:
-    """E2: 缺 market_value 的 stock → sector 內 median fallback;tile size 仍 > 0。"""
-    universe = [
-        _mk_row("A", 0, 100, 1.0),
-        _mk_row("B", 0, 100, 1.0),
-        _mk_row("C", 0, 100, 1.0),
-    ]
-    primary = {"A": "電子工業", "B": "電子工業", "C": "電子工業"}
-    # C 缺 mv
-    mv_map = {"A": 5_000_000_000, "B": 1_000_000_000}
-    sectors = _group_by_sector(universe, primary, mv_map, cap_per_sector=30)
-    stocks = sectors[0]["stocks"]
-    c_tile = next(s for s in stocks if s["stock_id"] == "C")
-    assert c_tile["market_value"] is None  # 仍標示 null 讓 frontend 知道是 fallback
-    # 但 stock 仍在 list 內,不被砍掉
-    assert {s["stock_id"] for s in stocks} == {"A", "B", "C"}
 
 
 # --------------------------------------------------------------------------
@@ -383,9 +261,11 @@ async def test_fetch_market_snapshot_happy_path() -> None:
     assert "as_of" in result
     assert result["last_tick"] is not None
     assert result["stale"] is False
-    assert "sectors" in result
-    assert "leaderboards" in result
-    assert {"gainers", "losers", "amount", "volume_ratio"} <= set(result["leaderboards"].keys())
+    # MK-4:sectors / leaderboards 已隨經典檢視刪除,不得殘留
+    assert "sectors" not in result
+    assert "leaderboards" not in result
+    assert "index_strength" in result
+    assert "cap_tiers" in result
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
@@ -468,9 +348,8 @@ async def test_snapshot_filters_indices_via_primary_sector_whitelist() -> None:
 
     taiwan_stock_tick_snapshot universe 含 ~49 個 3-digit index ID
     (001 / 036 / 040 等;FinMind TaiwanStockInfo 並沒有 type='index'),
-    靠 `stock_id in primary_sector` whitelist 天然排除。本 test 鎖:
-      - 指數 '001' '036' 不出現在 leaderboards / sectors
-      - 普通個股 '2330' 正常顯示
+    靠 `stock_id in primary_sector` whitelist 天然排除。本 test 鎖(MK-4 後
+    改以 universe_size 觀察):指數 '001' '036' 不進 universe,僅 '2330' 計入。
     """
     fake_universe = [
         {"stock_id": "001", "change_rate": 0.5, "total_amount": 9e12,
@@ -494,22 +373,10 @@ async def test_snapshot_filters_indices_via_primary_sector_whitelist() -> None:
          patch("services.finmind_realtime._fetch_watch_list",
                new=AsyncMock(return_value=set())):
         result = await fetch_market_snapshot(refresh=False)
-    all_lb_ids = {
-        r["stock_id"]
-        for lb in result["leaderboards"].values()
-        for r in lb
-    }
-    all_sector_ids = {
-        s["stock_id"]
-        for sector in result["sectors"]
-        for s in sector["stocks"]
-    }
-    assert "001" not in all_lb_ids, "Audit X1 / Phase 6: 指數 '001' 不應出現在排行榜"
-    assert "036" not in all_lb_ids, "Audit X1 / Phase 6: 指數 '036' 不應出現在排行榜"
-    assert "001" not in all_sector_ids
-    assert "036" not in all_sector_ids
-    assert "2330" in all_lb_ids
-    assert "2330" in all_sector_ids
+    # whitelist 把 001/036 剃掉 → universe 只剩 2330
+    assert result["universe_size"] == 1
+    # 001 仍作為 index row 進 index_strength(獨立抽取,不受 whitelist 約束)
+    assert result["index_strength"]["twse"] is not None
     # sector ok → stale=False
     assert result["stale"] is False
 
@@ -633,8 +500,8 @@ async def test_snapshot_excludes_etf_warrant_watch_list_and_reports_counts() -> 
     """market-monitor-v2 plan P1 完成條件:
 
     - snapshot payload 帶 `universe_size` + `excluded_count`
-    - leaderboards 不再含 ETF prefix `00` / 6 位數權證 / 處置股
-    - 4 位數普通股保留
+    - ETF prefix `00` / 6 位數權證 / 處置股被 filter 排除(MK-4 後以
+      universe_size / excluded_count 觀察,leaderboards 已刪)
     """
     fake_universe = [
         {"stock_id": "2330", "change_rate": 5.0, "total_amount": 1e10,
@@ -677,26 +544,6 @@ async def test_snapshot_excludes_etf_warrant_watch_list_and_reports_counts() -> 
         "warrant": 1,
         "watch_list": 1,
     }
-    all_lb_ids = {
-        r["stock_id"]
-        for lb in result["leaderboards"].values()
-        for r in lb
-    }
-    all_sector_ids = {
-        s["stock_id"]
-        for sector in result["sectors"]
-        for s in sector["stocks"]
-    }
-    # 排除
-    assert "0050" not in all_lb_ids, "ETF 應被 P1 universe filter 排除"
-    assert "712345" not in all_lb_ids, "權證應被 P1 universe filter 排除"
-    assert "8046" not in all_lb_ids, "處置股應被 P1 universe filter 排除"
-    assert "0050" not in all_sector_ids
-    assert "712345" not in all_sector_ids
-    assert "8046" not in all_sector_ids
-    # 保留
-    assert "2330" in all_lb_ids
-    assert "3037" in all_lb_ids
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
@@ -727,12 +574,6 @@ async def test_snapshot_watch_list_fetch_failure_does_not_block() -> None:
 
     assert result["universe_size"] == 1
     assert result["excluded_count"]["watch_list"] == 0
-    all_lb_ids = {
-        r["stock_id"]
-        for lb in result["leaderboards"].values()
-        for r in lb
-    }
-    assert "2330" in all_lb_ids
     # Phase 4 P2 fix:watch_list degradation 必須拉 stale=True
     assert result["stale"] is True, (
         "watch_list fetch fail 時 stale 必須 True,讓 frontend banner 警示"

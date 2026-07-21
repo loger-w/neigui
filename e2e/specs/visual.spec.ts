@@ -37,11 +37,11 @@ test.describe("@visual visual regression", () => {
   });
 
   test("V3: market mode top-of-page", async ({ page }) => {
-    // 痛點:heatmap + leaderboard grid layout。
+    // 痛點:今日三卡 grid layout(MK-4 後無經典檢視)。
     await installFixtureClock(page);
     await page.addInitScript(() => localStorage.setItem("mode", "market"));
     await page.goto("/");
-    await page.waitForSelector(`[data-testid="${TESTIDS.marketHeatmap}"]`);
+    await page.waitForSelector(`[data-testid="${TESTIDS.marketIndexStrength}"]`);
     await expect(page).toHaveScreenshot("market-top.png", { ...VISUAL_THRESHOLD, fullPage: false });
   });
 });
@@ -80,11 +80,11 @@ test.describe("@visual responsive baselines", () => {
     test.use({ viewport: { width: 768, height: 1024 } });
 
     test("V6: market mode tablet 堆疊", async ({ page }) => {
-      // 痛點:<lg 主 grid 單欄堆疊 + classic 區 mobile 列高版面鎖住。
+      // 痛點:<lg 主 grid 單欄堆疊版面鎖住(MK-4 後無經典檢視)。
       await installFixtureClock(page);
       await page.addInitScript(() => localStorage.setItem("mode", "market"));
       await page.goto("/");
-      await page.waitForSelector(`[data-testid="${TESTIDS.marketHeatmap}"]`);
+      await page.waitForSelector(`[data-testid="${TESTIDS.marketIndexStrength}"]`);
       await expect(page).toHaveScreenshot("market-top-tablet.png", { ...VISUAL_THRESHOLD, fullPage: false });
     });
   });

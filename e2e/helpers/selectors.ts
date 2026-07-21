@@ -27,15 +27,12 @@ export const TESTIDS = {
   optionsOIWallsCard: "options-oi-walls-card",
   optionsPCRCard: "options-pcr-card",
   optionsInstitutionalCard: "options-institutional-card",
-  // market mode roots(Wave 1 已加)
-  marketHeatmap: "market-heatmap",
-  marketLeaderboard: "market-leaderboard",
-  // market v2 panels(mod/market-today-only:舊 EOD 四卡退役,換今日三卡)
+  // market v2 panels(mod/market-today-only 今日三卡;經典檢視 heatmap/
+  // leaderboard/classic-toggle 已於 MK-4 mod/batch-ui-update 刪除)
   marketUniverseBanner: "market-universe-banner",
   marketIndexStrength: "market-index-strength",
   marketCapTiers: "market-cap-tiers",
   marketSectorRotation: "market-sector-rotation",
-  marketClassicToggle: "market-classic-toggle",
   // borrow mode roots(feat/daytrade-borrow-fee)
   borrowFeePage: "borrow-fee-page",
   feeRow: "fee-row",

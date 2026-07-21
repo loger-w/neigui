@@ -1,8 +1,6 @@
-import { useState, type ReactElement } from "react";
+import { type ReactElement } from "react";
 import { useMarketSnapshot } from "../hooks/useMarketSnapshot";
 import { MarketHeader } from "./MarketHeader";
-import { MarketHeatmap } from "./MarketHeatmap";
-import { MarketLeaderboard } from "./MarketLeaderboard";
 import { MarketIndexStrength } from "./MarketIndexStrength";
 import { MarketCapTiers } from "./MarketCapTiers";
 import { MarketSectorRotation } from "./MarketSectorRotation";
@@ -16,7 +14,8 @@ type Props = {
 export function MarketPage({ isActive, onSymbolPick }: Props): ReactElement {
   const { data, refresh, lastUpdated, isStale, isTradingSession, error } =
     useMarketSnapshot(isActive);
-  const [classicOpen, setClassicOpen] = useState(true); // D-2:預設展開
+  // MK-5/6(G5)新 panel 個股跳轉將使用;經典檢視刪除後暫無 caller
+  void onSymbolPick;
 
   // Phase 4 R1: 從未成功過(error AND data==null)才整頁顯示資料源錯誤;
   // 否則保留 last-good data,error 變成 header 上的小 banner,避免 transient
@@ -73,32 +72,8 @@ export function MarketPage({ isActive, onSymbolPick }: Props): ReactElement {
           <MarketCapTiers data={data?.cap_tiers ?? null} loading={!data} />
           <MarketSectorRotation data={data?.sector_rotation ?? null} loading={!data} />
         </div>
-        <section className="border-t border-line">
-          <button
-            type="button"
-            data-testid="market-classic-toggle"
-            aria-expanded={classicOpen}
-            onClick={() => setClassicOpen((v) => !v)}
-            className="w-full px-4 py-2 text-left text-xs text-ink-muted hover:text-ink cursor-pointer"
-          >
-            經典檢視 {classicOpen ? "▾" : "▸"}
-          </button>
-          {/* responsive spec §4.5:mobile 明確列高(heatmap 360px 量測有依據 +
-              leaderboard 自然高由外層頁捲動收),lg 維持 560px 雙欄。 */}
-          <div
-            hidden={!classicOpen}
-            className="grid grid-cols-1 grid-rows-[360px_auto] lg:h-[560px] lg:grid-rows-1 lg:grid-cols-[7fr_3fr]"
-          >
-            <MarketHeatmap
-              sectors={data?.sectors ?? []}
-              onSymbolPick={onSymbolPick}
-            />
-            <MarketLeaderboard
-              leaderboards={data?.leaderboards ?? null}
-              onSymbolPick={onSymbolPick}
-            />
-          </div>
-        </section>
+        {/* MK-4(mod/batch-ui-update):經典檢視(heatmap + leaderboard)整刪;
+            量比 / 漲跌家數功能由 MK-5/6 新 panel 接手(G5)。 */}
       </div>
     </div>
   );

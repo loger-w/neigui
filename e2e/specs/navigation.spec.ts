@@ -65,13 +65,13 @@ test.describe("navigation & persistence", () => {
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toHaveCount(0);
     // (2) 切 market → assert options unmount
     await page.getByRole(ROLES.modeSwitchMarket.role, { name: ROLES.modeSwitchMarket.name }).click();
-    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.marketIndexStrength)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.optionsConclusion)).toHaveCount(0);
     // (3) 切 borrow → assert market unmount(feat/daytrade-borrow-fee:4-way
     //     ternary 的新末端分支也要進 unmount 鎖,防 hidden-div 復發)
     await page.getByRole(ROLES.modeSwitchBorrow.role, { name: ROLES.modeSwitchBorrow.name }).click();
     await expect(page.getByTestId(TESTIDS.borrowFeePage)).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toHaveCount(0);
+    await expect(page.getByTestId(TESTIDS.marketIndexStrength)).toHaveCount(0);
     // (4) 切 flows(NAV-1 新 mode)→ assert borrow unmount
     await page.getByRole(ROLES.modeSwitchFlows.role, { name: ROLES.modeSwitchFlows.name }).click();
     await expect(page.getByTestId(TESTIDS.brokerFlowsView)).toBeVisible();
