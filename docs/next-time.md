@@ -60,13 +60,10 @@
 - (原「中信/元富/兆豐 HO seat 精確名未經真實樣本驗證」R-1 條目已由 fix/warrant-ho-alias-verify 實測收割,2026-07-18:中國信託 6160 / 兆豐 7000 與推定相符零改動;元富因 2026-04-06 併入台新證券(存續),HO 實為 9B00「台新證券」→ alias 補「台新」,real-env 三家 external_net 皆非 null。已知殘餘邊角(review P2 接受):顯式 date < 2026-04-06 查歷史時,元富 brand 權證上的台新外部 seat 會被誤歸 HO — 該路徑本已因「當下快照對映歷史候選日」條標記失真,不另做日期條件 alias)
 - **flow warm 路徑每次查詢付 1 個 T+0 dump request(~2s,44k rows)**:自適應設計的常數成本;若嫌慢,候選 = 當日空 dump 短 TTL(如 30 分)cache。觸發重評估:user 抱怨 tab 切換慢、或午後高頻使用場景出現
 
-## From /mod trader-search-truncation(2026-07-21)
-
-- **分點搜尋 combobox 的 a11y 缺口**(Phase 5 review P2,deferred):dropdown 本就未實作 `aria-activedescendant`,新加的截斷提示列(`role="presentation"`)對螢幕閱讀器完全不朗讀 — 截斷資訊只有明眼使用者可感。補法:truncated 時加 visually-hidden `role="status" aria-live="polite"` 鏡射文案,與 aria-activedescendant 缺口一併補。觸發重評估:做任何 a11y pass、或第二個 combobox 元件出現時
-
 ## From /mod batch-ui-update(2026-07-21)
 
-- **`warrant_flow._run_once` 薄 wrapper 保留前提已消失**(WF-1 刪 warrant_flow_history 後,run-once-dedup 當初「跨模組直呼故保留公開名」的唯一理由不在):下次動 warrant_flow 時可把 `_run_once` wrapper 內聯回 `run_once(_inflight, ...)` 直呼。觸發重評估:下次 refactor warrant_flow、或第二個人問「這 wrapper 為何存在」時
+- (原「分點搜尋 combobox 的 a11y 缺口」條目已由 chore/next-time-harvest-0721 收割刪除,2026-07-21:aria-activedescendant + role=combobox 全套 + 截斷文案鏡射 sr-only `role="status"`;vitest 4 條 + e2e E37 鍵盤導航真 browser 驗證,changelog 0.40.1)
+- (原「`warrant_flow._run_once` 薄 wrapper 保留前提已消失」條目已由 chore/next-time-harvest-0721 收割刪除,2026-07-21:內聯回 `run_once(_inflight, ...)` 直呼,wrapper 與閒置 typing import 一併移除)
 - **權證流通在外比率資料源調查結論**(Q2 拍板本輪擱置):TWSE OpenAPI(t187ap37_L 僅發行單位數量、t187ap42_L 僅成交值/張)與 TPEx OpenAPI(tpex_warrant 有 Original/FollowOn/Cancellation 累計,仍為發行面)**皆無每日流通在外(扣發行人庫存)**;真實來源 = MOPS 發行人每日申報(無公開批次 JSON)或券商權證網(元大 warrantwin 等,非官方源)。觸發重評估:user 再提流通在外需求時,先評 MOPS scraping 穩定性 vs 券商網 ToS
 
 ## From /refactor run-once-dedup(2026-07-21)
@@ -75,7 +72,7 @@
 
 ## From /mod warrant-iv-redesign(2026-07-16)
 
-- **drift label 中文對映第 2 份複本**(warrant-columns.tsx `DRIFT_TEXT`(僅 declining/rising)vs WarrantIvHistory.tsx `DRIFT_LABEL`(全四態)):本批次 warrant-columns.tsx 禁動(另 session 剛收尾)故未合併;下次動任一份時抽到 lib/warrant-data.ts 旁單一對映。觸發重評估:改任一份文案、或第三個 consumer 出現時
+- (原「drift label 中文對映第 2 份複本」條目已於 2026-07-21 標 moot 移除 [auto-default: 判 moot | reason: WarrantIvHistory.tsx 已不存在(warrant-iv-redesign 後續改版移除),全 repo 僅剩 warrant-columns.tsx `DRIFT_TEXT` 單一份,無複本可合併])
 
 ## From /mod warrant-selector-table(2026-07-16)
 
@@ -96,7 +93,7 @@
 
 ## From brainstorm 券差查詢 / 權證選擇器(2026-07-08)
 
-- **券差表點代號跳 equity 分析**:券差 tab 的 stock_id 可連到 equity mode 該股籌碼頁(跨 mode 導航目前無先例,需設計 mode+symbol 的 state 傳遞)。觸發重評估:券差查詢 /feat 完成後
+- **券差表點代號跳 equity 分析**:券差 tab 的 stock_id 可連到 equity mode 該股籌碼頁(跨 mode 導航目前無先例,需設計 mode+symbol 的 state 傳遞)。(2026-07-21 重評估 [auto-default: 維持 defer | reason: 觸發條件(券差 /feat 完成)已成立,但跨 mode 導航是 user-visible 新功能,需 UX 設計拍板 + e2e,不屬順手收割範圍];與「權證分點頁點股票跳 equity」同批處理較划算。觸發重評估:user 提出任一跨 mode 跳轉需求時)
 - **TWSE MI_INDEX `type=0999` 牛熊證與認售 type 枚舉**若 S-1 spike 發現牛熊證需求自然浮現,v2 再評(TPEx 對應 wcb/wxy 端點已知)。觸發重評估:user 提到牛熊證時
 
 ## From harness review(2026-07-06,12-agent 體檢;2026-07-19 全批拍板收割)
@@ -117,7 +114,7 @@
 
 ## From /perf cold-start(2026-07-07)
 
-- **`routes/symbols.py::load_symbols` 未走 FinMind 接入慣例**:直接裸 httpx 呼叫,沒過 `FinMindClient._get` / TokenBucket / per-module `get_finmind()` wrap(conventions 制定前的既有債)。觸發重評估:下次動 symbols route 或 FinMind 客戶端重構時,順路收編
+- (原「`routes/symbols.py::load_symbols` 未走 FinMind 接入慣例」條目已由 chore/next-time-harvest-0721 收割刪除,2026-07-21:改走 per-module `get_finmind()` wrap + `client._get`(TokenBucket / singleton 隨之生效),FAKE 與 production 共用 parse 抽 `_dedup_rows`;新 seam characterization 測試 ×2 鎖住既有契約)
 
 (原「From /mod chip-bubble-intraday-overlay」P2/P3 整段已由 refactor/chip-bubble-p3-harvest 收割刪除,2026-07-19:F-P3-8/9/10/13/14/15 + F-P2-4 + F-P3-16~19 全收;F-P3-20 moot — useChipIntraday 已於 force-refresh-query 收割改寫,forceRefreshRef 不存在)
 
