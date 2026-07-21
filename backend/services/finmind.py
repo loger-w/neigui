@@ -654,6 +654,22 @@ class FinMindClient:
             },
         )
 
+    async def fetch_daily_report_by_trader(self, trader_id: str, date_str: str) -> list:
+        """分點反查:單分點單日全部成交(price-level rows;Sponsor)。專用 path、
+        無 data_id — probe 2026-07-20:9600@2026-07-17 → 13,079 rows / 1,136 檔;
+        /data 入口與 SecIdAgg 變體皆強制 data_id,不支援 trader-only。"""
+        return await self._get(
+            f"{_FINMIND_BASE}/taiwan_stock_trading_daily_report",
+            {"securities_trader_id": trader_id, "date": date_str},
+        )
+
+    async def fetch_securities_trader_info(self) -> list:
+        """分點目錄 TaiwanSecuritiesTraderInfo(全 ~1,011 筆,無 data_id/日期參數)。"""
+        return await self._get(
+            f"{_FINMIND_BASE}/data",
+            {"dataset": "TaiwanSecuritiesTraderInfo"},
+        )
+
     async def stock_price_universe_day(self, date: str) -> list:
         """TaiwanStockPrice date-only 全市場單日 — warrant_flow day dump
         (design warrant-broker-flow v3 §2.3;無 data_id,單日一發 ~44k rows)。"""

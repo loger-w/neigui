@@ -60,6 +60,30 @@ def test_all_symbols_returns_complete_list(monkeypatch):
     assert r.json() == data
 
 
+# --- get_symbol_name_map(broker_flows 名稱 join 用,feat/broker-daily-flows)---
+
+async def test_get_symbol_name_map_builds_dict(monkeypatch):
+    monkeypatch.setattr(
+        symbols_mod, "_symbols",
+        [{"symbol": "2330", "name": "台積電"}, {"symbol": "2317", "name": "鴻海"}],
+    )
+    m = await symbols_mod.get_symbol_name_map()
+    assert m == {"2330": "台積電", "2317": "鴻海"}
+
+
+async def test_get_symbol_name_map_raises_when_unavailable(monkeypatch):
+    monkeypatch.setattr(symbols_mod, "_symbols", [])
+
+    async def fake_load() -> None:
+        return None
+
+    monkeypatch.setattr(symbols_mod, "load_symbols", fake_load)
+    import pytest
+
+    with pytest.raises(ValueError, match="symbols_unavailable"):
+        await symbols_mod.get_symbol_name_map()
+
+
 # --- lazy reload contract ------------------------------------------------
 # Background: if startup-time load_symbols() fails (FinMind 4xx, network
 # blip), _symbols stays [] forever and /api/symbols/* silently returns

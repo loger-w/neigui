@@ -151,6 +151,13 @@ async def _ensure_loaded() -> None:
         raise ValueError("symbols_unavailable")
 
 
+async def get_symbol_name_map() -> dict[str, str]:
+    """symbol → name(broker_flows 名稱 join 用;feat/broker-daily-flows)。
+    載入失敗沿 _ensure_loaded 的 ValueError("symbols_unavailable") 契約。"""
+    await _ensure_loaded()
+    return {s["symbol"]: s["name"] for s in _symbols}
+
+
 @router.get("/api/symbols")
 async def search_symbols(search: str = Query(default="", min_length=1)) -> list[dict]:
     if not search:
