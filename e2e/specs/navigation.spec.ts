@@ -81,4 +81,45 @@ test.describe("navigation & persistence", () => {
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.brokerFlowsView)).toHaveCount(0);
   });
+
+  test("N5: 返回狀態保留 — flows 已選分點 / market 鑽取展開跨 mode 切換保留(SC-8 mod/batch-ui-polish)", async ({ page }) => {
+    // 痛點:mode ternary 真卸載(N4 契約不動)下,返回狀態靠 useSessionState
+    // (sessionStorage)還原 — 若有人把 hook 換回 useState,這裡立即紅;
+    // 若有人改 ternary 成 hidden div 來「修」這題,N4 紅。兩鎖互補。
+    await page.goto("/");
+    // flows:選定分點
+    await page.getByRole(ROLES.modeSwitchFlows.role, { name: ROLES.modeSwitchFlows.name }).click();
+    await page.getByLabel("搜尋分點").fill("富邦");
+    await page.getByRole("option", { name: "9600 富邦" }).click();
+    await expect(page.getByTestId("broker-flows-buy")).toBeVisible();
+    // market:展開族群鑽取
+    await page.getByRole(ROLES.modeSwitchMarket.role, { name: ROLES.modeSwitchMarket.name }).click();
+    await page.getByTestId("sector-row-btn-半導體業").click();
+    await expect(page.getByTestId("sub-row-半導體業-晶圓代工")).toBeVisible();
+    // 切回 flows:已選分點還原,雙表直接在(不需重新搜尋)
+    await page.getByRole(ROLES.modeSwitchFlows.role, { name: ROLES.modeSwitchFlows.name }).click();
+    await expect(page.getByLabel("搜尋分點")).toHaveValue("9600 富邦");
+    await expect(page.getByTestId("broker-flows-buy")).toBeVisible();
+    // 切回 market:鑽取展開仍在
+    await page.getByRole(ROLES.modeSwitchMarket.role, { name: ROLES.modeSwitchMarket.name }).click();
+    await expect(page.getByTestId("sub-row-半導體業-晶圓代工")).toBeVisible();
+  });
+
+  test("N6: 常用分點 — 星號儲存 → reload 後 chips 仍在 → 一鍵帶入(SC-9 mod/batch-ui-polish)", async ({ page }) => {
+    // 痛點:常用清單走 localStorage(跨 session);先清 sessionStorage 再
+    // reload,隔離 SC-8 的 selected 還原路徑,確保帶入是 chip 的功勞。
+    await page.goto("/");
+    await page.getByRole(ROLES.modeSwitchFlows.role, { name: ROLES.modeSwitchFlows.name }).click();
+    await page.getByLabel("搜尋分點").fill("富邦");
+    await page.getByRole("option", { name: "9600 富邦" }).click();
+    await expect(page.getByTestId("broker-flows-buy")).toBeVisible();
+    await page.getByLabel("加入常用分點").click();
+    await page.evaluate(() => sessionStorage.clear());
+    await page.reload();
+    const row = page.getByTestId("saved-brokers-row");
+    await expect(row).toBeVisible();
+    await row.getByRole("button", { name: "9600 富邦", exact: true }).click();
+    await expect(page.getByTestId("broker-flows-buy")).toBeVisible();
+    await expect(page.getByLabel("搜尋分點")).toHaveValue("9600 富邦");
+  });
 });

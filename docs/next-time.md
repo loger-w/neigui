@@ -6,6 +6,14 @@
 
 ---
 
+## From /mod batch-ui-polish(2026-07-21)
+
+- **E25 負載型 flake +1**(2026-07-21 全套紅/單獨綠):泡泡圖 loading badge 時序;E10 同型已 ×4。觸發重評估:再犯時考慮 badge assertion 改 poll 或放寬 timeout。
+
+- **自選分組 rename**:管理分組面板只有建立/刪除;rename 需資料層新函式(watchlist.ts 無)+ UI。觸發重評估:user 抱怨改名要刪掉重建時。
+- **BrokerSearch 選取契約改以 broker_id 為 key**:目前 value/onChange 仍以名稱 key(同名不同 id 分點理論上會撞);SC-7 只統一顯示。觸發重評估:真實資料出現同名分點,或 ChipBubbleView selection 域重構時。
+- **權證分點頁點股票跳 equity**:四頁中唯一沒有跳轉鏈的頁(user 本輪未要求)。觸發重評估:user 提出。
+
 ## From /feat broker-daily-flows(2026-07-21)
 
 > 2026-07-21 user 指示:以下兩條 + `_run_once` 複本組已獨立成 `docs/specs/broker-flows-followups/spec.md`(F-1/F-2/F-3),由新 session 處理;做完刪本節條目 + 對應 spec 節。

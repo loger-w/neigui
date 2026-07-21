@@ -205,8 +205,8 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(buyCol).toContainText("凱基台北");
     await expect(buyCol).toContainText("3,960 元"); // 淨買超金額(fixtures 手算)
     await expect(page.getByTestId(TESTIDS.flowSellCol)).toContainText("元大");
-    // 展開分點 → 權證明細(payload 內嵌,零額外 API)
-    await buyCol.getByRole("button", { name: /展開 凱基台北/ }).click();
+    // 展開分點 → 權證明細(payload 內嵌,零額外 API);SC-7 aria 帶 id
+    await buyCol.getByRole("button", { name: /展開 920A 凱基台北/ }).click();
     await expect(buyCol).toContainText("030011");
     await expect(buyCol).toContainText("台積凱基61購01");
     // 明細表金額降序首列 = 030011(5,000,000)+ 外部淨額 −(凱基 HO −1695)
@@ -386,7 +386,8 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await page.getByPlaceholder("搜尋分點...").fill("分點001");
     await page.getByTestId(TESTIDS.brokerSearchItem).first().click();
     const jump = page.getByTestId(TESTIDS.bubbleJumpToOverview);
-    await expect(jump).toContainText("查看 分點001 於籌碼總覽");
+    // SC-7:顯示統一「id 名稱」
+    await expect(jump).toContainText("查看 BROKER001 分點001 於籌碼總覽");
     await jump.click();
     // tab 已切回籌碼總覽 + 該分點在已選 chip bar
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
@@ -452,6 +453,25 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     // reload → 清單持久
     await page.reload();
     await expect(page.getByTestId(TESTIDS.watchlistItem)).toContainText("2330");
+  });
+
+  test("E36: 自選清單群組 — 管理面板建組 → 快選直加入該組(SC-1 mod/batch-ui-polish)", async ({ page }) => {
+    // 痛點:舊流程「加入未分組 → hover 隱形 select 歸組」四步;新流程管理
+    // 面板建組 + split 鈕一步入組。鎖「直加入的股票 DOM 掛在該組區塊下 +
+    // reload 後 groupId 持久」— vitest 鎖 CRUD,這裡鎖跨 reload 全鏈。
+    const sidebar = page.getByTestId(TESTIDS.watchlistSidebar);
+    await expect(sidebar).toBeVisible();
+    await page.getByLabel("管理分組").click();
+    await page.getByTestId("watchlist-group-input").fill("半導體");
+    await page.getByTestId("watchlist-create-group").click();
+    await page.getByTestId("watchlist-add-to-group").click();
+    await page.getByRole("menuitem", { name: /半導體/ }).click();
+    const groupSection = page.getByTestId("watchlist-group-section");
+    await expect(groupSection.getByTestId(TESTIDS.watchlistItem)).toContainText("2330");
+    await page.reload();
+    await expect(
+      page.getByTestId("watchlist-group-section").getByTestId(TESTIDS.watchlistItem),
+    ).toContainText("2330");
   });
 
   test("E33: 前 15 大列表「看泡泡圖」鈕 → 切 tab + 該分點自動聚焦(CH-1)", async ({ page }) => {
@@ -537,7 +557,7 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(bar).toContainText("分點001");
     // checkbox 本體 sr-only(1px 不可點)→ force(E18 同款前例);click 事件
     // 仍真實從 input 冒泡到 stopPropagation wrapper,double-toggle 語意照驗
-    await row.getByRole("checkbox", { name: "勾選 分點001" }).click({ force: true });
+    await row.getByRole("checkbox", { name: "勾選 BROKER001 分點001" }).click({ force: true });
     await expect(bar).toContainText("未選擇分點");
   });
 
