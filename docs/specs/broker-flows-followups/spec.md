@@ -59,27 +59,9 @@
 
 ---
 
-## F-3 `_run_once` inflight-dedup 複本收斂(第 5 份已現,觸發條件命中)
+## F-3 `_run_once` inflight-dedup 複本收斂 —(已完成,2026-07-21)
 
-建議入口:`/refactor`(行為零差異)。規模:M(5 服務檔 + 各自測試保護盤點)。
-
-### 現況(docs/next-time.md「backend 候選日回退 + inflight dedup + date 驗證複本組」條目,2026-07-21 已註記觸發命中)
-
-- `_run_once` 五份:`services/warrants.py`、`services/warrant_flow.py`(refcount+shield)、`services/market_universe.py`、`services/industry_chain.py`、`services/broker_flows.py`(refcount+shield,warrant_flow 逐字同構)。**行為已分歧**:refcount 版 vs 無 refcount 版 — 收斂前先盤點各版語意差異與依賴該差異的測試。
-- date query 驗證三種擺位:`routes/warrants.py`(regex+fromisoformat)、`routes/daytrade_fee.py`(僅 fromisoformat)、`services/broker_flows.py`(service 層 fromisoformat → 400 invalid_date)。
-- 連動:`backend/tests/conftest.py::_reset_realtime_task_registries` 的 module tuple(現 9 模組)— 收斂後 registry 歸屬改變要同步,docstring 有「新增模組級 registry 必掛進 fixture」規則。
-
-### 驗收(SC)
-
-1. 行為零差異:全 backend suite 前後皆綠(700+ passed 基準),不改任何 assertion。
-2. 收斂後單一實作(建議 `utils/` 或 `services/_concurrency.py`),refcount 語意為準(它是超集);各模組 `_inflight` registry 保留模組級(conftest 清理契約不變)或集中 — 二擇一在 refactor-plan 寫明理由。
-3. date 驗證收斂為單一 helper(400 `invalid_date` 語意統一),routes/warrants 與 daytrade_fee 的既有錯誤碼字串**不得變**(前端契約)。
-4. 每步小 commit(🔵),任一步紅立即回退。
-
-### 邊界
-
-- 不順手改各服務的 cache/TTL 邏輯(只收 dedup 與 date 驗證兩族)。
-- `docs/decisions.md` 先查有無 dedup 抽象的舊決策,別重開已結案討論。
+refactor/run-once-dedup 收割:實測 10 份(9 模組級 + FinMindClient method,spec 原計 5 份過時)收斂至 `utils/concurrency.run_once`;date 驗證 3 處收斂至 `utils/validation.parse_date_param`(錯誤碼/嚴格度以參數保留 — SC-3 兩子句衝突以「錯誤碼不得變」為準,字面統一記 `docs/next-time.md` /mod 候選)。全 suite 前後皆綠(700→702,+2 characterization),artifacts 在 `.claude/refactor/run-once-dedup/`。
 
 ---
 

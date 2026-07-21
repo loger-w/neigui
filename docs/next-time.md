@@ -44,12 +44,16 @@
 ## From /feat warrant-broker-flow(2026-07-14)
 
 - (原「equity tab 鈕樣板第 4 份複本」條目已由 feat/broker-daily-flows 收割刪除,2026-07-21:第 5 tab 觸發,EQUITY_TABS config + map 落地(commit a6eaf76);hidden div 內容各異維持列舉)
-- **backend「候選日回退 + inflight dedup + date 驗證」複本組**:`_run_once` 多份(warrants/warrant_flow/market_universe/industry_chain,行為已分歧 — refcount vs 無;2026-07-20 註:market_breadth 份已隨檔刪除,industry_chain 新增一份;**2026-07-21 註:broker_flows 又新增一份 refcount 同構 — 觸發條件「下一份複本」已命中,已立 spec `docs/specs/broker-flows-followups/spec.md` F-3,/refactor 收斂 5 份 + date 驗證 3 處**)、date query 驗證 2 處不同步(routes/warrants regex+fromisoformat vs routes/daytrade_fee 僅 fromisoformat;broker_flows 走 service 層 fromisoformat 第 3 種擺位)。抽共用時一起收。
+- (原「backend 候選日回退 + inflight dedup + date 驗證複本組」條目已由 refactor/run-once-dedup 收割刪除,2026-07-21:實收 9 份模組級 `_run_once` + FinMindClient method 版(spec F-3 點名 5 份,實測 10 份)收斂至 `utils/concurrency.run_once`,各模組保留薄 wrapper 名(測試與 warrant_flow_history 跨模組直呼依賴);date 驗證 3 處收斂至 `utils/validation.parse_date_param`,錯誤碼/嚴格度以參數保留。**候選日回退複本(`_candidate_dates` broker_flows/warrant_flow 同構)未收** — 簽名不同(date 起點 vs param 解析)且僅 2 份,未達收斂門檻;觸發:第 3 份出現時)
 - **flow 對映用「當下快照」查歷史候選日**:權證在 (d, 快照 as_of] 間到期下市 → 該權證當日成交不入統計、計入 unmapped_count(訊號在但不歸屬)。預設查詢(d = 快照 as_of)零影響;顯式舊 date / 深度回退才失真。修法 = 快照歷史化(per-date terms archive),v1 out of scope。觸發重評估:user 用顯式 date 查歷史流向、或 unmapped_count 異常飆高時
 - **`_cleanup_flow_caches` 每次冷聚合跑一次全目錄 iterdir**:目前冷聚合本身 200 req 網路成本 >> 1 次 iterdir,不值得節流;cache 目錄檔案數若破萬再加 last-cleanup 時戳門檻。觸發重評估:chip cache 目錄檔案數 >5k 或 real-env 量到 cleanup 佔時
 - (原「[需 user 拍板] flow 淨買賣超欄恆退化」條目已由 mod/warrant-flow-external-net 解決刪除,2026-07-18:拍板 (b) 外部淨額口徑 = −(發行商造市 HO seat net),12 家 alias 白名單 + seat 精確名對映,無法對映 → null;probe 實證 27/27 單一命中)
 - (原「中信/元富/兆豐 HO seat 精確名未經真實樣本驗證」R-1 條目已由 fix/warrant-ho-alias-verify 實測收割,2026-07-18:中國信託 6160 / 兆豐 7000 與推定相符零改動;元富因 2026-04-06 併入台新證券(存續),HO 實為 9B00「台新證券」→ alias 補「台新」,real-env 三家 external_net 皆非 null。已知殘餘邊角(review P2 接受):顯式 date < 2026-04-06 查歷史時,元富 brand 權證上的台新外部 seat 會被誤歸 HO — 該路徑本已因「當下快照對映歷史候選日」條標記失真,不另做日期條件 alias)
 - **flow warm 路徑每次查詢付 1 個 T+0 dump request(~2s,44k rows)**:自適應設計的常數成本;若嫌慢,候選 = 當日空 dump 短 TTL(如 30 分)cache。觸發重評估:user 抱怨 tab 切換慢、或午後高頻使用場景出現
+
+## From /refactor run-once-dedup(2026-07-21)
+
+- **date query 驗證嚴格度/錯誤碼字面統一(/mod 候選)**:`parse_date_param` 現以參數保留三處歷史差異 — warrants strict+`bad_date`、daytrade_fee 寬鬆+`bad_date`(接受 `20260721` ISO 變體)、broker_flows 寬鬆+`invalid_date`。統一(全 strict + 單一錯誤碼)= 對外行為改動,要同步前端 `lib/api.ts` 錯誤處理與 contract tests。觸發重評估:任一 date 參數 endpoint 新增時、或前端要對 date 錯誤做特化文案時
 
 ## From /mod warrant-iv-redesign(2026-07-16)
 
