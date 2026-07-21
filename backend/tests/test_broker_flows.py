@@ -337,32 +337,36 @@ async def test_daily_flows_past_date_cache_unconditional(monkeypatch, frozen_tod
 # ---------------------------------------------------------------- search_traders
 
 async def test_search_traders_id_prefix_case_insensitive(monkeypatch, frozen_today):
+    """F-2:shape 改 {hits, total}(裸陣列淘汰)。"""
     _install(monkeypatch, _FakeFM({}))
-    hits = await bf.search_traders("779C")
-    assert hits == [{"broker_id": "779c", "broker_name": "摩根大通"}]
+    result = await bf.search_traders("779C")
+    assert result == {"hits": [{"broker_id": "779c", "broker_name": "摩根大通"}], "total": 1}
 
 
 async def test_search_traders_name_substring(monkeypatch, frozen_today):
     _install(monkeypatch, _FakeFM({}))
-    hits = await bf.search_traders("富邦")
-    assert {h["broker_id"] for h in hits} == {"9600", "9604"}
+    result = await bf.search_traders("富邦")
+    assert {h["broker_id"] for h in result["hits"]} == {"9600", "9604"}
+    assert result["total"] == 2
 
 
 async def test_search_traders_caps_at_50(monkeypatch, frozen_today):
+    """F-2 SC-1:>50 命中 → hits 截斷 50、total 回截斷前命中數。"""
     rows = [
         {"securities_trader_id": f"X{i:03d}", "securities_trader": f"測試{i}",
          "date": "", "address": "", "phone": ""}
         for i in range(60)
     ]
     _install(monkeypatch, _FakeFM({}, directory=rows))
-    hits = await bf.search_traders("測試")
-    assert len(hits) == 50
+    result = await bf.search_traders("測試")
+    assert len(result["hits"]) == 50
+    assert result["total"] == 60
 
 
 async def test_search_traders_blank_query_returns_empty(monkeypatch, frozen_today):
     """C3:純空白 query(route min_length=1 擋不住)不得全表命中回任意 50 筆。"""
     _install(monkeypatch, _FakeFM({}))
-    assert await bf.search_traders("   ") == []
+    assert await bf.search_traders("   ") == {"hits": [], "total": 0}
 
 
 async def test_search_traders_directory_unavailable_503(monkeypatch, frozen_today):

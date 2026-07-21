@@ -71,11 +71,13 @@ async def test_daily_flows_missing_broker_id_422_validation_list(client):
 
 
 async def test_traders_search_by_name(client):
+    """F-2:shape = {hits, total}(截斷可感知,前端以 total > hits 判定)。"""
     r = await client.get("/api/broker/traders", params={"search": "富邦"})
     assert r.status_code == 200
-    hits = r.json()
-    assert {"broker_id": "9600", "broker_name": "富邦"} in hits
-    assert len(hits) >= 3  # 9600 / 9604 / 9608
+    body = r.json()
+    assert {"broker_id": "9600", "broker_name": "富邦"} in body["hits"]
+    assert body["total"] >= 3  # 9600 / 9604 / 9608
+    assert body["total"] == len(body["hits"])  # fixture 目錄 < 50,不觸截斷
 
 
 async def test_traders_missing_search_422(client):
