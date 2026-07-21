@@ -51,6 +51,10 @@
 - (原「中信/元富/兆豐 HO seat 精確名未經真實樣本驗證」R-1 條目已由 fix/warrant-ho-alias-verify 實測收割,2026-07-18:中國信託 6160 / 兆豐 7000 與推定相符零改動;元富因 2026-04-06 併入台新證券(存續),HO 實為 9B00「台新證券」→ alias 補「台新」,real-env 三家 external_net 皆非 null。已知殘餘邊角(review P2 接受):顯式 date < 2026-04-06 查歷史時,元富 brand 權證上的台新外部 seat 會被誤歸 HO — 該路徑本已因「當下快照對映歷史候選日」條標記失真,不另做日期條件 alias)
 - **flow warm 路徑每次查詢付 1 個 T+0 dump request(~2s,44k rows)**:自適應設計的常數成本;若嫌慢,候選 = 當日空 dump 短 TTL(如 30 分)cache。觸發重評估:user 抱怨 tab 切換慢、或午後高頻使用場景出現
 
+## From /mod trader-search-truncation(2026-07-21)
+
+- **分點搜尋 combobox 的 a11y 缺口**(Phase 5 review P2,deferred):dropdown 本就未實作 `aria-activedescendant`,新加的截斷提示列(`role="presentation"`)對螢幕閱讀器完全不朗讀 — 截斷資訊只有明眼使用者可感。補法:truncated 時加 visually-hidden `role="status" aria-live="polite"` 鏡射文案,與 aria-activedescendant 缺口一併補。觸發重評估:做任何 a11y pass、或第二個 combobox 元件出現時
+
 ## From /refactor run-once-dedup(2026-07-21)
 
 - **date query 驗證嚴格度/錯誤碼字面統一(/mod 候選)**:`parse_date_param` 現以參數保留三處歷史差異 — warrants strict+`bad_date`、daytrade_fee 寬鬆+`bad_date`(接受 `20260721` ISO 變體)、broker_flows 寬鬆+`invalid_date`。統一(全 strict + 單一錯誤碼)= 對外行為改動,要同步前端 `lib/api.ts` 錯誤處理與 contract tests。觸發重評估:任一 date 參數 endpoint 新增時、或前端要對 date 錯誤做特化文案時
