@@ -31,8 +31,16 @@ vi.mock("./components/WarrantFlowPanel", () => ({
   ),
 }));
 vi.mock("./components/BrokerFlowsPanel", () => ({
-  BrokerFlowsPanel: ({ active }: { active: boolean }) => (
-    <div data-testid="broker-flows-panel" data-active={String(active)}>flows</div>
+  BrokerFlowsPanel: ({
+    active,
+    onPickStock,
+  }: {
+    active: boolean;
+    onPickStock: (sid: string, name: string | null, brokerId: string) => void;
+  }) => (
+    <div data-testid="broker-flows-panel" data-active={String(active)}>
+      <button onClick={() => onPickStock("2330", "台積電", "9600")}>pick-2330</button>
+    </div>
   ),
 }));
 vi.mock("./components/SymbolSearch", () => ({
@@ -42,7 +50,12 @@ vi.mock("./components/ChipBrokersPanel", () => ({
   ChipBrokersPanel: () => <div data-testid="brokers-panel">brokers</div>,
 }));
 vi.mock("./components/ChipKlineChart", () => ({
-  ChipKlineChart: () => <div data-testid="kline-chart">kline</div>,
+  // data-selected:S1 lock — 分點反查跳轉的預選 broker 必須流進 K 線 props
+  ChipKlineChart: ({ selectedBrokerIds }: { selectedBrokerIds?: Set<string> }) => (
+    <div data-testid="kline-chart" data-selected={Array.from(selectedBrokerIds ?? []).join(",")}>
+      kline
+    </div>
+  ),
 }));
 vi.mock("./components/VersionBadge", () => ({
   VersionBadge: () => <div data-testid="version-badge">v</div>,
@@ -155,6 +168,22 @@ describe("App mode persistence (SC-4)", () => {
     expect(screen.getByTestId("broker-flows-panel").getAttribute("data-active")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "籌碼總覽" }));
     expect(screen.getByTestId("broker-flows-panel").getAttribute("data-active")).toBe("false");
+  });
+
+  it("分點反查點股票 → 切回總覽 + 該分點預選流進 K 線(SC-5 lock)", async () => {
+    // 痛點:handlePick 會 reset selectedBrokerIds,預選必須在其後
+    // (App.tsx handleFlowStockPick 註解點名的順序陷阱)— 順序反轉此測試必紅。
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "分點反查" }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("broker-flows-panel")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "pick-2330" }));
+    // tab 回總覽(broker-flows panel active=false)+ 9600 預選流進 K 線 props
+    expect(screen.getByTestId("broker-flows-panel").getAttribute("data-active")).toBe("false");
+    await waitFor(() => {
+      expect(screen.getByTestId("kline-chart").getAttribute("data-selected")).toBe("9600");
+    });
   });
 
   it("ignores invalid localStorage mode value and falls back to equity", () => {
