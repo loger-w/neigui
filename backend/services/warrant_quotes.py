@@ -21,6 +21,7 @@ import httpx
 from services import clock, warrants
 from services.warrant_pricing import RISK_FREE_RATE, bs_delta, bs_price, implied_vol
 from utils.cache import read_json
+from utils.concurrency import run_once
 
 logger = logging.getLogger(__name__)
 
@@ -72,20 +73,8 @@ async def aclose() -> None:
 
 
 async def _run_once(key: str, coro_fn: Callable[[], Awaitable[Any]]) -> Any:
-    """Inflight dedup — daytrade_fee/warrants 同構(S-7)。"""
-    entry = _inflight.get(key)
-    if entry is None:
-        entry = {"task": asyncio.ensure_future(coro_fn()), "refs": 0}
-        _inflight[key] = entry
-    entry["refs"] += 1
-    try:
-        return await asyncio.shield(entry["task"])
-    finally:
-        entry["refs"] -= 1
-        if entry["refs"] == 0:
-            if not entry["task"].done():
-                entry["task"].cancel()
-            _inflight.pop(key, None)
+    """Inflight dedup — 委派 utils.concurrency.run_once(refcount + shield)。"""
+    return await run_once(_inflight, key, coro_fn)
 
 
 # ---------------------------------------------------------------- MIS fetch / parse

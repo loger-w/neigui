@@ -29,6 +29,7 @@ from services.finmind import get_finmind
 from services.warrant_iv_drift import detect_drift, flatten_drift
 from services.warrant_pricing import RISK_FREE_RATE, implied_vol
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
+from utils.concurrency import run_once
 
 logger = logging.getLogger(__name__)
 
@@ -90,20 +91,8 @@ def _parse_price(v: Any) -> float | None:
 
 
 async def _run_once(key: str, coro_fn: Callable[[], Awaitable[Any]]) -> Any:
-    """Inflight dedup(subscriber refcount + shield)— warrants 同構 local 複製。"""
-    entry = _inflight.get(key)
-    if entry is None:
-        entry = {"task": asyncio.ensure_future(coro_fn()), "refs": 0}
-        _inflight[key] = entry
-    entry["refs"] += 1
-    try:
-        return await asyncio.shield(entry["task"])
-    finally:
-        entry["refs"] -= 1
-        if entry["refs"] == 0:
-            if not entry["task"].done():
-                entry["task"].cancel()
-            _inflight.pop(key, None)
+    """Inflight dedup — 委派 utils.concurrency.run_once(refcount + shield)。"""
+    return await run_once(_inflight, key, coro_fn)
 
 
 def _fixtures_dir() -> Path:
