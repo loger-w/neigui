@@ -170,6 +170,27 @@ describe("BrokerFlowsPanel", () => {
     ).toBeTruthy();
   });
 
+  // SC-7(mod/batch-ui-polish):directory 帶 dash 名稱在 dropdown / 選定
+  // 徽章 / query 回填 / selectedEcho 全走「id 去dash名」formatter(R6:echo
+  // 與 setQuery 格式一致,否則帶 dash 分點選定後 refocus 誤啟搜尋)。
+  it("帶 dash 分點:顯示去 dash,選定後 refocus 不誤啟搜尋", async () => {
+    const tradersSpy = vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+    vi.spyOn(api, "brokerDailyFlows").mockResolvedValue(mk());
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    const input = screen.getByLabelText("搜尋分點") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "富邦" } });
+    const option = await screen.findByText("9604 富邦陽明", undefined, { timeout: 3000 });
+    fireEvent.mouseDown(option);
+    expect(input.value).toBe("9604 富邦陽明");
+    tradersSpy.mockClear();
+    fireEvent.focus(input);
+    await new Promise((r) => setTimeout(r, 400)); // 過 debounce 窗
+    expect(tradersSpy).not.toHaveBeenCalledWith("9604 富邦陽明", expect.anything());
+    expect(screen.queryByText("查無符合分點")).toBeNull();
+  });
+
   it("選定後 refocus 搜尋框:不以 echo 字串查詢、不開 dropdown(review V1)", async () => {
     const { tradersSpy } = await pickFubon();
     const input = screen.getByLabelText("搜尋分點");

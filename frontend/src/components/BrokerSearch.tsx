@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BrokerTrade } from "../lib/chip-data";
+import { formatBrokerLabel } from "../lib/broker-name";
 
 interface AggBroker {
   broker: string;
+  /** SC-7:顯示用「id 去dash名」label;選取契約(value/onChange)仍以名稱為 key。 */
+  label: string;
   total: number;
   buy: number;
   sell: number;
@@ -32,8 +35,20 @@ function highlightMatch(name: string, q: string): React.ReactNode {
 }
 
 export function BrokerSearch({ trades, value, onChange }: Props) {
-  const [query, setQuery] = useState(value ?? "");
-  const [debounced, setDebounced] = useState(value ?? "");
+  // SC-7(R15):value(名稱 key)回填 input 也走 formatter,與 dropdown 顯示
+  // 格式一致
+  const labelByName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of trades) {
+      if (!m.has(t.broker)) m.set(t.broker, formatBrokerLabel(t.broker_id, t.broker));
+    }
+    return m;
+  }, [trades]);
+  const echoOf = (name: string | null): string =>
+    name === null ? "" : labelByName.get(name) ?? name;
+
+  const [query, setQuery] = useState(echoOf(value));
+  const [debounced, setDebounced] = useState(echoOf(value));
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
   const activeIdxRef = useRef(0);
@@ -46,8 +61,9 @@ export function BrokerSearch({ trades, value, onChange }: Props) {
   };
 
   useEffect(() => {
-    setQuery(value ?? "");
-  }, [value]);
+    setQuery(echoOf(value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, labelByName]);
 
   useEffect(
     () => () => {
@@ -69,7 +85,13 @@ export function BrokerSearch({ trades, value, onChange }: Props) {
     for (const t of trades) {
       let e = m.get(t.broker);
       if (!e) {
-        e = { broker: t.broker, total: 0, buy: 0, sell: 0 };
+        e = {
+          broker: t.broker,
+          label: formatBrokerLabel(t.broker_id, t.broker),
+          total: 0,
+          buy: 0,
+          sell: 0,
+        };
         m.set(t.broker, e);
       }
       e.buy += t.buy;
@@ -82,8 +104,13 @@ export function BrokerSearch({ trades, value, onChange }: Props) {
   const filtered = useMemo(() => {
     const q = debounced.trim().toLowerCase();
     if (!q) return aggregates.slice(0, 50);
+    // SC-7:比對接受原始名稱(含 dash)與 formatted label(= id + 去dash名)
     return aggregates
-      .filter((b) => b.broker.toLowerCase().includes(q))
+      .filter(
+        (b) =>
+          b.broker.toLowerCase().includes(q) ||
+          b.label.toLowerCase().includes(q),
+      )
       .slice(0, 50);
   }, [aggregates, debounced]);
 
@@ -164,7 +191,7 @@ export function BrokerSearch({ trades, value, onChange }: Props) {
               }`}
             >
               <span className="text-ink truncate">
-                {highlightMatch(b.broker, debounced)}
+                {highlightMatch(b.label, debounced)}
               </span>
               <span className="text-right text-ink-dim tabular-nums">
                 {b.total.toLocaleString()}

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { TopBroker } from "../lib/chip-data";
 import { fmtVol } from "../lib/chip-data";
+import { formatBrokerLabel } from "../lib/broker-name";
 import { Checkbox } from "./ui/checkbox";
 import { PopoverPanel } from "./ui/PopoverPanel";
 
@@ -107,6 +108,8 @@ export function BrokerFilterPopover({
       ) : (
         filtered.map((b) => {
           const selected = selectedBrokerIds.has(b.broker_id);
+          // SC-7:顯示/aria/title 統一「id 去dash名」
+          const label = formatBrokerLabel(b.broker_id, b.name);
           const netCls = b.net > 0
             ? "text-accent"
             : b.net < 0
@@ -135,11 +138,11 @@ export function BrokerFilterPopover({
                 <Checkbox
                   checked={selected}
                   onCheckedChange={() => onToggleBroker(b.broker_id)}
-                  aria-label={`勾選 ${b.name}`}
+                  aria-label={`勾選 ${label}`}
                 />
               </span>
-              <span className="flex-1 min-w-0 truncate text-ink-muted" title={b.name}>
-                {b.name}
+              <span className="flex-1 min-w-0 truncate text-ink-muted" title={label}>
+                {label}
               </span>
               <span className={`shrink-0 tabular-nums ${netCls}`}>
                 {b.net > 0 ? "+" : ""}{fmtVol(b.net)}

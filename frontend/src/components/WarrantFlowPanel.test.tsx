@@ -154,17 +154,18 @@ describe("WarrantFlowPanel", () => {
     flowState.data = mk();
     renderPanel();
     const buyCol = screen.getByTestId("flow-buy-col");
-    expect(within(buyCol).getByText("凱基-台北")).toBeTruthy();
+    // SC-7(mod/batch-ui-polish):分點顯示統一「id 去dash名」
+    expect(within(buyCol).getByText("9200 凱基台北")).toBeTruthy();
     expect(within(buyCol).getByText("3,960 萬")).toBeTruthy();
     const sellCol = screen.getByTestId("flow-sell-col");
-    expect(within(sellCol).getByText("元大-總公司")).toBeTruthy();
+    expect(within(sellCol).getByText("9800 元大總公司")).toBeTruthy();
     // 展開前明細不在
     expect(within(buyCol).queryByText("台積凱基61購01")).toBeNull();
-    fireEvent.click(within(buyCol).getByRole("button", { name: /展開 凱基-台北/ }));
+    fireEvent.click(within(buyCol).getByRole("button", { name: /展開 9200 凱基台北/ }));
     expect(within(buyCol).getByText("台積凱基61購01")).toBeTruthy();
     expect(within(buyCol).getByText("台積元大61購02")).toBeTruthy();
     // 再點收合
-    fireEvent.click(within(buyCol).getByRole("button", { name: /收合 凱基-台北/ }));
+    fireEvent.click(within(buyCol).getByRole("button", { name: /收合 9200 凱基台北/ }));
     expect(within(buyCol).queryByText("台積凱基61購01")).toBeNull();
   });
 

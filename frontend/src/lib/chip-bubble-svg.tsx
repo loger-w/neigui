@@ -33,6 +33,8 @@ export function bubbleRadius(
 
 export interface BubbleHoverPayload {
   broker: string;
+  /** SC-7:tooltip 顯示「id 去dash名」需要 id;點擊契約仍以 broker name 為 key。 */
+  brokerId: string;
   volume: number;
   price: number;
   side: "buy" | "sell";
@@ -536,7 +538,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         stroke: COLOR.buyStroke,
         brokerId: t.broker_id,
         key: `b-${t.broker_id}-${t.price}-${idx}`,
-        payload: { broker: t.broker, volume: t.buy, price: t.price, side: "buy" },
+        payload: { broker: t.broker, brokerId: t.broker_id, volume: t.buy, price: t.price, side: "buy" },
       });
     }
     if (t.sell > threshold) {
@@ -548,7 +550,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         stroke: COLOR.sellStroke,
         brokerId: t.broker_id,
         key: `s-${t.broker_id}-${t.price}-${idx}`,
-        payload: { broker: t.broker, volume: t.sell, price: t.price, side: "sell" },
+        payload: { broker: t.broker, brokerId: t.broker_id, volume: t.sell, price: t.price, side: "sell" },
       });
     }
     idx++;

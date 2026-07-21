@@ -8,6 +8,7 @@ import {
   fmtAmount, fmtVol, summarizeTradesByPriceRange,
 } from "../lib/chip-data";
 import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg";
+import { formatBrokerLabel } from "../lib/broker-name";
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -114,7 +115,9 @@ export function ChipBubbleView({
     if (blocked.some((b) => b.id === focusRequest.brokerId)) {
       // R6: 顯式聚焦意圖優先於舊排除設定 — 自清單移除(持久生效)。
       setBlocked((prev) => removeBlocked(prev, focusRequest.brokerId));
-      setBlockRemovalNotice(`已自過濾清單移除〈${focusRequest.name}〉`);
+      setBlockRemovalNotice(
+        `已自過濾清單移除〈${formatBrokerLabel(focusRequest.brokerId, focusRequest.name)}〉`,
+      );
     } else {
       setBlockRemovalNotice(null);
     }
@@ -133,6 +136,16 @@ export function ChipBubbleView({
       null,
     [visibleTrades, selectedBrokerId],
   );
+
+  // SC-7:name→formatted label lookup(TradeRow 無 broker_id,R14 決策走
+  // lookup 不擴型別);顯示統一「id 去dash名」,選取契約仍以 name 為 key
+  const labelFor = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of visibleTrades) {
+      if (!m.has(t.broker)) m.set(t.broker, formatBrokerLabel(t.broker_id, t.broker));
+    }
+    return (name: string): string => m.get(name) ?? name;
+  }, [visibleTrades]);
 
   // BB-1: 排除清單操作。加入時若正是選中分點,一併清選取(選中但已被
   // 過濾的狀態沒有可視載體)。
@@ -208,7 +221,8 @@ export function ChipBubbleView({
       const nameEl = el.querySelector("[data-tt=name]");
       const detailEl = el.querySelector("[data-tt=detail]");
       const priceEl = el.querySelector("[data-tt=price]");
-      if (nameEl) nameEl.textContent = payload.broker;
+      if (nameEl)
+        nameEl.textContent = formatBrokerLabel(payload.brokerId, payload.broker);
       if (detailEl)
         detailEl.textContent = `${payload.side === "buy" ? "買" : "賣"}: ${payload.volume} 張`;
       if (priceEl) priceEl.textContent = `價格: ${payload.price}`;
@@ -310,6 +324,7 @@ export function ChipBubbleView({
       buyRows={filteredBuyRows}
       sellRows={filteredSellRows}
       selectedBrokerName={selectedBrokerName}
+      labelFor={labelFor}
       onSelect={handleBubbleClick}
       buySort={buySort}
       sellSort={sellSort}
@@ -342,7 +357,7 @@ export function ChipBubbleView({
                 onClick={() => onJumpToOverview(selectedBrokerId)}
                 className="text-xs text-accent hover:text-ink underline underline-offset-2 cursor-pointer"
               >
-                查看 <span className="text-[#f0b429] font-medium">{selectedBrokerName}</span> 於籌碼總覽 →
+                查看 <span className="text-[#f0b429] font-medium">{formatBrokerLabel(selectedBrokerId, selectedBrokerName)}</span> 於籌碼總覽 →
               </button>
             ) : (
               <span className="text-xs text-ink-dim">
@@ -605,6 +620,7 @@ function DetailPanel({
   buyRows,
   sellRows,
   selectedBrokerName,
+  labelFor,
   onSelect,
   buySort,
   sellSort,
@@ -615,6 +631,8 @@ function DetailPanel({
   buyRows: TradeRow[];
   sellRows: TradeRow[];
   selectedBrokerName: string | null;
+  /** SC-7:broker name → 「id 去dash名」顯示 label。 */
+  labelFor: (name: string) => string;
   onSelect: (broker: string | null) => void;
   buySort: SortSpec;
   sellSort: SortSpec;
@@ -637,6 +655,7 @@ function DetailPanel({
           rows={buyRows}
           side="buy"
           selectedBroker={selectedBrokerName}
+          labelFor={labelFor}
           onSelect={onSelect}
           sortSpec={buySort}
           onSortChange={onBuySortChange}
@@ -645,6 +664,7 @@ function DetailPanel({
           rows={sellRows}
           side="sell"
           selectedBroker={selectedBrokerName}
+          labelFor={labelFor}
           onSelect={onSelect}
           sortSpec={sellSort}
           onSortChange={onSellSortChange}
@@ -786,6 +806,7 @@ const TradeList = memo(function TradeList({
   rows,
   side,
   selectedBroker,
+  labelFor,
   onSelect,
   sortSpec,
   onSortChange,
@@ -793,6 +814,8 @@ const TradeList = memo(function TradeList({
   rows: TradeRow[];
   side: "buy" | "sell";
   selectedBroker: string | null;
+  /** SC-7:broker name → 「id 去dash名」顯示 label。 */
+  labelFor: (name: string) => string;
   onSelect: (broker: string | null) => void;
   sortSpec: SortSpec;
   onSortChange: (key: TradeSortKey) => void;
@@ -863,7 +886,7 @@ const TradeList = memo(function TradeList({
                     : "hover:bg-bg-deep/50 text-ink-muted"
                 }`}
               >
-                <span className="text-left truncate">{r.broker}</span>
+                <span className="text-left truncate">{labelFor(r.broker)}</span>
                 <span className={`text-right tabular-nums ${colorClass}`}>
                   {fmtVol(r.volume)}
                 </span>
