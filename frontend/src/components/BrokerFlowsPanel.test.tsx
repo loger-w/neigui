@@ -121,6 +121,44 @@ describe("BrokerFlowsPanel", () => {
     expect(await screen.findByText("查無符合分點", undefined, { timeout: 3000 })).toBeTruthy();
   });
 
+  it("total > hits → dropdown 尾端截斷提示(F-2 SC-2)", async () => {
+    vi.spyOn(api, "brokerTraders").mockResolvedValue({ hits: HITS.hits, total: 173 });
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    fireEvent.change(screen.getByLabelText("搜尋分點"), { target: { value: "富邦" } });
+    expect(
+      await screen.findByText("共 173 筆,僅列前 2,請輸入更精確關鍵字", undefined, {
+        timeout: 3000,
+      }),
+    ).toBeTruthy();
+  });
+
+  it("total == hits → 無截斷提示(F-2 SC-2)", async () => {
+    vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    fireEvent.change(screen.getByLabelText("搜尋分點"), { target: { value: "富邦" } });
+    await screen.findByText("9600 富邦", undefined, { timeout: 3000 });
+    expect(screen.queryByText(/僅列前/)).toBeNull();
+  });
+
+  it("鍵盤導航不入截斷提示列:ArrowDown 到底 + Enter 選最後一個 hit(review R4)", async () => {
+    vi.spyOn(api, "brokerTraders").mockResolvedValue({ hits: HITS.hits, total: 173 });
+    const flowsSpy = vi.spyOn(api, "brokerDailyFlows").mockResolvedValue(mk());
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    const input = screen.getByLabelText("搜尋分點");
+    fireEvent.change(input, { target: { value: "富邦" } });
+    await screen.findByText("9600 富邦", undefined, { timeout: 3000 });
+    for (let i = 0; i < 5; i++) fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(flowsSpy).toHaveBeenCalled());
+    expect(flowsSpy.mock.calls[0]?.[0]).toBe("9604");
+  });
+
   it("目錄故障 → 搜尋框下方顯示繁中錯誤,不靜默(review C1)", async () => {
     vi.spyOn(api, "brokerTraders").mockRejectedValue(new Error("broker_directory_unavailable"));
     render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
