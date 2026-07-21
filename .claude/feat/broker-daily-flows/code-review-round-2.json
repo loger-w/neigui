@@ -1,0 +1,20 @@
+{
+  "round": 2,
+  "reviewer": "general-purpose abbf5c65cb332e600 (verify pass on d71bfda + 4dfbeeb)",
+  "summary": { "P0": 0, "P1": 0, "P2": 2 },
+  "verified_clean": [
+    "C4 stale fallback:refresh 語意不受汙染 / 無 closure 洩漏",
+    "S6 regex 對真實 id 樣態(9600/779c/9A00/075T/779Z/BROKER001)零誤殺(實跑驗算)",
+    "C3 優先序:空白 query 提前 [] 合理(答案不依賴目錄;503 語意另有測試鎖)",
+    "formatAmountZh 負值路徑對稱(node 實算)",
+    "App.test.tsx mock 非 tautological(mutation 主張成立)",
+    "S5 刪參無殘留 caller"
+  ],
+  "findings": [
+    { "id": "V1", "severity": "P2", "classification": "accepted",
+      "resolution": "selectedEcho 判斷:refocus 時 echo 字串不觸發查詢也不開 dropdown;紅測試先行(斷言不以 echo 查詢 + listbox 不開)" },
+    { "id": "V2", "severity": "P2", "classification": "accepted",
+      "resolution": "scrollIntoView 改 activeIdx 驅動的 useEffect(inline ref 每 render 重跑會拉回使用者手動捲動)" }
+  ],
+  "exit": "round 2 無 P0/P1,2 P2 已修 → Phase 4 退場(loop 2/3)"
+}

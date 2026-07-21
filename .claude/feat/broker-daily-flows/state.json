@@ -1,0 +1,25 @@
+{
+  "slug": "broker-daily-flows",
+  "start_sha": "1a9245a60ee4437a6c762e2685c75a15db859ea8",
+  "branch": "feat/broker-daily-flows",
+  "worktree_path": null,
+  "current_phase": 8,
+  "completed_phases": [-1, 0, 1, 2, 3, 4, 5, 6, 7],
+  "self_review_head": "e5f39e556a0bbd6370bcdaf246705bea8660acc2",
+  "phase_3_impl_mode": "main-agent-tdd [auto-default | reason: wave 內檔案契約高耦合(service↔route↔fixture),不符合『彼此獨立』的 subagent 分派條件;waves 序列依賴]",
+  "scope": "L",
+  "phase_2_mode": "condensed",
+  "pending_review_rounds": { "phase_1": 0, "phase_2": 0, "phase_4": 2 },
+  "blockers": [],
+  "phase_6_blocked_reason": null,
+  "scope_overrides": { "goal_efficiency_mode": true },
+  "last_updated": "2026-07-21T09:00:00+08:00",
+  "project_shape": "fastapi+react",
+  "last_commit_sha": "e5f39e556a0bbd6370bcdaf246705bea8660acc2",
+  "final_merge_sha": null,
+  "artifact_commit": null,
+  "sc_cycle_counts": {
+    "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0, "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 }
+  },
+  "paused": null
+}

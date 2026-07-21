@@ -1,0 +1,19 @@
+{
+  "round": 1,
+  "date": "2026-07-21",
+  "env": "真 FinMind(Sponsor token)backend :8000 + vite :5174(:5173 被 copycat 並行 session 佔用,依 e2e-conventions 查 CommandLine 後不殺、改 port)",
+  "checks": [
+    { "sc": "SC-1", "how": "curl GET /api/broker/daily-flows?broker_id=9600", "result": "200;broker_name=富邦;1,012 檔;buy_top[0]=3189 景碩 +1,699 張 / net_amount 1,184,168,807;sell_top[0]=2308 台達電 -1,031 張", "evidence": "evidence/SC-1_SC-2_daily-flows-real-9600.json" },
+    { "sc": "SC-2", "how": "同上(2026-07-21 10:40 查詢,今日 21:00 前未上料)", "result": "回退鏈實戰觸發:requested=2026-07-21 → as_of=2026-07-20(Mon)、no_trading_day=true — 候選日自適應如設計", "evidence": "同上 JSON" },
+    { "sc": "SC-3", "how": "curl GET /api/broker/traders?search=富邦", "result": "200;50 筆(上限截斷生效);first=9600 富邦", "evidence": "evidence/SC-3_traders-search-real.json" },
+    { "sc": "edge invalid_date", "how": "curl ?broker_id=9600&date=2026-02-31", "result": "400 {\"detail\":{\"error\":\"invalid_date\"}}", "evidence": "inline(本 JSON)" },
+    { "sc": "edge unknown_broker", "how": "curl ?broker_id=0000", "result": "404 {\"detail\":{\"error\":\"broker_not_found\"}}", "evidence": "inline(本 JSON)" },
+    { "sc": "SC-4 + SC-6", "how": "chrome-devtools MCP:切分點反查 tab → 搜富邦 → 選 9600", "result": "雙表(金額買超/金額賣超)各 30 列真實資料渲染;徽章 9600 富邦;資料日 07-20;「2026-07-21 尚無資料,顯示 2026-07-20」回退標註;「共 1012 檔,各列前 30」截斷註記", "evidence": "evidence/SC-4_SC-6_broker-flows-tab-real-9600.png" },
+    { "sc": "SC-5", "how": "點買超表「檢視 台積電 籌碼總覽」列", "result": "跳回籌碼總覽;header 2330 台積電;K 線 + 三大法人真實資料;分點篩選「已選 1 個」+ 9600 chip + 分點 (1) +496 張 overlay — 預選鏈全通", "evidence": "evidence/SC-5_jump-overview-preselected-9600.png" },
+    { "sc": "SC-7", "how": "subsumed 判定", "result": "subsumed by Phase 5:e2e E30(真 browser + FAKE backend)51 passed", "evidence": "automated-verification.md" },
+    { "sc": "SC-8", "how": "pytest mock 計數(Phase 5)為主證;真實環境單次查詢觀測 1 次 daily_report 呼叫(cache 熱)", "result": "≤3 requests 上限由測試鎖住", "evidence": "test_daily_flows_all_empty_503_and_at_most_3_requests 等" },
+    { "sc": "regression 抽樣", "how": "SC-5 跳轉後既有功能實地檢視", "result": "K 線 / 三大法人 / 融資融券 / 主力分點面板(前15大買賣超)照常渲染;useBrokerHistory 舊鏈路(9600 overlay)正常", "evidence": "SC-5 截圖" }
+  ],
+  "console": "0 feature-related errors(僅既有 favicon.ico 404,與本 feature 無關)",
+  "cleanup": "本 session 起的 uvicorn(:8000)與 vite(:5174)已停;copycat 的 :5173 未動"
+}
