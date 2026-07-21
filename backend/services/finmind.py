@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
+from utils.concurrency import run_once
 from services import clock
 from services.rate_limiter import TokenBucket
 
@@ -152,31 +153,9 @@ class FinMindClient:
             return True
 
     async def _run_once(self, inflight_key: str, coro_fn):
-        """Inflight dedup with subscriber refcount.
-
-        `asyncio.shield` 讓 caller cancel(client disconnect)不會直接殺底層
-        task — 因為可能有別的 caller 也在 await 同一個 shared fetch。改用
-        refcount:每個 caller +1;caller 離開(正常回或被 cancel)-1;
-        歸 0 才 cancel 底層 task。
-
-        搭配 `utils.cancel.run_with_disconnect`:route handler 被 cancel →
-        `_run_once` raise CancelledError → refs 減 → 若無其他 subscriber
-        則 cancel fan-out task → httpx / rate_limiter.acquire_async 內
-        `asyncio.sleep(wait)` 拿到 CancelledError → 停止吃 rate token slot。
-        """
-        entry = self._inflight.get(inflight_key)
-        if entry is None:
-            entry = {"task": asyncio.ensure_future(coro_fn()), "refs": 0}
-            self._inflight[inflight_key] = entry
-        entry["refs"] += 1
-        try:
-            return await asyncio.shield(entry["task"])
-        finally:
-            entry["refs"] -= 1
-            if entry["refs"] == 0:
-                if not entry["task"].done():
-                    entry["task"].cancel()
-                self._inflight.pop(inflight_key, None)
+        """Inflight dedup — 委派 utils.concurrency.run_once(refcount + shield,
+        cancel-chain 語意見該處 docstring)。"""
+        return await run_once(self._inflight, inflight_key, coro_fn)
 
     # -- chip summary -------------------------------------------------------
 
