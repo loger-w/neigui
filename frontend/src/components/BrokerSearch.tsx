@@ -153,7 +153,7 @@ export function BrokerSearch({ trades, value, onChange }: Props) {
   };
 
   return (
-    <div className="relative w-full max-w-[280px]">
+    <div className="relative w-full max-w-[360px]">
       <input
         type="text"
         value={query}
