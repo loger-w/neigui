@@ -95,7 +95,7 @@ def get_finmind() -> "FinMindClient":
 
 async def _run_once(key: str, coro_fn: Callable[[], Awaitable[Any]]) -> Any:
     """Inflight dedup — 委派 utils.concurrency.run_once(refcount + shield)。
-    注意:warrant_flow_history 跨模組直呼 `wf._run_once`,名字是對外介面。"""
+    (2026-07-21 WF-1:warrant_flow_history 已刪,跨模組直呼者不再存在。)"""
     return await run_once(_inflight, key, coro_fn)
 
 
@@ -372,7 +372,7 @@ async def try_build_day(
 ) -> tuple[str, dict | None, set[str] | None]:
     """單日建置(dump → traded 過濾 → probe → fan-out → aggregate → 落 cache)。
 
-    自 get_flow 候選日迴圈抽出的共用點(warrant_flow_history 也用,公開命名)。
+    自 get_flow 候選日迴圈抽出的共用點(2026-07-21 WF-1 後僅本模組使用)。
     status:``built``(payload 已落 cache,含 no_volume)/ ``no_dump``(dump 空 —
     假日或未上料)/ ``report_pending``(dump 有、probe 0 rows — 報表未上料)。
     mapped_all 由 caller 跨日重用(首個非空 dump 時自建並隨 tuple 回傳)。

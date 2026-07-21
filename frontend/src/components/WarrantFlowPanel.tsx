@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useWarrantFlow } from "../hooks/useWarrantFlow";
 import { useContainerSize } from "../hooks/useContainerSize";
-import { WarrantFlowNetHistory } from "./WarrantFlowNetHistory";
 import {
   barRatio,
   formatNet,
@@ -70,8 +69,6 @@ export function WarrantFlowPanel({ symbol, active }: { symbol: string; active: b
           data={data}
           stacked={stacked}
           loading={loading}
-          symbol={symbol}
-          active={active}
           onRefresh={refresh}
           expandedBroker={expandedBroker}
           onToggleBroker={(id) => setExpandedBroker((cur) => (cur === id ? null : id))}
@@ -93,8 +90,6 @@ function FlowBody({
   data,
   stacked,
   loading,
-  symbol,
-  active,
   onRefresh,
   expandedBroker,
   onToggleBroker,
@@ -102,8 +97,6 @@ function FlowBody({
   data: WarrantFlowPayload;
   stacked: boolean;
   loading: boolean;
-  symbol: string;
-  active: boolean;
   onRefresh: () => void;
   expandedBroker: string | null;
   onToggleBroker: (id: string) => void;
@@ -175,10 +168,6 @@ function FlowBody({
             外部淨額:排除發行商造市(總公司)席位後之分點淨買賣;— 為無法對映
           </div>
         </div>
-
-        {/* 外部淨額時序(warrant-flow-net-history):summary 之後、top15 之前(design §3.5);
-            區塊自 fetch(hook active gate),data 缺時整塊自隱藏 */}
-        <WarrantFlowNetHistory symbol={symbol} active={active} />
 
         {/* 兩欄 top15(SC-3):窄容器疊直 */}
         <div className={cn("px-4 py-3 grid gap-6", stacked ? "grid-cols-1" : "grid-cols-2")}>
