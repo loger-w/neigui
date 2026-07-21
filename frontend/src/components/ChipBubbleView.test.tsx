@@ -22,6 +22,8 @@ afterEach(() => cleanup());
 // observer construction. We give it the minimal shape the hook actually
 // calls (constructor + observe + disconnect).
 beforeEach(() => {
+  // BB-1 blocklist 走 localStorage 全域持久化 — 測試間必清,避免跨 describe 污染。
+  localStorage.clear();
   globalThis.ResizeObserver = class {
     observe() {}
     disconnect() {}
@@ -578,6 +580,157 @@ describe("ChipBubbleView — C10 手動輸入區間 (🟢 Item 4)", () => {
       container.querySelector("[data-testid=manual-range-panel]"),
     ).toBeNull();
     expect(container.querySelector("[data-testid=brush-summary]")).toBeNull();
+  });
+});
+
+// BB-1 (mod/batch-ui-update 🟢): 泡泡圖過濾清單 — 排除分點不進泡泡/列表/統計,
+// localStorage 全域持久化。Popover 互動樣板同 BrokerFilterPopover.test(Radix
+// Portal 掛 document.body,開啟後用 document 查)。
+describe("ChipBubbleView — BB-1 過濾清單", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  function openBlocklistPopover(container: HTMLElement) {
+    const trigger = container.querySelector(
+      "[data-testid=bubble-blocklist-trigger]",
+    ) as HTMLButtonElement | null;
+    expect(trigger).toBeTruthy();
+    fireEvent.click(trigger!);
+    const popover = document.querySelector(
+      "[data-testid=bubble-blocklist-popover]",
+    );
+    expect(popover).toBeTruthy();
+    return popover as HTMLElement;
+  }
+
+  it("搜尋分點加入排除 → 計數自 3 降 2,localStorage 寫入", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    expect((container.textContent ?? "").includes("3 個分點")).toBe(true);
+
+    const popover = openBlocklistPopover(container);
+    const searchInput = popover.querySelector(
+      "input[type=text]",
+    ) as HTMLInputElement;
+    fireEvent.change(searchInput, { target: { value: "Alpha" } });
+    const candidate = document.querySelector(
+      "[data-testid=bubble-blocklist-candidate]",
+    ) as HTMLElement | null;
+    expect(candidate).toBeTruthy();
+    expect(candidate!.textContent ?? "").toContain("Alpha");
+    fireEvent.click(candidate!);
+
+    await waitFor(() => {
+      if (!(container.textContent ?? "").includes("2 個分點")) {
+        throw new Error("count not updated after block");
+      }
+    });
+    const stored = JSON.parse(
+      localStorage.getItem("neigui.bubble-broker-blocklist.v1") ?? "[]",
+    );
+    expect(stored).toEqual([{ id: "AL1", name: "Alpha" }]);
+  });
+
+  it("被排除分點不出現在 BrokerSearch 下拉", async () => {
+    localStorage.setItem(
+      "neigui.bubble-broker-blocklist.v1",
+      JSON.stringify([{ id: "AL1", name: "Alpha" }]),
+    );
+    render(<ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />);
+    const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "Alpha" } });
+    // Bravo/Charlie 不含 Alpha substring → 應完全無下拉項
+    await waitFor(() => {
+      const items = screen.queryAllByTestId("broker-search-item");
+      if (items.some((el) => (el.textContent ?? "").includes("Alpha"))) {
+        throw new Error("blocked broker still in search dropdown");
+      }
+    });
+  });
+
+  it("清單逐一移除 → 分點恢復計數", async () => {
+    localStorage.setItem(
+      "neigui.bubble-broker-blocklist.v1",
+      JSON.stringify([{ id: "AL1", name: "Alpha" }]),
+    );
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    expect((container.textContent ?? "").includes("2 個分點")).toBe(true);
+
+    const popover = openBlocklistPopover(container);
+    const row = popover.querySelector(
+      "[data-testid=bubble-blocklist-row]",
+    ) as HTMLElement | null;
+    expect(row).toBeTruthy();
+    expect(row!.textContent ?? "").toContain("Alpha");
+    const removeBtn = row!.querySelector(
+      "[data-testid=bubble-blocklist-remove]",
+    ) as HTMLButtonElement;
+    fireEvent.click(removeBtn);
+
+    await waitFor(() => {
+      if (!(container.textContent ?? "").includes("3 個分點")) {
+        throw new Error("count not restored after remove");
+      }
+    });
+    expect(
+      JSON.parse(localStorage.getItem("neigui.bubble-broker-blocklist.v1") ?? "x"),
+    ).toEqual([]);
+  });
+
+  it("全部清除 → 全部恢復", async () => {
+    localStorage.setItem(
+      "neigui.bubble-broker-blocklist.v1",
+      JSON.stringify([
+        { id: "AL1", name: "Alpha" },
+        { id: "BR1", name: "Bravo" },
+      ]),
+    );
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    expect((container.textContent ?? "").includes("1 個分點")).toBe(true);
+
+    openBlocklistPopover(container);
+    const clearBtn = document.querySelector(
+      "[data-testid=bubble-blocklist-clear-all]",
+    ) as HTMLButtonElement | null;
+    expect(clearBtn).toBeTruthy();
+    fireEvent.click(clearBtn!);
+
+    await waitFor(() => {
+      if (!(container.textContent ?? "").includes("3 個分點")) {
+        throw new Error("count not restored after clear-all");
+      }
+    });
+    expect(
+      JSON.parse(localStorage.getItem("neigui.bubble-broker-blocklist.v1") ?? "x"),
+    ).toEqual([]);
+  });
+
+  it("trigger 顯示排除數 badge;清單空時不顯", () => {
+    const { container, unmount } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    expect(
+      container.querySelector("[data-testid=bubble-blocklist-count]"),
+    ).toBeNull();
+    unmount();
+
+    localStorage.setItem(
+      "neigui.bubble-broker-blocklist.v1",
+      JSON.stringify([{ id: "AL1", name: "Alpha" }]),
+    );
+    const { container: c2 } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    const badge = c2.querySelector("[data-testid=bubble-blocklist-count]");
+    expect(badge).toBeTruthy();
+    expect(badge!.textContent).toBe("1");
   });
 });
 
