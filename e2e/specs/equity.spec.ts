@@ -428,10 +428,14 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
 
   test("E25: 換股載入時泡泡圖 loading badge 出現後消失(A5)", async ({ page }) => {
     // 痛點:loading feedback 鏈 = bubbleHook.loading → App loading prop →
-    // badge render。FAKE fixture 回太快窗口極窄 → route delay 撐開;badge
-    // 永不出現(prop 沒接)或永不消失(loading 卡住)都會紅。
+    // badge render。FAKE fixture 回太快窗口極窄 → route gate 扣住 response
+    // 直到 badge assertion 完成才放行(事件同步;原固定 1500ms delay 在高
+    // 負載下 badge 可見窗被 click 步驟吃光 → 撲空偶紅 ×5+,2026-07-21 收割);
+    // badge 永不出現(prop 沒接)或永不消失(loading 卡住)都會紅。
+    let releaseBubble!: () => void;
+    const bubbleGate = new Promise<void>((r) => (releaseBubble = r));
     await page.route("**/api/chip/2412/bubble**", async (route) => {
-      await new Promise((r) => setTimeout(r, 1500));
+      await bubbleGate;
       await route.continue();
     });
     // 換標的用 Enter(E10 同款:dropdown option 在已載資料頁面上重渲染,
@@ -443,6 +447,7 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     const badge = page.getByTestId(TESTIDS.bubbleLoadingBadge);
     await expect(badge).toBeVisible();
     await expect(badge).toContainText("載入 2412 泡泡圖中");
+    releaseBubble();
     await expect(badge).toBeHidden({ timeout: 5000 });
   });
 

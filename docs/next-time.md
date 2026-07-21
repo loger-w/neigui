@@ -8,7 +8,7 @@
 
 ## From /mod batch-ui-polish(2026-07-21)
 
-- **E25 負載型 flake +1**(2026-07-21 全套紅/單獨綠):泡泡圖 loading badge 時序;E10 同型已 ×4。觸發重評估:再犯時考慮 badge assertion 改 poll 或放寬 timeout。
+- **E25/E10 型負載 flake — 殘餘面收斂到 SymbolSearch option 步**(2026-07-21 收割更新):badge 時序 race 已由 chore/next-time-harvest-0721 根治(route 固定 1500ms delay 改事件同步 gate,badge 可見窗不再受機器負載影響;無負載 repeat×5 綠)。今日兩紅實際失敗點都在 `getByRole("option")` 15s 0 筆 — 發生於並行跑全套 gate 的高負載窗,無負載即綠,與 E10 既有「SymbolSearch dropdown 高負載」記錄同根。觸發重評估:非自造負載情境下再紅時,查 `/api/symbols/all` query 在 vite dev proxy 高負載下的 resolve 時序(app 層 prefetch 或 spec 層等 dropdown loading 態收斂)。
 - **自選歸組選單長清單底部裁切**(Phase 5 review P2-2):watchlist-assign-menu absolute top-full 在 overflow 容器內,底部項目選單被裁;短清單常態不受影響。觸發重評估:user 回報或清單普遍 >15 檔時,改 bottom-full 翻轉或 portal 定位。
 
 - **自選分組 rename**:管理分組面板只有建立/刪除;rename 需資料層新函式(watchlist.ts 無)+ UI。觸發重評估:user 抱怨改名要刪掉重建時。
