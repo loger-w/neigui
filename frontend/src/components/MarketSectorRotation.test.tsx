@@ -53,14 +53,16 @@ describe("MarketSectorRotation", () => {
     expect(root.querySelector('[data-state="unavailable"]')).toBeTruthy();
   });
 
-  it("主列表:名稱 + 等權漲跌 + 量比 + 成員數,量比 >1.5 標過熱 / <0.7 標冷清", () => {
+  // SC-5(mod/batch-ui-polish):過熱/冷清 flag tag 移除,量比數值保留。
+  it("主列表:名稱 + 等權漲跌 + 量比 + 成員數,無過熱/冷清 tag", () => {
     render(wrap(<MarketSectorRotation data={rotation} loading={false} />));
     const row = screen.getByTestId("sector-row-半導體");
     expect(row.textContent).toContain("半導體");
     expect(row.textContent).toContain("(120)");
     expect(row.textContent).toContain("+0.40%");
     expect(row.textContent).toContain("1.80x");
-    expect(row.querySelector('[data-flag="hot"]')).toBeTruthy();
+    expect(row.querySelector("[data-flag]")).toBeNull();
+    expect(row.textContent).not.toContain("過熱");
 
     const finRow = screen.getByTestId("sector-row-金融保險");
     expect(finRow.textContent).toContain("—"); // vol_ratio null
@@ -77,9 +79,10 @@ describe("MarketSectorRotation", () => {
     const sub = screen.getByTestId("sub-row-半導體-記憶體IC");
     expect(sub.textContent).toContain("記憶體IC");
     expect(sub.textContent).toContain("+3.10%");
-    expect(sub.querySelector('[data-flag="hot"]')).toBeTruthy();
+    // SC-5:副族群列同樣無 flag tag
+    expect(sub.querySelector("[data-flag]")).toBeNull();
     const coldSub = screen.getByTestId("sub-row-半導體-IC設計");
-    expect(coldSub.querySelector('[data-flag="cold"]')).toBeTruthy();
+    expect(coldSub.textContent).not.toContain("冷清");
     expect(spy).not.toHaveBeenCalled();
     fireEvent.click(rowBtn);
     expect(screen.queryByTestId("sub-row-半導體-記憶體IC")).toBeNull();
