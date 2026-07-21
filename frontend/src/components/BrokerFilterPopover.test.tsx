@@ -130,6 +130,31 @@ describe("BrokerFilterPopover — 開啟後互動", () => {
     expect(items[0]!.textContent).toContain("Alpha");
   });
 
+  it("搜尋 dash-insensitive:照顯示字樣(去dash)輸入命中含 dash 分點", () => {
+    render(
+      <BrokerFilterPopover
+        brokers={[mkBroker({ broker_id: "9268", name: "凱基-信義", net: 10 })]}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={vi.fn()}
+        onClearAllBrokers={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      document.querySelector(
+        "[data-testid=broker-filter-trigger]",
+      ) as HTMLButtonElement,
+    );
+    const searchInput = document.querySelector(
+      "[data-testid=broker-filter-popover] input[type=text]",
+    ) as HTMLInputElement;
+    fireEvent.change(searchInput, { target: { value: "凱基信義" } });
+    const items = Array.from(
+      document.querySelectorAll("[data-testid=broker-filter-list] [data-testid=broker-filter-row]"),
+    );
+    expect(items.length).toBe(1);
+    expect(items[0]!.textContent).toContain("凱基信義");
+  });
+
   it("點 checkbox → onToggleBroker(broker_id)", () => {
     const onToggle = vi.fn();
     render(

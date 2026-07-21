@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { BrokerTrade } from "../lib/chip-data";
 import type { BlockedBroker } from "../lib/bubble-blocklist";
-import { formatBrokerName } from "../lib/broker-name";
+import { formatBrokerName, normalizeBrokerQuery } from "../lib/broker-name";
 import { PopoverPanel } from "./ui/PopoverPanel";
 
 interface Props {
@@ -28,6 +28,9 @@ export function BubbleBlocklistPopover({
   const candidates = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
+    // 名稱比對雙邊去 dash(照顯示字樣輸入要能命中);qName 為空(純 dash
+    // 輸入)時跳過名稱分支,空字串 includes 會全命中
+    const qName = normalizeBrokerQuery(query);
     const byId = new Map<string, { id: string; name: string; volume: number }>();
     for (const t of trades) {
       if (blockedIds.has(t.broker_id)) continue;
@@ -38,7 +41,9 @@ export function BubbleBlocklistPopover({
     }
     return Array.from(byId.values())
       .filter(
-        (b) => b.name.toLowerCase().includes(q) || b.id.toLowerCase().includes(q),
+        (b) =>
+          (qName !== "" && normalizeBrokerQuery(b.name).includes(qName)) ||
+          b.id.toLowerCase().includes(q),
       )
       .sort((a, b) => b.volume - a.volume)
       .slice(0, MAX_CANDIDATES);

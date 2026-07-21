@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { TopBroker } from "../lib/chip-data";
 import { fmtVol } from "../lib/chip-data";
-import { formatBrokerName } from "../lib/broker-name";
+import { formatBrokerName, normalizeBrokerQuery } from "../lib/broker-name";
 import { Checkbox } from "./ui/checkbox";
 import { PopoverPanel } from "./ui/PopoverPanel";
 
@@ -22,10 +22,13 @@ export function BrokerFilterPopover({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    // 名稱比對雙邊去 dash(照顯示字樣輸入要能命中);qName 為空(純 dash
+    // 輸入)時跳過名稱分支,空字串 includes 會全命中
+    const qName = normalizeBrokerQuery(query);
     const rows = q
       ? brokers.filter(
           (b) =>
-            b.name.toLowerCase().includes(q) ||
+            (qName !== "" && normalizeBrokerQuery(b.name).includes(qName)) ||
             b.broker_id.toLowerCase().includes(q),
         )
       : brokers.slice();

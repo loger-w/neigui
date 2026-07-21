@@ -53,6 +53,19 @@ describe("BrokerSearch", () => {
     });
   });
 
+  it("照顯示字樣(去dash)輸入命中含 dash 分點(regression lock,label 比對覆蓋)", async () => {
+    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
+    const input = screen.getByPlaceholderText("搜尋分點...");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "凱基台北" } });
+    await waitFor(() => {
+      const items = screen.getAllByTestId("broker-search-item");
+      const texts = items.map((it) => it.textContent ?? "");
+      expect(texts.some((t) => t.includes("凱基台北"))).toBe(true);
+      expect(texts.some((t) => t.includes("凱基板橋"))).toBe(false);
+    });
+  });
+
   it("以 broker_id 搜尋也命中", async () => {
     render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
     const input = screen.getByPlaceholderText("搜尋分點...");
