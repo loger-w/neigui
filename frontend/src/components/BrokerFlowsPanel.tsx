@@ -49,6 +49,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
   const flows = useBrokerDailyFlows(selected?.broker_id ?? "", active);
 
   const hits = search.data ?? [];
+  const truncated = search.total !== null && search.total > hits.length;
 
   // review V2:scroll 只在 activeIdx 實際變更時發生(inline ref callback 每
   // render 重跑 detach/attach,會把使用者手動捲動位置拉回)
@@ -132,6 +133,17 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
                     {h.broker_id} {h.broker_name}
                   </li>
                 ))}
+                {truncated && (
+                  // F-2:非 option 提示列 — 不入鍵盤導航(activeIdx 只走 hits),
+                  // preventDefault 防點擊觸發 input blur 關 dropdown(review R4)
+                  <li
+                    role="presentation"
+                    onMouseDown={(e) => e.preventDefault()}
+                    className="px-3 py-1.5 text-xs text-ink-dim border-t border-line cursor-default"
+                  >
+                    共 {search.total} 筆,僅列前 {hits.length},請輸入更精確關鍵字
+                  </li>
+                )}
               </ul>
             ) : (
               // review C1/S4:目錄故障 / 查無結果不得靜默 — 搜尋框下方要有出口
