@@ -42,8 +42,9 @@ export interface WarrantQuote {
   quote_time: string | null;
 }
 
-/** 前端表格列 = 條款 + (盤中欄位,quotes 尚未到時為 undefined)。 */
-export type WarrantRow = WarrantTerm & Partial<WarrantQuote>;
+/** 前端表格列 = 條款 + (盤中欄位,quotes 尚未到時為 undefined)+ 評分
+ *  (WA-2 純前端計算,lib/warrant-score;null = 因子缺或重設型)。 */
+export type WarrantRow = WarrantTerm & Partial<WarrantQuote> & { score?: number | null };
 
 export interface WarrantsPayload {
   as_of_date: string | null;

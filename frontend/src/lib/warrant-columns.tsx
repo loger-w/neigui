@@ -109,6 +109,35 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
     ),
   },
   {
+    id: "score",
+    label: "評分",
+    desc:
+      "綜合可買性 0-100(同標的橫斷面 percentile 加權):估價差 35%(便宜加分)" +
+      "+ 價差比 25%(窄加分)+ 實質槓桿 20%(高加分)+ 剩餘天數 20%(≤21 日重罰);" +
+      "— = 因子缺或重設型",
+    align: "right",
+    sortKey: "score",
+    cell: (r) => (
+      <td data-testid="score-cell" className="px-2 py-1 text-right">
+        {r.score == null ? (
+          "—"
+        ) : (
+          <span className="inline-flex flex-col items-end gap-0.5 align-middle">
+            <span className="tabular-nums text-ink font-medium">{r.score}</span>
+            {/* 迷你 bar:寬 = 分數,accent 濃度隨分數加深(低分淡、高分實) */}
+            <span className="block w-12 h-1 bg-line/40 overflow-hidden">
+              <span
+                data-testid="score-bar"
+                className="block h-full bg-accent"
+                style={{ width: `${r.score}%`, opacity: 0.35 + 0.65 * (r.score / 100) }}
+              />
+            </span>
+          </span>
+        )}
+      </td>
+    ),
+  },
+  {
     id: "strike",
     label: "履約價",
     desc: "行使權利的約定價格",
