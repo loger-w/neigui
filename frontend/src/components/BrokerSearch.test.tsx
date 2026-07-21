@@ -80,6 +80,20 @@ describe("BrokerSearch", () => {
     });
   });
 
+  // Phase 5 review P2-1:trades identity 變動(blocklist 增減 / refetch)不得
+  // 洗掉輸入中的搜尋字 — echo 重設只跟 value 變更走。
+  it("輸入中 trades identity 改變 → query 不被 echo 重設", async () => {
+    const { rerender } = render(
+      <BrokerSearch trades={trades} value={null} onChange={vi.fn()} />,
+    );
+    const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "凱" } });
+    // trades 換新 array identity(內容相同)
+    rerender(<BrokerSearch trades={[...trades]} value={null} onChange={vi.fn()} />);
+    expect(input.value).toBe("凱");
+  });
+
   it("Enter selects active item", async () => {
     const onChange = vi.fn();
     render(<BrokerSearch trades={trades} value={null} onChange={onChange} />);

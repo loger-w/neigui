@@ -9,6 +9,7 @@
 ## From /mod batch-ui-polish(2026-07-21)
 
 - **E25 負載型 flake +1**(2026-07-21 全套紅/單獨綠):泡泡圖 loading badge 時序;E10 同型已 ×4。觸發重評估:再犯時考慮 badge assertion 改 poll 或放寬 timeout。
+- **自選歸組選單長清單底部裁切**(Phase 5 review P2-2):watchlist-assign-menu absolute top-full 在 overflow 容器內,底部項目選單被裁;短清單常態不受影響。觸發重評估:user 回報或清單普遍 >15 檔時,改 bottom-full 翻轉或 portal 定位。
 
 - **自選分組 rename**:管理分組面板只有建立/刪除;rename 需資料層新函式(watchlist.ts 無)+ UI。觸發重評估:user 抱怨改名要刪掉重建時。
 - **BrokerSearch 選取契約改以 broker_id 為 key**:目前 value/onChange 仍以名稱 key(同名不同 id 分點理論上會撞);SC-7 只統一顯示。觸發重評估:真實資料出現同名分點,或 ChipBubbleView selection 域重構時。

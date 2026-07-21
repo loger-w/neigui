@@ -60,10 +60,15 @@ export function BrokerSearch({ trades, value, onChange }: Props) {
     setActiveIdx(next);
   };
 
+  // Phase 5 review P2-1:echo 重設只跟 value 變更走 — labelByName 隨 trades
+  // identity 變化(blocklist 增減 / refetch),不得洗掉輸入中的搜尋字。
+  const labelByNameRef = useRef(labelByName);
+  labelByNameRef.current = labelByName;
   useEffect(() => {
-    setQuery(echoOf(value));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, labelByName]);
+    setQuery(
+      value === null ? "" : labelByNameRef.current.get(value) ?? value,
+    );
+  }, [value]);
 
   useEffect(
     () => () => {
