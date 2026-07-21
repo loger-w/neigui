@@ -152,14 +152,15 @@ def _aggregate_flows(rows: list) -> tuple[list[dict], list[dict], int]:
 # ---------------------------------------------------------------- directory
 
 
-async def _get_directory_or_none() -> dict[str, str] | None:
+async def _get_directory_or_none(refresh: bool = False) -> dict[str, str] | None:
     """分點目錄 id → name;上游故障回 None(R10:呼叫端自行降級,
     不得讓目錄故障拖垮 flows 路徑)。空 rows 不落 cache。
-    無 refresh 參數(review S5:design 只承諾 24h TTL;新開分點短窗 404
-    屬 Known Risk 2)。"""
-    cached = _read_versioned(_directory_cache_path())
-    if cached is not None and not _is_stale(cached, _DIRECTORY_TTL_MINUTES):
-        return cached.get("traders") or None
+    refresh=True 強制重抓(F-1:新開分點在 24h cache 窗內可被「重新整理」
+    救回;失敗沿 R10 降級不 fallback 舊 cache — 目標場景下舊目錄照樣 404)。"""
+    if not refresh:
+        cached = _read_versioned(_directory_cache_path())
+        if cached is not None and not _is_stale(cached, _DIRECTORY_TTL_MINUTES):
+            return cached.get("traders") or None
 
     async def _do_fetch() -> dict[str, str] | None:
         rows = await get_finmind().fetch_securities_trader_info()
@@ -177,7 +178,7 @@ async def _get_directory_or_none() -> dict[str, str] | None:
         return traders
 
     try:
-        return await _run_once("broker_directory", _do_fetch)
+        return await _run_once(f"broker_directory_r{int(refresh)}", _do_fetch)
     except (httpx.HTTPError, HTTPException) as exc:
         logger.warning("broker directory fetch failed: %s", exc)
         return None
@@ -232,8 +233,8 @@ async def get_daily_flows(broker_id: str, date_param: str | None, refresh: bool)
     if not _BROKER_ID_RE.fullmatch(broker_id):
         raise HTTPException(404, {"error": "broker_not_found"})
 
-    # 2. 目錄前置檢查(不可得 → 降級跳過,R10)
-    directory = await _get_directory_or_none()
+    # 2. 目錄前置檢查(不可得 → 降級跳過,R10;refresh 一併強制重抓目錄,F-1)
+    directory = await _get_directory_or_none(refresh)
     if directory is not None and broker_id not in directory:
         raise HTTPException(404, {"error": "broker_not_found"})
     broker_name = (directory or {}).get(broker_id) or broker_id
