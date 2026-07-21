@@ -37,9 +37,9 @@ test.describe("equity mode", () => {
     await page.getByRole("option").first().click();
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
     // 切到泡泡圖 tab
-    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
     // 切回籌碼總覽
-    await page.getByRole("button", { name: "籌碼總覽" }).click();
+    await page.getByRole("button", { name: /^籌碼總覽$/ }).click();
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
   });
 
@@ -76,10 +76,13 @@ test.describe("equity mode", () => {
     await page.getByRole(ROLES.windowDays10.role, { name: ROLES.windowDays10.name }).click();
     await expect(chart).toContainText("10日");
     expect(await chart.textContent()).not.toMatch(/\d{4}\/\d{2}\/\d{2}/);
-    // hover 到子圖區(容器下緣 3/4 高度處)→ sub-crosshair 出現
+    // hover 到子圖區(容器下緣 3/4 高度處)→ sub-crosshair 出現。
+    // 垂直 SVG line 的 bbox 寬 0 → toBeVisible 恆判 hidden;crosshair 只在
+    // hoverIndex 有值時 render,attached + 全子圖 count 即是行為訊號。
     const box = (await chart.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.75);
-    await expect(page.getByTestId(TESTIDS.subCrosshair).first()).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.subCrosshair).first()).toBeAttached();
+    expect(await page.getByTestId(TESTIDS.subCrosshair).count()).toBeGreaterThanOrEqual(5);
   });
 });
 
@@ -357,7 +360,7 @@ test.describe("equity mode — 泡泡圖提示", () => {
     await page.getByPlaceholder(/搜尋代號/).fill("2330");
     await page.getByRole("option").first().click();
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
-    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
     await expect(page.getByTestId("bubble-brush-hint")).toBeVisible();
   });
 });
@@ -378,7 +381,7 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     // 痛點:跳轉鏈 = BrokerSearch name→id 轉換 → onJumpToOverview → App
     // setTab + setSelectedBrokerIds → chip bar。任一環斷 = button 有但跳過去
     // 是空選擇(silent broken,vitest 只鎖到 callback 參數層)。
-    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
     await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
     await page.getByPlaceholder("搜尋分點...").fill("分點001");
     await page.getByTestId(TESTIDS.brokerSearchItem).first().click();
@@ -395,7 +398,7 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     // 痛點:computeBrokerTotals 全鏈(trades → 聚合 → fmtVol/fmtAmount)。
     // visibility-only 會被「顯示 0 張」蓋住 — 鎖 fixture 手算值:
     // 買 100 張 / 賣 80 張、買額 100×1000×1100 = 1.10 億、賣額 8,800 萬。
-    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
     await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
     await page.getByPlaceholder("搜尋分點...").fill("分點001");
     await page.getByTestId(TESTIDS.brokerSearchItem).first().click();
@@ -419,7 +422,7 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await page.getByPlaceholder(/搜尋代號/).fill("2412");
     await expect(page.getByRole("option")).toHaveCount(1, { timeout: 15000 });
     await page.getByPlaceholder(/搜尋代號/).press("Enter");
-    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
     const badge = page.getByTestId(TESTIDS.bubbleLoadingBadge);
     await expect(badge).toBeVisible();
     await expect(badge).toContainText("載入 2412 泡泡圖中");
@@ -465,7 +468,7 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(totals).toContainText("買 100 張");
     await expect(totals).toContainText("賣 80 張");
     // 整列 click 白名單行為未被吃掉(白名單 2):回總覽實際點列 → 仍 toggle 選取
-    await page.getByRole("button", { name: "籌碼總覽" }).click();
+    await page.getByRole("button", { name: /^籌碼總覽$/ }).click();
     const row = page.locator('div[role="button"]').filter({ hasText: "分點001" }).first();
     await row.click();
     await expect(page.getByTestId(TESTIDS.chipSelectedBar)).toContainText("分點001");
@@ -476,7 +479,7 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     // 過濾 → 計數/BrokerSearch/泡泡同步。vitest 鎖 jsdom 邏輯層;這裡鎖真
     // browser 全鏈 + localStorage 持久化(reload 後仍生效 — 全域跨個股設計)。
     // Fixture 基準:3 個分點(分點001-003)→ 排除一個後計數 3 → 2。
-    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
     await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
     await expect(page.getByText("3 個分點")).toBeVisible();
 
@@ -495,7 +498,7 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await page.reload();
     await page.getByPlaceholder(/搜尋代號/).fill("2330");
     await page.getByRole("option").first().click();
-    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
     await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
     await expect(page.getByText("2 個分點")).toBeVisible();
     await expect(page.getByTestId(TESTIDS.bubbleBlocklistTrigger)).toContainText("1");
@@ -536,7 +539,7 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     // 痛點:brush 全鏈 = pointer drag → yToPrice 反算 → summarize → 篩選
     // button → App 批次帶入。fixture 單一價位 1100(pricePad=1 → domain
     // [1099,1101]),整段拖曳必涵蓋 → 3 分點、買 300 / 賣 240 張(手算)。
-    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
     const overlay = page.getByTestId(TESTIDS.bubbleYaxisBrush);
     await expect(overlay).toBeVisible();
     const box = await overlay.boundingBox();
