@@ -23,6 +23,7 @@ from services import clock
 import logging
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any, Awaitable, Callable
 
 import httpx
 
@@ -32,6 +33,7 @@ from services.market_universe import fetch_disposition_stocks, filter_universe
 from services.trading_calendar import get_trading_days
 from services.trading_session import TPE_TZ, is_in_session
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
+from utils.concurrency import run_once
 
 logger = logging.getLogger(__name__)
 
@@ -105,28 +107,10 @@ def _is_fresh(cached: dict, ttl_seconds: float) -> bool:
     return age < ttl_seconds
 
 
-async def _run_once(key: str, coro_fn):
-    """Inflight dedup with subscriber refcount(對齊 finmind.py::_run_once)。
-
-    2026-07-03 prd 500 修正:舊版直接 `await _inflight[key]` — asyncio 的
-    task cancel 會把取消傳進正在 await 的 future,第一個斷線請求(Vercel
-    30s 超時 → run_with_disconnect cancel)就把共用 task 殺掉,其他共乘
-    請求全部收 CancelledError。改 shield + refcount:subscriber 歸 0 才
-    cancel 底層 task。
-    """
-    entry = _inflight.get(key)
-    if entry is None:
-        entry = {"task": asyncio.ensure_future(coro_fn()), "refs": 0}
-        _inflight[key] = entry
-    entry["refs"] += 1
-    try:
-        return await asyncio.shield(entry["task"])
-    finally:
-        entry["refs"] -= 1
-        if entry["refs"] == 0:
-            if not entry["task"].done():
-                entry["task"].cancel()
-            _inflight.pop(key, None)
+async def _run_once(key: str, coro_fn: Callable[[], Awaitable[Any]]) -> Any:
+    """Inflight dedup — 委派 utils.concurrency.run_once(refcount + shield;
+    2026-07-03 prd 500 修正脈絡見該處 docstring)。"""
+    return await run_once(_inflight, key, coro_fn)
 
 
 # ---------------------------------------------------------------------------

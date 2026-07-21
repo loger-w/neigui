@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 from services import clock, warrants
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
+from utils.concurrency import run_once
 
 logger = logging.getLogger(__name__)
 
@@ -93,20 +94,9 @@ def get_finmind() -> "FinMindClient":
 
 
 async def _run_once(key: str, coro_fn: Callable[[], Awaitable[Any]]) -> Any:
-    """Inflight dedup(subscriber refcount + shield)— warrants.py 同構。"""
-    entry = _inflight.get(key)
-    if entry is None:
-        entry = {"task": asyncio.ensure_future(coro_fn()), "refs": 0}
-        _inflight[key] = entry
-    entry["refs"] += 1
-    try:
-        return await asyncio.shield(entry["task"])
-    finally:
-        entry["refs"] -= 1
-        if entry["refs"] == 0:
-            if not entry["task"].done():
-                entry["task"].cancel()
-            _inflight.pop(key, None)
+    """Inflight dedup — 委派 utils.concurrency.run_once(refcount + shield)。
+    注意:warrant_flow_history 跨模組直呼 `wf._run_once`,名字是對外介面。"""
+    return await run_once(_inflight, key, coro_fn)
 
 
 # ---------------------------------------------------------------- dates / caches

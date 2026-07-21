@@ -8,7 +8,6 @@ weekday-loop(≤3 交易日,自適應含 T+0;報表 21:00 上料,空結果不落
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from datetime import date as date_type, datetime, timedelta
@@ -23,6 +22,7 @@ if TYPE_CHECKING:
 
 from services import clock
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
+from utils.concurrency import run_once
 
 logger = logging.getLogger(__name__)
 
@@ -47,20 +47,8 @@ def get_finmind() -> "FinMindClient":
 
 
 async def _run_once(key: str, coro_fn: Callable[[], Awaitable[Any]]) -> Any:
-    """Inflight dedup(subscriber refcount + shield)— warrant_flow.py 同構。"""
-    entry = _inflight.get(key)
-    if entry is None:
-        entry = {"task": asyncio.ensure_future(coro_fn()), "refs": 0}
-        _inflight[key] = entry
-    entry["refs"] += 1
-    try:
-        return await asyncio.shield(entry["task"])
-    finally:
-        entry["refs"] -= 1
-        if entry["refs"] == 0:
-            if not entry["task"].done():
-                entry["task"].cancel()
-            _inflight.pop(key, None)
+    """Inflight dedup — 委派 utils.concurrency.run_once(refcount + shield)。"""
+    return await run_once(_inflight, key, coro_fn)
 
 
 # ---------------------------------------------------------------- dates / caches
