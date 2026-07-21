@@ -159,40 +159,52 @@ describe("App mode persistence (SC-4)", () => {
     expect(screen.getByTestId("warrant-flow-panel").getAttribute("data-active")).toBe("false");
   });
 
-  it("分點反查 tab:點擊切換 mount panel 並帶 active(feat/broker-daily-flows SC-4)", async () => {
+  // NAV-1(mod/batch-ui-update):分點反查升格為 mode(券差旁),不再是 equity tab。
+  it("分點反查 mode:點擊 mount panel + localStorage 寫 flows,切回個股 unmount", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "分點反查" }));
+    expect(localStorage.getItem("mode")).toBe("flows");
     await waitFor(() => {
       expect(screen.queryByTestId("broker-flows-panel")).toBeTruthy();
     });
     expect(screen.getByTestId("broker-flows-panel").getAttribute("data-active")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "籌碼總覽" }));
-    expect(screen.getByTestId("broker-flows-panel").getAttribute("data-active")).toBe("false");
+    // mode 層 ternary → 切回個股時 panel unmount(非 hidden)
+    fireEvent.click(screen.getByRole("button", { name: "個股" }));
+    expect(screen.queryByTestId("broker-flows-panel")).toBeNull();
+    expect(localStorage.getItem("mode")).toBe("equity");
   });
 
-  it("分點反查點股票 → 切回總覽 + 該分點預選流進 K 線(SC-5 lock)", async () => {
+  it("equity tab 列不再包含分點反查(NAV-1)", async () => {
+    render(<App />);
+    // equity header tab 列:籌碼總覽 / 泡泡圖 / 權證 / 權證分點,無分點反查
+    expect(screen.getByRole("button", { name: "權證分點" })).toBeTruthy();
+    const flowsButtons = screen.getAllByRole("button", { name: "分點反查" });
+    expect(flowsButtons.length).toBe(1); // 僅 ModeSwitch 一顆
+  });
+
+  it("分點反查點股票 → 跨 mode 跳回 equity 總覽 + 該分點預選流進 K 線(SC-5 lock)", async () => {
     // 痛點:handlePick 會 reset selectedBrokerIds,預選必須在其後
     // (App.tsx handleFlowStockPick 註解點名的順序陷阱)— 順序反轉此測試必紅。
+    // NAV-1 後跳轉是跨 mode:flows → equity。
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "分點反查" }));
     await waitFor(() => {
       expect(screen.queryByTestId("broker-flows-panel")).toBeTruthy();
     });
     fireEvent.click(screen.getByRole("button", { name: "pick-2330" }));
-    // tab 回總覽(broker-flows panel active=false)+ 9600 預選流進 K 線 props
-    expect(screen.getByTestId("broker-flows-panel").getAttribute("data-active")).toBe("false");
+    expect(localStorage.getItem("mode")).toBe("equity");
     await waitFor(() => {
       expect(screen.getByTestId("kline-chart").getAttribute("data-selected")).toBe("9600");
     });
+    expect(screen.queryByTestId("broker-flows-panel")).toBeNull();
   });
 
-  it("ignores invalid localStorage mode value and falls back to equity", () => {
+  it("invalid localStorage mode value falls back to equity(R5 白名單)", async () => {
     localStorage.setItem("mode", "INVALID" as string);
     render(<App />);
-    // 沒 explicit validate;`as Mode` cast 後直接設 state(view 不掛四 mode 任一)。
-    // 4-way 三元後 fallback 終點 = BorrowFeePage(design P2-5 已知行為變更,
-    // 原為 MarketPage)。鎖 "no equity content" 即可,避免 lazy page 在同步
-    // render 還沒 resolve 也通過;未來若加 validate 記得跟著改這個 test。
-    expect(screen.queryByTestId("kline-chart")).toBeNull();
+    // R5:mode 初始化白名單 — 未知值 fallback equity(equity 內容掛載)。
+    await waitFor(() => {
+      expect(screen.queryByTestId("kline-chart")).toBeTruthy();
+    });
   });
 });

@@ -75,17 +75,26 @@ const BrokerFlowsPanel = lazy(() =>
   import("./components/BrokerFlowsPanel").then((m) => ({ default: m.BrokerFlowsPanel })),
 );
 
-type Tab = "overview" | "bubble" | "warrants" | "warrant-flow" | "broker-flows";
+type Tab = "overview" | "bubble" | "warrants" | "warrant-flow";
 
 // equity tab 鈕樣板收斂(docs/next-time.md 2026-07-14 條目,第 5 個 tab 觸發):
 // 按鈕 JSX 逐字同構 → config + map;hidden div 內容各異,維持逐一列舉。
+// NAV-1(mod/batch-ui-update):分點反查移出,升格為 mode(見 ModeSwitch)。
 const EQUITY_TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "籌碼總覽" },
   { key: "bubble", label: "泡泡圖" },
   { key: "warrants", label: "權證" },
   { key: "warrant-flow", label: "權證分點" },
-  { key: "broker-flows", label: "分點反查" },
 ];
+
+// R5(mod/batch-ui-update):mode 初始化白名單 — localStorage 讀到未知值
+// (舊版殘留 / 未來新 mode 回退)一律 fallback equity,不落錯頁。
+const VALID_MODES: readonly Mode[] = ["equity", "options", "market", "borrow", "flows"];
+
+function readStoredMode(): Mode {
+  const raw = localStorage.getItem("mode");
+  return VALID_MODES.includes(raw as Mode) ? (raw as Mode) : "equity";
+}
 
 function todayStr(): string {
   const d = new Date();
@@ -99,9 +108,7 @@ export default function App() {
   // 響應式(responsive spec §4.2):<lg 走手機堆疊版面。判斷方向固定
   // max-width 判 mobile — jsdom matchMedia 恆 false,測試走桌面分支。
   const isMobile = useMediaQuery("(max-width: 1023px)");
-  const [mode, setMode] = useState<Mode>(() =>
-    (localStorage.getItem("mode") as Mode) || "equity"
-  );
+  const [mode, setMode] = useState<Mode>(readStoredMode);
   useEffect(() => { localStorage.setItem("mode", mode); }, [mode]);
 
   const [symbol, setSymbol] = useState("");
@@ -259,11 +266,12 @@ export default function App() {
 
   }, []);
 
-  // 分點反查跳轉(SC-5):切回總覽 + 設股票 + 預選該分點(handlePick 會
-  // reset selectedBrokerIds,預選必須在其後)→ K 線 overlay 顯示該分點
-  // 買賣超歷史。名稱顯示限制見 design v3 §3.5(不在該股 top list 時退 id)。
+  // 分點反查跳轉(SC-5):跨 mode 跳回 equity 總覽 + 設股票 + 預選該分點
+  // (handlePick 會 reset selectedBrokerIds,預選必須在其後)→ K 線 overlay
+  // 顯示該分點買賣超歷史。名稱顯示限制見 design v3 §3.5(不在 top list 退 id)。
   const handleFlowStockPick = useCallback(
     (sid: string, name: string | null, brokerId: string) => {
+      setMode("equity");
       setTab("overview");
       handlePick(sid, name);
       setSelectedBrokerIds(new Set([brokerId]));
@@ -518,24 +526,20 @@ export default function App() {
             <WarrantFlowPanel symbol={symbol} active={tab === "warrant-flow"} />
           </Suspense>
         </div>
-        <div hidden={tab !== "broker-flows"} className="h-full">
-          <Suspense
-            fallback={
-              <div className="h-full flex items-center justify-center text-ink-dim text-sm">
-                載入分點反查元件...
-              </div>
-            }
-          >
-            {/* 分點反查不綁 symbol(broker-centric);active gate 同權證分點,
-                不進全域 refresh(feat/broker-daily-flows SC-4) */}
-            <BrokerFlowsPanel
-              active={tab === "broker-flows"}
-              onPickStock={handleFlowStockPick}
-            />
-          </Suspense>
-        </div>
       </div>
       </div>
+      ) : mode === "flows" ? (
+        <Suspense
+          fallback={
+            <div className="flex-1 flex items-center justify-center text-ink-dim text-sm">
+              載入分點反查元件...
+            </div>
+          }
+        >
+          {/* NAV-1:分點反查升格 mode(broker-centric,不綁 symbol);mode 層
+              ternary → 只在 flows mode mount,active 恆 true */}
+          <BrokerFlowsPanel active onPickStock={handleFlowStockPick} />
+        </Suspense>
       ) : mode === "options" ? (
         <Suspense
           fallback={

@@ -62,6 +62,8 @@ export const TESTIDS = {
   brushApplyFilter: "brush-apply-filter",
   bubbleYaxisBrush: "bubble-yaxis-brush",
   brokerSearchItem: "broker-search-item",
+  // 分點反查 mode root(NAV-1 mod/batch-ui-update)
+  brokerFlowsView: "broker-flows-view",
   // 權證分點 tab(feat/warrant-broker-flow)
   warrantFlowPanel: "warrant-flow-panel",
   flowDateBadge: "flow-date-badge",
@@ -89,6 +91,7 @@ export const ROLES = {
   modeSwitchOptions: { role: "button" as const, name: /^選擇權$/ },
   modeSwitchMarket: { role: "button" as const, name: /^大盤$/ },
   modeSwitchBorrow: { role: "button" as const, name: /^券差$/ },
+  modeSwitchFlows: { role: "button" as const, name: /^分點反查$/ },
   // active 用 aria-current='page'(F10 — 不是 data-state,Radix Tabs 已 drop)
   refresh: { role: "button" as const, name: "重新整理" },
   // RangeSelector.tsx:141 真實 aria-label(F15)
