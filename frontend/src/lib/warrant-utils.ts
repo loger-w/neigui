@@ -120,6 +120,7 @@ export function filterWarrants(rows: WarrantRow[], f: WarrantFilters): WarrantRo
 }
 
 export type WarrantSortKey =
+  | "score"
   | "strike"
   | "moneyness"
   | "days_left"

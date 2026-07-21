@@ -545,3 +545,59 @@ describe("WarrantSelector review 修正批(Phase 5)", () => {
     );
   });
 });
+
+// WA-2(mod/batch-ui-update 🟢):評分欄 — lib/warrant-score 手算已鎖演算法,
+// 這裡鎖欄位註冊(header/cell/null)與舊 prefs 自動含新欄(白名單 6)。
+describe("WarrantSelector — WA-2 評分欄", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("評分欄 header 存在;cell 顯數值+迷你 bar;重設型顯 —", async () => {
+    // THREE_QUOTES 全部 days_left=18(≤21 懸崖)且因子同值 → 三檔評分皆
+    // 0.35×50+0.25×50+0.2×50+0.2×0 = 40(手算,對齊 warrant-score.test)
+    const withReset = [
+      ...THREE,
+      term({ warrant_id: "030R99", name: "台積永豐99購重", is_reset: true }),
+    ];
+    mockApis(withReset, THREE_QUOTES);
+    render(<WarrantSelector symbol="2330" active={true} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
+    const headerTexts = screen
+      .getAllByRole("columnheader")
+      .map((th) => (th.textContent ?? "").replace(/ [↑↓]$/, ""));
+    expect(headerTexts).toContain("評分");
+    const cells = screen.getAllByTestId("score-cell");
+    expect(cells).toHaveLength(4);
+    const texts = cells.map((c) => c.textContent ?? "");
+    expect(texts.filter((t) => t.includes("40"))).toHaveLength(3);
+    expect(texts.filter((t) => t.includes("—"))).toHaveLength(1);
+    // 迷你 bar 存在(有分數的列)
+    expect(screen.getAllByTestId("score-bar").length).toBe(3);
+  });
+
+  it("舊 prefs(無 score 條目)load 後自動含評分欄(白名單 6 prefs merge)", async () => {
+    // 模擬 WA-2 之前存的偏好:order 缺 score
+    localStorage.setItem(
+      "neigui.warrant-columns.v1",
+      JSON.stringify({
+        order: [
+          "warrant_id", "name", "kind", "strike", "moneyness", "days_left",
+          "exercise_ratio", "price", "bid", "ask", "iv", "theo_price",
+          "mispricing", "iv_percentile", "iv_drift", "leverage",
+          "spread_ratio", "slr",
+        ],
+        hidden: [],
+      }),
+    );
+    mockApis(THREE, THREE_QUOTES);
+    render(<WarrantSelector symbol="2330" active={true} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
+    const headerTexts = screen
+      .getAllByRole("columnheader")
+      .map((th) => (th.textContent ?? "").replace(/ [↑↓]$/, ""));
+    expect(headerTexts).toContain("評分");
+  });
+});

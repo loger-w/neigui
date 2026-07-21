@@ -24,6 +24,7 @@ import {
   type WarrantFilters,
   type WarrantSortKey,
 } from "../lib/warrant-utils";
+import { computeWarrantScores } from "../lib/warrant-score";
 import { cn } from "../lib/utils";
 
 // 數字輸入(篩選列):空字串 = 未啟用(null)
@@ -80,7 +81,11 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
   const rows: WarrantRow[] = useMemo(() => {
     const terms = warrantsHook.data?.warrants ?? [];
     const merged = mergeWarrantRows(terms, quotesHook.data?.quotes ?? {});
-    return sortWarrants(filterWarrants(merged, filters), sortKey, sortDir);
+    // WA-2:評分的橫斷面 = 同標的「全部」權證(merged),不隨篩選縮減 —
+    // 篩掉一半不該改變剩下那半的分數。
+    const scores = computeWarrantScores(merged);
+    const scored = merged.map((r) => ({ ...r, score: scores.get(r.warrant_id) ?? null }));
+    return sortWarrants(filterWarrants(scored, filters), sortKey, sortDir);
   }, [warrantsHook.data, quotesHook.data, filters, sortKey, sortDir]);
 
   // 發行商下拉選項:從 terms 推導(不隨其他篩選縮減);.sort() 走 code point,
