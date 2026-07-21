@@ -253,6 +253,12 @@ export default function App() {
     setTab("bubble");
     setBubbleFocus((prev) => ({ brokerId, name, seq: (prev?.seq ?? 0) + 1 }));
   }, []);
+  // Phase 5 review P0:聚焦請求是一次性意圖 — mode 離開 equity 時 equity
+  // 子樹真卸載(ternary),ChipBubbleView 重掛後 seq ref 歸零,殘留的舊
+  // bubbleFocus 會被誤判為新請求而重放(元件層實驗可重現)。離開即清。
+  useEffect(() => {
+    if (mode !== "equity") setBubbleFocus(null);
+  }, [mode]);
 
   const refresh = () => {
     refreshChip();
@@ -269,6 +275,8 @@ export default function App() {
     setSymbol(sym);
     setSymbolName(name);
     setSelectedBrokerIds(new Set());
+    // 換股一併清泡泡聚焦請求 — 舊分點與新個股無關(Phase 5 review P0 同批)
+    setBubbleFocus(null);
     userPickedDate.current = false;
   };
 
