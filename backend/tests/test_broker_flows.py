@@ -35,12 +35,14 @@ class _FakeFM:
     """fetch_daily_report_by_trader / fetch_securities_trader_info 雙樁。"""
 
     def __init__(self, day_rows: dict[str, list] | None = None,
-                 directory: list | None = None, delay: float = 0.0):
+                 directory: list | None = None, delay: float = 0.0,
+                 info_delay: float = 0.0):
         self.report_calls: list[tuple[str, str]] = []
         self.info_calls = 0
         self.day_rows = day_rows or {}
         self.directory = _DIRECTORY_ROWS if directory is None else directory
         self.delay = delay
+        self.info_delay = info_delay
 
     async def fetch_daily_report_by_trader(self, trader_id: str, date_str: str) -> list:
         self.report_calls.append((trader_id, date_str))
@@ -50,6 +52,8 @@ class _FakeFM:
 
     async def fetch_securities_trader_info(self) -> list:
         self.info_calls += 1
+        if self.info_delay:
+            await asyncio.sleep(self.info_delay)
         return self.directory
 
 
@@ -367,6 +371,30 @@ async def test_search_traders_directory_unavailable_503(monkeypatch, frozen_toda
         await bf.search_traders("富邦")
     assert ei.value.status_code == 503
     assert ei.value.detail == {"error": "broker_directory_unavailable"}
+
+
+async def test_daily_flows_refresh_forces_directory_refetch(monkeypatch, frozen_today, names):
+    """F-1 SC-1:refresh=True 目錄強制重抓(即使 cache 新鮮);成功照舊寫回
+    cache,後續 refresh=False 命中零 fetch。"""
+    fake = _install(monkeypatch, _FakeFM({"2026-07-17": [_row("2330", 1000.0, 2000, 0)]}))
+    await bf.get_daily_flows("9600", None, False)
+    assert fake.info_calls == 1  # 冷 cache 首抓
+    await bf.get_daily_flows("9600", None, True)
+    assert fake.info_calls == 2  # cache 新鮮仍強制重抓
+    await bf.get_daily_flows("9600", None, False)
+    assert fake.info_calls == 2  # refresh 寫回的 cache 命中
+
+
+async def test_directory_refresh_dedup_key_isolated(monkeypatch, frozen_today):
+    """F-1 SC-2:refresh 與非 refresh 的目錄 dedup key 不互吃 — 冷 cache 並發
+    各自 fetch(互吃會合流成 1 次)。"""
+    fake = _install(monkeypatch, _FakeFM({}, info_delay=0.05))
+    r1, r2 = await asyncio.gather(
+        bf._get_directory_or_none(True),
+        bf._get_directory_or_none(False),
+    )
+    assert r1 and r2
+    assert fake.info_calls == 2
 
 
 async def test_directory_cached_24h(monkeypatch, frozen_today):
