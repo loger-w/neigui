@@ -35,6 +35,28 @@ async def test_market_snapshot_v2_keys(client):
         "excluded_count",
         "index_strength",
         "cap_tiers",
+        "breadth",
         "sector_rotation",
     ):
         assert k in body, f"market snapshot missing v2 key {k}: {list(body.keys())}"
+
+
+async def test_market_snapshot_breadth_counts(client):
+    """MK-5/7 資料級:populated tick fixture 5 檔(2330 +0.90 / 2454 +0.50 /
+    2412 +0.30 上漲;2317 −1.20 / 3008 −2.00 下跌,皆 twse、無漲跌停)。
+    ex_tsmc(MK-1):2330 貢獻與指數漲跌同源可算 → 兩欄非 null。"""
+    r = await client.get("/api/market/snapshot")
+    body = r.json()
+    breadth = body["breadth"]
+    assert breadth is not None
+    assert breadth["twse"]["up"] == 3
+    assert breadth["twse"]["down"] == 2
+    assert breadth["twse"]["limit_up"] == 0
+    assert breadth["tpex"] == {"limit_up": 0, "up": 0, "flat": 0, "down": 0, "limit_down": 0}
+    by_id = {row["stock_id"]: row for row in breadth["rows"]}
+    assert by_id["2330"]["change_rate"] == 0.90
+    assert by_id["2330"]["limit_up"] is False
+    # MK-1:扣除台積電欄位存在且可算
+    ex = body["index_strength"]["ex_tsmc"]
+    assert ex["change_points"] is not None
+    assert ex["change_rate"] is not None

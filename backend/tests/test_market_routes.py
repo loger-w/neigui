@@ -27,6 +27,7 @@ _BASE_PAYLOAD = {
         "contrib": {"twse": None, "tpex": None},
     },
     "cap_tiers": None,
+    "breadth": None,
     "sector_rotation": None,
 }
 
@@ -119,8 +120,40 @@ def test_snapshot_stale_fallback_returns_200_with_flag() -> None:
     assert resp.json()["stale"] is True
 
 
-# (MK-4:heatmap/leaderboard payload size gate 隨經典檢視刪除;breadth 的
-# size gate 於 MK-7 加回。)
+# ---------------------------------------------------------------------------
+# MK-7 — breadth 全量 rows payload size gate(取代舊 heatmap/leaderboard gate)
+# ---------------------------------------------------------------------------
+
+
+def test_breadth_payload_size_under_budget() -> None:
+    """MK-7 budget assert:2000 檔全量 rows(門檻/排序前端自理)→ gzip 後
+    < 100,000 bytes(GzipMiddleware 實際傳輸量);若 fail 改後端預切。"""
+    import gzip
+    import json
+
+    rows = [
+        {
+            "stock_id": f"{1000 + k}",
+            "name": f"中文名稱{k}",
+            "market": "twse" if k % 2 == 0 else "tpex",
+            "change_rate": 1.92,
+            "volume_ratio": 2.53,
+            "total_amount": 35_923_705_000,
+            "limit_up": False,
+            "limit_down": False,
+        }
+        for k in range(2000)
+    ]
+    payload = {
+        "breadth": {
+            "twse": {"limit_up": 3, "up": 500, "flat": 100, "down": 380, "limit_down": 2},
+            "tpex": {"limit_up": 1, "up": 400, "flat": 80, "down": 300, "limit_down": 1},
+            "rows": rows,
+        }
+    }
+    raw_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    gz_size = len(gzip.compress(raw_bytes))
+    assert gz_size < 100_000, f"breadth gzip size {gz_size} >= 100000;考慮後端預切"
 
 
 # ---------------------------------------------------------------------------

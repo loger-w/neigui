@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { changeColorClass, signedPercent } from "../lib/market-format";
+import { OptionsInfoHint } from "./OptionsInfoHint";
 import type { IndexContribEntry, IndexContribGroup, IndexSide, IndexStrength } from "../lib/market-types";
 
 type Props = { data: IndexStrength | null; loading: boolean };
@@ -53,6 +54,23 @@ function TsmcRow({ tsmc }: { tsmc: IndexStrength["tsmc"] }): ReactElement {
       <span className="text-ink-dim">台積電</span>
       <span className={changeColorClass(tsmc.change_rate)}>{signedPercent(tsmc.change_rate)}</span>
       <span className="text-ink-dim text-[0.625rem]">對加權貢獻(估算){contribText}</span>
+    </div>
+  );
+}
+
+/** MK-1(mod/batch-ui-update):扣除台積電後的加權漲跌(點數 + %)。 */
+function ExTsmcRow({ ex }: { ex: IndexStrength["ex_tsmc"] }): ReactElement {
+  const text =
+    ex.change_points === null || ex.change_rate === null
+      ? "—"
+      : `${ex.change_points > 0 ? "+" : ""}${ex.change_points.toFixed(1)} 點(${signedPercent(ex.change_rate)})`;
+  return (
+    <div
+      data-testid="idx-ex-tsmc"
+      className="flex items-baseline justify-between text-xs"
+    >
+      <span className="text-ink-dim">扣除台積電(加權,估算)</span>
+      <span className={changeColorClass(ex.change_rate)}>{text}</span>
     </div>
   );
 }
@@ -142,6 +160,7 @@ export function MarketIndexStrength({ data, loading }: Props): ReactElement {
           <IndexSideBlock label="櫃買" side={data.tpex} testid="idx-side-tpex" />
         </div>
         <TsmcRow tsmc={data.tsmc} />
+        <ExTsmcRow ex={data.ex_tsmc} />
         <ContribBlock label="加權" group={data.contrib.twse} testid="idx-contrib-twse" />
         <ContribBlock label="櫃買" group={data.contrib.tpex} testid="idx-contrib-tpex" />
       </div>
@@ -153,7 +172,15 @@ export function MarketIndexStrength({ data, loading }: Props): ReactElement {
       data-testid="market-index-strength"
       className="flex flex-col min-h-0 p-3 border-r border-line overflow-y-auto"
     >
-      <h3 className="text-ink text-sm">大盤強弱</h3>
+      <h3 className="text-ink text-sm flex items-center gap-1.5">
+        大盤強弱
+        {/* MK-2:user 直問「拉抬 多少 pp 是什麼意思」— 文案自我解釋 */}
+        <OptionsInfoHint label="拉抬指標說明">
+          pp = 百分點(percentage point)。「權值拉抬(+X.XXpp)」指指數漲跌率比
+          全市場個股「中位數」漲跌率高 X.XX 個百分點 — 大型權值股拉著指數走;
+          「中小強於指數」則相反,中小型股表現優於指數。
+        </OptionsInfoHint>
+      </h3>
       {body}
     </section>
   );

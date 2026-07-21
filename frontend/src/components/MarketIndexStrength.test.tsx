@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MarketIndexStrength } from "./MarketIndexStrength";
 import type { IndexStrength } from "../lib/market-types";
 
@@ -10,6 +10,7 @@ const full: IndexStrength = {
   twse: { close: 42650.6, change_rate: -0.04, median_change_rate: -1.8, spread: 1.76 },
   tpex: { close: 370.4, change_rate: -2.11, median_change_rate: -2.4, spread: 0.29 },
   tsmc: { change_rate: 1.2, contrib_points: 210.5 },
+  ex_tsmc: { change_points: -45.3, change_rate: -0.21 },
   contrib: {
     twse: {
       up: [{ stock_id: "2330", name: "台積電", change_rate: 1.2, contrib_points: 210.5 }],
@@ -103,5 +104,35 @@ describe("MarketIndexStrength", () => {
   it("PCR/Max Pain 方向性文案禁令同樣適用:不寫做多/做空/賣選/滿倉", () => {
     render(<MarketIndexStrength data={full} loading={false} />);
     expect(screen.queryByText(/做多|做空|賣選|滿倉/)).toBeNull();
+  });
+});
+
+// MK-1/MK-2(mod/batch-ui-update):扣除台積電列 + 拉抬 pp 說明 hint。
+describe("MarketIndexStrength — MK-1 扣除台積電 / MK-2 pp hint", () => {
+  // 痛點:MK-1 — 加權被 2330 單股綁架時,扣除後的點數/% 才看得出大盤真貌。
+  it("顯示扣除台積電後的加權漲跌點數與 %", () => {
+    render(<MarketIndexStrength data={full} loading={false} />);
+    const row = screen.getByTestId("idx-ex-tsmc");
+    expect(row.textContent).toContain("扣除台積電");
+    expect(row.textContent).toContain("-45.3 點");
+    expect(row.textContent).toContain("-0.21%");
+  });
+
+  it("ex_tsmc 兩欄 null → 顯示 —", () => {
+    const degraded: IndexStrength = {
+      ...full,
+      ex_tsmc: { change_points: null, change_rate: null },
+    };
+    render(<MarketIndexStrength data={degraded} loading={false} />);
+    expect(screen.getByTestId("idx-ex-tsmc").textContent).toContain("—");
+  });
+
+  // 痛點:MK-2 — user 直問「拉抬 多少 pp 這是甚麼意思」;文案要自我解釋。
+  it("卡片標題附 pp 說明 hint,點開含百分點解釋", () => {
+    render(<MarketIndexStrength data={full} loading={false} />);
+    const hint = screen.getByLabelText("拉抬指標說明");
+    fireEvent.click(hint);
+    expect(document.body.textContent).toContain("百分點");
+    expect(document.body.textContent).toContain("中位數");
   });
 });

@@ -10,6 +10,7 @@ export type MarketSnapshot = {
   excluded_count: ExcludedCount;
   index_strength: IndexStrength;
   cap_tiers: CapTier[] | null;
+  breadth: Breadth | null;
   sector_rotation: SectorRotation | null;
 };
 
@@ -39,7 +40,38 @@ export type IndexStrength = {
   twse: IndexSide | null;
   tpex: IndexSide | null;
   tsmc: { change_rate: number | null; contrib_points: number | null };
+  /** MK-1(mod/batch-ui-update):扣除台積電後的加權漲跌(點數/%);不可算 → null。 */
+  ex_tsmc: { change_points: number | null; change_rate: number | null };
   contrib: { twse: IndexContribGroup | null; tpex: IndexContribGroup | null };
+};
+
+// ---------------------------------------------------------------------------
+// MK-5/6/7(mod/batch-ui-update)— 漲跌家數 + 全量量比 rows(breadth)
+// ---------------------------------------------------------------------------
+
+export type BreadthCounts = {
+  limit_up: number;
+  up: number;
+  flat: number;
+  down: number;
+  limit_down: number;
+};
+
+export type BreadthRow = {
+  stock_id: string;
+  name: string;
+  market: "twse" | "tpex";
+  change_rate: number;
+  volume_ratio: number | null;
+  total_amount: number | null;
+  limit_up: boolean;
+  limit_down: boolean;
+};
+
+export type Breadth = {
+  twse: BreadthCounts;
+  tpex: BreadthCounts;
+  rows: BreadthRow[];
 };
 
 // ---------------------------------------------------------------------------

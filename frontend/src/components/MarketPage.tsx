@@ -4,6 +4,8 @@ import { MarketHeader } from "./MarketHeader";
 import { MarketIndexStrength } from "./MarketIndexStrength";
 import { MarketCapTiers } from "./MarketCapTiers";
 import { MarketSectorRotation } from "./MarketSectorRotation";
+import { MarketBreadthPanel } from "./MarketBreadthPanel";
+import { MarketVolumeRatioPanel } from "./MarketVolumeRatioPanel";
 import { MarketUniverseBanner } from "./MarketUniverseBanner";
 
 type Props = {
@@ -14,8 +16,6 @@ type Props = {
 export function MarketPage({ isActive, onSymbolPick }: Props): ReactElement {
   const { data, refresh, lastUpdated, isStale, isTradingSession, error } =
     useMarketSnapshot(isActive);
-  // MK-5/6(G5)新 panel 個股跳轉將使用;經典檢視刪除後暫無 caller
-  void onSymbolPick;
 
   // Phase 4 R1: 從未成功過(error AND data==null)才整頁顯示資料源錯誤;
   // 否則保留 last-good data,error 變成 header 上的小 banner,避免 transient
@@ -72,8 +72,22 @@ export function MarketPage({ isActive, onSymbolPick }: Props): ReactElement {
           <MarketCapTiers data={data?.cap_tiers ?? null} loading={!data} />
           <MarketSectorRotation data={data?.sector_rotation ?? null} loading={!data} />
         </div>
-        {/* MK-4(mod/batch-ui-update):經典檢視(heatmap + leaderboard)整刪;
-            量比 / 漲跌家數功能由 MK-5/6 新 panel 接手(G5)。 */}
+        {/* MK-5/6(mod/batch-ui-update):經典檢視退役,改為漲跌家數 + 量比排行 */}
+        <div
+          data-testid="market-breadth-row"
+          className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] border-t border-line"
+        >
+          <MarketBreadthPanel
+            data={data?.breadth ?? null}
+            loading={!data}
+            onSymbolPick={onSymbolPick}
+          />
+          <MarketVolumeRatioPanel
+            rows={data?.breadth?.rows ?? null}
+            loading={!data}
+            onSymbolPick={onSymbolPick}
+          />
+        </div>
       </div>
     </div>
   );

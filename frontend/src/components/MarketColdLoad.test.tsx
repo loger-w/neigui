@@ -37,6 +37,7 @@ const indexStrength: IndexStrength = {
   twse: { close: 42650.6, change_rate: -0.04, median_change_rate: -1.8, spread: 1.76 },
   tpex: { close: 370.4, change_rate: -2.11, median_change_rate: -2.4, spread: 0.29 },
   tsmc: { change_rate: 1.2, contrib_points: 210.5 },
+  ex_tsmc: { change_points: -227.6, change_rate: -0.53 },
   contrib: {
     twse: { up: [{ stock_id: "2330", name: "台積電", change_rate: 1.2, contrib_points: 210.5 }], down: [] },
     tpex: { up: [], down: [] },

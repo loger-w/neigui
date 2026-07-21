@@ -446,6 +446,7 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
         name_map=name_map,
     )
     cap_tiers = market_today.compute_cap_tiers(stock_universe, mv_map)
+    breadth = market_today.compute_breadth(stock_universe, type_map, name_map)
     sector_rotation = market_today.compute_sector_rotation(stock_universe, chain)
     if sector_rotation is not None:
         sector_rotation = {**sector_rotation, "as_of": now.isoformat()}
@@ -478,6 +479,8 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
         # market-today-only 🟢 commit 接線(change-spec.md §3 / §4 R15)
         "index_strength": index_strength,
         "cap_tiers": cap_tiers,
+        # MK-5/6/7(mod/batch-ui-update):漲跌家數 + 全量量比 rows
+        "breadth": breadth,
         "sector_rotation": sector_rotation,
     }
 
