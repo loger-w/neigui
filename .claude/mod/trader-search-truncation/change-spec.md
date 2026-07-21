@@ -49,3 +49,4 @@ Skew 窗口(review R2 修正描述):兩方向不對稱 — **舊 frontend + 新 
 ## Phase 5 自評記錄
 
 - 對抗式 review(medium):無 P0/P1;P2 x1(提示列螢幕閱讀器不可感,與既有 combobox aria-activedescendant 缺口同源)→ deferred 記 docs/next-time.md。
+self_review_head: 6d2709592284f0bac45805df385a566213e373f8
