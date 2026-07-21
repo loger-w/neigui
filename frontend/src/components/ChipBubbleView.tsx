@@ -8,7 +8,7 @@ import {
   fmtAmount, fmtVol, summarizeTradesByPriceRange,
 } from "../lib/chip-data";
 import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg";
-import { formatBrokerLabel } from "../lib/broker-name";
+import { formatBrokerName } from "../lib/broker-name";
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -116,7 +116,7 @@ export function ChipBubbleView({
       // R6: 顯式聚焦意圖優先於舊排除設定 — 自清單移除(持久生效)。
       setBlocked((prev) => removeBlocked(prev, focusRequest.brokerId));
       setBlockRemovalNotice(
-        `已自過濾清單移除〈${formatBrokerLabel(focusRequest.brokerId, focusRequest.name)}〉`,
+        `已自過濾清單移除〈${formatBrokerName(focusRequest.brokerId, focusRequest.name)}〉`,
       );
     } else {
       setBlockRemovalNotice(null);
@@ -137,12 +137,12 @@ export function ChipBubbleView({
     [visibleTrades, selectedBrokerId],
   );
 
-  // SC-7:name→formatted label lookup(TradeRow 無 broker_id,R14 決策走
-  // lookup 不擴型別);顯示統一「id 去dash名」,選取契約仍以 name 為 key
+  // name→顯示名 lookup(TradeRow 無 broker_id,R14 決策走 lookup 不擴型別);
+  // 非搜尋顯示點只顯去dash名稱,選取契約仍以 name 為 key
   const labelFor = useMemo(() => {
     const m = new Map<string, string>();
     for (const t of visibleTrades) {
-      if (!m.has(t.broker)) m.set(t.broker, formatBrokerLabel(t.broker_id, t.broker));
+      if (!m.has(t.broker)) m.set(t.broker, formatBrokerName(t.broker_id, t.broker));
     }
     return (name: string): string => m.get(name) ?? name;
   }, [visibleTrades]);
@@ -222,7 +222,7 @@ export function ChipBubbleView({
       const detailEl = el.querySelector("[data-tt=detail]");
       const priceEl = el.querySelector("[data-tt=price]");
       if (nameEl)
-        nameEl.textContent = formatBrokerLabel(payload.brokerId, payload.broker);
+        nameEl.textContent = formatBrokerName(payload.brokerId, payload.broker);
       if (detailEl)
         detailEl.textContent = `${payload.side === "buy" ? "買" : "賣"}: ${payload.volume} 張`;
       if (priceEl) priceEl.textContent = `價格: ${payload.price}`;
@@ -357,7 +357,7 @@ export function ChipBubbleView({
                 onClick={() => onJumpToOverview(selectedBrokerId)}
                 className="text-xs text-accent hover:text-ink underline underline-offset-2 cursor-pointer"
               >
-                查看 <span className="text-[#f0b429] font-medium">{formatBrokerLabel(selectedBrokerId, selectedBrokerName)}</span> 於籌碼總覽 →
+                查看 <span className="text-[#f0b429] font-medium">{formatBrokerName(selectedBrokerId, selectedBrokerName)}</span> 於籌碼總覽 →
               </button>
             ) : (
               <span className="text-xs text-ink-dim">

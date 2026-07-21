@@ -280,8 +280,8 @@ describe("BrokerFlowsPanel", () => {
     render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
       wrapper: makeQueryWrapper(),
     });
-    // 選定徽章直接還原,無需輸入
-    expect(screen.getByText("9600 富邦", { selector: "span" })).toBeTruthy();
+    // 選定徽章直接還原,無需輸入(徽章非搜尋框 → 只顯名稱不帶 id)
+    expect(screen.getByText("富邦", { selector: "span" })).toBeTruthy();
     expect((screen.getByLabelText("搜尋分點") as HTMLInputElement).value).toBe(
       "9600 富邦",
     );
@@ -297,7 +297,8 @@ describe("BrokerFlowsPanel", () => {
     fireEvent.click(screen.getByLabelText("加入常用分點"));
     expect(screen.getByLabelText("移除常用分點")).toBeTruthy();
     const row = screen.getByTestId("saved-brokers-row");
-    expect(row.textContent).toContain("9600 富邦");
+    expect(row.textContent).toContain("富邦");
+    expect(row.textContent).not.toContain("9600");
     expect(JSON.parse(localStorage.getItem("neigui.saved-brokers.v1") ?? "[]")).toEqual([
       { id: "9600", name: "富邦" },
     ]);
@@ -310,7 +311,7 @@ describe("BrokerFlowsPanel", () => {
     });
     // 精確 accessible name(regex 會同時撈到「自常用移除 …」鈕 — selector 過鬆)
     const chip = within(screen.getByTestId("saved-brokers-row")).getByRole("button", {
-      name: "9600 富邦",
+      name: "富邦",
     });
     fireEvent.click(chip);
     await waitFor(() => expect(flowsSpy).toHaveBeenCalled());
@@ -328,7 +329,7 @@ describe("BrokerFlowsPanel", () => {
     render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
       wrapper: makeQueryWrapper(),
     });
-    fireEvent.click(screen.getByLabelText("自常用移除 9600 富邦"));
+    fireEvent.click(screen.getByLabelText("自常用移除 富邦"));
     expect(screen.queryByTestId("saved-brokers-row")).toBeNull();
     expect(JSON.parse(localStorage.getItem("neigui.saved-brokers.v1") ?? "[]")).toEqual([]);
   });

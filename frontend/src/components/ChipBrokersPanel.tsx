@@ -1,7 +1,7 @@
 import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ChipSummary, TopBroker, TopVolumeBroker } from "../lib/chip-data";
 import { splitBrokers, fmtVol, topByVolume } from "../lib/chip-data";
-import { formatBrokerLabel } from "../lib/broker-name";
+import { formatBrokerName } from "../lib/broker-name";
 import { Checkbox } from "./ui/checkbox";
 import { BrokerFilterPopover } from "./BrokerFilterPopover";
 
@@ -73,8 +73,8 @@ interface RowProps {
 
 function BrokerRow({ broker, mode, selected, onToggle, onShowInBubble }: RowProps) {
   const badge = brokerBadge(broker.name);
-  // SC-7:顯示/aria/tooltip 統一「id 去dash名」;callback 契約仍傳原始 name
-  const label = formatBrokerLabel(broker.broker_id, broker.name);
+  // 顯示/aria/tooltip 只顯去dash名稱(非搜尋框);callback 契約仍傳原始 name
+  const label = formatBrokerName(broker.broker_id, broker.name);
   const netCls = broker.net > 0 ? "text-accent" : broker.net < 0 ? "text-bear" : "text-ink-dim";
   // Column order: 買均 → 賣均 → 買張 → 賣張 (avg-price pair first, then
   // volume pair). Net mode prepends 淨買賣 col; volume mode appends 當沖率.
@@ -366,9 +366,9 @@ export function ChipBrokersPanel({
             <span className="text-xs text-ink-dim italic shrink-0">未選擇分點</span>
           ) : (
             Array.from(selectedBrokerIds).map((bid) => {
-              // SC-7:pill 統一「id 去dash名」;名稱缺(不在當日 top_brokers)
-              // 時 formatter 退回只顯 id
-              const name = formatBrokerLabel(bid, idToName.get(bid) ?? null);
+              // pill 只顯去dash名稱;名稱缺(不在當日 top_brokers)時
+              // formatter 退回只顯 id
+              const name = formatBrokerName(bid, idToName.get(bid) ?? null);
               return (
                 <span
                   key={bid}

@@ -8,7 +8,7 @@ import {
   type TraderHit,
 } from "../lib/broker-flows-data";
 import { cn } from "../lib/utils";
-import { formatBrokerLabel } from "../lib/broker-name";
+import { formatBrokerLabel, formatBrokerName } from "../lib/broker-name";
 import {
   addSavedBroker,
   loadSavedBrokers,
@@ -206,7 +206,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
         </div>
         {selected && (
           <span className="inline-flex items-center gap-1 px-1.5 py-px border border-line-strong text-ink text-xs">
-            {formatBrokerLabel(selected.broker_id, selected.broker_name)}
+            {formatBrokerName(selected.broker_id, selected.broker_name)}
             {/* SC-9:星號 toggle 常用 */}
             {(() => {
               const isSaved = saved.some((s) => s.id === selected.broker_id);
@@ -281,11 +281,11 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
                 onClick={() => pickTrader({ broker_id: s.id, broker_name: s.name })}
                 className="cursor-pointer hover:text-accent"
               >
-                {formatBrokerLabel(s.id, s.name)}
+                {formatBrokerName(s.id, s.name)}
               </button>
               <button
                 type="button"
-                aria-label={`自常用移除 ${formatBrokerLabel(s.id, s.name)}`}
+                aria-label={`自常用移除 ${formatBrokerName(s.id, s.name)}`}
                 onClick={() => setSaved((list) => removeSavedBroker(list, s.id))}
                 className="text-ink-dim hover:text-bear cursor-pointer leading-none"
               >

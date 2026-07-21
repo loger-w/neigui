@@ -2,7 +2,7 @@
  * SC-9(mod/batch-ui-polish):常用分點清單持久化(分點反查頁)。
  *
  * 樣板 = bubble-blocklist.ts:localStorage、壞資料靜默回空、純函式 CRUD。
- * name 存原始 directory 名稱(可含 dash),顯示時走 formatBrokerLabel 統一。
+ * name 存原始 directory 名稱(可含 dash),顯示時走 formatBrokerName 統一。
  */
 
 export interface SavedBroker {

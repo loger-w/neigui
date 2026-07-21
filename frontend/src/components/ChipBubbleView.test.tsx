@@ -235,15 +235,16 @@ describe("ChipBubbleView — A2 jump-to-overview button (C2 🔴)", () => {
       if (!btn) throw new Error("jump button not rendered yet");
     });
     const btn = container.querySelector('[data-testid="bubble-jump-to-overview"]') as HTMLButtonElement;
-    // SC-7(mod/batch-ui-polish):header 連結顯示「id 名稱」統一格式
-    expect((btn.textContent ?? "").includes("AL1 Alpha")).toBe(true);
+    // mod/broker-label-search-only-id:header 連結非搜尋框 → 只顯名稱
+    expect((btn.textContent ?? "").includes("Alpha")).toBe(true);
+    expect((btn.textContent ?? "").includes("AL1")).toBe(false);
     expect((btn.textContent ?? "").includes("籌碼總覽")).toBe(true);
   });
 
-  // SC-7(mod/batch-ui-polish):右欄成交明細列同樣走「id 去dash名」formatter。
+  // mod/broker-label-search-only-id:右欄成交明細列只顯去dash名稱。
   // TradeList 走 virtualizer,量測走 offsetWidth/offsetHeight(jsdom 恆 0 不
   // 出列)— stub prototype getter 給高度(frontend-testing 多態渲染條目同型技巧)。
-  it("TradeList 明細列顯示「id 名稱」統一格式", async () => {
+  it("TradeList 明細列只顯名稱不帶 id", async () => {
     const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
     const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
     Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
@@ -264,8 +265,8 @@ describe("ChipBubbleView — A2 jump-to-overview button (C2 🔴)", () => {
         const texts = Array.from(
           container.querySelectorAll("button span.text-left"),
         ).map((s) => s.textContent ?? "");
-        expect(texts.some((t) => t === "AL1 Alpha")).toBe(true);
-        expect(texts.some((t) => t === "BR1 Bravo")).toBe(true);
+        expect(texts.some((t) => t === "Alpha")).toBe(true);
+        expect(texts.some((t) => t === "Bravo")).toBe(true);
       });
     } finally {
       if (origH) Object.defineProperty(HTMLElement.prototype, "offsetHeight", origH);
@@ -802,7 +803,7 @@ describe("ChipBubbleView — CH-1 focusRequest 聚焦", () => {
       />,
     );
     await waitFor(() => {
-      if (!(container.textContent ?? "").includes("已自過濾清單移除〈AL1 Alpha〉")) {
+      if (!(container.textContent ?? "").includes("已自過濾清單移除〈Alpha〉")) {
         throw new Error("removal notice not shown");
       }
     });
