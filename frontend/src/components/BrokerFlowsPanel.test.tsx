@@ -38,7 +38,11 @@ const mk = (over?: Partial<BrokerFlowsPayload>): BrokerFlowsPayload => ({
 });
 
 beforeEach(() => vi.restoreAllMocks());
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  // SC-8:selected 走 sessionStorage(useSessionState),測試間必清防污染
+  sessionStorage.clear();
+});
 
 async function pickFubon(payload: BrokerFlowsPayload = mk()) {
   const tradersSpy = vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
@@ -199,6 +203,25 @@ describe("BrokerFlowsPanel", () => {
     expect(tradersSpy).not.toHaveBeenCalledWith("9600 富邦", expect.anything());
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(screen.queryByText("查無符合分點")).toBeNull();
+  });
+
+  // SC-8(mod/batch-ui-polish):mode 切換 unmount(N4 契約)後 remount,
+  // 已選分點自 sessionStorage 還原 — 不需重新搜尋。
+  it("unmount 後 remount:已選分點與 query echo 保留", async () => {
+    const { flowsSpy } = await pickFubon();
+    cleanup();
+    vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+    vi.spyOn(api, "brokerDailyFlows").mockResolvedValue(mk());
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    // 選定徽章直接還原,無需輸入
+    expect(screen.getByText("9600 富邦", { selector: "span" })).toBeTruthy();
+    expect((screen.getByLabelText("搜尋分點") as HTMLInputElement).value).toBe(
+      "9600 富邦",
+    );
+    await screen.findByTestId("broker-flows-buy", undefined, { timeout: 3000 });
+    expect(flowsSpy).toHaveBeenCalled();
   });
 
   it("flows 錯誤碼映射繁中(review P2SUM-2)", async () => {

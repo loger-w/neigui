@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSessionState } from "../hooks/useSessionState";
 import { useBrokerDailyFlows } from "../hooks/useBrokerDailyFlows";
 import { useTraderSearch } from "../hooks/useTraderSearch";
 import {
@@ -27,11 +28,19 @@ const ERROR_TEXT: Record<string, string> = {
 };
 
 export function BrokerFlowsPanel({ active, onPickStock }: Props) {
-  const [query, setQuery] = useState("");
-  const [debounced, setDebounced] = useState("");
+  // SC-8:mode 切換 unmount(N4 契約)後 remount,已選分點自 sessionStorage
+  // 還原,不需重新搜尋;query/debounced 初值同步為選定 echo。
+  const [selected, setSelected] = useSessionState<TraderHit | null>(
+    "neigui.session.flows-selected",
+    null,
+  );
+  const initialEcho = selected
+    ? formatBrokerLabel(selected.broker_id, selected.broker_name)
+    : "";
+  const [query, setQuery] = useState(initialEcho);
+  const [debounced, setDebounced] = useState(initialEcho);
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
-  const [selected, setSelected] = useState<TraderHit | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {

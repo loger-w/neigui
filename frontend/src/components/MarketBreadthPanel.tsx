@@ -1,4 +1,5 @@
-import { useState, type ReactElement } from "react";
+import { type ReactElement } from "react";
+import { useSessionState } from "../hooks/useSessionState";
 import { changeColorClass, signedPercent } from "../lib/market-format";
 import type { Breadth, BreadthCounts, BreadthRow } from "../lib/market-types";
 
@@ -55,7 +56,11 @@ function CountsRow({
 }
 
 export function MarketBreadthPanel({ data, loading, onSymbolPick, embedded }: Props): ReactElement {
-  const [target, setTarget] = useState<ListTarget | null>(null);
+  // SC-8:mode 切換 unmount 後 remount 保留展開的漲跌停清單
+  const [target, setTarget] = useSessionState<ListTarget | null>(
+    "neigui.session.market-breadth-target",
+    null,
+  );
 
   const toggleList = (t: ListTarget): void => {
     setTarget((cur) =>

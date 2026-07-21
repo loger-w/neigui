@@ -4,7 +4,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MarketVolumeRatioPanel } from "./MarketVolumeRatioPanel";
 import type { BreadthRow } from "../lib/market-types";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  // SC-8:threshold/sortKey 走 sessionStorage(useSessionState),測試間必清
+  sessionStorage.clear();
+});
 
 const row = (over: Partial<BreadthRow>): BreadthRow => ({
   stock_id: "2330",
@@ -71,6 +75,20 @@ describe("MarketVolumeRatioPanel — MK-6 量比排行", () => {
     );
     // total_amount desc:2330(5e9) → 2603(2e9) → 2317(1e9)
     expect(listed).toEqual(["vr-row-2330", "vr-row-2603", "vr-row-2317"]);
+  });
+
+  // SC-8(mod/batch-ui-polish):unmount 後 remount,門檻與排序鍵保留。
+  it("unmount 後 remount:量比門檻與排序鍵保留", () => {
+    const first = render(
+      <MarketVolumeRatioPanel rows={rows} loading={false} onSymbolPick={() => {}} />,
+    );
+    fireEvent.change(screen.getByLabelText("量比門檻"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "依漲跌排序" }));
+    first.unmount();
+    render(<MarketVolumeRatioPanel rows={rows} loading={false} onSymbolPick={() => {}} />);
+    expect((screen.getByLabelText("量比門檻") as HTMLInputElement).value).toBe("1");
+    const th = screen.getByRole("button", { name: "依漲跌排序" }).closest("th")!;
+    expect(th.getAttribute("aria-sort")).toBe("descending");
   });
 
   it("點列觸發 onSymbolPick;市場欄顯示上市/上櫃", () => {

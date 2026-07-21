@@ -4,7 +4,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MarketBreadthPanel } from "./MarketBreadthPanel";
 import type { Breadth, BreadthRow } from "../lib/market-types";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  // SC-8:漲跌停清單 target 走 sessionStorage(useSessionState),測試間必清
+  sessionStorage.clear();
+});
 
 const row = (over: Partial<BreadthRow>): BreadthRow => ({
   stock_id: "2330",
@@ -42,6 +46,18 @@ describe("MarketBreadthPanel — MK-5 漲跌家數", () => {
     const tpex = screen.getByTestId("breadth-tpex");
     expect(tpex.textContent).toContain("上櫃");
     expect(tpex.textContent).toContain("跌停 1");
+  });
+
+  // SC-8(mod/batch-ui-polish):unmount 後 remount 展開的清單保留。
+  it("unmount 後 remount:展開的漲停清單保留", () => {
+    const first = render(
+      <MarketBreadthPanel data={breadth} loading={false} onSymbolPick={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "上市漲停清單" }));
+    expect(screen.getByTestId("breadth-list")).toBeTruthy();
+    first.unmount();
+    render(<MarketBreadthPanel data={breadth} loading={false} onSymbolPick={() => {}} />);
+    expect(screen.getByTestId("breadth-list")).toBeTruthy();
   });
 
   // 痛點:MK-5 — 點漲停 bucket 展開該市場清單,點個股跳 equity。
