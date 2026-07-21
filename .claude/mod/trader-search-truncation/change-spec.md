@@ -45,3 +45,7 @@ Skew 窗口(review R2 修正描述):兩方向不對稱 — **舊 frontend + 新 
 - 搜尋分頁 / 後端排序改動。
 - `_SEARCH_LIMIT` 數值調整。
 - SymbolSearch 等其他 dropdown 的同構提示(如有需要記 next-time)。
+
+## Phase 5 自評記錄
+
+- 對抗式 review(medium):無 P0/P1;P2 x1(提示列螢幕閱讀器不可感,與既有 combobox aria-activedescendant 缺口同源)→ deferred 記 docs/next-time.md。
