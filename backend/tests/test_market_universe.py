@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 
 import pytest
@@ -173,6 +174,20 @@ async def test_fetch_disposition_stocks_refresh_bypasses_cache(
     await fetch_disposition_stocks(today=today, refresh=True)
     await fetch_disposition_stocks(today=today, refresh=True)
     assert len(mock_finmind_disposition) == 2
+
+
+async def test_fetch_disposition_stocks_concurrent_dedup(
+    mock_finmind_disposition,
+) -> None:
+    """並發同 key ×2 → inflight 合流,FinMind 只 call 一次(characterization,
+    refactor F-3:遷移前拍「合流」現狀 — 此性質新舊兩版 _run_once 皆成立)。"""
+    today = date(2026, 6, 30)
+    out = await asyncio.gather(
+        fetch_disposition_stocks(today=today, refresh=True),
+        fetch_disposition_stocks(today=today, refresh=True),
+    )
+    assert out[0] == out[1] == {"2330"}
+    assert len(mock_finmind_disposition) == 1
 
 
 # ---------------------------------------------------------------------------
