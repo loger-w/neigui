@@ -76,6 +76,13 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
 
   const hits = search.data ?? [];
   const truncated = search.total !== null && search.total > hits.length;
+  // a11y 收割(trader-search-truncation review P2):combobox 契約。listbox
+  // 開啟 = dropdownActive 且有 hits(錯誤/查無分支不是 listbox)。
+  const listboxOpen = dropdownActive && hits.length > 0;
+  const activeHit = listboxOpen ? hits[activeIdx] : undefined;
+  const truncationMsg = truncated
+    ? `共 ${search.total} 筆,僅列前 ${hits.length},請輸入更精確關鍵字`
+    : null;
 
   // review V2:scroll 只在 activeIdx 實際變更時發生(inline ref callback 每
   // render 重跑 detach/attach,會把使用者手動捲動位置拉回)
@@ -116,6 +123,13 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
             type="text"
             value={query}
             aria-label="搜尋分點"
+            role="combobox"
+            aria-expanded={listboxOpen}
+            aria-controls="trader-search-listbox"
+            aria-autocomplete="list"
+            aria-activedescendant={
+              activeHit ? `trader-search-option-${activeHit.broker_id}` : undefined
+            }
             placeholder="搜尋分點名稱或代號..."
             onChange={(e) => {
               setQuery(e.target.value);
@@ -130,6 +144,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
           {dropdownActive && (
             hits.length > 0 ? (
               <ul
+                id="trader-search-listbox"
                 role="listbox"
                 aria-label="分點搜尋結果"
                 className="absolute z-10 top-full left-0 right-0 mt-px max-h-64 overflow-y-auto bg-bg-deep border border-line-strong text-sm"
@@ -137,6 +152,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
                 {hits.map((h, i) => (
                   <li
                     key={h.broker_id}
+                    id={`trader-search-option-${h.broker_id}`}
                     role="option"
                     aria-selected={i === activeIdx}
                     ref={
@@ -159,7 +175,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
                     {formatBrokerLabel(h.broker_id, h.broker_name)}
                   </li>
                 ))}
-                {truncated && (
+                {truncationMsg && (
                   // F-2:非 option 提示列 — 不入鍵盤導航(activeIdx 只走 hits),
                   // preventDefault 防點擊觸發 input blur 關 dropdown(review R4)
                   <li
@@ -167,7 +183,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
                     onMouseDown={(e) => e.preventDefault()}
                     className="px-3 py-1.5 text-xs text-ink-dim border-t border-line cursor-default"
                   >
-                    共 {search.total} 筆,僅列前 {hits.length},請輸入更精確關鍵字
+                    {truncationMsg}
                   </li>
                 )}
               </ul>
@@ -182,6 +198,11 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
               </div>
             )
           )}
+          {/* a11y:截斷提示鏡射 — role=presentation 提示列對 SR 完全不朗讀,
+              以常駐 live region 補感知(空字串時不產生朗讀) */}
+          <div role="status" className="sr-only">
+            {dropdownActive && truncationMsg ? truncationMsg : ""}
+          </div>
         </div>
         {selected && (
           <span className="inline-flex items-center gap-1 px-1.5 py-px border border-line-strong text-ink text-xs">
