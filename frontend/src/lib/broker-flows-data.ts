@@ -26,6 +26,12 @@ export interface TraderHit {
   broker_name: string;
 }
 
+/** F-2:搜尋回應物件 — total = 截斷前命中數,total > hits.length 即被截斷。 */
+export interface TraderSearchPayload {
+  hits: TraderHit[];
+  total: number;
+}
+
 /** 元 → 千/萬/億中文縮寫(design R1:market-format.formatAmount 是百萬 M
  * 口徑,不重用)。億=兩位小數;萬 ≥100萬 取整、<100萬 一位小數;<1萬 千分位。 */
 export function formatAmountZh(n: number): string {
