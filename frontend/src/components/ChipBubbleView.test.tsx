@@ -668,6 +668,25 @@ describe("ChipBubbleView — BB-1 過濾清單", () => {
     expect(stored).toEqual([{ id: "AL1", name: "Alpha" }]);
   });
 
+  it("過濾清單搜尋 dash-insensitive:照顯示字樣(去dash)輸入命中含 dash 分點", () => {
+    const dashedTrades: BrokerTrade[] = [
+      { broker: "凱基-信義", broker_id: "9268", price: 100, buy: 10, sell: 0 },
+    ];
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(dashedTrades)} />,
+    );
+    const popover = openBlocklistPopover(container);
+    const searchInput = popover.querySelector(
+      "input[type=text]",
+    ) as HTMLInputElement;
+    fireEvent.change(searchInput, { target: { value: "凱基信義" } });
+    const candidate = document.querySelector(
+      "[data-testid=bubble-blocklist-candidate]",
+    ) as HTMLElement | null;
+    expect(candidate).toBeTruthy();
+    expect(candidate!.textContent ?? "").toContain("凱基信義");
+  });
+
   it("被排除分點不出現在 BrokerSearch 下拉", async () => {
     localStorage.setItem(
       "neigui.bubble-broker-blocklist.v1",

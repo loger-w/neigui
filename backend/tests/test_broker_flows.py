@@ -350,6 +350,28 @@ async def test_search_traders_name_substring(monkeypatch, frozen_today):
     assert result["total"] == 2
 
 
+async def test_search_traders_dashless_query_hits_dashed_name(monkeypatch, frozen_today):
+    """mod/broker-label-search-only-id:顯示層去 dash,照顯示字樣輸入
+    (「富邦陽明」)必須命中目錄原始名「富邦-陽明」。"""
+    _install(monkeypatch, _FakeFM({}))
+    result = await bf.search_traders("富邦陽明")
+    assert {h["broker_id"] for h in result["hits"]} == {"9604"}
+
+
+async def test_search_traders_dashed_query_still_hits(monkeypatch, frozen_today):
+    """白名單 W4:原始含 dash 查詢不退化。"""
+    _install(monkeypatch, _FakeFM({}))
+    result = await bf.search_traders("富邦-陽明")
+    assert {h["broker_id"] for h in result["hits"]} == {"9604"}
+
+
+async def test_search_traders_dash_only_query_not_full_scan(monkeypatch, frozen_today):
+    """review R5(同 C3 空白 query 前例):純 dash 去 dash 後為空,
+    不得空字串 substring 全表命中。"""
+    _install(monkeypatch, _FakeFM({}))
+    assert await bf.search_traders("-") == {"hits": [], "total": 0}
+
+
 async def test_search_traders_caps_at_50(monkeypatch, frozen_today):
     """F-2 SC-1:>50 命中 → hits 截斷 50、total 回截斷前命中數。"""
     rows = [

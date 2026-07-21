@@ -186,18 +186,26 @@ async def _get_directory_or_none(refresh: bool = False) -> dict[str, str] | None
 
 async def search_traders(q: str) -> dict:
     """SC-3:id 前綴(casefold)或名稱 substring;F-2:回 {hits: ≤_SEARCH_LIMIT
-    筆, total: 截斷前命中數} — 前端以 total > len(hits) 判定截斷提示。"""
+    筆, total: 截斷前命中數} — 前端以 total > len(hits) 判定截斷提示。
+
+    名稱比對雙邊去 dash(mod/broker-label-search-only-id):顯示層去 dash,
+    使用者照顯示字樣輸入(「凱基信義」)也要命中目錄原始名(「凱基-信義」)。
+    """
     needle = q.strip().casefold()
     if not needle:
         # route min_length=1 擋不住純空白;startswith("") 會全表命中(review C3)
         return {"hits": [], "total": 0}
+    # 純 dash 輸入去 dash 後為空 → 跳過名稱分支,否則 "" in name 全表命中
+    # (同 C3 前例,review R5)
+    needle_name = needle.replace("-", "")
     directory = await _get_directory_or_none()
     if not directory:
         raise HTTPException(503, {"error": "broker_directory_unavailable"})
     hits = [
         {"broker_id": bid, "broker_name": name}
         for bid, name in directory.items()
-        if bid.casefold().startswith(needle) or needle in name.casefold()
+        if bid.casefold().startswith(needle)
+        or (needle_name and needle_name in name.casefold().replace("-", ""))
     ]
     return {"hits": hits[:_SEARCH_LIMIT], "total": len(hits)}
 
