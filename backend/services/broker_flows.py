@@ -184,12 +184,13 @@ async def _get_directory_or_none(refresh: bool = False) -> dict[str, str] | None
         return None
 
 
-async def search_traders(q: str) -> list[dict]:
-    """SC-3:id 前綴(casefold)或名稱 substring,≤ _SEARCH_LIMIT 筆。"""
+async def search_traders(q: str) -> dict:
+    """SC-3:id 前綴(casefold)或名稱 substring;F-2:回 {hits: ≤_SEARCH_LIMIT
+    筆, total: 截斷前命中數} — 前端以 total > len(hits) 判定截斷提示。"""
     needle = q.strip().casefold()
     if not needle:
         # route min_length=1 擋不住純空白;startswith("") 會全表命中(review C3)
-        return []
+        return {"hits": [], "total": 0}
     directory = await _get_directory_or_none()
     if not directory:
         raise HTTPException(503, {"error": "broker_directory_unavailable"})
@@ -198,7 +199,7 @@ async def search_traders(q: str) -> list[dict]:
         for bid, name in directory.items()
         if bid.casefold().startswith(needle) or needle in name.casefold()
     ]
-    return hits[:_SEARCH_LIMIT]
+    return {"hits": hits[:_SEARCH_LIMIT], "total": len(hits)}
 
 
 # ---------------------------------------------------------------- symbols join

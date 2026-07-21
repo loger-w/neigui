@@ -110,8 +110,9 @@ def test_daily_flows_404_passthrough(client, monkeypatch):
 
 
 def test_traders_passthrough(client, monkeypatch):
-    hits = [{"broker_id": "9600", "broker_name": "富邦"}]
-    monkeypatch.setattr(bf, "search_traders", _async_ret(hits))
+    # F-2 shape:mock 同步 {hits, total} 消 drift(passthrough 不驗 shape 邏輯)
+    payload = {"hits": [{"broker_id": "9600", "broker_name": "富邦"}], "total": 1}
+    monkeypatch.setattr(bf, "search_traders", _async_ret(payload))
     r = client.get("/api/broker/traders", params={"search": "富邦"})
     assert r.status_code == 200
-    assert r.json() == hits
+    assert r.json() == payload

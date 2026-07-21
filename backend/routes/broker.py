@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.get("/api/broker/traders")
-async def get_broker_traders(search: str = Query(min_length=1)) -> list[dict]:
+async def get_broker_traders(search: str = Query(min_length=1)) -> dict:
     return await broker_flows.search_traders(search)
 
 
