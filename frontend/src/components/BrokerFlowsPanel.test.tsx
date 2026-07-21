@@ -42,6 +42,8 @@ afterEach(() => {
   cleanup();
   // SC-8:selected 走 sessionStorage(useSessionState),測試間必清防污染
   sessionStorage.clear();
+  // SC-9:常用分點走 localStorage,同樣清
+  localStorage.clear();
 });
 
 async function pickFubon(payload: BrokerFlowsPayload = mk()) {
@@ -222,6 +224,50 @@ describe("BrokerFlowsPanel", () => {
     );
     await screen.findByTestId("broker-flows-buy", undefined, { timeout: 3000 });
     expect(flowsSpy).toHaveBeenCalled();
+  });
+
+  // SC-9(mod/batch-ui-polish):常用分點 — 選定後星號加入,chips 一鍵帶入,
+  // localStorage 持久化(重整 / remount 仍在)。
+  it("星號加入常用 → chip 顯示 → remount 後仍在 → 點 chip 一鍵帶入查詢", async () => {
+    await pickFubon();
+    // 加入常用
+    fireEvent.click(screen.getByLabelText("加入常用分點"));
+    expect(screen.getByLabelText("移除常用分點")).toBeTruthy();
+    const row = screen.getByTestId("saved-brokers-row");
+    expect(row.textContent).toContain("9600 富邦");
+    expect(JSON.parse(localStorage.getItem("neigui.saved-brokers.v1") ?? "[]")).toEqual([
+      { id: "9600", name: "富邦" },
+    ]);
+    cleanup();
+    sessionStorage.clear(); // 清 SC-8 selected,模擬全新 session 只剩常用清單
+
+    const flowsSpy = vi.spyOn(api, "brokerDailyFlows").mockResolvedValue(mk());
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    // 精確 accessible name(regex 會同時撈到「自常用移除 …」鈕 — selector 過鬆)
+    const chip = within(screen.getByTestId("saved-brokers-row")).getByRole("button", {
+      name: "9600 富邦",
+    });
+    fireEvent.click(chip);
+    await waitFor(() => expect(flowsSpy).toHaveBeenCalled());
+    expect(flowsSpy.mock.calls[0]?.[0]).toBe("9600");
+    expect((screen.getByLabelText("搜尋分點") as HTMLInputElement).value).toBe("9600 富邦");
+  });
+
+  it("常用 chip 可移除(× 鈕),清單清空後 row 消失", async () => {
+    localStorage.setItem(
+      "neigui.saved-brokers.v1",
+      JSON.stringify([{ id: "9600", name: "富邦" }]),
+    );
+    vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+    vi.spyOn(api, "brokerDailyFlows").mockResolvedValue(mk());
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    fireEvent.click(screen.getByLabelText("自常用移除 9600 富邦"));
+    expect(screen.queryByTestId("saved-brokers-row")).toBeNull();
+    expect(JSON.parse(localStorage.getItem("neigui.saved-brokers.v1") ?? "[]")).toEqual([]);
   });
 
   it("flows 錯誤碼映射繁中(review P2SUM-2)", async () => {

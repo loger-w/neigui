@@ -9,6 +9,13 @@ import {
 } from "../lib/broker-flows-data";
 import { cn } from "../lib/utils";
 import { formatBrokerLabel } from "../lib/broker-name";
+import {
+  addSavedBroker,
+  loadSavedBrokers,
+  removeSavedBroker,
+  saveSavedBrokers,
+  type SavedBroker,
+} from "../lib/saved-brokers";
 
 // 分點反查 tab(feat/broker-daily-flows SC-4/5/6):搜尋分點 → 金額買超/
 // 金額賣超雙表(分類鍵 = 排序鍵 = net_amount,design R5;bull 紅/bear 綠
@@ -41,6 +48,11 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
   const [debounced, setDebounced] = useState(initialEcho);
   const [open, setOpen] = useState(false);
   const [activeIdx, setActiveIdx] = useState(0);
+  // SC-9:常用分點(localStorage,樣板 = bubble-blocklist)
+  const [saved, setSaved] = useState<SavedBroker[]>(loadSavedBrokers);
+  useEffect(() => {
+    saveSavedBrokers(saved);
+  }, [saved]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -172,8 +184,36 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
           )}
         </div>
         {selected && (
-          <span className="inline-block px-1.5 py-px border border-line-strong text-ink text-xs">
+          <span className="inline-flex items-center gap-1 px-1.5 py-px border border-line-strong text-ink text-xs">
             {formatBrokerLabel(selected.broker_id, selected.broker_name)}
+            {/* SC-9:星號 toggle 常用 */}
+            {(() => {
+              const isSaved = saved.some((s) => s.id === selected.broker_id);
+              return (
+                <button
+                  type="button"
+                  aria-label={isSaved ? "移除常用分點" : "加入常用分點"}
+                  aria-pressed={isSaved}
+                  title={isSaved ? "自常用分點移除" : "加入常用分點"}
+                  onClick={() =>
+                    setSaved((list) =>
+                      isSaved
+                        ? removeSavedBroker(list, selected.broker_id)
+                        : addSavedBroker(list, {
+                            id: selected.broker_id,
+                            name: selected.broker_name,
+                          }),
+                    )
+                  }
+                  className={cn(
+                    "cursor-pointer leading-none",
+                    isSaved ? "text-[#f0b429]" : "text-ink-dim hover:text-[#f0b429]",
+                  )}
+                >
+                  {isSaved ? "★" : "☆"}
+                </button>
+              );
+            })()}
           </span>
         )}
         {flows.data && (
@@ -197,6 +237,43 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
           </button>
         )}
       </div>
+
+      {/* SC-9:常用分點 chips — 一鍵帶入查詢(等同 dropdown pick) */}
+      {saved.length > 0 && (
+        <div
+          data-testid="saved-brokers-row"
+          className="shrink-0 px-4 py-1.5 border-b border-line flex flex-wrap items-center gap-1.5"
+        >
+          <span className="text-2xs text-ink-dim uppercase tracking-wider">常用</span>
+          {saved.map((s) => (
+            <span
+              key={s.id}
+              className={cn(
+                "inline-flex items-center gap-1 px-1.5 py-0.5 border rounded text-xs",
+                selected?.broker_id === s.id
+                  ? "border-accent text-accent"
+                  : "border-line text-ink-muted",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => pickTrader({ broker_id: s.id, broker_name: s.name })}
+                className="cursor-pointer hover:text-accent"
+              >
+                {formatBrokerLabel(s.id, s.name)}
+              </button>
+              <button
+                type="button"
+                aria-label={`自常用移除 ${formatBrokerLabel(s.id, s.name)}`}
+                onClick={() => setSaved((list) => removeSavedBroker(list, s.id))}
+                className="text-ink-dim hover:text-bear cursor-pointer leading-none"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {flows.noTradingDay && flows.data && (
         <div className="shrink-0 px-4 py-1.5 text-xs text-ink-muted bg-accent/[0.06] border-b border-line">
