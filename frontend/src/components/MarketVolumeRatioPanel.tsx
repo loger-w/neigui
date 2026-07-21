@@ -8,13 +8,19 @@ type Props = {
   onSymbolPick: (stockId: string) => void;
 };
 
-type SortKey = "volume_ratio" | "change_rate";
+type SortKey = "volume_ratio" | "change_rate" | "amount";
 
 const DEFAULT_THRESHOLD = 1.5;
 const MARKET_LABEL = { twse: "上市", tpex: "上櫃" } as const;
+/** SC-6:可排序欄定義 — 點欄位標題設定排序鍵(降序),取代舊 toggle 鈕。 */
+const SORT_COLUMNS: readonly [SortKey, string][] = [
+  ["change_rate", "漲跌"],
+  ["volume_ratio", "量比"],
+  ["amount", "成交額"],
+];
 
 /** MK-6(mod/batch-ui-update):經典檢視退役後保留的量比功能 — 門檻(預設
- * 1.5)過濾出全部符合個股(非 top30),可切量比/漲跌幅排序,點列跳 equity。 */
+ * 1.5)過濾出全部符合個股(非 top30),點欄位標題排序,點列跳 equity。 */
 export function MarketVolumeRatioPanel({ rows, loading, onSymbolPick }: Props): ReactElement {
   const [threshold, setThreshold] = useState<number>(DEFAULT_THRESHOLD);
   const [sortKey, setSortKey] = useState<SortKey>("volume_ratio");
@@ -42,7 +48,9 @@ export function MarketVolumeRatioPanel({ rows, loading, onSymbolPick }: Props): 
       .sort((a, b) =>
         sortKey === "volume_ratio"
           ? b.volume_ratio - a.volume_ratio
-          : b.change_rate - a.change_rate,
+          : sortKey === "change_rate"
+            ? b.change_rate - a.change_rate
+            : b.total_amount - a.total_amount,
       );
     body = (
       <div className="flex flex-col min-h-0 mt-2 text-xs gap-2">
@@ -62,25 +70,6 @@ export function MarketVolumeRatioPanel({ rows, loading, onSymbolPick }: Props): 
               className="w-16 h-6 px-1 bg-bg border border-line text-ink tabular-nums focus:outline-none focus:border-accent"
             />
           </label>
-          <div className="inline-flex items-stretch">
-            {(
-              [
-                ["volume_ratio", "依量比排序"],
-                ["change_rate", "依漲跌幅排序"],
-              ] as const
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setSortKey(key)}
-                className={`px-2 py-0.5 border border-line -ml-px first:ml-0 cursor-pointer transition-colors ${
-                  sortKey === key ? "text-accent border-accent relative z-10" : "text-ink-dim hover:text-ink"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
           <span className="text-ink-dim">{matched.length} 檔</span>
         </div>
         {matched.length === 0 ? (
@@ -92,9 +81,30 @@ export function MarketVolumeRatioPanel({ rows, loading, onSymbolPick }: Props): 
                 <tr className="text-ink-dim text-left">
                   <th className="font-normal">代號/名稱</th>
                   <th className="font-normal">市場</th>
-                  <th className="font-normal text-right">漲跌</th>
-                  <th className="font-normal text-right">量比</th>
-                  <th className="font-normal text-right">成交額</th>
+                  {SORT_COLUMNS.map(([key, label]) => {
+                    const active = sortKey === key;
+                    return (
+                      <th
+                        key={key}
+                        className="font-normal text-right"
+                        aria-sort={active ? "descending" : undefined}
+                      >
+                        <button
+                          type="button"
+                          aria-label={`依${label}排序`}
+                          onClick={() => setSortKey(key)}
+                          className={`cursor-pointer hover:text-ink ${
+                            active ? "text-accent" : ""
+                          }`}
+                        >
+                          {label}
+                          <span aria-hidden="true" className="ml-0.5">
+                            {active ? "▾" : ""}
+                          </span>
+                        </button>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
