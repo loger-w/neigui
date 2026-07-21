@@ -8,7 +8,7 @@ import type {
   WarrantsPayload,
 } from "./warrant-data";
 import type { WarrantFlowHistoryPayload, WarrantFlowPayload } from "./warrant-flow-data";
-import type { BrokerFlowsPayload, TraderHit } from "./broker-flows-data";
+import type { BrokerFlowsPayload, TraderSearchPayload } from "./broker-flows-data";
 import { apiOrigin } from "./api-base";
 
 const BASE = "/api";
@@ -264,7 +264,7 @@ export const api = {
   },
   brokerTraders(
     search: string, options?: RequestOptions,
-  ): Promise<TraderHit[]> {
+  ): Promise<TraderSearchPayload> {
     return get(`${BASE}/broker/traders`, { search }, options);
   },
   brokerDailyFlows(

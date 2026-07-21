@@ -11,10 +11,13 @@ import type { BrokerFlowsPayload } from "../lib/broker-flows-data";
 import { BrokerFlowsPanel } from "./BrokerFlowsPanel";
 import { makeQueryWrapper } from "../test-utils/query-wrapper";
 
-const HITS = [
-  { broker_id: "9600", broker_name: "富邦" },
-  { broker_id: "9604", broker_name: "富邦-陽明" },
-];
+const HITS = {
+  hits: [
+    { broker_id: "9600", broker_name: "富邦" },
+    { broker_id: "9604", broker_name: "富邦-陽明" },
+  ],
+  total: 2,
+};
 
 const mk = (over?: Partial<BrokerFlowsPayload>): BrokerFlowsPayload => ({
   broker_id: "9600",
@@ -57,7 +60,7 @@ async function pickFubon(payload: BrokerFlowsPayload = mk()) {
 
 describe("BrokerFlowsPanel", () => {
   it("未選分點 → 引導文案,不打 flows API", () => {
-    vi.spyOn(api, "brokerTraders").mockResolvedValue([]);
+    vi.spyOn(api, "brokerTraders").mockResolvedValue({ hits: [], total: 0 });
     const flowsSpy = vi.spyOn(api, "brokerDailyFlows").mockResolvedValue(mk());
     render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
       wrapper: makeQueryWrapper(),
@@ -110,7 +113,7 @@ describe("BrokerFlowsPanel", () => {
   });
 
   it("搜尋無結果 → 「查無符合分點」(review S4)", async () => {
-    vi.spyOn(api, "brokerTraders").mockResolvedValue([]);
+    vi.spyOn(api, "brokerTraders").mockResolvedValue({ hits: [], total: 0 });
     render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
       wrapper: makeQueryWrapper(),
     });

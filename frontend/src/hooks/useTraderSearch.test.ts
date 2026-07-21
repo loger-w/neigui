@@ -10,7 +10,7 @@ import { api } from "../lib/api";
 import { useTraderSearch } from "./useTraderSearch";
 import { makeQueryWrapper } from "../test-utils/query-wrapper";
 
-const HITS = [{ broker_id: "9600", broker_name: "富邦" }];
+const HITS = { hits: [{ broker_id: "9600", broker_name: "富邦" }], total: 1 };
 
 beforeEach(() => vi.restoreAllMocks());
 afterEach(() => cleanup());
