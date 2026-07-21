@@ -392,6 +392,26 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(badge).toBeHidden({ timeout: 5000 });
   });
 
+  test("E33: 前 15 大列表「看泡泡圖」鈕 → 切 tab + 該分點自動聚焦(CH-1)", async ({ page }) => {
+    // 痛點:跳轉鏈 = BrokerRow 動作鈕(stopPropagation)→ App setTab +
+    // bubbleFocus(id+seq)→ ChipBubbleView focusRequest effect 選中。
+    // vitest 各鎖單元;這裡鎖全鏈(lazy tab 首開帶 focusRequest mount 的
+    // effect 順序也只有真 browser 走得到)。Fixture:分點001 買100/賣80。
+    const bubbleBtn = page.getByTestId("broker-row-bubble-btn").first();
+    await expect(bubbleBtn).toBeVisible();
+    await bubbleBtn.click();
+    // 已切到泡泡圖 tab 且該分點成為選中 → totals 資料級 assertion
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    const totals = page.getByTestId(TESTIDS.bubbleBrokerTotals);
+    await expect(totals).toContainText("買 100 張");
+    await expect(totals).toContainText("賣 80 張");
+    // 整列 click 白名單行為未被吃掉(白名單 2):回總覽實際點列 → 仍 toggle 選取
+    await page.getByRole("button", { name: "籌碼總覽" }).click();
+    const row = page.locator('div[role="button"]').filter({ hasText: "分點001" }).first();
+    await row.click();
+    await expect(page.getByTestId(TESTIDS.chipSelectedBar)).toContainText("分點001");
+  });
+
   test("E32: 泡泡圖過濾清單 — 排除分點後泡泡/統計消失 + reload 持久(BB-1)", async ({ page }) => {
     // 痛點:過濾鏈 = popover 搜尋加入 → blocklist state → visibleTrades 上游
     // 過濾 → 計數/BrokerSearch/泡泡同步。vitest 鎖 jsdom 邏輯層;這裡鎖真

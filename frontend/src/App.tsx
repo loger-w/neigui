@@ -241,6 +241,18 @@ export default function App() {
     [],
   );
 
+  // CH-1(mod/batch-ui-update):籌碼總攬列表「看泡泡圖」鈕 → 切 bubble tab
+  // 並聚焦該分點。seq 遞增讓同分點重複點擊也重新聚焦(使用者可能中途改選)。
+  const [bubbleFocus, setBubbleFocus] = useState<{
+    brokerId: string;
+    name: string;
+    seq: number;
+  } | null>(null);
+  const handleShowInBubble = useCallback((brokerId: string, name: string) => {
+    setTab("bubble");
+    setBubbleFocus((prev) => ({ brokerId, name, seq: (prev?.seq ?? 0) + 1 }));
+  }, []);
+
   const refresh = () => {
     refreshChip();
     brokersWindow.refresh();
@@ -450,6 +462,7 @@ export default function App() {
                 windowDays={windowDays}
                 actualDays={brokersWindow.data?.actual_days}
                 flowScroll={isMobile}
+                onShowInBubble={handleShowInBubble}
               />
             );
             // responsive spec §4.3:<lg 上下堆疊、整頁垂直捲動 — K 線 45vh
@@ -497,6 +510,7 @@ export default function App() {
               intradayPoints={intradayHook.data?.points ?? null}
               onJumpToOverview={handleJumpToOverview}
               loading={bubbleHook.loading && !!symbol}
+              focusRequest={bubbleFocus}
             />
           </Suspense>
         </div>
