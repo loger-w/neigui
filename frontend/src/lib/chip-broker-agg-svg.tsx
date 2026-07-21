@@ -27,10 +27,12 @@ export interface BrokerAggBarProps {
   label: string;
   hoverIndex?: number | null;
   selectedIndex?: number | null;
+  /** CH-2b:窗加總文案(parent 格式化,如「5日 +60 張」)。 */
+  windowText?: string | null;
 }
 
 export const BrokerAggBarSvg = memo(function BrokerAggBarSvg({
-  data, width, height, label, hoverIndex, selectedIndex,
+  data, width, height, label, hoverIndex, selectedIndex, windowText,
 }: BrokerAggBarProps) {
   const midY = height / 2;
   const halfH = midY - 2;
@@ -75,10 +77,12 @@ export const BrokerAggBarSvg = memo(function BrokerAggBarSvg({
         style={{ fontVariantNumeric: "tabular-nums" }}>
         <tspan x={4} fill={LABEL_COLOR} fontWeight={600}>{label}</tspan>
         <tspan dx={8} fill={valColor}>{fmtLots(valRaw)} 張</tspan>
+        {windowText && <tspan dx={8} fill={CHIP.inkDim}>· {windowText}</tspan>}
       </text>
 
       {hoverIndex != null && hoverIndex >= 0 && hoverIndex < data.length && (
         <line
+          data-testid="sub-crosshair"
           x1={KLINE_PAD_L + step * hoverIndex + step / 2} y1={0}
           x2={KLINE_PAD_L + step * hoverIndex + step / 2} y2={height}
           stroke={CHIP.inkDim} strokeWidth={1} strokeDasharray="4 3"

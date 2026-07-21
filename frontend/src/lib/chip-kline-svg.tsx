@@ -4,6 +4,7 @@ import { memo } from "react";
 import type { DailyCandle } from "../lib/chip-data";
 import { CHIP, svgLabelFont, svgLegendFont } from "./chip-theme";
 import { rangeBandX, type RangeBand } from "./chip-range-band";
+import type { WindowAgg } from "./chip-window-agg";
 
 const CHIP_THEME = {
   bg: "#14110c",
@@ -141,6 +142,9 @@ interface KlineChartProps {
   /** chip-controls-v2: N 日聚合區間 highlight。null = 不渲染。
    *  startIdx/endIdx 對應目前 sliced candles 的 index 範圍。 */
   rangeBand?: RangeBand | null;
+  /** CH-2a(mod/batch-ui-update):windowDays > 1 時的窗範圍聚合。提供時
+   *  HUD 錨定顯示聚合值(不隨 hover 切回單日);null/undefined = 單日 HUD。 */
+  windowAgg?: WindowAgg | null;
 }
 
 export const KlineChartSvg = memo(KlineChartSvgImpl);
@@ -151,7 +155,7 @@ function KlineChartSvgImpl({
   hoverY, onHoverY,
   selectedIndex, onClickIndex,
   ma5Override, ma20Override, bbOverride,
-  rangeBand,
+  rangeBand, windowAgg,
 }: KlineChartProps) {
   if (candles.length === 0) return null;
 
@@ -268,8 +272,18 @@ function KlineChartSvgImpl({
       : n - 1;
   const infoCandle = candles[infoIdx]!;
   const prevClose = infoIdx > 0 ? candles[infoIdx - 1]!.close : infoCandle.open;
-  const change = infoCandle.close - prevClose;
-  const changePct = prevClose !== 0 ? (change / prevClose) * 100 : 0;
+  // CH-2a:windowAgg 提供時 HUD 錨定窗聚合(hover 不切回單日);否則單日值。
+  const info = windowAgg ?? {
+    open: infoCandle.open,
+    high: infoCandle.high,
+    low: infoCandle.low,
+    close: infoCandle.close,
+    volume: infoCandle.volume,
+    change: infoCandle.close - prevClose,
+    changePct: prevClose !== 0 ? ((infoCandle.close - prevClose) / prevClose) * 100 : 0,
+  };
+  const change = info.change;
+  const changePct = info.changePct;
   const changeColor = change >= 0 ? t.bull : t.bear;
   const changeSign = change >= 0 ? "+" : "";
   const changeArrow = change > 0 ? "▲" : change < 0 ? "▼" : "";
@@ -495,24 +509,26 @@ function KlineChartSvgImpl({
         </g>
       )}
 
-      {/* OHLCV info row (top-left) */}
+      {/* OHLCV info row (top-left) — CH-3b 無日期;CH-2a 窗聚合模式加 N日 前綴 */}
       <text
         y={padT - 6} fontSize={svgLabelFont(width)} fontFamily={t.font}
         style={{ fontVariantNumeric: "tabular-nums" }}
       >
-        <tspan x={padL + 4} fill={t.inkDim}>{infoCandle.date.replace(/-/g, "/")}</tspan>
-        <tspan dx={8} fill={t.inkDim}>開</tspan>
-        <tspan dx={2} fill={t.ink}>{fmtPrice(infoCandle.open)}</tspan>
+        {windowAgg ? (
+          <tspan x={padL + 4} fill={t.ma5}>{windowAgg.days}日</tspan>
+        ) : null}
+        <tspan x={windowAgg ? undefined : padL + 4} dx={windowAgg ? 8 : undefined} fill={t.inkDim}>開</tspan>
+        <tspan dx={2} fill={t.ink}>{fmtPrice(info.open)}</tspan>
         <tspan dx={8} fill={t.inkDim}>高</tspan>
-        <tspan dx={2} fill={t.ink}>{fmtPrice(infoCandle.high)}</tspan>
+        <tspan dx={2} fill={t.ink}>{fmtPrice(info.high)}</tspan>
         <tspan dx={8} fill={t.inkDim}>低</tspan>
-        <tspan dx={2} fill={t.ink}>{fmtPrice(infoCandle.low)}</tspan>
+        <tspan dx={2} fill={t.ink}>{fmtPrice(info.low)}</tspan>
         <tspan dx={8} fill={t.inkDim}>收</tspan>
-        <tspan dx={2} fill={t.ink}>{fmtPrice(infoCandle.close)}</tspan>
+        <tspan dx={2} fill={t.ink}>{fmtPrice(info.close)}</tspan>
         <tspan dx={8} fill={changeColor}>{changeArrow}{changeSign}{fmtPrice(Math.abs(change))}</tspan>
         <tspan dx={4} fill={changeColor}>{changeSign}{changePct.toFixed(2)}%</tspan>
         <tspan dx={8} fill={t.inkDim}>量</tspan>
-        <tspan dx={2} fill={t.ink}>{fmtNum(infoCandle.volume)} 張</tspan>
+        <tspan dx={2} fill={t.ink}>{fmtNum(info.volume)} 張</tspan>
       </text>
 
       {/* MA / BB legend — gap 加大避免擠在一起 */}

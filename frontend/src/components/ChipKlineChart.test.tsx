@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { ChipKlineChart } from "./ChipKlineChart";
 import type { ChipHistory } from "../lib/chip-data";
 
@@ -387,6 +387,118 @@ describe("ChipKlineChart — B3 broker row 容器常駐 (C4 🔴)", () => {
     );
     const rowSelected = c2.querySelector("[data-testid=chip-broker-row]");
     expect(rowSelected).toBeTruthy();
+  });
+});
+
+// CH-2/CH-3(mod/batch-ui-update):窗聚合 HUD、子圖窗加總、拖曳防選字、
+// 整疊容器 hover 十字軸。
+describe("ChipKlineChart — CH-2/CH-3 窗聚合與整疊 hover", () => {
+  const mkHistoryWithNets = (n: number): ChipHistory => {
+    const base = mkHistory(n);
+    return {
+      ...base,
+      institutional: base.candles.map((c) => ({
+        date: c.date, foreign_net: 1, trust_net: 0, dealer_net: 0, major_net: 0,
+      })),
+      major: base.candles.map((c) => ({ date: c.date, major_net: 2 })),
+    };
+  };
+
+  // 痛點:CH-3a — K 線拖曳 pan 會把 HUD / label 文字反白選取,體驗差。
+  it("chart container suppresses text selection (select-none)", () => {
+    const history = mkHistory(120);
+    const { container } = render(
+      <ChipKlineChart
+        history={history}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const root = container.querySelector("[data-testid=chip-kline-chart]")!;
+    expect(root.className).toContain("select-none");
+  });
+
+  // 痛點:CH-3c — 十字軸事件只掛在 K 線 SVG,滑到主力/外資等子圖就消失。
+  it("mousemove over the stack container drives sub-chart crosshairs", () => {
+    const history = mkHistory(120);
+    const { container } = render(
+      <ChipKlineChart
+        history={history}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const root = container.querySelector("[data-testid=chip-kline-chart]")!;
+    expect(container.querySelectorAll("[data-testid=sub-crosshair]").length).toBe(0);
+    // jsdom rect 全 0 → x = clientX;w fallback 600、PAD 內的 300 落在有效 index。
+    fireEvent.mouseMove(root, { clientX: 300, clientY: 400 });
+    expect(
+      container.querySelectorAll("[data-testid=sub-crosshair]").length,
+    ).toBeGreaterThanOrEqual(5);
+    fireEvent.mouseLeave(root);
+    expect(container.querySelectorAll("[data-testid=sub-crosshair]").length).toBe(0);
+  });
+
+  // 痛點:CH-2a — 改天數時 HUD 要顯示窗範圍 開高低收/漲跌/量 加總。
+  it("windowDays > 1 renders window-aggregate HUD (N日 + summed volume)", () => {
+    const history = mkHistory(120);
+    const selected = history.candles[100]!.date; // 預設 90 根視窗內
+    const { container } = render(
+      <ChipKlineChart
+        history={history}
+        selectedDate={selected}
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+        windowDays={5}
+      />,
+    );
+    expect(container.textContent).toContain("5日");
+    // mkHistory volume 恆 1000 → 5 日加總 5,000(千分位由 header 格式化)
+    expect(container.textContent).toContain("5,000");
+  });
+
+  // 痛點:CH-2b — 六個子圖的窗加總要同步呈現(外資 1/日、主力 2/日)。
+  it("windowDays > 1 appends per-subchart window sums", () => {
+    const history = mkHistoryWithNets(120);
+    const selected = history.candles[100]!.date;
+    const { container } = render(
+      <ChipKlineChart
+        history={history}
+        selectedDate={selected}
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+        windowDays={5}
+      />,
+    );
+    expect(container.textContent).toContain("5日 +5 張"); // 外資
+    expect(container.textContent).toContain("5日 +10 張"); // 主力
+  });
+
+  it("windowDays = 1 keeps the single-day HUD (no N日 aggregate marker)", () => {
+    const history = mkHistory(120);
+    const selected = history.candles[100]!.date;
+    const { container } = render(
+      <ChipKlineChart
+        history={history}
+        selectedDate={selected}
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+        windowDays={1}
+      />,
+    );
+    expect(container.textContent).not.toContain("1日");
   });
 });
 

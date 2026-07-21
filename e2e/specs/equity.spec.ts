@@ -64,6 +64,23 @@ test.describe("equity mode", () => {
     await page.getByRole("option").first().click();
     await expect(page.getByTestId(TESTIDS.panelResizeHandle)).toBeVisible();
   });
+
+  test("E31: windowDays 窗聚合 HUD + 子圖 hover 十字軸(mod/batch-ui-update CH-2/3)", async ({ page }) => {
+    // 痛點:CH-2 窗聚合(HUD N日 marker)與 CH-3c(十字軸事件掛整疊容器,
+    // hover 子圖也要出現)是跨 renderer 的整合行為,vitest 鎖數值、這裡鎖
+    // 真瀏覽器事件鏈;HUD 不得再出現斜線日期(CH-3b)。
+    await page.getByPlaceholder(/搜尋代號/).fill("2330");
+    await page.getByRole("option").first().click();
+    const chart = page.getByTestId(TESTIDS.chipKlineChart);
+    await expect(chart).toBeVisible();
+    await page.getByRole(ROLES.windowDays10.role, { name: ROLES.windowDays10.name }).click();
+    await expect(chart).toContainText("10日");
+    expect(await chart.textContent()).not.toMatch(/\d{4}\/\d{2}\/\d{2}/);
+    // hover 到子圖區(容器下緣 3/4 高度處)→ sub-crosshair 出現
+    const box = (await chart.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.75);
+    await expect(page.getByTestId(TESTIDS.subCrosshair).first()).toBeVisible();
+  });
 });
 
 // responsive spec SC2/SC4:手機 viewport smoke。viewport 一律 test.use 導航前固定

@@ -18,11 +18,9 @@ interface Props {
    *  aria-busy so screen readers announce the busy state. Previous summary
    *  stays visible — no empty placeholder flash. */
   loading?: boolean;
-  /** N-day window header. When undefined, panel renders single-day style
-   *  (legacy). When set, panel renders "過去 N 日加總" near the top. */
+  /** CH-4(mod/batch-ui-update)後 header 已刪除,此二欄位僅為 caller 相容
+   *  保留(N 日脈絡改由 K 線 HUD 呈現)。 */
   windowDays?: number;
-  /** Trading-days actually aggregated, may be < windowDays when anchor date
-   *  is too early in history. When < windowDays, panel adds "(實際 X 日)". */
   actualDays?: number;
   /** 手機堆疊版面(responsive):true 時整體交由外層頁面捲動,買賣超清單
    *  自然高度完整展開(不做內部雙捲動區、header 不 sticky)。桌面(預設
@@ -163,7 +161,7 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
 export function ChipBrokersPanel({
   summary, dayTotalLots, selectedBrokerIds,
   onToggleBroker, onClearAllBrokers, loading,
-  windowDays, actualDays, flowScroll,
+  flowScroll,
 }: Props) {
   const [mode, setMode] = useState<Mode>("net");
 
@@ -233,47 +231,16 @@ export function ChipBrokersPanel({
         )}
       </div>
 
-      {windowDays !== undefined && (
-        <div
-          data-testid="window-header"
-          className="px-3 py-1.5 border-b border-line text-xs text-ink-dim flex items-baseline gap-1.5 bg-bg-deep/40"
-        >
-          {windowDays === 1 ? (
-            <>
-              <span>當日</span>
-              <span className="text-ink-muted tabular-nums">{summary.date}</span>
-            </>
-          ) : (
-            <>
-              <span>過去</span>
-              <span className="text-ink-muted tabular-nums">{windowDays}</span>
-              <span>日加總</span>
-              {actualDays !== undefined && actualDays < windowDays && (
-                <span className="text-accent">(實際 {actualDays} 日)</span>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* F7: 主力買賣超 above 融資融券. chip-controls-v3 (2026-06-29) brings
-          back 三大法人 N-day net between them — K-line subcharts no longer
-          carry the N-day range band, so the aggregate numbers belong here. */}
-      <div className="px-3 py-2 border-b border-line flex items-center justify-between text-base">
-        <span className="text-ink-dim">主力買賣超</span>
-        <span className={`tabular-nums font-medium ${majorNet >= 0 ? "text-accent" : "text-bear"}`}>
-          {majorNet > 0 ? "+" : ""}{fmtVol(majorNet)} 張
-        </span>
-      </div>
-
+      {/* CH-4(mod/batch-ui-update):日期 header 刪除(N 日脈絡由 K 線 HUD 承載),
+          主力併入法人 grid 成 4 欄、無「三大法人」標題 — 騰空間給前 15 大列表。 */}
       <div
         data-testid="panel-institutional"
         className="px-3 py-2.5 border-b border-line"
       >
-        <div className="text-sm text-ink-dim uppercase tracking-wider mb-2">三大法人</div>
-        <div className="grid grid-cols-3 gap-2 text-base">
+        <div className="grid grid-cols-4 gap-2 text-base">
           {(
             [
+              ["主力", "major", majorNet],
               ["外資", "foreign", summary.institutional?.foreign?.net ?? 0],
               ["投信", "trust", summary.institutional?.trust?.net ?? 0],
               ["自營商", "dealer", summary.institutional?.dealer?.net ?? 0],
@@ -296,7 +263,6 @@ export function ChipBrokersPanel({
       </div>
 
       <div className="px-3 py-2.5 border-b border-line">
-        <div className="text-sm text-ink-dim uppercase tracking-wider mb-2">融資融券</div>
         <div className="grid grid-cols-3 gap-2 text-base mb-1.5">
           <div>
             <div className="text-ink-dim mb-0.5">融資增減</div>

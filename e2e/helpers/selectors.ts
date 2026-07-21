@@ -70,6 +70,9 @@ export const TESTIDS = {
   flowSellCol: "flow-sell-col",
   flowWarrantTable: "flow-warrant-table",
 
+  // 籌碼總攬窗聚合 + 整疊十字軸(mod/batch-ui-update CH-2/3)
+  subCrosshair: "sub-crosshair",
+
   // 既有(component 內既有,不在 Wave 1 modify scope)
   refreshSpinner: "refresh-spinner",
   panelResizeHandle: "panel-resize-handle",
