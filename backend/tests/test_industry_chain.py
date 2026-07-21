@@ -12,6 +12,7 @@ Spec: .claude/mod/market-today-only/change-spec.md §3(新資料源)/ §4 Backen
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 
 import httpx
@@ -111,6 +112,14 @@ async def test_get_chain_cache_hit_zero_calls(mock_finmind_chain) -> None:
     """暖 cache 後第二次呼叫零 FinMind call(TTL 未過期)。"""
     await ic.get_chain()
     await ic.get_chain()
+    assert len(mock_finmind_chain) == 1
+
+
+async def test_get_chain_concurrent_dedup(mock_finmind_chain) -> None:
+    """並發 ×2 → inflight 合流,FinMind 只 call 一次(characterization,
+    refactor F-3:遷移前拍「合流」現狀 — 此性質新舊兩版 _run_once 皆成立)。"""
+    out = await asyncio.gather(ic.get_chain(), ic.get_chain())
+    assert out[0] == out[1] == {"半導體業": {"晶圓代工": ["2330"], "IC設計": ["2454"]}}
     assert len(mock_finmind_chain) == 1
 
 
