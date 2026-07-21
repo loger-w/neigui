@@ -73,6 +73,15 @@ const WarrantFlowPanel = lazy(() =>
 
 type Tab = "overview" | "bubble" | "warrants" | "warrant-flow";
 
+// equity tab 鈕樣板收斂(docs/next-time.md 2026-07-14 條目,第 5 個 tab 觸發):
+// 按鈕 JSX 逐字同構 → config + map;hidden div 內容各異,維持逐一列舉。
+const EQUITY_TABS: { key: Tab; label: string }[] = [
+  { key: "overview", label: "籌碼總覽" },
+  { key: "bubble", label: "泡泡圖" },
+  { key: "warrants", label: "權證" },
+  { key: "warrant-flow", label: "權證分點" },
+];
+
 function todayStr(): string {
   const d = new Date();
   const y = d.getFullYear();
@@ -362,50 +371,20 @@ export default function App() {
           </button>
         </div>
         <div className="flex mt-3 gap-0 border-b border-line -mb-[1px]">
-          <button
-            type="button"
-            onClick={() => setTab("overview")}
-            className={`px-4 py-2 pointer-coarse:min-h-11 text-sm transition-colors cursor-pointer ${
-              tab === "overview"
-                ? "text-accent border-b-2 border-accent font-medium"
-                : "text-ink-dim hover:text-ink"
-            }`}
-          >
-            籌碼總覽
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("bubble")}
-            className={`px-4 py-2 pointer-coarse:min-h-11 text-sm transition-colors cursor-pointer ${
-              tab === "bubble"
-                ? "text-accent border-b-2 border-accent font-medium"
-                : "text-ink-dim hover:text-ink"
-            }`}
-          >
-            泡泡圖
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("warrants")}
-            className={`px-4 py-2 pointer-coarse:min-h-11 text-sm transition-colors cursor-pointer ${
-              tab === "warrants"
-                ? "text-accent border-b-2 border-accent font-medium"
-                : "text-ink-dim hover:text-ink"
-            }`}
-          >
-            權證
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("warrant-flow")}
-            className={`px-4 py-2 pointer-coarse:min-h-11 text-sm transition-colors cursor-pointer ${
-              tab === "warrant-flow"
-                ? "text-accent border-b-2 border-accent font-medium"
-                : "text-ink-dim hover:text-ink"
-            }`}
-          >
-            權證分點
-          </button>
+          {EQUITY_TABS.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`px-4 py-2 pointer-coarse:min-h-11 text-sm transition-colors cursor-pointer ${
+                tab === key
+                  ? "text-accent border-b-2 border-accent font-medium"
+                  : "text-ink-dim hover:text-ink"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </header>
 
