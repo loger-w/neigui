@@ -5,18 +5,42 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from typing import TYPE_CHECKING
 
-import httpx
 from fastapi import APIRouter, Query
+
+if TYPE_CHECKING:
+    from services.finmind import FinMindClient
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+_FINMIND_BASE = "https://api.finmindtrade.com/api/v4"
 
 _symbols: list[dict] = []
 # perf/cold-start:共用載入 task(inflight dedup)。module 持有引用,client 斷線
 # 或 request 結束都不取消它(樣板:finmind_realtime._run_once 的 module-level
 # 引用慣例)。
 _load_task: asyncio.Task | None = None
+
+
+def get_finmind() -> "FinMindClient":
+    """per-module wrap(finmind-conventions):test 可獨立 monkeypatch。"""
+    from services.finmind import get_finmind as _real
+
+    return _real()
+
+
+def _dedup_rows(data: list[dict]) -> list[dict]:
+    """TaiwanStockInfo rows → 去重後的 {symbol, name} 清單(現股 type only)。"""
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    for r in data:
+        sid = r.get("stock_id", "")
+        if sid and sid not in seen and r.get("type") in ("twse", "tpex", "otc"):
+            seen.add(sid)
+            deduped.append({"symbol": sid, "name": r.get("stock_name", "")})
+    return deduped
 
 
 async def load_symbols() -> None:
@@ -40,38 +64,21 @@ async def load_symbols() -> None:
             logger.warning("FAKE_FINMIND fixture %s missing, symbol list empty", fixture)
             _symbols = []
             return
-        seen: set[str] = set()
-        deduped: list[dict] = []
-        for r in data:
-            sid = r.get("stock_id", "")
-            if sid and sid not in seen and r.get("type") in ("twse", "tpex", "otc"):
-                seen.add(sid)
-                deduped.append({"symbol": sid, "name": r.get("stock_name", "")})
-        _symbols = deduped
+        _symbols = _dedup_rows(data)
         logger.info("FAKE_FINMIND loaded %d symbols from fixture", len(_symbols))
         return
-    token = os.getenv("FINMIND_TOKEN", "")
-    if not token:
+    if not os.getenv("FINMIND_TOKEN", ""):
         logger.warning("FINMIND_TOKEN not set, symbol search disabled")
         return
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(
-                "https://api.finmindtrade.com/api/v4/data",
-                params={"dataset": "TaiwanStockInfo"},
-                headers={"Authorization": f"Bearer {token}"},
-            )
-            resp.raise_for_status()
-            data = resp.json().get("data", [])
-            seen: set[str] = set()
-            deduped: list[dict] = []
-            for r in data:
-                sid = r.get("stock_id", "")
-                if sid and sid not in seen and r.get("type") in ("twse", "tpex", "otc"):
-                    seen.add(sid)
-                    deduped.append({"symbol": sid, "name": r.get("stock_name", "")})
-            _symbols = deduped
-            logger.info("Loaded %d symbols from FinMind", len(_symbols))
+        # 收編 FinMind 接入慣例(next-time /perf cold-start 條目):走 singleton
+        # client(TokenBucket + 共用連線),不再自建裸 httpx client。
+        data = await get_finmind()._get(  # type: ignore[attr-defined]
+            f"{_FINMIND_BASE}/data",
+            {"dataset": "TaiwanStockInfo"},
+        )
+        _symbols = _dedup_rows(data)
+        logger.info("Loaded %d symbols from FinMind", len(_symbols))
     except Exception as exc:
         logger.warning("Failed to load symbols: %s", exc)
 

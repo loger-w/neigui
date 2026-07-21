@@ -5,6 +5,57 @@ import routes.symbols as symbols_mod
 from main import app
 
 
+# --- load_symbols 走 FinMind 接入慣例(next-time 收編:裸 httpx → get_finmind)---
+
+
+class _StubClient:
+    def __init__(self, rows: list[dict] | Exception):
+        self._rows = rows
+        self.calls: list[tuple[str, dict]] = []
+
+    async def _get(self, url: str, params: dict) -> list:
+        self.calls.append((url, params))
+        if isinstance(self._rows, Exception):
+            raise self._rows
+        return self._rows
+
+
+async def test_load_symbols_fetches_via_finmind_client(monkeypatch):
+    # 收編契約:production 路徑走 per-module get_finmind()(TokenBucket +
+    # singleton + fake-override 全部隨之生效),不再自建裸 httpx client。
+    stub = _StubClient(
+        [
+            {"stock_id": "2330", "stock_name": "台積電", "type": "twse"},
+            {"stock_id": "2330", "stock_name": "台積電", "type": "twse"},  # dup
+            {"stock_id": "6488", "stock_name": "環球晶", "type": "tpex"},
+            {"stock_id": "TXO", "stock_name": "期權", "type": "index"},  # 非現股 type
+            {"stock_id": "", "stock_name": "空 id", "type": "twse"},
+        ]
+    )
+    monkeypatch.setattr(symbols_mod, "get_finmind", lambda: stub)
+    monkeypatch.setattr(symbols_mod, "_symbols", [])
+    await symbols_mod.load_symbols()
+    assert symbols_mod._symbols == [
+        {"symbol": "2330", "name": "台積電"},
+        {"symbol": "6488", "name": "環球晶"},
+    ]
+    assert stub.calls == [
+        (
+            "https://api.finmindtrade.com/api/v4/data",
+            {"dataset": "TaiwanStockInfo"},
+        )
+    ]
+
+
+async def test_load_symbols_swallows_upstream_failure(monkeypatch):
+    # 既有契約保持:上游失敗只留 warning、_symbols 不動(lazy reload 下輪重試)。
+    stub = _StubClient(RuntimeError("boom"))
+    monkeypatch.setattr(symbols_mod, "get_finmind", lambda: stub)
+    monkeypatch.setattr(symbols_mod, "_symbols", [])
+    await symbols_mod.load_symbols()  # 不得 raise
+    assert symbols_mod._symbols == []
+
+
 def test_search_symbols_filters_by_prefix(monkeypatch):
     monkeypatch.setattr(
         symbols_mod,
