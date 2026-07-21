@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.40.1",
+    date: "2026-07-21",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "分點反查的搜尋下拉對螢幕閱讀器更友善:鍵盤上下瀏覽時會朗讀目前停留的分點,搜尋結果過多被截斷時也會語音提示",
+      },
+    ],
+  },
+  {
     version: "0.40.0",
     date: "2026-07-21",
     highlights: "自選清單改版、大盤單頁化、分點名稱統一、返回狀態保留與常用分點",
