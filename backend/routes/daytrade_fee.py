@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import logging
-from datetime import date as date_type
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
 
 from services import daytrade_fee as svc
 from utils.cancel import run_with_disconnect
+from utils.validation import parse_date_param
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +23,8 @@ async def get_daytrade_fee(
     refresh: bool = False,
 ) -> dict:
     if date is not None:
-        try:
-            date_type.fromisoformat(date)
-        except ValueError:
-            raise HTTPException(status_code=400, detail={"error": "bad_date"}) from None
+        # strict=False 保留收斂前僅 fromisoformat 的寬鬆行為(F-3 零行為差異)
+        parse_date_param(date, strict=False)
     try:
         # run_with_disconnect:對齊 chip/options/market 全部 upstream-IO route 慣例;
         # client 斷線即 cancel handler,service _run_once 的 shield+refcount 才有
