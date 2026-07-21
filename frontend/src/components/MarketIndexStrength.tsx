@@ -1,9 +1,14 @@
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { changeColorClass, signedPercent } from "../lib/market-format";
 import { OptionsInfoHint } from "./OptionsInfoHint";
 import type { IndexContribEntry, IndexContribGroup, IndexSide, IndexStrength } from "../lib/market-types";
 
-type Props = { data: IndexStrength | null; loading: boolean };
+type Props = {
+  data: IndexStrength | null;
+  loading: boolean;
+  /** SC-4:漲跌家數 embedded 區塊,掛卡片 body 之後(單頁 layout)。 */
+  breadthSlot?: ReactNode;
+};
 
 /** SC-1:spread>0 = 權值拉抬指數,<0 = 中小強於指數,null → "—"(貢獻估算誤差來源之一)。 */
 function spreadLabel(spread: number | null): string {
@@ -136,7 +141,7 @@ function ContribBlock({
   );
 }
 
-export function MarketIndexStrength({ data, loading }: Props): ReactElement {
+export function MarketIndexStrength({ data, loading, breadthSlot }: Props): ReactElement {
   let body: ReactElement;
   if (loading) {
     body = (
@@ -182,6 +187,7 @@ export function MarketIndexStrength({ data, loading }: Props): ReactElement {
         </OptionsInfoHint>
       </h3>
       {body}
+      {breadthSlot}
     </section>
   );
 }

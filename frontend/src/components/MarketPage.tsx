@@ -63,25 +63,27 @@ export function MarketPage({ isActive, onSymbolPick }: Props): ReactElement {
       )}
       <div className="flex-1 overflow-y-auto min-h-0">
         {/* market-today-only(change-spec.md §1):舊 EOD 四格全部退役,今日
-            三卡改吃 tick snapshot 當下欄位,無背景計算、無 eod_pending 輪詢。 */}
+            三卡改吃 tick snapshot 當下欄位,無背景計算、無 eod_pending 輪詢。
+            SC-4(mod/batch-ui-polish):單頁 layout — 漲跌家數內嵌大盤強弱卡、
+            量比排行併入主 grid(族群輪動右側),下排 breadth-row 退役。 */}
         <div
           data-testid="market-v2-grid"
-          className="lg:h-full grid grid-cols-1 lg:grid-cols-[4fr_2fr_6fr]"
+          className="lg:h-full grid grid-cols-1 lg:grid-cols-[4fr_2fr_4fr_3fr]"
         >
-          <MarketIndexStrength data={data?.index_strength ?? null} loading={!data} />
+          <MarketIndexStrength
+            data={data?.index_strength ?? null}
+            loading={!data}
+            breadthSlot={
+              <MarketBreadthPanel
+                data={data?.breadth ?? null}
+                loading={!data}
+                onSymbolPick={onSymbolPick}
+                embedded
+              />
+            }
+          />
           <MarketCapTiers data={data?.cap_tiers ?? null} loading={!data} />
           <MarketSectorRotation data={data?.sector_rotation ?? null} loading={!data} />
-        </div>
-        {/* MK-5/6(mod/batch-ui-update):經典檢視退役,改為漲跌家數 + 量比排行 */}
-        <div
-          data-testid="market-breadth-row"
-          className="grid grid-cols-1 lg:grid-cols-[2fr_3fr] border-t border-line"
-        >
-          <MarketBreadthPanel
-            data={data?.breadth ?? null}
-            loading={!data}
-            onSymbolPick={onSymbolPick}
-          />
           <MarketVolumeRatioPanel
             rows={data?.breadth?.rows ?? null}
             loading={!data}
