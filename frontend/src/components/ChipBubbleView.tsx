@@ -38,6 +38,11 @@ interface Props {
   /** C5 A5: symbol 已選但 bubble fetch 未回時顯 badge。對齊
    *  ChipKlineChart 的 loading badge pattern(L338-370)。 */
   loading?: boolean;
+  /** CH-1(mod/batch-ui-update): 籌碼總攬「看泡泡圖」鈕的聚焦請求。seq 遞增
+   *  觸發(同分點重複點擊也要重新聚焦)。R6:聚焦分點在排除清單 → 自動移除
+   *  (顯式意圖優先於舊設定,持久生效)+ R10 提示;當日無成交 → 維持選中 +
+   *  空狀態。name 由 caller 帶入 — 無成交時 trades 內查不到名稱。 */
+  focusRequest?: { brokerId: string; name: string; seq: number } | null;
 }
 
 // F12: surface every broker who traded today, including 1-張 ones. The
@@ -53,6 +58,7 @@ export function ChipBubbleView({
   intradayPoints,
   onJumpToOverview,
   loading,
+  focusRequest,
 }: Props) {
   // C1 🔵: selection state 存 broker_id(FinMind securities_trader_id),
   // 對齊 App.tsx selectedBrokerIds 契約,方便 A2 一鍵跳籌碼總覽。
@@ -81,6 +87,13 @@ export function ChipBubbleView({
     [bubbleData, blockedIds],
   );
 
+  // CH-1: focusRequest 聚焦狀態 — focusedBroker 記住「聚焦目標」讓當日無
+  // 成交的分點也有名稱可顯示;blockRemovalNotice = R10 提示(下一次聚焦或
+  // 換股時清)。
+  const [focusedBroker, setFocusedBroker] = useState<{ id: string; name: string } | null>(null);
+  const [blockRemovalNotice, setBlockRemovalNotice] = useState<string | null>(null);
+  const lastFocusSeq = useRef(0);
+
   // Reset selection ONLY on symbol change (NOT on date / bubbleData change).
   // C7 A1: brush 也一起清 —— 避免換股後舊 range 殘留誤導。
   useEffect(() => {
@@ -88,7 +101,26 @@ export function ChipBubbleView({
     setBrushRange(null);
     setManualInputOpen(false);
     setSheetOpen(false);
+    setFocusedBroker(null);
+    setBlockRemovalNotice(null);
   }, [symbol]);
+
+  // CH-1: focusRequest 聚焦。宣告順序必須在 symbol reset effect 之後 —
+  // mount 時 effects 依序跑,「帶著 focusRequest 首次 mount」(lazy tab 首開
+  // 就是點鈕觸發)得讓聚焦蓋過 reset,不能反過來被清掉。
+  useEffect(() => {
+    if (!focusRequest || focusRequest.seq === lastFocusSeq.current) return;
+    lastFocusSeq.current = focusRequest.seq;
+    if (blocked.some((b) => b.id === focusRequest.brokerId)) {
+      // R6: 顯式聚焦意圖優先於舊排除設定 — 自清單移除(持久生效)。
+      setBlocked((prev) => removeBlocked(prev, focusRequest.brokerId));
+      setBlockRemovalNotice(`已自過濾清單移除〈${focusRequest.name}〉`);
+    } else {
+      setBlockRemovalNotice(null);
+    }
+    setSelectedBrokerId(focusRequest.brokerId);
+    setFocusedBroker({ id: focusRequest.brokerId, name: focusRequest.name });
+  }, [focusRequest, blocked]);
 
   // Mobile:tap 泡泡選中分點 → 自動開明細 sheet(桌面右欄恆顯,不需要)。
   useEffect(() => {
@@ -341,6 +373,15 @@ export function ChipBubbleView({
               </span>
             </div>
           )}
+          {blockRemovalNotice && (
+            <span
+              data-testid="blocklist-removal-notice"
+              role="status"
+              className="text-xs text-[#f0b429]"
+            >
+              {blockRemovalNotice}
+            </span>
+          )}
           {/* C10 (🟢 Item 4 + 5):手動輸入區間 trigger + Help '?' icon 靠右 */}
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <BubbleBlocklistPopover
@@ -393,6 +434,21 @@ export function ChipBubbleView({
               priceRange={rangeActiveForFilter ? brushRange : null}
             />
           ) : null}
+          {/* CH-1 R6 case 2: 聚焦分點當日無成交 — 維持選中,泡泡圖照常
+              (該分點本來就不在圖上),中央 badge 說明而非誤導成資料壞掉。 */}
+          {focusedBroker !== null &&
+            selectedBrokerId === focusedBroker.id &&
+            bubbleData !== null &&
+            !bubbleData.trades.some((t) => t.broker_id === focusedBroker.id) && (
+              <div
+                data-testid="bubble-focus-no-trades"
+                className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
+              >
+                <div className="bg-bg-deep/90 border border-line-strong px-4 py-2 rounded shadow text-sm text-ink-muted">
+                  〈{focusedBroker.name}〉該分點當日無成交
+                </div>
+              </div>
+            )}
           {loading && symbol && (
             <div
               data-testid="bubble-loading-badge"

@@ -26,6 +26,9 @@ interface Props {
    *  自然高度完整展開(不做內部雙捲動區、header 不 sticky)。桌面(預設
    *  false)維持固定高度 + 買超/賣超各自內捲。 */
   flowScroll?: boolean;
+  /** CH-1(mod/batch-ui-update):每列「看泡泡圖」動作鈕 — App 層切 bubble
+   *  tab 並聚焦該分點。未提供時不渲染鈕(caller 相容)。 */
+  onShowInBubble?: (brokerId: string, name: string) => void;
 }
 
 type Mode = "net" | "volume";
@@ -65,9 +68,10 @@ interface RowProps {
   mode: Mode;
   selected: boolean;
   onToggle: () => void;
+  onShowInBubble?: (brokerId: string, name: string) => void;
 }
 
-function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
+function BrokerRow({ rank, broker, mode, selected, onToggle, onShowInBubble }: RowProps) {
   const badge = brokerBadge(broker.name);
   const netCls = broker.net > 0 ? "text-accent" : broker.net < 0 ? "text-bear" : "text-ink-dim";
   // Column order: 買均 → 賣均 → 買張 → 賣張 (avg-price pair first, then
@@ -117,6 +121,26 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
             {badge}
           </span>
         )}
+        {/* CH-1: 看泡泡圖動作鈕 — stopPropagation 保整列 click = toggle 選取
+            (白名單 2)。泡泡雙圈 glyph,hover 才上 accent 色,不搶列內數字。 */}
+        {onShowInBubble && (
+          <button
+            type="button"
+            data-testid="broker-row-bubble-btn"
+            aria-label={`在泡泡圖檢視 ${broker.name}`}
+            title="看泡泡圖"
+            onClick={(e) => {
+              e.stopPropagation();
+              onShowInBubble(broker.broker_id, broker.name);
+            }}
+            className="shrink-0 p-0.5 text-ink-dim hover:text-accent cursor-pointer"
+          >
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="size-3.5">
+              <circle cx="6" cy="9.5" r="4" stroke="currentColor" strokeWidth="1.5" />
+              <circle cx="11.5" cy="5" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          </button>
+        )}
         <span
           role="tooltip"
           data-testid="broker-name-tooltip"
@@ -161,7 +185,7 @@ function BrokerRow({ rank, broker, mode, selected, onToggle }: RowProps) {
 export function ChipBrokersPanel({
   summary, dayTotalLots, selectedBrokerIds,
   onToggleBroker, onClearAllBrokers, loading,
-  flowScroll,
+  flowScroll, onShowInBubble,
 }: Props) {
   const [mode, setMode] = useState<Mode>("net");
 
@@ -395,6 +419,7 @@ export function ChipBrokersPanel({
                     mode="net"
                     selected={selectedBrokerIds.has(b.broker_id)}
                     onToggle={() => onToggleBroker(b.broker_id)}
+                    onShowInBubble={onShowInBubble}
                   />
                 ))
               ) : (
@@ -431,6 +456,7 @@ export function ChipBrokersPanel({
                     mode="net"
                     selected={selectedBrokerIds.has(b.broker_id)}
                     onToggle={() => onToggleBroker(b.broker_id)}
+                    onShowInBubble={onShowInBubble}
                   />
                 ))
               ) : (
@@ -461,6 +487,7 @@ export function ChipBrokersPanel({
                 mode="volume"
                 selected={selectedBrokerIds.has(b.broker_id)}
                 onToggle={() => onToggleBroker(b.broker_id)}
+                onShowInBubble={onShowInBubble}
               />
             ))}
           </div>

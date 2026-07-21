@@ -780,3 +780,75 @@ describe("ChipBrokersPanel — flowScroll(手機堆疊)模式", () => {
     expect(container.querySelector(".sticky")).toBeTruthy();
   });
 });
+// CH-1(mod/batch-ui-update 🟢):前 15 大列表每列「看泡泡圖」動作鈕 —
+// 點擊跳泡泡圖 tab 並聚焦該分點(App 層接線),不得吃掉整列 click(白名單 2)。
+describe("ChipBrokersPanel — CH-1 看泡泡圖動作鈕", () => {
+  const single = mkBroker({
+    broker_id: "X1", name: "單一分點", buy: 100, sell: 10, net: 90,
+  });
+
+  it("有 onShowInBubble → 每列渲染動作鈕,點擊回傳 (broker_id, name) 且不觸發整列 toggle", () => {
+    const onToggle = vi.fn();
+    const onShow = vi.fn();
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary([single])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={onToggle}
+        onClearAllBrokers={noop}
+        onShowInBubble={onShow}
+      />,
+    );
+    const btn = container.querySelector(
+      "[data-testid=broker-row-bubble-btn]",
+    ) as HTMLButtonElement | null;
+    expect(btn).toBeTruthy();
+    expect(btn!.getAttribute("aria-label")).toContain("單一分點");
+    fireEvent.click(btn!);
+    expect(onShow).toHaveBeenCalledTimes(1);
+    expect(onShow).toHaveBeenCalledWith("X1", "單一分點");
+    // stopPropagation 保白名單 2:整列 toggle 不得被動作鈕觸發
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("交易量 mode 的列也有動作鈕", () => {
+    const onShow = vi.fn();
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary([single])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+        onShowInBubble={onShow}
+      />,
+    );
+    fireEvent.click(
+      Array.from(container.querySelectorAll("button")).find(
+        (b) => (b.textContent ?? "").includes("前 15 大交易量分點"),
+      )!,
+    );
+    const btn = container.querySelector(
+      "[data-testid=broker-row-bubble-btn]",
+    ) as HTMLButtonElement | null;
+    expect(btn).toBeTruthy();
+    fireEvent.click(btn!);
+    expect(onShow).toHaveBeenCalledWith("X1", "單一分點");
+  });
+
+  it("未傳 onShowInBubble → 不渲染動作鈕(caller 相容)", () => {
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary([single])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    expect(
+      container.querySelector("[data-testid=broker-row-bubble-btn]"),
+    ).toBeNull();
+  });
+});

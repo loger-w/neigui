@@ -734,6 +734,71 @@ describe("ChipBubbleView — BB-1 過濾清單", () => {
   });
 });
 
+// CH-1(mod/batch-ui-update 🟢):focusRequest 聚焦 — 籌碼總攬「看泡泡圖」鈕
+// 跳轉後自動選中該分點。R6:聚焦分點在排除清單 → 自動移除(顯式意圖優先於
+// 舊設定)+ R10 繁中提示;當日無成交 → 維持選中 + 空狀態。
+describe("ChipBubbleView — CH-1 focusRequest 聚焦", () => {
+  it("focusRequest 設定 → 該分點自動選中(totals 出現)", async () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        focusRequest={{ brokerId: "AL1", name: "Alpha", seq: 1 }}
+      />,
+    );
+    await waitFor(() => {
+      if (!container.querySelector('[data-testid="bubble-broker-totals"]')) {
+        throw new Error("totals not shown — focus did not select broker");
+      }
+    });
+    // 已篩選文案(無 onJumpToOverview)= 選中狀態的 header 呈現
+    expect((container.textContent ?? "").includes("已篩選")).toBe(true);
+  });
+
+  it("聚焦分點在排除清單 → 自動移除 + 提示「已自過濾清單移除〈名〉」(R6/R10)", async () => {
+    localStorage.setItem(
+      "neigui.bubble-broker-blocklist.v1",
+      JSON.stringify([{ id: "AL1", name: "Alpha" }]),
+    );
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        focusRequest={{ brokerId: "AL1", name: "Alpha", seq: 1 }}
+      />,
+    );
+    await waitFor(() => {
+      if (!(container.textContent ?? "").includes("已自過濾清單移除〈Alpha〉")) {
+        throw new Error("removal notice not shown");
+      }
+    });
+    // 清單真的移除(持久層同步)且分點恢復可見 → 選中 totals 出現
+    expect(
+      JSON.parse(localStorage.getItem("neigui.bubble-broker-blocklist.v1") ?? "x"),
+    ).toEqual([]);
+    expect(
+      container.querySelector('[data-testid="bubble-broker-totals"]'),
+    ).toBeTruthy();
+  });
+
+  it("聚焦分點當日無成交 → 維持選中 + 顯示空狀態(R6 case 2)", async () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        focusRequest={{ brokerId: "ZZ9", name: "無成交分點", seq: 1 }}
+      />,
+    );
+    await waitFor(() => {
+      if (!(container.textContent ?? "").includes("該分點當日無成交")) {
+        throw new Error("no-trades empty state not shown");
+      }
+    });
+    // 名稱也一併呈現,使用者知道是哪個分點
+    expect((container.textContent ?? "").includes("無成交分點")).toBe(true);
+  });
+});
+
 // C10 (🟢 Item 5): help '?' trigger 存在。popover 內容走 Radix Portal,
 // jsdom 環境 Portal fireEvent.click 觸發成本高;測 trigger 存在 + aria-label 即可。
 describe("ChipBubbleView — C10 help '?' icon (🟢 Item 5)", () => {
