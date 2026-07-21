@@ -6,6 +6,8 @@ type Props = {
   data: Breadth | null;
   loading: boolean;
   onSymbolPick: (stockId: string) => void;
+  /** SC-4:內嵌大盤強弱卡時去 section 外框(border/padding),標題縮小。 */
+  embedded?: boolean;
 };
 
 type ListTarget = { market: "twse" | "tpex"; kind: "limit_up" | "limit_down" };
@@ -52,7 +54,7 @@ function CountsRow({
   );
 }
 
-export function MarketBreadthPanel({ data, loading, onSymbolPick }: Props): ReactElement {
+export function MarketBreadthPanel({ data, loading, onSymbolPick, embedded }: Props): ReactElement {
   const [target, setTarget] = useState<ListTarget | null>(null);
 
   const toggleList = (t: ListTarget): void => {
@@ -124,8 +126,15 @@ export function MarketBreadthPanel({ data, loading, onSymbolPick }: Props): Reac
   }
 
   return (
-    <section data-testid="market-breadth" className="flex flex-col min-h-0 p-3 border-r border-line">
-      <h3 className="text-ink text-sm">漲跌家數</h3>
+    <section
+      data-testid="market-breadth"
+      className={
+        embedded
+          ? "flex flex-col min-h-0 mt-3 pt-2 border-t border-line"
+          : "flex flex-col min-h-0 p-3 border-r border-line"
+      }
+    >
+      <h3 className={embedded ? "text-ink-dim text-xs" : "text-ink text-sm"}>漲跌家數</h3>
       {body}
     </section>
   );

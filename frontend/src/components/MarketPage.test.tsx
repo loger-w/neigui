@@ -152,19 +152,22 @@ describe("MarketPage", () => {
     });
   });
 
-  // MK-5/6(mod/batch-ui-update):經典檢視位置換上漲跌家數 + 量比排行。
-  it("漲跌家數與量比排行 panel 掛在三卡 grid 之後", async () => {
+  // SC-4(mod/batch-ui-polish):單頁 layout — 漲跌家數移入大盤強弱卡內部
+  // 下方、量比排行併入主 grid(族群輪動右側),下排 breadth-row 退役。
+  it("漲跌家數在大盤強弱卡內、量比排行在主 grid 內,breadth-row 不存在", async () => {
     vi.spyOn(marketApi, "fetchMarketSnapshot").mockResolvedValue(richSnapshot);
     render(wrap(<MarketPage isActive={true} onSymbolPick={() => {}} />));
     await waitFor(() => {
       expect(screen.getByTestId("market-breadth")).toBeTruthy();
       expect(screen.getByTestId("market-volume-ratio")).toBeTruthy();
     });
+    const strength = screen.getByTestId("market-index-strength");
+    const breadth = screen.getByTestId("market-breadth");
+    expect(strength.contains(breadth)).toBe(true);
     const grid = screen.getByTestId("market-v2-grid");
-    const breadthRow = screen.getByTestId("market-breadth-row");
-    expect(
-      grid.compareDocumentPosition(breadthRow) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const vr = screen.getByTestId("market-volume-ratio");
+    expect(grid.contains(vr)).toBe(true);
+    expect(screen.queryByTestId("market-breadth-row")).toBeNull();
   });
 
   it("data=null(fetch 未 resolve)→ 三新卡 data-state=loading", () => {
