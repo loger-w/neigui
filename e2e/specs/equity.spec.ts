@@ -467,6 +467,12 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     const totals = page.getByTestId(TESTIDS.bubbleBrokerTotals);
     await expect(totals).toContainText("買 100 張");
     await expect(totals).toContainText("賣 80 張");
+    // P0 回歸鎖(Phase 5 review):mode 切走(equity 子樹真卸載)再切回,
+    // 陳舊 focusRequest 不得重放 — ChipBubbleView 重掛後不得自動再選中分點。
+    await page.getByRole(ROLES.modeSwitchMarket.role, { name: ROLES.modeSwitchMarket.name }).click();
+    await page.getByRole(ROLES.modeSwitchEquity.role, { name: ROLES.modeSwitchEquity.name }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.bubbleBrokerTotals)).toHaveCount(0);
     // 整列 click 白名單行為未被吃掉(白名單 2):回總覽實際點列 → 仍 toggle 選取
     await page.getByRole("button", { name: /^籌碼總覽$/ }).click();
     const row = page.locator('div[role="button"]').filter({ hasText: "分點001" }).first();
