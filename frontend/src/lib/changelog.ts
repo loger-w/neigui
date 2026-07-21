@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.39.1",
+    date: "2026-07-21",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "修正「看泡泡圖」按鈕用鍵盤(Enter/空白鍵)操作時會誤觸整列勾選、無法開啟泡泡圖的問題",
+      },
+    ],
+  },
+  {
     version: "0.39.0",
     date: "2026-07-21",
     highlights: "介面大改版:自選清單、泡泡圖過濾、權證評分、大盤漲跌家數與量比排行",

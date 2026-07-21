@@ -85,6 +85,10 @@ function BrokerRow({ rank, broker, mode, selected, onToggle, onShowInBubble }: R
   // C8 B1 (🟢): 整 row 可點,擴大 hit area。checkbox 保留但用 span wrapper
   // 攔 click bubble 避免 double-toggle。keyboard Enter/Space 也觸發。
   const handleKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    // 只認 row 自身的按鍵:巢狀互動元素(看泡泡圖鈕 / checkbox)的 keydown
+    // 冒泡上來若被 preventDefault,會抑制其原生 Enter/Space activation,
+    // 鍵盤操作變成誤觸整列 toggle(白名單 2 的鍵盤面)。
+    if (e.target !== e.currentTarget) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onToggle();

@@ -812,6 +812,36 @@ describe("ChipBrokersPanel — CH-1 看泡泡圖動作鈕", () => {
     expect(onToggle).not.toHaveBeenCalled();
   });
 
+  it("動作鈕上按 Enter/Space → 不誤觸整列 toggle(鍵盤路徑;row keydown 只認自身)", () => {
+    // 痛點:row 是 role=button + onKeyDown(Enter/Space preventDefault),
+    // 巢狀鈕的 keydown 冒泡上來會被 row 搶走 —— 鍵盤使用者按 Enter 變成
+    // 勾選該列,onShowInBubble 永遠不會執行(preventDefault 抑制原生 click)。
+    const onToggle = vi.fn();
+    const onShow = vi.fn();
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary([single])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={onToggle}
+        onClearAllBrokers={noop}
+        onShowInBubble={onShow}
+      />,
+    );
+    const btn = container.querySelector(
+      "[data-testid=broker-row-bubble-btn]",
+    ) as HTMLButtonElement;
+    fireEvent.keyDown(btn, { key: "Enter" });
+    fireEvent.keyDown(btn, { key: " " });
+    // row 的 toggle 不得被巢狀鈕的 keydown 觸發;原生 button 的 Enter/Space
+    // activation(瀏覽器合成 click)不再被 preventDefault 抑制。
+    expect(onToggle).not.toHaveBeenCalled();
+    // row 自身的鍵盤路徑不受影響(target === currentTarget)
+    const row = container.querySelector('[role="button"][aria-pressed]') as HTMLElement;
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
   it("交易量 mode 的列也有動作鈕", () => {
     const onShow = vi.fn();
     const { container } = render(
