@@ -116,6 +116,34 @@ describe("MarketSectorRotation", () => {
     expect(screen.queryByTestId("sector-members-panel")).toBeNull();
   });
 
+  // SC-5(mod/batch-ui-polish):成員列可點/Enter 跳個股(對齊量比排行列)。
+  it("成員列點擊/Enter → onSymbolPick(stock_id)", async () => {
+    const members: SectorMembers = {
+      industry: "半導體",
+      sub_industry: "記憶體IC",
+      members: [
+        { stock_id: "2330", name: "台積電", change_rate: 1.2, vol_ratio: 1.1, total_amount: 5e10 },
+      ],
+    };
+    vi.spyOn(marketApi, "fetchSectorMembers").mockResolvedValue(members);
+    const pick = vi.fn();
+    render(
+      wrap(
+        <MarketSectorRotation data={rotation} loading={false} onSymbolPick={pick} />,
+      ),
+    );
+    fireEvent.click(screen.getByTestId("sector-row-btn-半導體"));
+    fireEvent.click(screen.getByTestId("sub-row-半導體-記憶體IC"));
+    await waitFor(() => {
+      expect(screen.getByTestId("sector-member-2330")).toBeTruthy();
+    });
+    const row = screen.getByTestId("sector-member-2330");
+    fireEvent.click(row);
+    expect(pick).toHaveBeenCalledWith("2330");
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(pick).toHaveBeenCalledTimes(2);
+  });
+
   it("無副族群的主族群整列點擊 → 直接內嵌個股表(industry-level fetch)", async () => {
     const members: SectorMembers = { industry: "金融保險", sub_industry: null, members: [] };
     const spy = vi.spyOn(marketApi, "fetchSectorMembers").mockResolvedValue(members);

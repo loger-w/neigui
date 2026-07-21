@@ -83,7 +83,11 @@ export function MarketPage({ isActive, onSymbolPick }: Props): ReactElement {
             }
           />
           <MarketCapTiers data={data?.cap_tiers ?? null} loading={!data} />
-          <MarketSectorRotation data={data?.sector_rotation ?? null} loading={!data} />
+          <MarketSectorRotation
+            data={data?.sector_rotation ?? null}
+            loading={!data}
+            onSymbolPick={onSymbolPick}
+          />
           <MarketVolumeRatioPanel
             rows={data?.breadth?.rows ?? null}
             loading={!data}

@@ -4,7 +4,12 @@ import { fetchSectorMembers } from "../lib/market-api";
 import { changeColorClass, formatAmount, formatRatio, signedPercent } from "../lib/market-format";
 import type { SectorMembers, SectorRotation, SectorRotationGroup } from "../lib/market-types";
 
-type Props = { data: SectorRotation | null; loading: boolean };
+type Props = {
+  data: SectorRotation | null;
+  loading: boolean;
+  /** SC-5(mod/batch-ui-polish):成員列點擊跳 equity(對齊量比排行列)。 */
+  onSymbolPick?: (stockId: string) => void;
+};
 
 type Drill = { industry: string; subIndustry: string | null };
 
@@ -24,8 +29,10 @@ function GroupStatsRow({ group }: { group: SectorRotationGroup }): ReactElement 
  * 不再是卡片底部面板;收合 = 再點該列(無獨立關閉鈕)。 */
 function MembersPanel({
   query,
+  onSymbolPick,
 }: {
   query: UseQueryResult<SectorMembers, Error>;
+  onSymbolPick?: (stockId: string) => void;
 }): ReactElement {
   return (
     <div data-testid="sector-members-panel" className="mt-1 mb-1 pl-2 border-l border-line">
@@ -64,7 +71,24 @@ function MembersPanel({
               </thead>
               <tbody>
                 {query.data.members.map((m) => (
-                  <tr key={m.stock_id} data-testid={`sector-member-${m.stock_id}`}>
+                  <tr
+                    key={m.stock_id}
+                    data-testid={`sector-member-${m.stock_id}`}
+                    {...(onSymbolPick
+                      ? {
+                          role: "button" as const,
+                          tabIndex: 0,
+                          onClick: () => onSymbolPick(m.stock_id),
+                          onKeyDown: (e: React.KeyboardEvent) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              onSymbolPick(m.stock_id);
+                            }
+                          },
+                          className: "cursor-pointer hover:bg-bg-deep/50",
+                        }
+                      : {})}
+                  >
                     <td className="text-ink">{m.name}</td>
                     <td className={changeColorClass(m.change_rate)}>
                       {signedPercent(m.change_rate)}
@@ -81,7 +105,7 @@ function MembersPanel({
   );
 }
 
-export function MarketSectorRotation({ data, loading }: Props): ReactElement {
+export function MarketSectorRotation({ data, loading, onSymbolPick }: Props): ReactElement {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // MK-3:單一成員表目標(同時僅一個展開,沿用單一 lazy query 避免並發 fan-out)
   const [drill, setDrill] = useState<Drill | null>(null);
@@ -170,7 +194,7 @@ export function MarketSectorRotation({ data, loading }: Props): ReactElement {
                 </span>
               </button>
               {!hasSubs && isDrillTarget(ind.name, null) && (
-                <MembersPanel query={membersQuery} />
+                <MembersPanel query={membersQuery} onSymbolPick={onSymbolPick} />
               )}
               {hasSubs && expanded.has(ind.name) && (
                 <ul className="pl-6 mt-1 flex flex-col gap-1">
@@ -190,7 +214,7 @@ export function MarketSectorRotation({ data, loading }: Props): ReactElement {
                         <GroupStatsRow group={sub} />
                       </button>
                       {isDrillTarget(ind.name, sub.name) && (
-                        <MembersPanel query={membersQuery} />
+                        <MembersPanel query={membersQuery} onSymbolPick={onSymbolPick} />
                       )}
                     </li>
                   ))}
