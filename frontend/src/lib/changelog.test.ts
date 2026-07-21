@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
   });
 
-  it("最新版本是 v0.40.0(batch-ui-polish 九項改版)", () => {
-    expect(CHANGELOG[0]?.version).toBe("0.40.0");
+  it("最新版本是 v0.40.1(分點搜尋 combobox a11y)", () => {
+    expect(CHANGELOG[0]?.version).toBe("0.40.1");
   });
 
   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
