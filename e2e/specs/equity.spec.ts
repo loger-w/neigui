@@ -185,6 +185,33 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(block).not.toContainText("已累積");
   });
 
+  test("E30: 分點反查 tab — 搜尋選分點 → 雙表資料級 → 點列跳轉總覽(broker-daily-flows SC-4/5/7)", async ({ page }) => {
+    // 痛點:反查鏈(traders 目錄 → daily-flows 專用 path + FAKE trader 過濾 →
+    // net_amount 聚合 → 名稱 join)任一環空轉 = 面板空殼;鎖 fixture 手算值
+    // (2330 買500/賣100 → +400 張 / 4.01億;2412 獨特值 -7,777 張)防
+    // visibility 假綠 + data_id fallback 汙染(值變 = 有人吃錯 fixture)。
+    await page.getByRole("button", { name: "分點反查" }).click();
+    await page.getByLabel("搜尋分點").fill("富邦");
+    await page.getByRole("option", { name: "9600 富邦" }).click();
+    // FAKE_TODAY=2026-06-26(Fri)當日有料 → 無回退標註
+    await expect(page.getByText("資料日 06-26")).toBeVisible();
+    await expect(page.getByText(/尚無資料/)).toHaveCount(0);
+    const buy = page.getByTestId("broker-flows-buy");
+    await expect(buy).toContainText("台積電"); // 名稱 join(symbols fixture)
+    await expect(buy).toContainText("400"); // net_lots
+    await expect(buy).toContainText("4.01億"); // net_amount 縮寫(手算 400,500,000)
+    await expect(buy).toContainText("0050"); // 名稱 join 不到 → 代號
+    const sell = page.getByTestId("broker-flows-sell");
+    await expect(sell).toContainText("中華電");
+    await expect(sell).toContainText("-7,777");
+    await expect(sell).toContainText("-9.33億");
+    // 點 2330 列 → 跳回籌碼總覽 + symbol 帶入(SC-5;分點預選 → K 線 overlay)
+    await buy.getByRole("button", { name: /檢視 台積電/ }).click();
+    await expect(page.getByTestId(TESTIDS.chipKlineChart)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "籌碼分析" })).toBeVisible();
+    await expect(page.locator("header")).toContainText("2330");
+  });
+
   test("E10: 無權證標的空狀態(SC-7)", async ({ page }) => {
     // 痛點:2412 不在權證 fixture 的標的內 → 空 list → 繁中空狀態;
     // 若 backend 空標的誤回 404/500,這裡會看到 error 而非空狀態文案。
