@@ -40,6 +40,48 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.40.0",
+    date: "2026-07-21",
+    highlights: "自選清單改版、大盤單頁化、分點名稱統一、返回狀態保留與常用分點",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "自選清單改版:分組建立與刪除集中在「管理」面板,加入時可直接選分組一步完成,每檔股票旁有清楚的分組按鈕;清單欄位可左右拖曳調整寬度",
+      },
+      {
+        kind: "feature",
+        scope: "global",
+        text: "分點名稱全站統一顯示「代號 名稱」(例:9801 元大松江),個股、泡泡圖、權證分點與分點反查不再各自不同",
+      },
+      {
+        kind: "feature",
+        scope: "global",
+        text: "大盤頁改為單頁呈現不需捲動:漲跌家數併入大盤強弱卡,量比排行移到族群輪動右側",
+      },
+      {
+        kind: "feature",
+        scope: "global",
+        text: "族群輪動的個股可直接點擊跳到個股頁;量比排行改為點「漲跌 / 量比 / 成交額」欄位標題排序",
+      },
+      {
+        kind: "feature",
+        scope: "global",
+        text: "從分點反查或大盤跳到個股後再切回來,原本的查詢與展開內容會保留,不用重新操作",
+      },
+      {
+        kind: "feature",
+        scope: "global",
+        text: "分點反查新增「常用分點」:選定分點後按星號收藏,之後點一下即可帶入查詢",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "K 線與法人副圖的標示文字縮小,畫面更清爽;分點列表移除序號欄與重複標題列",
+      },
+    ],
+  },
+  {
     version: "0.39.1",
     date: "2026-07-21",
     changes: [
