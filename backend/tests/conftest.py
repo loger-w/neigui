@@ -84,6 +84,7 @@ def _reset_realtime_task_registries():
     """
     import asyncio
 
+    import services.broker_flows as bfl
     import services.daytrade_fee as df
     import services.finmind_realtime as fr
     import services.industry_chain as ic
@@ -103,7 +104,7 @@ def _reset_realtime_task_registries():
                 t._log_destroy_pending = False  # type: ignore[attr-defined]  # CPython 私有旗標
 
     # entry 兩種形狀並存:{"task": Task, "refs": int}(_run_once 同構)或裸 Task
-    for mod in (fr, mu, ic, wf, ivh, wq, ws, df):
+    for mod in (fr, mu, ic, wf, ivh, wq, ws, df, bfl):
         _drop_silently(e.get("task") if isinstance(e, dict) else e for e in mod._inflight.values())
         mod._inflight.clear()
     yield

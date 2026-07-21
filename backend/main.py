@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
 
+from routes.broker import router as broker_router
 from routes.chip import router as chip_router
 from routes.daytrade_fee import router as daytrade_fee_router
 from routes.market import router as market_router
@@ -89,6 +90,7 @@ app.add_middleware(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+app.include_router(broker_router)
 app.include_router(chip_router)
 app.include_router(daytrade_fee_router)
 app.include_router(market_router, prefix="/api/market")
