@@ -138,6 +138,40 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     );
   });
 
+  test("E35: 評分欄存在 + 預設評分降序 + toggle 升序(WA-2)", async ({ page }) => {
+    // 痛點:評分鏈 = merged 全集橫斷面 → score 附掛 → 預設 sortKey=score
+    // desc → cell 渲染。fixture 值不寫死(6 檔因子組合經計算層),改鎖
+    // 「序列單調性」— desc 非遞增、toggle 後非遞減,null(—)恆末端。
+    await page.getByRole("button", { name: /^權證$/ }).click();
+    await expect(page.getByTestId(TESTIDS.warrantRow)).toHaveCount(6);
+    const scoreHeader = page.locator("thead").getByRole("button", { name: /^評分/ });
+    await expect(scoreHeader).toContainText("↓"); // 預設 = 評分 desc
+    const readScores = async () => {
+      const texts = await page.getByTestId("score-cell").allTextContents();
+      return texts.map((t) => (t.trim() === "—" ? null : Number(t.trim())));
+    };
+    const desc = await readScores();
+    expect(desc.length).toBe(6);
+    const descNums = desc.filter((v): v is number => v !== null);
+    expect(descNums.length).toBeGreaterThan(0);
+    for (let i = 1; i < descNums.length; i++) {
+      expect(descNums[i]!).toBeLessThanOrEqual(descNums[i - 1]!);
+    }
+    // null 沉底:第一個 null 之後不得再有數值
+    const firstNull = desc.indexOf(null);
+    if (firstNull !== -1) {
+      expect(desc.slice(firstNull).every((v) => v === null)).toBe(true);
+    }
+    // toggle 升序:非遞減,null 仍末端
+    await scoreHeader.click();
+    await expect(scoreHeader).toContainText("↑");
+    const asc = await readScores();
+    const ascNums = asc.filter((v): v is number => v !== null);
+    for (let i = 1; i < ascNums.length; i++) {
+      expect(ascNums[i]!).toBeGreaterThanOrEqual(ascNums[i - 1]!);
+    }
+  });
+
   test("E9: 認售 toggle 篩選(SC-4)", async ({ page }) => {
     // 痛點:client-side filter 全鏈(filterWarrants → 表格 re-render)。
     // 認售在 fixture 只有 03001P 一檔,row 數 6 → 1 是 discriminative 訊號。
