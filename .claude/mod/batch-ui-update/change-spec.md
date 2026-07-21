@@ -146,7 +146,11 @@
 - **整檔刪除**:WarrantIvHistory.test / useWarrantIvHistory.test / warrant-iv-svg.test / WarrantFlowNetHistory.test / useWarrantFlowHistory.test / warrant-flow-history-svg.test / test_warrant_flow_history.py / MarketHeatmap.test / MarketLeaderboard.test / **heatmap-svg.test(R1)**。
 - **不該紅**:其餘全部 — 特別是 useChipData / useBrokerHistory / chip-svg 系列 / OptionsPage 全系 / BorrowFee 全系 / warrant_flow(主面板)/ warrant_iv_history service 測試 / finmind* 測試。
 
-## 6.5 進度帳(session 交接用,2026-07-21 session 1 收尾時寫)
+## 6.5 進度帳(session 交接用;**2026-07-21 session 2:全部完成**)
+
+**Session 2 完成紀錄**:🟢 G2 BB-1(7eaabb6)→ 🟢 G1 CH-1(2a63309)→ 🟢 G3 WL-1(6e15037)→ 🟢 G4 WA-2(8018d08 + 🔴 8f456d2 預設排序)→ e2e triage 全綠 53/53 + changelog 0.39.0(340ab47)→ Phase 5 review P0 fix(c3d05ca)→ 真實環境驗證截圖 6 張(4f4924a)。e2e triage 兩教訓:CH-1 aria-label 含「泡泡圖」撞 tab 鈕 substring selector(改 exact RegExp);SVG 垂直線 bbox 寬 0 → toBeVisible 恆 hidden(改 toBeAttached+count)。visual baseline 重生走 e2e-update-snapshots workflow,PR 註明。
+
+### 原 session 1 交接帳(已全數消化)
 
 **已完成(每步 commit 時全套自動化綠:backend pytest+ruff、frontend vitest+build)**:
 - 🔵 R1 popover 骨架抽共用(70b6636)
@@ -173,3 +177,6 @@
 
 - Round 1(2026-07-21):P0×0 / P1×4 / P2×4,全數 accepted 併入 — R1 heatmap-svg 刪除鏈、R2 test_finmind_realtime 該紅、R3 market-types/useMarketSnapshot 該紅、R4 漲停判定改 change_price + tick 容差、R5 mode 白名單、R6 CH-1×BB-1 交互規則、R7 評分演算法定序 + null 排序、R8 warrant_flow fixture/註解殘留。
 - Round 2(2026-07-21):**P0×0 / P1×0**(退出條件成立)/ P2×4 全數 accepted 併入 — R9 回退殘留敘述改實、R10 blocklist 自動移除加提示、R11 percentile n=1/tie 公式、R12 TICK_ENRICH 三欄自洽。R1-R8 除 R5 敘述(R9 校正)外均確認 resolved。
+- Phase 5 code review(2026-07-21 session 2,sub-agent 對 G1-G4 diff):P0×1 accepted — bubbleFocus 跨 mode 卸載重放(元件層 remount 實驗證實;真環境未穩定觸發但機制存在)→ fix c3d05ca(mode 離開 equity / 換股即清)+ e2e E33 回歸鎖。其餘 BB-1/WL-1/WA-2 演算法、null 排序、白名單 2/3/4/6、effect 順序核對無誤。
+
+self_review_head: 4f4924a
