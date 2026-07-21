@@ -220,9 +220,10 @@ describe("KlineChartSvg hoverY horizontal crosshair (F6)", () => {
 // LATEST candle even when the user had picked an older date. Fix is a 3-tier
 // fallback hover → selected → last in all four SVG components.
 describe("Bug #3 — info text honors selectedIndex when hoverIndex is null", () => {
+  // CH-3b 後 header 無日期 → 改以 volume(帶千分位,grid 價格標籤不會撞)區分列。
   const candles: DailyCandle[] = Array.from({ length: 10 }, (_, i) => ({
     date: `2026-06-${String(10 + i).padStart(2, "0")}`,
-    open: 100, high: 105, low: 95, close: 100, volume: 0,
+    open: 100, high: 105, low: 95, close: 100, volume: 1000 + i,
   }));
 
   it("KlineChartSvg OHLCV header uses selectedIndex when hoverIndex is null", () => {
@@ -232,9 +233,8 @@ describe("Bug #3 — info text honors selectedIndex when hoverIndex is null", ()
         selectedIndex={3} hoverIndex={null}
       />,
     );
-    // OHLCV header renders date with slashes; unique to that row.
-    expect(container.textContent).toContain("2026/06/13");
-    expect(container.textContent).not.toContain("2026/06/19");
+    expect(container.textContent).toContain("1,003");
+    expect(container.textContent).not.toContain("1,009");
   });
 
   it("KlineChartSvg OHLCV header prefers hoverIndex over selectedIndex", () => {
@@ -244,8 +244,8 @@ describe("Bug #3 — info text honors selectedIndex when hoverIndex is null", ()
         selectedIndex={3} hoverIndex={5}
       />,
     );
-    expect(container.textContent).toContain("2026/06/15");
-    expect(container.textContent).not.toContain("2026/06/13");
+    expect(container.textContent).toContain("1,005");
+    expect(container.textContent).not.toContain("1,003");
   });
 
   it("KlineChartSvg OHLCV header falls back to last candle when both null", () => {
@@ -255,7 +255,7 @@ describe("Bug #3 — info text honors selectedIndex when hoverIndex is null", ()
         selectedIndex={null} hoverIndex={null}
       />,
     );
-    expect(container.textContent).toContain("2026/06/19");
+    expect(container.textContent).toContain("1,009");
   });
 
   it("InstBarSvg label uses selectedIndex when hoverIndex is null", () => {
@@ -291,5 +291,104 @@ describe("Bug #3 — info text honors selectedIndex when hoverIndex is null", ()
     );
     expect(container.textContent).toContain("+20 張");
     expect(container.textContent).not.toContain("+30 張");
+  });
+});
+
+// CH-3b(mod/batch-ui-update):HUD 左上不再顯示日期(sel-cursor 的日期標籤
+// 為選取游標,保留 — 只有 header 的 YYYY/MM/DD 移除)。
+describe("CH-3b — OHLCV header 無日期", () => {
+  const candles: DailyCandle[] = Array.from({ length: 10 }, (_, i) => ({
+    date: `2026-06-${String(10 + i).padStart(2, "0")}`,
+    open: 100, high: 105, low: 95, close: 100, volume: 1000 + i,
+  }));
+
+  // 痛點:CH-3b — 刪日期是為了把 HUD 讓給範圍聚合;斜線日期格式為 header 專屬。
+  it("header does not render a slash-formatted date", () => {
+    const { container } = render(
+      <KlineChartSvg
+        candles={candles} width={500} height={300}
+        selectedIndex={3} hoverIndex={null}
+      />,
+    );
+    expect(container.textContent).not.toMatch(/\d{4}\/\d{2}\/\d{2}/);
+  });
+});
+
+// CH-2a(mod/batch-ui-update):windowAgg 提供時 HUD 顯示窗聚合(不隨 hover 變)。
+describe("CH-2a — KlineChartSvg windowAgg HUD", () => {
+  const candles: DailyCandle[] = Array.from({ length: 10 }, (_, i) => ({
+    date: `2026-06-${String(10 + i).padStart(2, "0")}`,
+    open: 100, high: 105, low: 95, close: 100, volume: 0,
+  }));
+  const agg = {
+    days: 5, open: 100, high: 120, low: 90, close: 110,
+    volume: 5000, change: 10, changePct: 10,
+  };
+
+  // 痛點:CH-2a — 天數窗聚合要在第一眼(HUD)可見,不是只有右欄。
+  it("renders window aggregate values with a N日 marker", () => {
+    const { container } = render(
+      <KlineChartSvg
+        candles={candles} width={500} height={300}
+        selectedIndex={6} windowAgg={agg}
+      />,
+    );
+    expect(container.textContent).toContain("5日");
+    expect(container.textContent).toContain("5,000");
+    expect(container.textContent).toContain("+10.00%");
+  });
+
+  // 痛點:窗聚合模式下 HUD 錨定範圍,hover 不得把 HUD 切回單日值。
+  it("hover does not switch the HUD back to per-day values", () => {
+    const { container } = render(
+      <KlineChartSvg
+        candles={candles} width={500} height={300}
+        selectedIndex={6} hoverIndex={2} windowAgg={agg}
+      />,
+    );
+    expect(container.textContent).toContain("5,000");
+    expect(container.textContent).not.toContain("量 0");
+  });
+});
+
+// CH-2b(mod/batch-ui-update):子圖 label 尾端顯示窗內加總(parent 格式化)。
+describe("CH-2b — subchart windowText", () => {
+  // 痛點:CH-2b — 改天數時六個子圖要跟著呈現窗加總,不能只有 K 線有 band。
+  it("InstBarSvg appends windowText to the label row", () => {
+    const { container } = render(
+      <InstBarSvg
+        data={[10, 20, 30]} width={400} height={50} label="外資"
+        windowText="5日 +55 張"
+      />,
+    );
+    expect(container.textContent).toContain("5日 +55 張");
+  });
+
+  it("InstBarSvg omits windowText when not provided", () => {
+    const { container } = render(
+      <InstBarSvg data={[10, 20, 30]} width={400} height={50} label="外資" />,
+    );
+    expect(container.textContent).not.toContain("5日");
+  });
+
+  it("MarginLineSvg appends windowText to the label row", () => {
+    const { container } = render(
+      <MarginLineSvg
+        marginData={[10, 20, 30]} shortData={[5, 15, 25]}
+        width={400} height={50} label="融資融券"
+        windowText="5日 融資+60 融券+45 張"
+      />,
+    );
+    expect(container.textContent).toContain("5日 融資+60 融券+45 張");
+  });
+
+  it("BrokerAggBarSvg appends windowText to the label row", () => {
+    const { container } = render(
+      <BrokerAggBarSvg
+        data={[10, 20, 30]} width={400} height={50} label="分點 (1)"
+        windowText="5日 +60 張"
+      />,
+    );
+    expect(container.textContent).toContain("5日 +60 張");
   });
 });

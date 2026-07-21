@@ -93,22 +93,31 @@ describe("ChipBrokersPanel — broker name tooltip (full name on hover)", () => 
   });
 });
 
-describe("ChipBrokersPanel — N-day window header", () => {
-  it("does NOT render window header when windowDays is undefined (single-day style)", () => {
-    const { container } = render(
-      <ChipBrokersPanel
-        summary={mkSummary(topBrokers)}
-        dayTotalLots={1000}
-        selectedBrokerIds={new Set()}
-        onToggleBroker={noop}
-        onClearAllBrokers={noop}
-      />,
-    );
-    expect(container.querySelector("[data-testid=window-header]")).toBeFalsy();
-    expect(container.textContent).not.toContain("過去");
+// CH-4(mod/batch-ui-update):右欄瘦身 — 日期 header 刪除、主力併入法人
+// grid(無「三大法人」標題)、「融資融券」標題刪除,騰空間給前 15 大列表。
+describe("ChipBrokersPanel — CH-4 右欄瘦身", () => {
+  // 痛點:CH-4a — 日期/過去N日 header 佔一列;N 日脈絡已由 K 線 HUD 承載。
+  it("does NOT render the window/date header for any windowDays", () => {
+    for (const days of [undefined, 1, 30]) {
+      const { container, unmount } = render(
+        <ChipBrokersPanel
+          summary={mkSummary(topBrokers)}
+          dayTotalLots={1000}
+          selectedBrokerIds={new Set()}
+          onToggleBroker={noop}
+          onClearAllBrokers={noop}
+          windowDays={days}
+        />,
+      );
+      expect(container.querySelector("[data-testid=window-header]")).toBeFalsy();
+      expect(container.textContent).not.toContain("當日");
+      expect(container.textContent).not.toContain("日加總");
+      unmount();
+    }
   });
 
-  it("renders '過去 N 日加總' when windowDays is set and actualDays equals", () => {
+  // 痛點:CH-4b — 主力/外資/投信/自營商同層 4 欄,不再有「三大法人」標題列。
+  it("renders 主力 alongside 外資/投信/自營商 in one grid without the 三大法人 heading", () => {
     const { container } = render(
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
@@ -116,20 +125,20 @@ describe("ChipBrokersPanel — N-day window header", () => {
         selectedBrokerIds={new Set()}
         onToggleBroker={noop}
         onClearAllBrokers={noop}
-        windowDays={30}
-        actualDays={30}
       />,
     );
-    const header = container.querySelector("[data-testid=window-header]");
-    expect(header).toBeTruthy();
-    expect(header!.textContent).toContain("過去");
-    expect(header!.textContent).toContain("30");
-    expect(header!.textContent).toContain("日加總");
-    // 實際 == 目標時不顯示括號提示
-    expect(header!.textContent).not.toContain("實際");
+    const inst = container.querySelector("[data-testid=panel-institutional]")!;
+    expect(inst).toBeTruthy();
+    expect(inst.textContent).toContain("主力");
+    expect(inst.textContent).toContain("外資");
+    expect(inst.textContent).toContain("投信");
+    expect(inst.textContent).toContain("自營商");
+    expect(inst.querySelector("[data-testid=inst-major-net]")).toBeTruthy();
+    expect(container.textContent).not.toContain("三大法人");
   });
 
-  it("adds '(實際 X 日)' when actualDays < windowDays", () => {
+  // 痛點:CH-4c — 「融資融券」標題刪除,數值列(增減/券資比/餘額)保留。
+  it("drops the 融資融券 heading but keeps its data rows", () => {
     const { container } = render(
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
@@ -137,34 +146,14 @@ describe("ChipBrokersPanel — N-day window header", () => {
         selectedBrokerIds={new Set()}
         onToggleBroker={noop}
         onClearAllBrokers={noop}
-        windowDays={30}
-        actualDays={7}
       />,
     );
-    const header = container.querySelector("[data-testid=window-header]");
-    expect(header!.textContent).toContain("實際 7 日");
-  });
-
-  // chip-date-controls 2026-06-29: windowDays=1 應顯「當日 YYYY-MM-DD」
-  // (取 summary.date),不應顯「過去 1 日加總」。
-  it("renders '當日 YYYY-MM-DD' when windowDays=1", () => {
-    const { container } = render(
-      <ChipBrokersPanel
-        summary={mkSummary(topBrokers)}
-        dayTotalLots={1000}
-        selectedBrokerIds={new Set()}
-        onToggleBroker={noop}
-        onClearAllBrokers={noop}
-        windowDays={1}
-        actualDays={1}
-      />,
-    );
-    const header = container.querySelector("[data-testid=window-header]");
-    expect(header).toBeTruthy();
-    expect(header!.textContent).toContain("當日");
-    expect(header!.textContent).toContain("2026-06-22");
-    expect(header!.textContent).not.toContain("過去");
-    expect(header!.textContent).not.toContain("加總");
+    expect(container.textContent).not.toContain("融資融券");
+    expect(container.textContent).toContain("融資增減");
+    expect(container.textContent).toContain("融券增減");
+    expect(container.textContent).toContain("券資比");
+    expect(container.textContent).toContain("融資餘額");
+    expect(container.textContent).toContain("融券餘額");
   });
 });
 
@@ -250,7 +239,7 @@ describe("ChipBrokersPanel — 三大法人 N-day net (chip-controls-v3)", () =>
     expect(dealerVal!.textContent).toContain("0");
   });
 
-  it("appears BEFORE 融資融券 in DOM order", () => {
+  it("appears BEFORE the margin data rows in DOM order", () => {
     const { container } = render(
       <ChipBrokersPanel
         summary={instSummary(100, 200, 300)}
@@ -263,7 +252,7 @@ describe("ChipBrokersPanel — 三大法人 N-day net (chip-controls-v3)", () =>
     );
     const html = container.innerHTML;
     const instIdx = html.indexOf("外資");
-    const marginIdx = html.indexOf("融資融券");
+    const marginIdx = html.indexOf("融資增減");
     expect(instIdx).toBeGreaterThan(-1);
     expect(marginIdx).toBeGreaterThan(-1);
     expect(instIdx).toBeLessThan(marginIdx);
@@ -289,8 +278,8 @@ describe("ChipBrokersPanel — 三大法人 N-day net (chip-controls-v3)", () =>
   });
 });
 
-describe("ChipBrokersPanel F7 — 主力買賣超 above 融資融券", () => {
-  it("主力買賣超 row appears BEFORE 融資融券 row in DOM order", () => {
+describe("ChipBrokersPanel F7 — 主力 above margin rows", () => {
+  it("主力 cell appears BEFORE 融資增減 row in DOM order", () => {
     const { container } = render(
       <ChipBrokersPanel
         summary={mkSummary(topBrokers)}
@@ -301,8 +290,8 @@ describe("ChipBrokersPanel F7 — 主力買賣超 above 融資融券", () => {
       />,
     );
     const html = container.innerHTML;
-    const majorIdx = html.indexOf("主力買賣超");
-    const marginIdx = html.indexOf("融資融券");
+    const majorIdx = html.indexOf("主力");
+    const marginIdx = html.indexOf("融資增減");
     expect(majorIdx).toBeGreaterThan(-1);
     expect(marginIdx).toBeGreaterThan(-1);
     expect(majorIdx).toBeLessThan(marginIdx);

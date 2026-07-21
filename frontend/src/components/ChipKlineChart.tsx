@@ -4,11 +4,14 @@ import {
   KlineChartSvg,
   rollingMean,
   calcBollinger,
+  KLINE_PAD_L,
+  KLINE_PAD_R,
 } from "../lib/chip-kline-svg";
 import { InstBarSvg, MarginLineSvg } from "../lib/chip-inst-bar-svg";
 import { BrokerAggBarSvg } from "../lib/chip-broker-agg-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
 import { computeRangeBand } from "../lib/chip-range-band";
+import { computeWindowAgg, sumRange } from "../lib/chip-window-agg";
 import { LoadingSpinner } from "./ui/loading-spinner";
 
 interface Props {
@@ -215,6 +218,27 @@ export function ChipKlineChart({
     setVisibleDays(KLINE_ZOOM_DEFAULT);
   };
 
+  // CH-3c(mod/batch-ui-update):十字軸事件掛整疊容器 — hover 主力/外資等
+  // 子圖時也能驅動各子圖的 sub-crosshair(KlineChartSvg 內部 handler 只負責
+  // 價格橫線 hoverY;hoverIndex 兩處計算幾何一致,重複 set 無害)。
+  const handleStackMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const n = derived?.candles.length ?? 0;
+    if (n <= 0) return;
+    const w = rect.width || width || 600;
+    const slotW = (w - KLINE_PAD_L - KLINE_PAD_R) / n;
+    if (slotW <= 0) return;
+    const idx = Math.floor((e.clientX - rect.left - KLINE_PAD_L) / slotW);
+    setHoverIndex(idx >= 0 && idx < n ? idx : null);
+  };
+
+  const handleStackMouseLeave = () => {
+    setHoverIndex(null);
+    setHoverY(null);
+  };
+
   const windowRange = useMemo(() => {
     if (!fullDerived) return null;
     const total = fullDerived.candles.length;
@@ -285,16 +309,55 @@ export function ChipKlineChart({
     };
   }, [fullDerived, windowRange]);
 
-  const brokerAggSeries = useMemo(() => {
-    if (!derived) return [] as number[];
+  const brokerDateNet = useMemo(() => {
     const dateNet = new Map<string, number>();
     for (const arr of brokerSeries.values()) {
       for (const d of arr) {
         dateNet.set(d.date, (dateNet.get(d.date) ?? 0) + d.net);
       }
     }
-    return derived.candles.map((c) => dateNet.get(c.date) ?? 0);
-  }, [derived, brokerSeries]);
+    return dateNet;
+  }, [brokerSeries]);
+
+  const brokerAggSeries = useMemo(() => {
+    if (!derived) return [] as number[];
+    return derived.candles.map((c) => brokerDateNet.get(c.date) ?? 0);
+  }, [derived, brokerDateNet]);
+
+  // CH-2(mod/batch-ui-update):窗聚合以 FULL history 的 index 計(不受 zoom
+  // 視窗裁切影響),錨定 selectedDate 往前 windowDays-1 個交易日 — 與右欄
+  // useChipBrokersWindow 的「過去 N 日」語意一致。
+  const windowFullRange = useMemo(() => {
+    if (!fullDerived || windowDays === undefined || windowDays <= 1 || !selectedDate) {
+      return null;
+    }
+    const idx = fullDerived.candles.findIndex((c) => c.date === selectedDate);
+    if (idx < 0) return null;
+    return { start: Math.max(0, idx - windowDays + 1), end: idx };
+  }, [fullDerived, windowDays, selectedDate]);
+
+  const windowAgg = useMemo(() => {
+    if (!fullDerived || !windowFullRange) return null;
+    return computeWindowAgg(fullDerived.candles, windowFullRange.start, windowFullRange.end);
+  }, [fullDerived, windowFullRange]);
+
+  const windowTexts = useMemo(() => {
+    if (!fullDerived || !windowFullRange || !windowAgg) return null;
+    const { start, end } = windowFullRange;
+    const d = windowAgg.days;
+    const fmtSigned = (v: number) => `${v > 0 ? "+" : ""}${v.toLocaleString("en-US")}`;
+    const brokerSum = fullDerived.candles
+      .slice(start, end + 1)
+      .reduce((acc, c) => acc + (brokerDateNet.get(c.date) ?? 0), 0);
+    return {
+      major: `${d}日 ${fmtSigned(sumRange(fullDerived.majorNet, start, end))} 張`,
+      foreign: `${d}日 ${fmtSigned(sumRange(fullDerived.foreignNet, start, end))} 張`,
+      trust: `${d}日 ${fmtSigned(sumRange(fullDerived.trustNet, start, end))} 張`,
+      dealer: `${d}日 ${fmtSigned(sumRange(fullDerived.dealerNet, start, end))} 張`,
+      margin: `${d}日 融資${fmtSigned(sumRange(fullDerived.marginChange, start, end))} 融券${fmtSigned(sumRange(fullDerived.shortChange, start, end))} 張`,
+      broker: `${d}日 ${fmtSigned(brokerSum)} 張`,
+    };
+  }, [fullDerived, windowFullRange, windowAgg, brokerDateNet]);
 
   const handleClickIndex = useCallback(
     (i: number) => {
@@ -371,9 +434,11 @@ export function ChipKlineChart({
     <div
       ref={containerRef}
       data-testid="chip-kline-chart"
-      className="h-full flex flex-col overflow-hidden relative cursor-grab active:cursor-grabbing"
+      className="h-full flex flex-col overflow-hidden relative cursor-grab active:cursor-grabbing select-none"
       onPointerDown={handlePointerDown}
       onDoubleClick={handleDoubleClick}
+      onMouseMove={handleStackMouseMove}
+      onMouseLeave={handleStackMouseLeave}
     >
       {/* Top-edge scanning bar: 2 px accent shimmer when symbol-driven fetch
           is in flight. Always rendered (h-0.5) so toggling doesn't shift the
@@ -430,6 +495,7 @@ export function ChipKlineChart({
             ma20Override={slicedIndicators?.ma20}
             bbOverride={slicedIndicators?.bb}
             rangeBand={rangeBand}
+            windowAgg={windowAgg}
           />
         )}
       </div>
@@ -448,6 +514,7 @@ export function ChipKlineChart({
             data={majorNet} width={w} height={subH}
             label="主力買賣超" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
+            windowText={windowTexts?.major}
           />
         )}
         {majorLoading && subH > 0 && (
@@ -479,6 +546,7 @@ export function ChipKlineChart({
             data={foreignNet} width={w} height={subH}
             label="外資" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
+            windowText={windowTexts?.foreign}
           />
         )}
       </div>
@@ -488,6 +556,7 @@ export function ChipKlineChart({
             data={trustNet} width={w} height={subH}
             label="投信" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
+            windowText={windowTexts?.trust}
           />
         )}
       </div>
@@ -497,6 +566,7 @@ export function ChipKlineChart({
             data={dealerNet} width={w} height={subH}
             label="自營商" hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
+            windowText={windowTexts?.dealer}
           />
         )}
       </div>
@@ -515,6 +585,7 @@ export function ChipKlineChart({
             label="融資融券"
             hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
+            windowText={windowTexts?.margin}
           />
         )}
       </div>
@@ -534,6 +605,7 @@ export function ChipKlineChart({
             label={`分點 (${selectedBrokerIds.size})`}
             hoverIndex={hoverIndex}
             selectedIndex={selectedIndex}
+            windowText={windowTexts?.broker}
           />
         )}
         {lastSubH >= 24 && !showBrokerData && (

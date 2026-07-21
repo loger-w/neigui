@@ -41,6 +41,8 @@ export interface InstBarProps {
   label?: string;
   hoverIndex?: number | null;
   selectedIndex?: number | null;
+  /** CH-2b(mod/batch-ui-update):窗加總文案(parent 格式化,如「5日 +55 張」)。 */
+  windowText?: string | null;
 }
 
 export const InstBarSvg = memo(function InstBarSvg({
@@ -50,6 +52,7 @@ export const InstBarSvg = memo(function InstBarSvg({
   label,
   hoverIndex,
   selectedIndex,
+  windowText,
 }: InstBarProps) {
   if (data.length === 0) {
     return (
@@ -115,12 +118,14 @@ export const InstBarSvg = memo(function InstBarSvg({
           style={{ fontVariantNumeric: "tabular-nums" }}>
           <tspan x={4} fill={TEXT}>{label}</tspan>
           <tspan dx={8} fill={valColor}>{fmtLots(valRaw)} 張</tspan>
+          {windowText && <tspan dx={8} fill={TEXT}>· {windowText}</tspan>}
         </text>
       )}
 
       {/* crosshair vertical line */}
       {hoverIndex != null && hoverIndex >= 0 && hoverIndex < data.length && (
         <line
+          data-testid="sub-crosshair"
           x1={KLINE_PAD_L + step * hoverIndex + step / 2} y1={0}
           x2={KLINE_PAD_L + step * hoverIndex + step / 2} y2={height}
           stroke={CHIP.inkDim} strokeWidth={1}
@@ -153,6 +158,8 @@ export interface MarginLineProps {
   label?: string;
   hoverIndex?: number | null;
   selectedIndex?: number | null;
+  /** CH-2b:窗加總文案(parent 格式化,如「5日 融資+60 融券+45 張」)。 */
+  windowText?: string | null;
 }
 
 export const MarginLineSvg = memo(function MarginLineSvg({
@@ -165,6 +172,7 @@ export const MarginLineSvg = memo(function MarginLineSvg({
   label,
   hoverIndex,
   selectedIndex,
+  windowText,
 }: MarginLineProps) {
   const len = Math.max(marginData.length, shortData.length);
   if (len === 0) {
@@ -249,12 +257,14 @@ export const MarginLineSvg = memo(function MarginLineSvg({
           <tspan dx={8} fill={BULL}>融資 {fmtLots(marginVal)} 張</tspan>
           <tspan dx={8} fill={BEAR}>融券 {fmtLots(shortVal)} 張</tspan>
           {marginBalanceData && <tspan dx={8} fill={TEXT}>券資比 {ratio}%</tspan>}
+          {windowText && <tspan dx={8} fill={TEXT}>· {windowText}</tspan>}
         </text>
       )}
 
       {/* crosshair vertical line */}
       {hoverIndex != null && hoverIndex >= 0 && hoverIndex < len && (
         <line
+          data-testid="sub-crosshair"
           x1={scaleX(hoverIndex)} y1={0}
           x2={scaleX(hoverIndex)} y2={height}
           stroke={CHIP.inkDim} strokeWidth={1}
