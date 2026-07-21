@@ -51,8 +51,9 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
   const warrantsHook = useWarrants(symbol, active);
   const quotesHook = useWarrantQuotes(symbol, active);
   const [filters, setFilters] = useState<WarrantFilters>(DEFAULT_FILTERS);
-  const [sortKey, setSortKey] = useState<WarrantSortKey>("spread_lev_ratio");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // WA-2:預設排序 = 評分 desc(原差槓比 asc;score 已內含差槓比的兩個成分)
+  const [sortKey, setSortKey] = useState<WarrantSortKey>("score");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   // 篩選 input 用 defaultValue + epoch remount:controlled value 會沖掉
   // 「-」「0.」等打字中間態;重製 / 換標的靠 epoch 重掛同步顯示值
   const [filterEpoch, setFilterEpoch] = useState(0);
@@ -121,7 +122,8 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
-      setSortDir("asc");
+      // 評分是「高=好」欄,首點給 desc(最可買在前);其餘欄維持 asc 起手
+      setSortDir(key === "score" ? "desc" : "asc");
     }
   };
 
@@ -161,12 +163,12 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
           data-testid="filter-reset-btn"
           onClick={() => {
             setFilters(DEFAULT_FILTERS);
-            setSortKey("spread_lev_ratio");
-            setSortDir("asc");
+            setSortKey("score");
+            setSortDir("desc");
             setFilterEpoch((e) => e + 1);
           }}
           aria-label="重製篩選"
-          title="清除全部篩選條件並將排序恢復預設(差槓比升序)"
+          title="清除全部篩選條件並將排序恢復預設(評分降序)"
           className="px-2 py-1 pointer-coarse:min-h-11 border border-line text-ink-muted hover:text-ink hover:border-accent transition-colors cursor-pointer"
         >
           重製篩選

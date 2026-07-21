@@ -18,10 +18,11 @@ import { EXIT_CLIFF_DAYS } from "./warrant-utils";
 export interface ScoreInputRow {
   warrant_id: string;
   is_reset: boolean;
-  mispricing_pct: number | null | undefined;
-  spread_ratio: number | null | undefined;
-  leverage: number | null | undefined;
-  days_left: number | null | undefined;
+  // optional 對齊 WarrantRow(quotes 未到時欄位 undefined)
+  mispricing_pct?: number | null;
+  spread_ratio?: number | null;
+  leverage?: number | null;
+  days_left?: number | null;
 }
 
 const WEIGHTS = {

@@ -136,16 +136,25 @@ describe("WarrantSelector", () => {
     expect(screen.queryByTestId("flow-net-cell")).toBeNull();
   });
 
-  it("預設差槓比升序,null 沉底(SC-2)", async () => {
-    mockApis(THREE, THREE_QUOTES);
+  // WA-2(mod/batch-ui-update 🔴):預設排序自差槓比 asc 改為評分 desc。
+  // 手算(對齊 warrant-score.test):030013 全因子最佳 → 100;030012 → 19;
+  // 03001P leverage null → score null → 升冪降冪皆沉底。
+  it("預設評分降序,null 沉底(WA-2)", async () => {
+    mockApis(THREE, {
+      "030012": quote({ mispricing_pct: 0.04, spread_ratio: 0.02, leverage: 3, days_left: 50 }),
+      "030013": quote({ mispricing_pct: -0.1, spread_ratio: 0.01, leverage: 5, days_left: 100 }),
+      "03001P": quote({ leverage: null }),
+    });
     render(<WarrantSelector symbol="2330" active={true} />, {
       wrapper: makeQueryWrapper(),
     });
     await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
-    const ids = screen
-      .getAllByTestId("warrant-row")
-      .map((r) => r.getAttribute("data-warrant-id"));
-    expect(ids).toEqual(["030013", "030012", "03001P"]);
+    const ids = () =>
+      screen.getAllByTestId("warrant-row").map((r) => r.getAttribute("data-warrant-id"));
+    expect(ids()).toEqual(["030013", "030012", "03001P"]);
+    // toggle 升冪:低分在前,null 仍末端(排序末端不分方向)
+    fireEvent.click(screen.getByRole("button", { name: /^評分/ }));
+    expect(ids()).toEqual(["030012", "030013", "03001P"]);
   });
 
   it("認售 toggle 篩選(SC-4)", async () => {
@@ -379,8 +388,13 @@ describe("WarrantSelector 篩選列改造(mod warrant-ux-feedback item 4)", () =
 });
 
 describe("WarrantSelector 重製篩選(mod warrant-ux-feedback item 3)", () => {
-  it("調整篩選與排序後按重製 → 篩選/排序回預設、input 清空、rows 回全量", async () => {
-    mockApis(THREE, THREE_QUOTES);
+  it("調整篩選與排序後按重製 → 篩選/排序回預設(評分 desc)、input 清空、rows 回全量", async () => {
+    // 與「預設評分降序」同 fixture:030013=100 / 030012=19 / 03001P=null
+    mockApis(THREE, {
+      "030012": quote({ mispricing_pct: 0.04, spread_ratio: 0.02, leverage: 3, days_left: 50 }),
+      "030013": quote({ mispricing_pct: -0.1, spread_ratio: 0.01, leverage: 5, days_left: 100 }),
+      "03001P": quote({ leverage: null }),
+    });
     render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
     await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(3));
     fireEvent.click(screen.getByRole("button", { name: "認售" }));
@@ -390,7 +404,7 @@ describe("WarrantSelector 重製篩選(mod warrant-ux-feedback item 3)", () => {
     fireEvent.click(screen.getByTestId("filter-reset-btn"));
     await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(3));
     expect((screen.getByLabelText("剩餘天數下限") as HTMLInputElement).value).toBe("");
-    // 排序回預設差槓比 asc(null 沉底)
+    // 排序回預設評分 desc(null 沉底)— WA-2 重製鈕同步
     const ids = screen
       .getAllByTestId("warrant-row")
       .map((r) => r.getAttribute("data-warrant-id"));
