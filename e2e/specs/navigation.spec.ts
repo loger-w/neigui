@@ -11,16 +11,17 @@ test.describe("navigation & persistence", () => {
     await installFixtureClock(page);
   });
 
-  test("N1: 四 mode toggle active style aria-current(SC-6 case 1)", async ({ page }) => {
+  test("N1: 五 mode toggle active style aria-current(SC-6 case 1)", async ({ page }) => {
     // 痛點:F10 — ModeSwitch 用 aria-current='page' (不是 data-state),
     // 改 attr name 雙端必雙改。本 test 鎖死 attr,refactor 立即抓。
-    // feat/daytrade-borrow-fee SC-1:mode 列第 4 顆「券差」納入迴圈。
+    // NAV-1(mod/batch-ui-update):第 5 顆「分點反查」納入迴圈。
     await page.goto("/");
     for (const role of [
       ROLES.modeSwitchEquity,
       ROLES.modeSwitchOptions,
       ROLES.modeSwitchMarket,
       ROLES.modeSwitchBorrow,
+      ROLES.modeSwitchFlows,
     ]) {
       const btn = page.getByRole(role.role, { name: role.name });
       await btn.click();
@@ -71,9 +72,13 @@ test.describe("navigation & persistence", () => {
     await page.getByRole(ROLES.modeSwitchBorrow.role, { name: ROLES.modeSwitchBorrow.name }).click();
     await expect(page.getByTestId(TESTIDS.borrowFeePage)).toBeVisible();
     await expect(page.getByTestId(TESTIDS.marketHeatmap)).toHaveCount(0);
-    // (4) 切回 equity → assert borrow unmount
+    // (4) 切 flows(NAV-1 新 mode)→ assert borrow unmount
+    await page.getByRole(ROLES.modeSwitchFlows.role, { name: ROLES.modeSwitchFlows.name }).click();
+    await expect(page.getByTestId(TESTIDS.brokerFlowsView)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.borrowFeePage)).toHaveCount(0);
+    // (5) 切回 equity → assert flows unmount
     await page.getByRole(ROLES.modeSwitchEquity.role, { name: ROLES.modeSwitchEquity.name }).click();
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.borrowFeePage)).toHaveCount(0);
+    await expect(page.getByTestId(TESTIDS.brokerFlowsView)).toHaveCount(0);
   });
 });
