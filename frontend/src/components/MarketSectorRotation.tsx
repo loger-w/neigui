@@ -1,5 +1,6 @@
-import { useState, type ReactElement } from "react";
+import { type ReactElement } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useSessionState } from "../hooks/useSessionState";
 import { fetchSectorMembers } from "../lib/market-api";
 import { changeColorClass, formatAmount, formatRatio, signedPercent } from "../lib/market-format";
 import type { SectorMembers, SectorRotation, SectorRotationGroup } from "../lib/market-types";
@@ -106,9 +107,20 @@ function MembersPanel({
 }
 
 export function MarketSectorRotation({ data, loading, onSymbolPick }: Props): ReactElement {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // SC-8:mode 切換 unmount 後 remount 保留展開/鑽取(Set 走 serialize opts)
+  const [expanded, setExpanded] = useSessionState<Set<string>>(
+    "neigui.session.market-expanded",
+    new Set(),
+    {
+      serialize: (v) => JSON.stringify([...v]),
+      deserialize: (raw) => new Set<string>(JSON.parse(raw)),
+    },
+  );
   // MK-3:單一成員表目標(同時僅一個展開,沿用單一 lazy query 避免並發 fan-out)
-  const [drill, setDrill] = useState<Drill | null>(null);
+  const [drill, setDrill] = useSessionState<Drill | null>(
+    "neigui.session.market-drill",
+    null,
+  );
 
   const membersQuery = useQuery<SectorMembers, Error>({
     queryKey: ["market", "sector-members", drill?.industry ?? null, drill?.subIndustry ?? null],

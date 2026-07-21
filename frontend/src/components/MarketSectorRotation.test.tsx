@@ -15,7 +15,11 @@ function wrap(ui: ReactNode) {
 }
 
 beforeEach(() => vi.restoreAllMocks());
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  // SC-8:expanded/drill 走 sessionStorage(useSessionState),測試間必清
+  sessionStorage.clear();
+});
 
 const rotation: SectorRotation = {
   as_of: "2026-07-20 13:07:05",
@@ -161,6 +165,26 @@ describe("MarketSectorRotation", () => {
     });
     const li = screen.getByTestId("sector-row-金融保險");
     expect(li.querySelector('[data-testid="sector-members-panel"]')).toBeTruthy();
+  });
+
+  // SC-8(mod/batch-ui-polish):mode 切換 unmount 後 remount,展開/鑽取
+  // 狀態自 sessionStorage 還原。
+  it("unmount 後 remount:展開列與鑽取目標保留", async () => {
+    vi.spyOn(marketApi, "fetchSectorMembers").mockResolvedValue({
+      industry: "半導體",
+      sub_industry: "記憶體IC",
+      members: [],
+    });
+    const first = render(wrap(<MarketSectorRotation data={rotation} loading={false} />));
+    fireEvent.click(screen.getByTestId("sector-row-btn-半導體"));
+    fireEvent.click(screen.getByTestId("sub-row-半導體-記憶體IC"));
+    await waitFor(() => expect(screen.getByTestId("sector-members-panel")).toBeTruthy());
+    first.unmount();
+
+    render(wrap(<MarketSectorRotation data={rotation} loading={false} />));
+    // 半導體仍展開(子列在)、鑽取目標仍為記憶體IC(成員表在)
+    expect(screen.getByTestId("sub-row-半導體-記憶體IC")).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId("sector-members-panel")).toBeTruthy());
   });
 
   it("同時僅一個成員表展開(切換目標時舊表收合)", async () => {

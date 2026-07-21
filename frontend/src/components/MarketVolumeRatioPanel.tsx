@@ -1,4 +1,5 @@
-import { useState, type ReactElement } from "react";
+import { type ReactElement } from "react";
+import { useSessionState } from "../hooks/useSessionState";
 import { changeColorClass, formatAmount, formatRatio, signedPercent } from "../lib/market-format";
 import type { BreadthRow } from "../lib/market-types";
 
@@ -22,8 +23,15 @@ const SORT_COLUMNS: readonly [SortKey, string][] = [
 /** MK-6(mod/batch-ui-update):經典檢視退役後保留的量比功能 — 門檻(預設
  * 1.5)過濾出全部符合個股(非 top30),點欄位標題排序,點列跳 equity。 */
 export function MarketVolumeRatioPanel({ rows, loading, onSymbolPick }: Props): ReactElement {
-  const [threshold, setThreshold] = useState<number>(DEFAULT_THRESHOLD);
-  const [sortKey, setSortKey] = useState<SortKey>("volume_ratio");
+  // SC-8:mode 切換 unmount(N4 契約)後 remount 保留門檻/排序鍵
+  const [threshold, setThreshold] = useSessionState<number>(
+    "neigui.session.market-vr-threshold",
+    DEFAULT_THRESHOLD,
+  );
+  const [sortKey, setSortKey] = useSessionState<SortKey>(
+    "neigui.session.market-vr-sort",
+    "volume_ratio",
+  );
 
   let body: ReactElement;
   if (loading) {
