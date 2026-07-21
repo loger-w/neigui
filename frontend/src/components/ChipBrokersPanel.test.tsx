@@ -71,7 +71,8 @@ describe("ChipBrokersPanel — broker name tooltip (full name on hover)", () => 
       "[data-testid=broker-name-tooltip]",
     );
     expect(tooltips.length).toBeGreaterThan(0);
-    expect(tooltips[0]!.textContent).toBe("瑞士信貸-香港分行台北辦事處");
+    // SC-7:顯示統一「id 去dash名」
+    expect(tooltips[0]!.textContent).toBe("LONG1 瑞士信貸香港分行台北辦事處");
   });
 
   it("broker name span carries title attribute for native tooltip fallback", () => {
@@ -88,8 +89,28 @@ describe("ChipBrokersPanel — broker name tooltip (full name on hover)", () => 
         onClearAllBrokers={noop}
       />,
     );
-    const titled = container.querySelector("[title='凱基證券台北']");
+    const titled = container.querySelector("[title='LONG2 凱基證券台北']");
     expect(titled).toBeTruthy();
+  });
+
+  // SC-7(mod/batch-ui-polish):列表名稱與已選 pill 統一「id 去dash名」格式。
+  it("列表列與 chip-selected pill 顯示「id 名稱」統一格式", () => {
+    const b = mkBroker({
+      broker_id: "9801", name: "元大松江", buy: 100, sell: 0, net: 100,
+    });
+    const { container } = render(
+      <ChipBrokersPanel
+        summary={mkSummary([b])}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set(["9801"])}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+    const row = container.querySelector('[role="button"][aria-pressed]')!;
+    expect((row.textContent ?? "").includes("9801 元大松江")).toBe(true);
+    const bar = container.querySelector('[data-testid="chip-selected-bar"]')!;
+    expect((bar.textContent ?? "").includes("9801 元大松江")).toBe(true);
   });
 });
 
@@ -393,8 +414,9 @@ describe("ChipBrokersPanel F5 — buyers + sellers in separate scrollable halves
         onClearAllBrokers={noop}
       />,
     );
-    fireEvent.click(getByLabelText("勾選 Buyer-0"));
-    fireEvent.click(getByLabelText("勾選 Seller-0"));
+    // SC-7:aria-label 用 formatted label(fixture 名的 dash 一併去除)
+    fireEvent.click(getByLabelText("勾選 B0 Buyer0"));
+    fireEvent.click(getByLabelText("勾選 S0 Seller0"));
     // Selection is keyed by broker_id, not name — that's the value the
     // SecIdAgg broker_history endpoint filters on.
     expect(onToggle).toHaveBeenCalledWith("B0");
@@ -629,7 +651,8 @@ describe("ChipBrokersPanel — B2 chip bar 容器常駐 (C3 🔴)", () => {
     );
     const bar = container.querySelector("[data-testid=chip-selected-bar]");
     expect(bar).toBeTruthy();
-    expect((bar!.textContent ?? "").includes("Buyer-0")).toBe(true);
+    // SC-7:pill 顯示「id 去dash名」(fixture 名 Buyer-0 的 dash 也被統一去除)
+    expect((bar!.textContent ?? "").includes("B0 Buyer0")).toBe(true);
     expect((bar!.textContent ?? "").includes("未選擇分點")).toBe(false);
   });
 
@@ -646,8 +669,8 @@ describe("ChipBrokersPanel — B2 chip bar 容器常駐 (C3 🔴)", () => {
     );
     const bar = container.querySelector("[data-testid=chip-selected-bar]") as HTMLElement;
     expect(bar).toBeTruthy();
-    expect((bar.textContent ?? "").includes("Buyer-0")).toBe(true);
-    expect((bar.textContent ?? "").includes("Buyer-1")).toBe(true);
+    expect((bar.textContent ?? "").includes("B0 Buyer0")).toBe(true);
+    expect((bar.textContent ?? "").includes("B1 Buyer1")).toBe(true);
     const clearBtn = Array.from(bar.querySelectorAll("button")).find(
       (b) => (b.textContent ?? "").trim() === "全部清除",
     );

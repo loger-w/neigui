@@ -21,24 +21,25 @@ describe("BrokerSearch", () => {
     expect(screen.getByPlaceholderText("搜尋分點...")).toBeTruthy();
   });
 
-  it("shows broker name when value is set", () => {
+  // SC-7:value echo 回填也走「id 去dash名」formatter(change-spec R15)。
+  it("shows formatted broker label when value is set", () => {
     render(<BrokerSearch trades={trades} value="凱基-台北" onChange={vi.fn()} />);
     const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
-    expect(input.value).toBe("凱基-台北");
+    expect(input.value).toBe("9201A 凱基台北");
   });
 
-  it("opens dropdown on focus + typing with matches", async () => {
+  it("opens dropdown on focus + typing with matches(顯示統一格式)", async () => {
     render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
     const input = screen.getByPlaceholderText("搜尋分點...");
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "凱" } });
     await waitFor(() => {
-      expect(screen.getByText(/凱.+-台北/)).toBeTruthy();
-      expect(screen.getByText(/凱.+-板橋/)).toBeTruthy();
+      expect(screen.getByText(/9201A 凱基台北/)).toBeTruthy();
+      expect(screen.getByText(/9201B 凱基板橋/)).toBeTruthy();
     });
   });
 
-  it("filters case-insensitive (substring)", async () => {
+  it("filters case-insensitive (substring),接受原始名與 id", async () => {
     render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
     const input = screen.getByPlaceholderText("搜尋分點...");
     fireEvent.focus(input);
@@ -46,9 +47,22 @@ describe("BrokerSearch", () => {
     await waitFor(() => {
       const items = screen.getAllByTestId("broker-search-item");
       const texts = items.map((it) => it.textContent ?? "");
-      expect(texts.some((t) => t.includes("凱基-台北"))).toBe(true);
-      expect(texts.some((t) => t.includes("富邦-台北"))).toBe(true);
-      expect(texts.some((t) => t.includes("凱基-板橋"))).toBe(false);
+      expect(texts.some((t) => t.includes("凱基台北"))).toBe(true);
+      expect(texts.some((t) => t.includes("富邦台北"))).toBe(true);
+      expect(texts.some((t) => t.includes("凱基板橋"))).toBe(false);
+    });
+  });
+
+  it("以 broker_id 搜尋也命中", async () => {
+    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
+    const input = screen.getByPlaceholderText("搜尋分點...");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "9501" } });
+    await waitFor(() => {
+      const items = screen.getAllByTestId("broker-search-item");
+      const texts = items.map((it) => it.textContent ?? "");
+      expect(texts.some((t) => t.includes("富邦台北"))).toBe(true);
+      expect(texts.some((t) => t.includes("凱基台北"))).toBe(false);
     });
   });
 
@@ -61,8 +75,8 @@ describe("BrokerSearch", () => {
       const items = screen.getAllByTestId("broker-search-item");
       expect(items.length).toBeGreaterThan(0);
       // 富邦-台北 buy+sell = 500; 凱基-台北 = 300; 凱基-板橋 = 130; 元大 = 40
-      expect(items[0]!.textContent).toContain("富邦-台北");
-      expect(items[1]!.textContent).toContain("凱基-台北");
+      expect(items[0]!.textContent).toContain("富邦台北");
+      expect(items[1]!.textContent).toContain("凱基台北");
     });
   });
 

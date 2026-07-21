@@ -50,7 +50,7 @@ export function MarketVolumeRatioPanel({ rows, loading, onSymbolPick }: Props): 
           ? b.volume_ratio - a.volume_ratio
           : sortKey === "change_rate"
             ? b.change_rate - a.change_rate
-            : b.total_amount - a.total_amount,
+            : (b.total_amount ?? 0) - (a.total_amount ?? 0),
       );
     body = (
       <div className="flex flex-col min-h-0 mt-2 text-xs gap-2">

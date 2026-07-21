@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { BrokerTrade } from "../lib/chip-data";
 import type { BlockedBroker } from "../lib/bubble-blocklist";
+import { formatBrokerLabel } from "../lib/broker-name";
 import { PopoverPanel } from "./ui/PopoverPanel";
 
 interface Props {
@@ -117,8 +118,11 @@ export function BubbleBlocklistPopover({
                 }}
                 className="w-full flex items-center gap-2 px-3 py-1.5 border-b border-line/40 text-xs cursor-pointer hover:bg-bg-deep/50 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
               >
-                <span className="flex-1 min-w-0 truncate text-ink-muted" title={c.name}>
-                  {c.name}
+                <span
+                  className="flex-1 min-w-0 truncate text-ink-muted"
+                  title={formatBrokerLabel(c.id, c.name)}
+                >
+                  {formatBrokerLabel(c.id, c.name)}
                 </span>
                 <span className="shrink-0 text-accent">＋ 排除</span>
               </button>
@@ -138,14 +142,17 @@ export function BubbleBlocklistPopover({
             data-testid="bubble-blocklist-row"
             className="flex items-center gap-2 px-3 py-1.5 border-b border-line/40 text-xs"
           >
-            <span className="flex-1 min-w-0 truncate text-ink-muted" title={b.name}>
-              {b.name}
+            <span
+              className="flex-1 min-w-0 truncate text-ink-muted"
+              title={formatBrokerLabel(b.id, b.name)}
+            >
+              {formatBrokerLabel(b.id, b.name)}
             </span>
             <button
               type="button"
               data-testid="bubble-blocklist-remove"
               onClick={() => onRemove(b.id)}
-              aria-label={`移除 ${b.name}`}
+              aria-label={`移除 ${formatBrokerLabel(b.id, b.name)}`}
               className="shrink-0 text-ink-dim hover:text-bear cursor-pointer leading-none px-1"
             >
               ×

@@ -1,6 +1,7 @@
 import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ChipSummary, TopBroker, TopVolumeBroker } from "../lib/chip-data";
 import { splitBrokers, fmtVol, topByVolume } from "../lib/chip-data";
+import { formatBrokerLabel } from "../lib/broker-name";
 import { Checkbox } from "./ui/checkbox";
 import { BrokerFilterPopover } from "./BrokerFilterPopover";
 
@@ -72,6 +73,8 @@ interface RowProps {
 
 function BrokerRow({ broker, mode, selected, onToggle, onShowInBubble }: RowProps) {
   const badge = brokerBadge(broker.name);
+  // SC-7:顯示/aria/tooltip 統一「id 去dash名」;callback 契約仍傳原始 name
+  const label = formatBrokerLabel(broker.broker_id, broker.name);
   const netCls = broker.net > 0 ? "text-accent" : broker.net < 0 ? "text-bear" : "text-ink-dim";
   // Column order: 買均 → 賣均 → 買張 → 賣張 (avg-price pair first, then
   // volume pair). Net mode prepends 淨買賣 col; volume mode appends 當沖率.
@@ -110,14 +113,14 @@ function BrokerRow({ broker, mode, selected, onToggle, onShowInBubble }: RowProp
         <Checkbox
           checked={selected}
           onCheckedChange={onToggle}
-          aria-label={`勾選 ${broker.name}`}
+          aria-label={`勾選 ${label}`}
         />
       </span>
       <span
         className="relative flex items-center gap-1.5 text-ink-muted min-w-0 group/name"
-        title={broker.name}
+        title={label}
       >
-        <span className="truncate flex-1 min-w-0">{broker.name}</span>
+        <span className="truncate flex-1 min-w-0">{label}</span>
         {badge && (
           <span className={`shrink-0 text-2xs px-1 py-px rounded ${badge === "外" ? "bg-accent/15 text-accent" : "bg-bear/15 text-bear"}`}>
             {badge}
@@ -129,7 +132,7 @@ function BrokerRow({ broker, mode, selected, onToggle, onShowInBubble }: RowProp
           <button
             type="button"
             data-testid="broker-row-bubble-btn"
-            aria-label={`在泡泡圖檢視 ${broker.name}`}
+            aria-label={`在泡泡圖檢視 ${label}`}
             title="看泡泡圖"
             onClick={(e) => {
               e.stopPropagation();
@@ -148,7 +151,7 @@ function BrokerRow({ broker, mode, selected, onToggle, onShowInBubble }: RowProp
           data-testid="broker-name-tooltip"
           className="pointer-events-none absolute left-0 top-full mt-1 z-50 px-2 py-1 bg-bg-deep border border-line-strong text-xs text-ink whitespace-nowrap rounded shadow-lg opacity-0 group-hover/name:opacity-100 transition-opacity duration-100"
         >
-          {broker.name}
+          {label}
         </span>
       </span>
       {mode === "net" ? (
@@ -363,7 +366,9 @@ export function ChipBrokersPanel({
             <span className="text-xs text-ink-dim italic shrink-0">未選擇分點</span>
           ) : (
             Array.from(selectedBrokerIds).map((bid) => {
-              const name = idToName.get(bid) ?? bid;
+              // SC-7:pill 統一「id 去dash名」;名稱缺(不在當日 top_brokers)
+              // 時 formatter 退回只顯 id
+              const name = formatBrokerLabel(bid, idToName.get(bid) ?? null);
               return (
                 <span
                   key={bid}

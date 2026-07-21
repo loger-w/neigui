@@ -7,6 +7,7 @@ import {
   type TraderHit,
 } from "../lib/broker-flows-data";
 import { cn } from "../lib/utils";
+import { formatBrokerLabel } from "../lib/broker-name";
 
 // 分點反查 tab(feat/broker-daily-flows SC-4/5/6):搜尋分點 → 金額買超/
 // 金額賣超雙表(分類鍵 = 排序鍵 = net_amount,design R5;bull 紅/bear 綠
@@ -41,9 +42,13 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
     };
   }, [query]);
 
-  // review V1:選定後 query = 「id name」echo,refocus 時不得拿 echo 去查
-  // (必然 0 命中 → 誤導性「查無符合分點」+ 白燒一次目錄查詢)
-  const selectedEcho = selected ? `${selected.broker_id} ${selected.broker_name}` : "";
+  // review V1:選定後 query = formatted label echo,refocus 時不得拿 echo 去查
+  // (必然 0 命中 → 誤導性「查無符合分點」+ 白燒一次目錄查詢)。
+  // SC-7(R6):echo 與 pickTrader 的 setQuery 必須同走 formatBrokerLabel,
+  // 格式不一致會讓帶 dash 分點的 refocus 誤啟搜尋。
+  const selectedEcho = selected
+    ? formatBrokerLabel(selected.broker_id, selected.broker_name)
+    : "";
   const dropdownActive = open && !!debounced && debounced !== selectedEcho;
   const search = useTraderSearch(dropdownActive ? debounced : "");
   const flows = useBrokerDailyFlows(selected?.broker_id ?? "", active);
@@ -60,7 +65,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
 
   const pickTrader = (hit: TraderHit) => {
     setSelected(hit);
-    setQuery(`${hit.broker_id} ${hit.broker_name}`);
+    setQuery(formatBrokerLabel(hit.broker_id, hit.broker_name));
     setOpen(false);
   };
 
@@ -130,7 +135,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
                       i === activeIdx ? "bg-accent/10 text-ink" : "text-ink-muted",
                     )}
                   >
-                    {h.broker_id} {h.broker_name}
+                    {formatBrokerLabel(h.broker_id, h.broker_name)}
                   </li>
                 ))}
                 {truncated && (
@@ -159,7 +164,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
         </div>
         {selected && (
           <span className="inline-block px-1.5 py-px border border-line-strong text-ink text-xs">
-            {selected.broker_id} {selected.broker_name}
+            {formatBrokerLabel(selected.broker_id, selected.broker_name)}
           </span>
         )}
         {flows.data && (
