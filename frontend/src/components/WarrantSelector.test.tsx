@@ -73,15 +73,6 @@ function mockApis(
   };
   vi.spyOn(api, "warrants").mockResolvedValue(wp);
   vi.spyOn(api, "warrantQuotes").mockResolvedValue(qp);
-  vi.spyOn(api, "warrantIvHistory").mockResolvedValue({
-    warrant_id: "030013",
-    terms_approx_dates: [],
-    series: [
-      { date: "2026-07-08", iv_bid: 0.42, iv_ask: 0.46, underlying_close: 1000.0 },
-      { date: "2026-07-09", iv_bid: 0.41, iv_ask: 0.45, underlying_close: 1010.0 },
-    ],
-    drift: { label: "stable", slope_bid: 0.0, slope_ask: 0.0, n_valid: 25 },
-  });
 }
 
 beforeEach(() => {
@@ -169,7 +160,7 @@ describe("WarrantSelector", () => {
     expect(rows[0]?.getAttribute("data-warrant-id")).toBe("03001P");
   });
 
-  it("kind badge 用 data-testid 正向鎖(SC-5)", async () => {
+  it("kind badge 紅call/綠put 台股慣例配色(WA-3,user 2026-07-21 拍板覆寫零紅綠)", async () => {
     mockApis(THREE, THREE_QUOTES);
     render(<WarrantSelector symbol="2330" active={true} />, {
       wrapper: makeQueryWrapper(),
@@ -178,12 +169,22 @@ describe("WarrantSelector", () => {
     const badges = screen.getAllByTestId("warrant-kind-badge");
     expect(badges).toHaveLength(3);
     expect(badges.map((b) => b.textContent)).toEqual(["認購", "認購", "認售"]);
+    // 顏色 binding 正向鎖(專案慣例):認購 = 多頭紅(accent 同 bull 色值)、
+    // 認售 = 空頭綠(bear)
+    for (const b of badges) {
+      if (b.textContent === "認購") {
+        expect(b.className).toMatch(/accent|bull/);
+        expect(b.className).not.toMatch(/bear/);
+      } else {
+        expect(b.className).toMatch(/bear/);
+        expect(b.className).not.toMatch(/accent|bull/);
+      }
+    }
+    // 估價差標籤維持中性(僅 kind 欄開放紅綠)
     const labels = screen.getAllByTestId("mispricing-label");
     expect(labels.map((l) => l.textContent)).toContain("合理");
     expect(labels.map((l) => l.textContent)).toContain("偏貴");
-    // real-env 2026-07-11:--color-accent 與 --color-bull 同色值(#e85a4f)—
-    // 資料標籤(非互動態)用 accent 即是多頭紅,SC-5 鎖死不得出現
-    for (const el of [...badges, ...labels]) {
+    for (const el of labels) {
       expect(el.className).not.toMatch(/accent|bull|bear/);
     }
   });
@@ -280,18 +281,14 @@ describe("WarrantSelector", () => {
     expect(screen.queryByText(/惡意|坑殺|亂調/)).toBeNull();
   });
 
-  it("row 展開 lazy 抓 IV 歷史並渲染時序圖(SC-7)", async () => {
+  it("表格無展開鈕、無 IV 時序圖(WA-1 引波展開整刪)", async () => {
     mockApis(THREE, THREE_QUOTES);
-    const ivSpy = vi.spyOn(api, "warrantIvHistory");
     render(<WarrantSelector symbol="2330" active={true} />, {
       wrapper: makeQueryWrapper(),
     });
     await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
-    expect(ivSpy).not.toHaveBeenCalled(); // 未展開不抓
-    fireEvent.click(screen.getAllByRole("button", { name: /展開明細/ })[0]!);
-    await waitFor(() => expect(screen.getByTestId("warrant-iv-chart")).toBeTruthy());
-    expect(ivSpy).toHaveBeenCalledTimes(1);
-    expect(ivSpy.mock.calls[0]?.[0]).toBe("030013"); // 排序後首列
+    expect(screen.queryAllByRole("button", { name: /展開明細/ })).toHaveLength(0);
+    expect(screen.queryByTestId("warrant-iv-chart")).toBeNull();
   });
 });
 
@@ -301,7 +298,7 @@ describe("WarrantSelector 欄位選單整合(mod warrant-ux-feedback SC-6)", () 
   beforeEach(() => localStorage.clear());
   afterEach(() => localStorage.clear());
 
-  it("localStorage 隱藏欄 → th 消失,展開列 colSpan 跟著縮(= th 總數)", async () => {
+  it("localStorage 隱藏欄 → th 消失(不誤傷同字根欄)", async () => {
     localStorage.setItem(
       "neigui.warrant-columns.v1",
       JSON.stringify({ order: [], hidden: ["iv", "exercise_ratio"] }),
@@ -315,9 +312,6 @@ describe("WarrantSelector 欄位選單整合(mod warrant-ux-feedback SC-6)", () 
     expect(headerTexts).not.toContain("IV");
     expect(headerTexts).not.toContain("行使比例");
     expect(headerTexts).toContain("IV百分位"); // 只隱藏 iv,不誤傷同字根欄
-    fireEvent.click(screen.getByRole("button", { name: /展開明細/ }));
-    const expandedTd = document.querySelector("td[colspan]") as HTMLTableCellElement;
-    expect(expandedTd.colSpan).toBe(screen.getAllByRole("columnheader").length);
   });
 
   it("localStorage 順序 → 表頭依偏好排列;th 帶 title 說明", async () => {
@@ -331,9 +325,10 @@ describe("WarrantSelector 欄位選單整合(mod warrant-ux-feedback SC-6)", () 
     mockApis([term()], {});
     render(<WarrantSelector symbol="2330" active />, { wrapper: makeQueryWrapper() });
     await waitFor(() => expect(screen.getAllByTestId("warrant-row")).toHaveLength(1));
+    // WA-1 刪展開空 th 後,第一個 columnheader 即第一個資料欄
     const ths = screen.getAllByRole("columnheader");
-    expect((ths[1]?.textContent ?? "").replace(/ [↑↓]$/, "")).toBe("差槓比");
-    const slrTh = ths[1]!;
+    expect((ths[0]?.textContent ?? "").replace(/ [↑↓]$/, "")).toBe("差槓比");
+    const slrTh = ths[0]!;
     expect(slrTh.getAttribute("title")).toContain("價差比 ÷ 實質槓桿");
   });
 
@@ -470,20 +465,6 @@ describe("WarrantSelector 懸崖 / 近售罄 badge(SC-8/SC-9)", () => {
     await waitFor(() => expect(screen.getAllByTestId("soldout-badge")).toHaveLength(1));
     const row = screen.getAllByTestId("warrant-row")[0]!;
     expect(within(row).getByTestId("soldout-badge")).toBeTruthy();
-  });
-});
-
-describe("WarrantSelector 分點買賣超移除(mod warrant-selector-table SC-3)", () => {
-  it("展開列只剩 IV 時序,無分點買賣超區塊", async () => {
-    mockApis(THREE, THREE_QUOTES);
-    render(<WarrantSelector symbol="2330" active={true} />, {
-      wrapper: makeQueryWrapper(),
-    });
-    await waitFor(() => expect(screen.getByText("台積凱基57購01")).toBeTruthy());
-    fireEvent.click(screen.getAllByRole("button", { name: /展開明細/ })[0]!);
-    await waitFor(() => expect(screen.getByTestId("warrant-iv-chart")).toBeTruthy());
-    expect(screen.queryByTestId("warrant-brokers-detail")).toBeNull();
-    expect(screen.queryByText(/分點買賣超/)).toBeNull();
   });
 });
 

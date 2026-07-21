@@ -64,7 +64,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
   {
     id: "warrant_id",
     label: "代號",
-    desc: "權證代號;點左側 + 可展開 IV 時序",
+    desc: "權證代號",
     align: "left",
     lockVisible: true,
     cell: (r) => <td className="px-2 py-1 text-left text-ink font-medium">{r.warrant_id}</td>,
@@ -95,11 +95,12 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
         <span
           data-testid="warrant-kind-badge"
           className={cn(
-            // SC-5:認購/認售不用紅綠(accent==bull 同色值)— 實底 vs 框線區分
+            // WA-3(2026-07-21 user 拍板覆寫舊「零紅綠」):台股多空慣例 —
+            // 認購 = 偏多 = 紅(accent 同 bull 色值)、認售 = 偏空 = 綠(bear)
             "inline-block px-1.5 py-px border text-[0.7rem]",
             r.kind === "call"
-              ? "text-ink border-line-strong bg-ink/10"
-              : "text-ink-muted border-line-strong",
+              ? "text-accent border-accent/60 bg-accent/10"
+              : "text-bear border-bear/60 bg-bear/10",
           )}
         >
           {r.kind === "call" ? "認購" : "認售"}
@@ -217,7 +218,7 @@ export const WARRANT_COLUMNS: WarrantColumnDef[] = [
   {
     id: "theo_price",
     label: "理論價",
-    desc: "以昨日 IV 計算的 Black-Scholes 理論價",
+    desc: "以昨日收盤五檔中價反解的 IV 計算之 Black-Scholes 理論價",
     align: "right",
     sortKey: "theo_price",
     cell: (r) => <td className="px-2 py-1 text-right text-ink-muted">{fmt(r.theo_price)}</td>,

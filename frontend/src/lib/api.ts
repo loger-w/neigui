@@ -3,10 +3,7 @@ import type {
   ChipIntraday,
 } from "./chip-data";
 import type { BorrowFeeData } from "./borrow-fee";
-import type {
-  WarrantIvHistoryPayload, WarrantQuotesPayload,
-  WarrantsPayload,
-} from "./warrant-data";
+import type { WarrantQuotesPayload, WarrantsPayload } from "./warrant-data";
 import type { WarrantFlowHistoryPayload, WarrantFlowPayload } from "./warrant-flow-data";
 import type { BrokerFlowsPayload, TraderSearchPayload } from "./broker-flows-data";
 import { apiOrigin } from "./api-base";
@@ -254,13 +251,6 @@ export const api = {
     const params: Record<string, string> = {};
     if (backfill) params.backfill = "true";
     return get(`${BASE}/warrants/${stockId}/flow/history`, params, options);
-  },
-  warrantIvHistory(
-    warrantId: string, refresh?: boolean, options?: RequestOptions,
-  ): Promise<WarrantIvHistoryPayload> {
-    const params: Record<string, string> = {};
-    if (refresh) params.refresh = "true";
-    return get(`${BASE}/warrants/${warrantId}/iv-history`, params, options);
   },
   brokerTraders(
     search: string, options?: RequestOptions,
