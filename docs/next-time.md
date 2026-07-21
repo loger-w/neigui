@@ -8,8 +8,10 @@
 
 ## From /feat broker-daily-flows(2026-07-21)
 
-- **新開分點在目錄 24h cache 窗內查無(404)且無手動刷新路徑**(review S5 拍板移除目錄 refresh 死參數,YAGNI):目錄 TTL 24h 內新掛牌分點搜不到、daily-flows 前置檢查 404。觸發重評估:user 實際遇到新開分點查不到時(屆時把 `?refresh=true` 接進 `_get_directory_or_none` 並補測試)
-- **分點搜尋 50 筆上限無「已截斷」提示**:寬 query(如「證券”)命中 >50 時 UI 靜默截斷。觸發重評估:user 反映找不到已知分點時
+> 2026-07-21 user 指示:以下兩條 + `_run_once` 複本組已獨立成 `docs/specs/broker-flows-followups/spec.md`(F-1/F-2/F-3),由新 session 處理;做完刪本節條目 + 對應 spec 節。
+
+- **[→ spec F-1] 新開分點在目錄 24h cache 窗內查無(404)且無手動刷新路徑**(review S5 拍板移除目錄 refresh 死參數,YAGNI):目錄 TTL 24h 內新掛牌分點搜不到、daily-flows 前置檢查 404。
+- **[→ spec F-2] 分點搜尋 50 筆上限無「已截斷」提示**:寬 query(如「證券」)命中 >50 時 UI 靜默截斷。
 
 ## From /mod chip-major-lazy-window Phase 2 probe(2026-07-16)
 
@@ -42,7 +44,7 @@
 ## From /feat warrant-broker-flow(2026-07-14)
 
 - (原「equity tab 鈕樣板第 4 份複本」條目已由 feat/broker-daily-flows 收割刪除,2026-07-21:第 5 tab 觸發,EQUITY_TABS config + map 落地(commit a6eaf76);hidden div 內容各異維持列舉)
-- **backend「候選日回退 + inflight dedup + date 驗證」複本組**:`_run_once` 多份(warrants/warrant_flow/market_universe/industry_chain,行為已分歧 — refcount vs 無;2026-07-20 註:market_breadth 份已隨檔刪除,industry_chain 新增一份;**2026-07-21 註:broker_flows 又新增一份 refcount 同構 — 觸發條件「下一份複本」已命中,建議獨立 /refactor 收斂 5 份 + date 驗證 2 處**)、date query 驗證 2 處不同步(routes/warrants regex+fromisoformat vs routes/daytrade_fee 僅 fromisoformat;broker_flows 走 service 層 fromisoformat 第 3 種擺位)。抽共用時一起收。
+- **backend「候選日回退 + inflight dedup + date 驗證」複本組**:`_run_once` 多份(warrants/warrant_flow/market_universe/industry_chain,行為已分歧 — refcount vs 無;2026-07-20 註:market_breadth 份已隨檔刪除,industry_chain 新增一份;**2026-07-21 註:broker_flows 又新增一份 refcount 同構 — 觸發條件「下一份複本」已命中,已立 spec `docs/specs/broker-flows-followups/spec.md` F-3,/refactor 收斂 5 份 + date 驗證 3 處**)、date query 驗證 2 處不同步(routes/warrants regex+fromisoformat vs routes/daytrade_fee 僅 fromisoformat;broker_flows 走 service 層 fromisoformat 第 3 種擺位)。抽共用時一起收。
 - **flow 對映用「當下快照」查歷史候選日**:權證在 (d, 快照 as_of] 間到期下市 → 該權證當日成交不入統計、計入 unmapped_count(訊號在但不歸屬)。預設查詢(d = 快照 as_of)零影響;顯式舊 date / 深度回退才失真。修法 = 快照歷史化(per-date terms archive),v1 out of scope。觸發重評估:user 用顯式 date 查歷史流向、或 unmapped_count 異常飆高時
 - **`_cleanup_flow_caches` 每次冷聚合跑一次全目錄 iterdir**:目前冷聚合本身 200 req 網路成本 >> 1 次 iterdir,不值得節流;cache 目錄檔案數若破萬再加 last-cleanup 時戳門檻。觸發重評估:chip cache 目錄檔案數 >5k 或 real-env 量到 cleanup 佔時
 - (原「[需 user 拍板] flow 淨買賣超欄恆退化」條目已由 mod/warrant-flow-external-net 解決刪除,2026-07-18:拍板 (b) 外部淨額口徑 = −(發行商造市 HO seat net),12 家 alias 白名單 + seat 精確名對映,無法對映 → null;probe 實證 27/27 單一命中)
