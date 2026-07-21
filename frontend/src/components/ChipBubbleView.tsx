@@ -13,7 +13,15 @@ import { useContainerSize } from "../hooks/useContainerSize";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { BrokerSearch } from "./BrokerSearch";
 import { BubbleHelpButton } from "./BubbleHelpButton";
+import { BubbleBlocklistPopover } from "./BubbleBlocklistPopover";
 import { LoadingSpinner } from "./ui/loading-spinner";
+import {
+  addBlocked,
+  loadBlocklist,
+  removeBlocked,
+  saveBlocklist,
+  type BlockedBroker,
+} from "../lib/bubble-blocklist";
 
 interface Props {
   bubbleData: ChipBubbleData | null;
@@ -60,6 +68,18 @@ export function ChipBubbleView({
   // Responsive spec §4.4:<lg 右欄 400px 明細改 bottom sheet;brush 桌面限定。
   const isMobile = useMediaQuery("(max-width: 1023px)");
   const [sheetOpen, setSheetOpen] = useState<boolean>(false);
+  // BB-1: 分點過濾清單 — 全域(跨個股)localStorage 持久化,symbol 變更不清。
+  const [blocked, setBlocked] = useState<BlockedBroker[]>(loadBlocklist);
+  useEffect(() => {
+    saveBlocklist(blocked);
+  }, [blocked]);
+  const blockedIds = useMemo(() => new Set(blocked.map((b) => b.id)), [blocked]);
+  // 被排除分點不進泡泡、分點列表與統計 — 在最上游一次過濾,下游
+  // (rangeTrades / brushSummary / BrokerSearch / chart)全部吃這份。
+  const visibleTrades = useMemo(
+    () => (bubbleData ? bubbleData.trades.filter((t) => !blockedIds.has(t.broker_id)) : []),
+    [bubbleData, blockedIds],
+  );
 
   // Reset selection ONLY on symbol change (NOT on date / bubbleData change).
   // C7 A1: brush 也一起清 —— 避免換股後舊 range 殘留誤導。
@@ -77,10 +97,23 @@ export function ChipBubbleView({
 
   const selectedBrokerName = useMemo(
     () =>
-      bubbleData?.trades.find((t) => t.broker_id === selectedBrokerId)?.broker ??
+      visibleTrades.find((t) => t.broker_id === selectedBrokerId)?.broker ??
       null,
-    [bubbleData, selectedBrokerId],
+    [visibleTrades, selectedBrokerId],
   );
+
+  // BB-1: 排除清單操作。加入時若正是選中分點,一併清選取(選中但已被
+  // 過濾的狀態沒有可視載體)。
+  const handleBlockAdd = useCallback((b: BlockedBroker) => {
+    setBlocked((prev) => addBlocked(prev, b));
+    setSelectedBrokerId((prev) => (prev === b.id ? null : prev));
+  }, []);
+  const handleBlockRemove = useCallback((id: string) => {
+    setBlocked((prev) => removeBlocked(prev, id));
+  }, []);
+  const handleBlockClearAll = useCallback(() => {
+    setBlocked([]);
+  }, []);
 
   const handleBuySortChange = useCallback((key: TradeSortKey) => {
     setBuySort((prev) =>
@@ -105,12 +138,11 @@ export function ChipBubbleView({
   //   時走原 range 過濾邏輯。brushSummary 仍用原始 trades 算 summary。
   const rangeActiveForFilter = brushRange !== null && !selectedBrokerId;
   const rangeTrades = useMemo(() => {
-    if (!bubbleData) return [];
-    if (!rangeActiveForFilter || !brushRange) return bubbleData.trades;
-    return bubbleData.trades.filter(
+    if (!rangeActiveForFilter || !brushRange) return visibleTrades;
+    return visibleTrades.filter(
       (t) => t.price >= brushRange.min && t.price <= brushRange.max,
     );
-  }, [bubbleData, brushRange, rangeActiveForFilter]);
+  }, [visibleTrades, brushRange, rangeActiveForFilter]);
 
   const uniqueBrokerCount = useMemo(
     () => new Set(rangeTrades.map((t) => t.broker)).size,
@@ -163,11 +195,11 @@ export function ChipBubbleView({
         return;
       }
       const id =
-        bubbleData?.trades.find((t) => t.broker === broker)?.broker_id ?? null;
+        visibleTrades.find((t) => t.broker === broker)?.broker_id ?? null;
       if (id === null) return;
       setSelectedBrokerId((prev) => (prev === id ? null : id));
     },
-    [bubbleData],
+    [visibleTrades],
   );
 
   // C7 A1: brush drag end callback。存 range → 顯示 summary panel。
@@ -200,8 +232,8 @@ export function ChipBubbleView({
 
   const brushSummary = useMemo(() => {
     if (!brushRange || !bubbleData) return null;
-    return summarizeTradesByPriceRange(bubbleData.trades, brushRange.min, brushRange.max);
-  }, [brushRange, bubbleData]);
+    return summarizeTradesByPriceRange(visibleTrades, brushRange.min, brushRange.max);
+  }, [brushRange, bubbleData, visibleTrades]);
 
   const allPriceAggs = useMemo(() => aggregateByPrice(rangeTrades), [rangeTrades]);
 
@@ -234,10 +266,10 @@ export function ChipBubbleView({
         return;
       }
       const id =
-        bubbleData?.trades.find((t) => t.broker === name)?.broker_id ?? null;
+        visibleTrades.find((t) => t.broker === name)?.broker_id ?? null;
       setSelectedBrokerId(id);
     },
-    [bubbleData],
+    [visibleTrades],
   );
 
   const detailPanel = (
@@ -266,7 +298,7 @@ export function ChipBubbleView({
       <div className="h-full flex flex-col min-h-0 border-r border-line overflow-hidden">
         <div className="shrink-0 min-h-10 px-3 py-1 border-b border-line bg-bg-deep/30 flex flex-wrap items-center gap-x-3 gap-y-1">
           <BrokerSearch
-            trades={bubbleData?.trades ?? []}
+            trades={visibleTrades}
             value={selectedBrokerName}
             onChange={handleBrokerSearchChange}
           />
@@ -311,6 +343,13 @@ export function ChipBubbleView({
           )}
           {/* C10 (🟢 Item 4 + 5):手動輸入區間 trigger + Help '?' icon 靠右 */}
           <div className="ml-auto flex items-center gap-2 shrink-0">
+            <BubbleBlocklistPopover
+              trades={bubbleData?.trades ?? []}
+              blocked={blocked}
+              onAdd={handleBlockAdd}
+              onRemove={handleBlockRemove}
+              onClearAll={handleBlockClearAll}
+            />
             {bubbleData && (
               <button
                 type="button"
@@ -341,7 +380,7 @@ export function ChipBubbleView({
             </div>
           ) : bubbleData && bubbleSize.width > 0 && bubbleSize.height > 0 ? (
             <BubbleChartSvg
-              trades={bubbleData.trades}
+              trades={visibleTrades}
               width={bubbleSize.width}
               height={bubbleSize.height}
               closePrice={closePrice}

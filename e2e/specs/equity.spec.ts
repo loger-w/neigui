@@ -392,6 +392,36 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(badge).toBeHidden({ timeout: 5000 });
   });
 
+  test("E32: 泡泡圖過濾清單 — 排除分點後泡泡/統計消失 + reload 持久(BB-1)", async ({ page }) => {
+    // 痛點:過濾鏈 = popover 搜尋加入 → blocklist state → visibleTrades 上游
+    // 過濾 → 計數/BrokerSearch/泡泡同步。vitest 鎖 jsdom 邏輯層;這裡鎖真
+    // browser 全鏈 + localStorage 持久化(reload 後仍生效 — 全域跨個股設計)。
+    // Fixture 基準:3 個分點(分點001-003)→ 排除一個後計數 3 → 2。
+    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    await expect(page.getByText("3 個分點")).toBeVisible();
+
+    await page.getByTestId(TESTIDS.bubbleBlocklistTrigger).click();
+    await page.getByLabel("搜尋分點加入排除").fill("分點001");
+    const candidate = page.getByTestId(TESTIDS.bubbleBlocklistCandidate);
+    await expect(candidate).toContainText("分點001");
+    await candidate.click();
+    await expect(page.getByText("2 個分點")).toBeVisible();
+
+    // 被排除分點不再出現在 BrokerSearch 下拉
+    await page.getByPlaceholder("搜尋分點...").fill("分點001");
+    await expect(page.getByTestId(TESTIDS.brokerSearchItem)).toHaveCount(0);
+
+    // reload → localStorage 持久化仍生效
+    await page.reload();
+    await page.getByPlaceholder(/搜尋代號/).fill("2330");
+    await page.getByRole("option").first().click();
+    await page.getByRole("button", { name: "泡泡圖" }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    await expect(page.getByText("2 個分點")).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.bubbleBlocklistTrigger)).toContainText("1");
+  });
+
   test("E26: 籌碼總覽 chip bar 容器常駐 + 未選 placeholder(B2)", async ({ page }) => {
     // 痛點:anti-CLS — 容器改常駐後若回退成條件 render,選分點瞬間版面
     // 位移回歸(vitest 鎖了 DOM 存在,這裡鎖真瀏覽器 render 路徑)。

@@ -58,6 +58,10 @@ export const TESTIDS = {
   brushApplyFilter: "brush-apply-filter",
   bubbleYaxisBrush: "bubble-yaxis-brush",
   brokerSearchItem: "broker-search-item",
+  // 泡泡圖過濾清單(BB-1 mod/batch-ui-update)
+  bubbleBlocklistTrigger: "bubble-blocklist-trigger",
+  bubbleBlocklistCandidate: "bubble-blocklist-candidate",
+  bubbleBlocklistRow: "bubble-blocklist-row",
   // 分點反查 mode root(NAV-1 mod/batch-ui-update)
   brokerFlowsView: "broker-flows-view",
   // 權證分點 tab(feat/warrant-broker-flow)
