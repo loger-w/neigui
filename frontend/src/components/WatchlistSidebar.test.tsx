@@ -90,7 +90,9 @@ describe("WatchlistSidebar — 清單互動", () => {
     expect(stored().items).toEqual([]);
   });
 
-  it("建立分組 → 歸組 → 項目列在該組下;刪組 → 項目退回未分組", () => {
+  // SC-1c/d(mod/batch-ui-polish):建立/刪除分組集中在「管理分組」面板;
+  // 歸組改為每項可見的分組選單鈕(取代 hover 才浮現的 w-4 select)。
+  it("管理分組面板建立 → 選單鈕歸組 → 項目列在該組下;刪組 → 項目退回未分組", () => {
     seed({
       groups: [],
       items: [{ symbol: "2330", name: "台積電", groupId: null }],
@@ -98,7 +100,11 @@ describe("WatchlistSidebar — 清單互動", () => {
     const { container } = render(
       <WatchlistSidebar currentSymbol="" currentSymbolName={null} onPick={vi.fn()} />,
     );
-    // 建立分組
+    // 開管理分組面板
+    fireEvent.click(
+      container.querySelector("[aria-label='管理分組']") as HTMLButtonElement,
+    );
+    // 建立分組(testid 沿用)
     const input = container.querySelector(
       "[data-testid=watchlist-group-input]",
     ) as HTMLInputElement;
@@ -110,27 +116,65 @@ describe("WatchlistSidebar — 清單互動", () => {
     expect(group).toBeTruthy();
     expect(group!.textContent ?? "").toContain("半導體");
 
-    // 歸組(select)
-    const select = container.querySelector(
-      "[aria-label='設定 2330 分組']",
-    ) as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "g1" } });
+    // 歸組:點項目的分組選單鈕 → 選「半導體」
+    fireEvent.click(
+      container.querySelector("[aria-label='設定 2330 分組']") as HTMLButtonElement,
+    );
+    const menu = container.querySelector("[data-testid=watchlist-assign-menu]");
+    expect(menu).toBeTruthy();
+    const opt = Array.from(menu!.querySelectorAll("button")).find(
+      (b) => (b.textContent ?? "").includes("半導體"),
+    ) as HTMLButtonElement;
+    fireEvent.click(opt);
     expect(stored().items[0].groupId).toBe("g1");
-    // 項目 DOM 掛在組區塊之下
+    // 項目 DOM 掛在組區塊之下;選單關閉
     const groupSection = container.querySelector(
       "[data-testid=watchlist-group-section]",
     ) as HTMLElement;
     expect(
       groupSection.querySelector("[data-testid=watchlist-item]"),
     ).toBeTruthy();
+    expect(container.querySelector("[data-testid=watchlist-assign-menu]")).toBeNull();
 
-    // 刪組 → 項目退回未分組且仍在
+    // 刪組(管理面板內)→ 項目退回未分組且仍在
     fireEvent.click(
       container.querySelector("[aria-label='刪除分組 半導體']") as HTMLButtonElement,
     );
     expect(container.querySelector("[data-testid=watchlist-group]")).toBeNull();
     expect(container.querySelector("[data-testid=watchlist-item]")).toBeTruthy();
     expect(stored().items[0].groupId).toBeNull();
+  });
+
+  // SC-1e:股票數量自標頭移除。
+  it("桌面/mobile 標頭不再顯示股票數量", () => {
+    seed({
+      groups: [],
+      items: [
+        { symbol: "2330", name: "台積電", groupId: null },
+        { symbol: "2412", name: "中華電", groupId: null },
+      ],
+    });
+    const desktop = render(
+      <WatchlistSidebar currentSymbol="" currentSymbolName={null} onPick={vi.fn()} />,
+    );
+    const header = desktop.container.querySelector(
+      "[data-testid=watchlist-sidebar] > div",
+    ) as HTMLElement;
+    expect(/\d/.test(header.textContent ?? "")).toBe(false);
+    desktop.unmount();
+
+    const mob = render(
+      <WatchlistSidebar
+        currentSymbol=""
+        currentSymbolName={null}
+        onPick={vi.fn()}
+        mobile
+      />,
+    );
+    const toggle = mob.container.querySelector(
+      "[aria-label='展開自選清單']",
+    ) as HTMLElement;
+    expect(/\d/.test(toggle.textContent ?? "")).toBe(false);
   });
 });
 
