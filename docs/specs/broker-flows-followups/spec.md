@@ -13,27 +13,9 @@ mod/broker-directory-refresh 收割:`_get_directory_or_none(refresh: bool = Fals
 
 ---
 
-## F-2 分點搜尋 50 筆上限靜默截斷,無「已截斷」提示
+## F-2 分點搜尋 50 筆上限靜默截斷,無「已截斷」提示 —(已完成,2026-07-21)
 
-建議入口:`/mod`。規模:S-M(backend shape 微調 + 前端 dropdown + 測試)。
-
-### 現況
-
-- `backend/services/broker_flows.py::search_traders`:命中 > 50(`_SEARCH_LIMIT`)→ `hits[:50]` 靜默截斷,回傳 shape = `[{broker_id, broker_name}]`(裸陣列,無總數資訊)。
-- `frontend/src/components/BrokerFlowsPanel.tsx` dropdown 直接 render;寬 query(如「證券」)user 看到 50 筆但不知道還有更多,可能誤判「找不到」。
-
-### 方向性抉擇(新 session Phase 0 要拍板,二選一)
-
-- (a) **回應 shape 改物件** `{hits: [...], total: N}` → 前端 dropdown 尾端顯示「共 N 筆,僅列前 50,請輸入更精確關鍵字」。動 API contract(`lib/api.ts` + `useTraderSearch` + contract test 同改)。
-- (b) **不動 shape**:回 51 筆時前端以 `hits.length > 50` 推斷截斷(backend `_SEARCH_LIMIT` 改 51、前端顯示前 50 + 提示)。hack 味重但零 contract 變更。
-- 傾向 (a)(contract 誠實);屬對外契約變更 → 若在 /auto 下遇到請停下問(auto.md 方向性抉擇判準)。
-
-### 驗收(SC)
-
-1. pytest:>50 命中 → total 正確、hits=50;≤50 → 無提示欄位歧義。
-2. vitest:dropdown 截斷提示出現/不出現兩案(`BrokerFlowsPanel.test.tsx` 既有 mock 樣式)。
-3. contract test(`tests_e2e/test_api_broker.py::test_traders_search_by_name`)同步改 shape 斷言。
-4. 全套 gate 綠(harness.json 四項;e2e:E30 有碰 traders 回應 → 需同步改 spec 斷言,不豁免)。
+mod/trader-search-truncation 收割:方向 (a) shape 改物件由 user 拍板 — `search_traders` 回 `{hits: ≤50, total: 截斷前命中數}`,api.ts / useTraderSearch(data 維持 hits 陣列 + total extras)/ contract test 同 commit 改;dropdown 尾端非 option 提示列「共 {total} 筆,僅列前 {hits.length}」(不入鍵盤導航,mousedown preventDefault)。SC-4 覆寫註記:E30 無 response shape 斷言,該改斷言為空集合,e2e 照跑不豁免。changelog 0.38.2。artifacts 在 `.claude/mod/trader-search-truncation/`。
 
 ---
 
