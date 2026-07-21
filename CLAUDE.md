@@ -92,7 +92,7 @@ scripts/git-hooks/   git pre-push 測試防線(core.hooksPath 指向此)
 - **Vitest 測試 colocated** `*.test.tsx` / `*.test.ts`,跑 RTL 的檔要在頂端寫 `/** @vitest-environment jsdom */` pragma(不用 global config)。`afterEach(cleanup)`。測試慣例細節見 skill `frontend-testing`。
 - **Path alias** `@/` → `src/`(`vite.config.ts` + `tsconfig.app.json`),但既有 code 多用相對 import,維持就好。
 - **Date 用 `YYYY-MM-DD` 字串** 在 API + state 流動;`new Date()` 只在 `App.tsx` 的 `todayStr()` 等邊界。
-- **`hidden` attribute > 條件 render(tab 層級)**:tab 切換用 `<div hidden={tab !== "x"}>` 保留 DOM 避免重渲染(看 `App.tsx` overview / bubble)。**mode 層級例外**:App.tsx 的 mode 切換是 ternary(避免多頁同時 mount 抓資料),加新 mode 見 skill `market-pipeline`。
+- **`hidden` attribute > 條件 render(tab 層級)**:tab 切換用 `<div hidden={tab !== "x"}>` 保留 DOM 避免重渲染(看 `App.tsx` overview / bubble)。**mode 層級例外**:App.tsx 的 mode 切換是 ternary(避免多頁同時 mount 抓資料,e2e N4 鎖死),加新 mode 見 skill `market-pipeline`。**需要跨 mode 切換保留的 UI 狀態不改 ternary,改掛 `hooks/useSessionState`**(sessionStorage-backed,2026-07-21 SC-8;樣板 BrokerFlowsPanel selected / MarketSectorRotation expanded)。
 
 ---
 
@@ -104,6 +104,7 @@ scripts/git-hooks/   git pre-push 測試防線(core.hooksPath 指向此)
 - **Cache version bump**:`_CACHE_VERSION`(在各 service 內)+1 即作廢所有舊 cache,不需手動清。
 - **Contract ID 格式**(options):`<option_id><contract_date>` 串平,例如 `TXO202607`(月) / `TXO202607W2`(週)。解析靠 `_resolve_contract`,**不要在前端拆字串**。
 - **三大法人鍵名一律 `foreign / dealer / trust`**(自營商 = dealer),**不是 `prop`** — 對齊 `chip-data.ts`;同 repo 用兩個 key 表示同一監管實體會撞 bug + 撞測試。
+- **分點名稱顯示一律走 `lib/broker-name.ts::formatBrokerLabel`**(「id 去dash名」,例 `9801 元大松江`;兩個 FinMind dataset 名稱格式不同,前端統一)— **只動顯示字串**,selection / API / callback 契約仍以 `broker_id`(或原始 name,如 BrokerSearch)為 key。新分點顯示點不准直接印 raw name。
 - **TXO domain 鐵則**:
   - 支撐 = bull(紅)/ 壓力 = bear(綠):Call Wall = 壓力 = bear 色、Put Wall = 支撐 = bull 色。顏色 binding 一律加 data-testid + 正向 assertion 鎖住。
   - PCR / Max Pain UI **嚴禁方向性文案**(不寫「做多 / 做空 / 賣選 / 滿倉」),只呈現分位 + region 標(高/中/低)+ 統計表;元件測試 `expect(screen.queryByText(/做多|做空|賣選|滿倉/)).toBeNull()` 鎖住。
