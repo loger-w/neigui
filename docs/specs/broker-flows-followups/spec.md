@@ -7,31 +7,9 @@
 
 ---
 
-## F-1 新開分點在目錄 24h cache 窗內查無,且無手動刷新路徑
+## F-1 新開分點在目錄 24h cache 窗內查無,且無手動刷新路徑 —(已完成,2026-07-21)
 
-建議入口:`/mod`(改既有行為)。規模:S(單檔 + 測試)。
-
-### 現況(讀 code 可驗)
-
-- `backend/services/broker_flows.py::_get_directory_or_none()`:分點目錄(FinMind `TaiwanSecuritiesTraderInfo`)cache TTL 24h;**無 refresh 參數** — 原實作有此參數但全 repo 零 caller 傳 True(死參數),code review S5(見 `.claude/feat/broker-daily-flows/code-review-round-1.json`)拍板 YAGNI 移除,並記為 design v3 Known Risk 2。
-- 後果:新掛牌分點在目錄快取 24h 窗內,`/api/broker/traders` 搜不到、`/api/broker/daily-flows` 前置檢查 404(`broker_not_found`),user 按「重新整理」也無效(`?refresh=true` 只 bypass flows cache,不碰目錄)。
-
-### 目標行為
-
-- `get_daily_flows(broker_id, date, refresh=True)` 時目錄一併強制重抓(dedup key 帶 `_r{int(refresh)}`,對齊 flows cache 的 refresh 語意)。
-- `search_traders` 不需 refresh 面(搜尋場景 24h 足夠;若實作極便宜可順帶,非必要)。
-
-### 驗收(SC)
-
-1. pytest:`refresh=True` → `fetch_securities_trader_info` 被呼叫即使目錄 cache 新鮮;`refresh=False` 維持 cache 命中 0 fetch(既有測試 `test_directory_cached_24h` 不得動)。
-2. pytest:refresh 路徑的 dedup key 不與非 refresh 路徑互吃(參照 `test_daily_flows_refresh_bypasses_cache` 樣式)。
-3. 配額註記:refresh 多燒 1 request/次,SC-8 帳目(design v3 §8)同步更新一行。
-4. 既有 broker 測試全綠(`python -m pytest -q tests/test_broker_flows.py`)。
-
-### 邊界
-
-- 不做前端改動(重新整理鈕已傳 refresh=true 到 daily-flows,鏈路自然通)。
-- e2e 豁免候選:hook 回傳 shape 不變、UI 無視覺變化 → 依 `e2e-conventions` 判準表屬內部行為,commit 註 `[no-e2e: ...]`(自行再判一次)。
+mod/broker-directory-refresh 收割:`_get_directory_or_none(refresh: bool = False)`,`get_daily_flows(refresh=True)` 目錄一併強制重抓(dedup key `broker_directory_r{0,1}`,成功寫回 cache);search_traders 不長 refresh 面;失敗沿 R10 降級不 fallback 舊 cache(user 拍板)。SC 1-4 全過(45 passed = 43 既有 + 2 新,`test_directory_cached_24h` 零改動;配額註記入 design v3 §8;changelog 0.38.1)。artifacts 在 `.claude/mod/broker-directory-refresh/`。
 
 ---
 

@@ -273,6 +273,7 @@ E2E:§4.3。
 ## 8. 配額(SC-8)
 
 單次反查完整帳(R6):flows 冷 1〜3 requests(候選日 weekday-loop,無 calendar 依賴)+ 目錄冷 +1(24h TTL 攤提,前置檢查與 search 共用同 cache);全 warm 0。無 fan-out。相對 6000/hr 配額可忽略。SC-8 mock 計數測試口徑:單次 get_daily_flows 在目錄已 warm 時 ≤ 3。
+F-1 amendment(2026-07-21 mod/broker-directory-refresh):`refresh=true` 時目錄一併強制重抓 → 每次「重新整理」多 +1 request(user 手動觸發頻率,仍可忽略);成功寫回 cache,後續 24h 非 refresh 請求共享。
 
 ## 8.5 Phase 4 amendments(2026-07-21 code review 落地,詳 code-review-round-*.json)
 
