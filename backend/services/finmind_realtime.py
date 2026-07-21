@@ -1,4 +1,4 @@
-"""Market snapshot fetch + aggregate + leaderboard.
+"""Market snapshot fetch + aggregate(今日三卡管線).
 
 Sibling to services/finmind.py — shares FinMindClient (HTTP / token /
 rate limiter) via get_finmind() but isolates its own cache version + TTL
@@ -42,8 +42,6 @@ _CACHE_VERSION_REALTIME = 1
 _UNIVERSE_TTL_SECONDS = 5
 _SECTOR_MAP_TTL_HOURS = 24
 _MARKET_VALUE_TTL_HOURS = 24
-_HEATMAP_STOCKS_CAP_PER_SECTOR = 30  # v3 F8
-_LEADERBOARD_SIZE = 30
 
 _PRIMARY_INDUSTRY_OVERRIDE: dict[str, str] = {
     "2330": "半導體業",
@@ -222,111 +220,8 @@ def _max_tick_date(universe: list[dict]) -> datetime | None:
     return max(parsed)
 
 
-# ---------------------------------------------------------------------------
-# Trim row + leaderboards
-# ---------------------------------------------------------------------------
-
-
-def _trim(rows: list[dict]) -> list[dict]:
-    """v3 F5 — includes volume_ratio (None if missing)."""
-    return [
-        {
-            "stock_id": r["stock_id"],
-            "name": r.get("name") or r["stock_id"],
-            "change_rate": r.get("change_rate") or 0.0,
-            "total_amount": r.get("total_amount") or 0,
-            "volume_ratio": r.get("volume_ratio"),
-            "sector": r.get("sector") or "其他",
-        }
-        for r in rows
-    ]
-
-
-def _compute_leaderboards(
-    universe: list[dict],
-    primary_sector: dict[str, str],
-    name_map: dict[str, str] | None = None,
-    size: int = _LEADERBOARD_SIZE,
-) -> dict[str, list[dict]]:
-    name_map = name_map or {}
-    enriched = [
-        {
-            **row,
-            "sector": primary_sector.get(row.get("stock_id", ""), "其他"),
-            "name": name_map.get(row.get("stock_id", "")) or row.get("name") or row.get("stock_id", ""),
-        }
-        for row in universe
-    ]
-    gainers = sorted(enriched, key=lambda r: r.get("change_rate") or 0.0, reverse=True)[:size]
-    losers = sorted(enriched, key=lambda r: r.get("change_rate") or 0.0)[:size]
-    amount = sorted(enriched, key=lambda r: r.get("total_amount") or 0, reverse=True)[:size]
-    vr = sorted(enriched, key=lambda r: r.get("volume_ratio") or 0.0, reverse=True)[:size]
-    return {
-        "gainers": _trim(gainers),
-        "losers": _trim(losers),
-        "amount": _trim(amount),
-        "volume_ratio": _trim(vr),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Group by sector (heatmap)
-# ---------------------------------------------------------------------------
-
-
-def _group_by_sector(
-    universe: list[dict],
-    primary_sector: dict[str, str],
-    mv_map: dict[str, int],
-    name_map: dict[str, str] | None = None,
-    cap_per_sector: int = _HEATMAP_STOCKS_CAP_PER_SECTOR,
-) -> list[dict]:
-    """Build sectors[] for heatmap (design.md §6.6)."""
-    name_map = name_map or {}
-    groups: dict[str, list[dict]] = {}
-    for row in universe:
-        sid = row.get("stock_id")
-        if not sid:
-            continue
-        sector = primary_sector.get(sid) or "其他"
-        groups.setdefault(sector, []).append(row)
-
-    sectors: list[dict] = []
-    for sector_id, rows in groups.items():
-        # Audit X12:從 per-iteration def _mv 改 inline lambda — _mv 只 close
-        # over mv_map(loop 外不變),原寫法每個 sector 重新 allocate function
-        # object;inline 後讀者也不用驗證閉包沒抓到 sector_id / rows 迴圈變數。
-        rows_sorted = sorted(
-            rows,
-            key=lambda r: mv_map.get(r.get("stock_id", ""), 0),
-            reverse=True,
-        )
-        capped = rows_sorted[:cap_per_sector]
-        # Compute sector-level stats
-        change_rates = [r.get("change_rate") or 0.0 for r in capped]
-        avg_chg = sum(change_rates) / len(change_rates) if change_rates else 0.0
-        total_amount = sum(r.get("total_amount") or 0 for r in capped)
-        # Build stock tiles
-        stocks = []
-        for r in capped:
-            sid = r["stock_id"]
-            mv = mv_map.get(sid)
-            stocks.append({
-                "stock_id": sid,
-                "name": name_map.get(sid) or r.get("name") or sid,
-                "change_rate": r.get("change_rate") or 0.0,
-                "total_amount": r.get("total_amount") or 0,
-                "market_value": mv,
-            })
-        sectors.append({
-            "id": sector_id,
-            "name": sector_id,
-            "member_count": len(rows),
-            "avg_change_rate": avg_chg,
-            "total_amount": total_amount,
-            "stocks": stocks,
-        })
-    return sectors
+# (MK-4 mod/batch-ui-update:經典檢視退役 — _trim / _compute_leaderboards /
+# _group_by_sector 已整組刪除,snapshot 不再輸出 sectors / leaderboards。)
 
 
 # ---------------------------------------------------------------------------
@@ -534,8 +429,6 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     allowed = universe_filter["universe"]
     excluded = universe_filter["excluded"]
     stock_universe = [r for r in stock_universe if r.get("stock_id") in allowed]
-    sectors = _group_by_sector(stock_universe, primary_sector, mv_map, name_map=name_map)
-    leaderboards = _compute_leaderboards(stock_universe, primary_sector, name_map=name_map)
 
     # market-today-only SC-5:IndustryChain fetch 失敗 → sector_rotation 降級
     # null,其餘欄位照常(不 500)。7 天 disk cache 命中時零 FinMind call。
@@ -565,9 +458,8 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
     #   感受不到)
     sector_degraded = not primary_sector
     # Phase 4 review P2 fix:watch_list 過濾失效是真實 user-facing 降級
-    # (處置股可能漏進 leaderboards / sectors)→ 必須拉 stale=True 讓
-    # frontend banner 警示。否則 silent fallback 讓使用者看到本該排除的
-    # 處置股無任何提示。
+    # (處置股可能漏進今日三卡統計)→ 必須拉 stale=True 讓 frontend banner
+    # 警示。否則 silent fallback 讓使用者看到本該排除的處置股無任何提示。
     stale = isinstance(universe_res, BaseException) or sector_degraded or watch_degraded
 
     return {
@@ -576,8 +468,6 @@ async def _do_fetch_market_snapshot(refresh: bool) -> dict:
         "is_trading_session": in_session,
         "stale": stale,
         "lag_seconds": lag,
-        "sectors": sectors,
-        "leaderboards": leaderboards,
         # market-monitor-v2 P1 — spec §8 contract
         "universe_size": len(allowed),
         "excluded_count": {

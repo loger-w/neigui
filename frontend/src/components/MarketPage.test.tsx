@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as marketApi from "../lib/market-api";
 import { MarketPage } from "./MarketPage";
@@ -47,19 +47,6 @@ const baseSnapshot: MarketSnapshot = {
   is_trading_session: true,
   stale: false,
   lag_seconds: 5,
-  sectors: [
-    {
-      id: "半導體業",
-      name: "半導體業",
-      member_count: 1,
-      avg_change_rate: 1.5,
-      total_amount: 1e9,
-      stocks: [
-        { stock_id: "2330", name: "台積電", change_rate: 1.5, total_amount: 1e8, market_value: 6e13 },
-      ],
-    },
-  ],
-  leaderboards: { gainers: [], losers: [], amount: [], volume_ratio: [] },
   universe_size: 1917,
   excluded_count: { etf: 347, warrant: 67, watch_list: 57 },
   index_strength: emptyIndexStrength,
@@ -68,14 +55,17 @@ const baseSnapshot: MarketSnapshot = {
 };
 
 describe("MarketPage", () => {
-  it("renders header + heatmap + leaderboard after mount", async () => {
+  // MK-4(mod/batch-ui-update):經典檢視(heatmap + leaderboard 折疊區)整刪。
+  it("renders header;經典檢視區塊不再存在", async () => {
     vi.spyOn(marketApi, "fetchMarketSnapshot").mockResolvedValue(baseSnapshot);
     render(wrap(<MarketPage isActive={true} onSymbolPick={() => {}} />));
     await waitFor(() => {
       expect(screen.getByText("大盤掃描")).toBeTruthy();
-      expect(screen.getByRole("img", { name: "大盤族群熱力圖" })).toBeTruthy();
-      expect(screen.getByRole("tab", { name: "漲跌幅" })).toBeTruthy();
     });
+    expect(screen.queryByTestId("market-classic-toggle")).toBeNull();
+    expect(screen.queryByTestId("market-heatmap")).toBeNull();
+    expect(screen.queryByTestId("market-leaderboard")).toBeNull();
+    expect(screen.queryByText("經典檢視")).toBeNull();
   });
 
   it("shows error banner when fetch fails (E7)", async () => {
@@ -100,7 +90,6 @@ describe("MarketPage", () => {
   // 三新卡都進 data 分支。
   const richSnapshot: MarketSnapshot = {
     ...baseSnapshot,
-    sectors: [],
     index_strength: {
       twse: { close: 42650.6, change_rate: -0.04, median_change_rate: -1.8, spread: 1.76 },
       tpex: { close: 370.4, change_rate: -2.11, median_change_rate: -2.4, spread: 0.29 },
@@ -132,7 +121,7 @@ describe("MarketPage", () => {
     },
   };
 
-  it("DOM 順序:universe banner 在 header 後、market-v2-grid 前、grid 在經典檢視折疊區前 (SC-9 / CR1-6)", async () => {
+  it("DOM 順序:universe banner 在 header 後、market-v2-grid 前 (SC-9 / CR1-6)", async () => {
     vi.spyOn(marketApi, "fetchMarketSnapshot").mockResolvedValue(richSnapshot);
     render(wrap(<MarketPage isActive={true} onSymbolPick={() => {}} />));
     await waitFor(() => {
@@ -141,15 +130,11 @@ describe("MarketPage", () => {
     const header = screen.getByText("大盤掃描");
     const banner = screen.getByTestId("market-universe-banner");
     const grid = screen.getByTestId("market-v2-grid");
-    const classicToggle = screen.getByTestId("market-classic-toggle");
     expect(
       header.compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
       banner.compareDocumentPosition(grid) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      grid.compareDocumentPosition(classicToggle) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
@@ -162,34 +147,6 @@ describe("MarketPage", () => {
       expect(screen.getByTestId("market-cap-tiers")).toBeTruthy();
       expect(screen.getByTestId("market-sector-rotation")).toBeTruthy();
     });
-  });
-
-  it("經典檢視預設展開:market-heatmap / market-leaderboard 可見 (D-2 / SC-11e)", async () => {
-    vi.spyOn(marketApi, "fetchMarketSnapshot").mockResolvedValue(richSnapshot);
-    render(wrap(<MarketPage isActive={true} onSymbolPick={() => {}} />));
-    await waitFor(() => {
-      expect(screen.getByTestId("market-heatmap")).toBeTruthy();
-    });
-    const toggle = screen.getByTestId("market-classic-toggle");
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByTestId("market-heatmap").closest("[hidden]")).toBeNull();
-    expect(screen.getByTestId("market-leaderboard")).toBeTruthy();
-  });
-
-  it("click market-classic-toggle → 折疊(hidden=true)但舊元件仍 mounted (SC-9)", async () => {
-    vi.spyOn(marketApi, "fetchMarketSnapshot").mockResolvedValue(richSnapshot);
-    render(wrap(<MarketPage isActive={true} onSymbolPick={() => {}} />));
-    await waitFor(() => {
-      expect(screen.getByTestId("market-classic-toggle")).toBeTruthy();
-    });
-    const toggle = screen.getByTestId("market-classic-toggle");
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    const heatmap = document.querySelector('[data-testid="market-heatmap"]');
-    const leaderboard = document.querySelector('[data-testid="market-leaderboard"]');
-    expect(heatmap).toBeTruthy();
-    expect(leaderboard).toBeTruthy();
-    expect(heatmap?.closest("[hidden]")).toBeTruthy();
   });
 
   it("data=null(fetch 未 resolve)→ 三新卡 data-state=loading", () => {

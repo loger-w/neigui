@@ -41,8 +41,8 @@ export function formatAmount(v: number | null): string {
 }
 
 /**
- * bull(紅)/ bear(綠)/ 中性 三分支 tailwind class,漲跌 % 上色共用(台股慣例,
- * 對齊 MarketLeaderboard 既有 pattern)。null 或 0 → 中性(text-ink-dim)。
+ * bull(紅)/ bear(綠)/ 中性 三分支 tailwind class,漲跌 % 上色共用(台股慣例)。
+ * null 或 0 → 中性(text-ink-dim)。
  */
 export function changeColorClass(v: number | null): string {
   if (v === null || v === 0) return "text-ink-dim";

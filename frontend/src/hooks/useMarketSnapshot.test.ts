@@ -14,8 +14,6 @@ const mockSnapshot: MarketSnapshot = {
   is_trading_session: true,
   stale: false,
   lag_seconds: 10,
-  sectors: [],
-  leaderboards: { gainers: [], losers: [], amount: [], volume_ratio: [] },
   universe_size: 1917,
   excluded_count: { etf: 347, warrant: 67, watch_list: 57 },
   index_strength: {

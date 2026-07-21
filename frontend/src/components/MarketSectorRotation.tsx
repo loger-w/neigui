@@ -50,29 +50,15 @@ function GroupStatsRow({ group }: { group: SectorRotationGroup }): ReactElement 
   );
 }
 
+/** MK-3(mod/batch-ui-update):成員表巢狀內嵌在展開的族群/副族群列之下,
+ * 不再是卡片底部面板;收合 = 再點該列(無獨立關閉鈕)。 */
 function MembersPanel({
-  drill,
   query,
-  onClose,
 }: {
-  drill: Drill;
   query: UseQueryResult<SectorMembers, Error>;
-  onClose: () => void;
 }): ReactElement {
-  const title = drill.subIndustry ? `${drill.industry} › ${drill.subIndustry}` : `${drill.industry}(全產業)`;
   return (
-    <div data-testid="sector-members-panel" className="mt-3 border-t border-line pt-2">
-      <div className="flex items-center justify-between">
-        <h4 className="text-ink text-xs">{title} 成員股</h4>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="關閉成員列表"
-          className="text-ink-dim hover:text-ink text-xs cursor-pointer"
-        >
-          關閉
-        </button>
-      </div>
+    <div data-testid="sector-members-panel" className="mt-1 mb-1 pl-2 border-l border-line">
       {query.isLoading && (
         <div
           data-state="loading"
@@ -127,6 +113,7 @@ function MembersPanel({
 
 export function MarketSectorRotation({ data, loading }: Props): ReactElement {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // MK-3:單一成員表目標(同時僅一個展開,沿用單一 lazy query 避免並發 fan-out)
   const [drill, setDrill] = useState<Drill | null>(null);
 
   const membersQuery = useQuery<SectorMembers, Error>({
@@ -144,6 +131,30 @@ export function MarketSectorRotation({ data, loading }: Props): ReactElement {
       return next;
     });
   }
+
+  // 整列點擊(MK-3):有副族群 → 展開/收合子列;無副族群 → 直接內嵌個股表
+  function handleIndustryClick(name: string, hasSubs: boolean): void {
+    if (hasSubs) {
+      toggleExpand(name);
+      return;
+    }
+    setDrill((cur) =>
+      cur?.industry === name && cur.subIndustry === null
+        ? null
+        : { industry: name, subIndustry: null },
+    );
+  }
+
+  function handleSubClick(industry: string, sub: string): void {
+    setDrill((cur) =>
+      cur?.industry === industry && cur.subIndustry === sub
+        ? null
+        : { industry, subIndustry: sub },
+    );
+  }
+
+  const isDrillTarget = (industry: string, sub: string | null): boolean =>
+    drill !== null && drill.industry === industry && drill.subIndustry === sub;
 
   let body: ReactElement;
   if (loading) {
@@ -164,40 +175,41 @@ export function MarketSectorRotation({ data, loading }: Props): ReactElement {
     body = (
       <ul data-testid="sector-rotation-list" className="flex flex-col mt-2 text-xs">
         {data.industries.map((ind) => {
-          const isExpanded = expanded.has(ind.name);
+          const hasSubs = ind.subs.length > 0;
+          const isExpanded = hasSubs
+            ? expanded.has(ind.name)
+            : isDrillTarget(ind.name, null);
           return (
             <li key={ind.name} data-testid={`sector-row-${ind.name}`} className="border-b border-line py-1">
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => toggleExpand(ind.name)}
-                  aria-expanded={isExpanded}
-                  aria-label={`展開 ${ind.name} 子產業`}
-                  data-testid={`sector-toggle-${ind.name}`}
-                  className="text-ink-dim hover:text-ink cursor-pointer w-4 shrink-0 pointer-coarse:min-h-11"
-                >
+              <button
+                type="button"
+                onClick={() => handleIndustryClick(ind.name, hasSubs)}
+                aria-expanded={isExpanded}
+                data-testid={`sector-row-btn-${ind.name}`}
+                className="w-full flex items-center gap-1 text-left hover:text-ink cursor-pointer pointer-coarse:min-h-11"
+              >
+                <span aria-hidden="true" className="text-ink-dim w-4 shrink-0">
                   {isExpanded ? "▾" : "▸"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDrill({ industry: ind.name, subIndustry: null })}
-                  data-testid={`sector-drill-${ind.name}`}
-                  className="flex-1 flex items-center justify-between text-left hover:text-ink cursor-pointer pointer-coarse:min-h-11"
-                >
+                </span>
+                <span className="flex-1 flex items-center justify-between">
                   <span className="text-ink">
                     {ind.name}
                     <span className="text-ink-dim ml-1">({ind.members})</span>
                   </span>
                   <GroupStatsRow group={ind} />
-                </button>
-              </div>
-              {isExpanded && (
+                </span>
+              </button>
+              {!hasSubs && isDrillTarget(ind.name, null) && (
+                <MembersPanel query={membersQuery} />
+              )}
+              {hasSubs && expanded.has(ind.name) && (
                 <ul className="pl-6 mt-1 flex flex-col gap-1">
                   {ind.subs.map((sub) => (
                     <li key={sub.name}>
                       <button
                         type="button"
-                        onClick={() => setDrill({ industry: ind.name, subIndustry: sub.name })}
+                        onClick={() => handleSubClick(ind.name, sub.name)}
+                        aria-expanded={isDrillTarget(ind.name, sub.name)}
                         data-testid={`sub-row-${ind.name}-${sub.name}`}
                         className="w-full flex items-center justify-between text-left hover:text-ink cursor-pointer pointer-coarse:min-h-11"
                       >
@@ -207,6 +219,9 @@ export function MarketSectorRotation({ data, loading }: Props): ReactElement {
                         </span>
                         <GroupStatsRow group={sub} />
                       </button>
+                      {isDrillTarget(ind.name, sub.name) && (
+                        <MembersPanel query={membersQuery} />
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -222,7 +237,6 @@ export function MarketSectorRotation({ data, loading }: Props): ReactElement {
     <section data-testid="market-sector-rotation" className="flex flex-col min-h-0 p-3 overflow-y-auto">
       <h3 className="text-ink text-sm">族群輪動</h3>
       {body}
-      {drill && <MembersPanel drill={drill} query={membersQuery} onClose={() => setDrill(null)} />}
     </section>
   );
 }

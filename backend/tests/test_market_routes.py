@@ -4,8 +4,6 @@ Mocks fetch_market_snapshot via unittest.mock.patch (對齊 test_options_routes.
 """
 from __future__ import annotations
 
-import gzip
-import json
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -13,28 +11,23 @@ from fastapi.testclient import TestClient
 from main import app
 
 
+# MK-4(mod/batch-ui-update):sectors / leaderboards 已隨經典檢視刪除。
 _BASE_PAYLOAD = {
     "as_of": "2026-06-29T10:30:00+08:00",
     "last_tick": "2026-06-29T10:29:50",
     "is_trading_session": True,
     "stale": False,
     "lag_seconds": 10,
-    "sectors": [
-        {
-            "id": "半導體業", "name": "半導體業", "member_count": 2,
-            "avg_change_rate": 0.5, "total_amount": 100_000_000,
-            "stocks": [
-                {
-                    "stock_id": "2330", "name": "台積電",
-                    "change_rate": 1.0, "total_amount": 100_000_000,
-                    "market_value": 60_000_000_000_000,
-                },
-            ],
-        },
-    ],
-    "leaderboards": {
-        "gainers": [], "losers": [], "amount": [], "volume_ratio": [],
+    "universe_size": 1,
+    "excluded_count": {"etf": 0, "warrant": 0, "watch_list": 0},
+    "index_strength": {
+        "twse": None,
+        "tpex": None,
+        "tsmc": {"change_rate": None, "contrib_points": None},
+        "contrib": {"twse": None, "tpex": None},
     },
+    "cap_tiers": None,
+    "sector_rotation": None,
 }
 
 
@@ -44,7 +37,7 @@ _BASE_PAYLOAD = {
 
 
 def test_snapshot_happy_path_returns_200_and_shape() -> None:
-    """SC-1: mock service 回完整 shape → 200 + sectors + leaderboards。"""
+    """SC-1: mock service 回完整 shape → 200 + 今日三卡鍵(MK-4 後無經典檢視鍵)。"""
     with patch(
         "routes.market.fetch_market_snapshot",
         new=AsyncMock(return_value=_BASE_PAYLOAD),
@@ -52,8 +45,11 @@ def test_snapshot_happy_path_returns_200_and_shape() -> None:
         resp = TestClient(app).get("/api/market/snapshot")
     assert resp.status_code == 200
     body = resp.json()
-    assert "sectors" in body
-    assert "leaderboards" in body
+    assert "index_strength" in body
+    assert "cap_tiers" in body
+    assert "sector_rotation" in body
+    assert "sectors" not in body
+    assert "leaderboards" not in body
     assert body["is_trading_session"] is True
 
 
@@ -123,66 +119,8 @@ def test_snapshot_stale_fallback_returns_200_with_flag() -> None:
     assert resp.json()["stale"] is True
 
 
-# ---------------------------------------------------------------------------
-# v3 F10 — payload size measurement gate
-# ---------------------------------------------------------------------------
-
-
-def test_payload_size_under_budget() -> None:
-    """SC-1 budget assert: 28 sectors × 30 stocks fixture → encoded json size
-    < 50,000 bytes(SC-1 hard requirement);若 fail 改 cap 從 30 → 20。"""
-    sectors = [
-        {
-            "id": f"sector_{i:02d}",
-            "name": f"產業類別 {i:02d}",
-            "member_count": 30,
-            "avg_change_rate": 0.5,
-            "total_amount": 1_000_000_000,
-            "stocks": [
-                {
-                    "stock_id": f"{1000 + i * 30 + j}",
-                    "name": f"中文名稱 {i}-{j}",
-                    "change_rate": 1.92,
-                    "total_amount": 35_923_705_000,
-                    "market_value": 60_681_745_956_780,
-                }
-                for j in range(30)
-            ],
-        }
-        for i in range(28)
-    ]
-    leaderboards = {
-        key: [
-            {
-                "stock_id": f"{2000 + k:04d}",
-                "name": "中文名稱",
-                "change_rate": 5.5,
-                "total_amount": 1_000_000_000,
-                "volume_ratio": 2.5,
-                "sector": "半導體業",
-            }
-            for k in range(30)
-        ]
-        for key in ("gainers", "losers", "amount", "volume_ratio")
-    }
-    payload = {
-        "as_of": "2026-06-29T10:30:00+08:00",
-        "last_tick": "2026-06-29T10:29:50",
-        "is_trading_session": True,
-        "stale": False,
-        "lag_seconds": 10,
-        "sectors": sectors,
-        "leaderboards": leaderboards,
-    }
-    raw_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    raw_size = len(raw_bytes)
-    gz_size = len(gzip.compress(raw_bytes))
-    # SC-1 over-the-wire budget(brainstorm.md amendment 2026-06-29):
-    # 量 gzip 後而非 raw,對齊 FastAPI GzipMiddleware 實際傳輸量。
-    assert gz_size < 50_000, (
-        f"Gzip-after size {gz_size} >= 50000 (SC-1 budget);raw was {raw_size}。"
-        f" 若 fail 降 _HEATMAP_STOCKS_CAP_PER_SECTOR。"
-    )
+# (MK-4:heatmap/leaderboard payload size gate 隨經典檢視刪除;breadth 的
+# size gate 於 MK-7 加回。)
 
 
 # ---------------------------------------------------------------------------

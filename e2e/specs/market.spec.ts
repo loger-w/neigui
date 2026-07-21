@@ -12,32 +12,13 @@ test.describe("market mode", () => {
     await page.goto("/");
   });
 
-  test("M1: heatmap + leaderboard render(SC-5 case 1)", async ({ page }) => {
-    // 痛點:大盤 mode lazy load 後兩個 root 都要 visible。MarketHeatmap
-    // 需要 sectors 有 stocks,MarketLeaderboard 需要 leaderboards 4 tabs
-    // 至少其中 1 個有 row。任一空 = fake fixture 沒接 universe。
-    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.marketLeaderboard)).toBeVisible();
-  });
-
-  test("M2: heatmap 5 tiles(populated fixture 三向 join)", async ({ page }) => {
-    // 痛點:market_value × tick_snapshot × sector_map(TaiwanStockInfo 入
-    // _store,2026-07-20 populated fixture)三向 join;tile 數 5 是
-    // discriminative 訊號 — 任一 join 環斷(如 TaiwanStockInfo 回退
-    // skip_store)→ universe 全滅 tile 0 個。
-    await expect(page.getByTestId("tile-2330")).toBeVisible();
-    await expect(page.locator('[data-testid^="tile-"]')).toHaveCount(5);
-  });
-
-  test("M3: leaderboard 首列 2330 → 點擊 pivot 到 equity", async ({ page }) => {
-    // 痛點:tick fixture distinct change_rate(2330 +0.9% 最大)→ gainers
-    // 排序首列必為 2330;點擊走 App pivot 鏈(mode 切換 + symbol 帶入),
-    // equity 資料管線(2330 全套 fixture)真的載起來才算通。
-    const first = page.locator('[data-testid^="lb-row-"]').first();
-    await expect(first).toHaveAttribute("data-testid", "lb-row-2330");
-    await first.click();
-    await expect(page.getByRole("heading", { name: "籌碼分析" })).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();
+  test("M1: 經典檢視(heatmap/leaderboard)已整刪(MK-4 mod/batch-ui-update)", async ({ page }) => {
+    // 痛點:MK-4 刪除經典檢視後,heatmap / leaderboard / 折疊 toggle 不得殘留;
+    // 三卡照常 render(由 M4 覆蓋 visibility)。
+    await expect(page.getByTestId(TESTIDS.marketIndexStrength)).toBeVisible();
+    await expect(page.getByTestId("market-heatmap")).toHaveCount(0);
+    await expect(page.getByTestId("market-leaderboard")).toHaveCount(0);
+    await expect(page.getByTestId("market-classic-toggle")).toHaveCount(0);
   });
 
   test("M4: 今日三卡渲染不 crash(mod/market-today-only)", async ({ page }) => {
@@ -113,37 +94,20 @@ test.describe("market mode", () => {
     await expect(firstRow).toContainText("+0.70%");
     await expect(firstRow.locator('[data-flag="hot"]')).toBeVisible();
 
-    // R14:展開第一個產業 → 子產業列可見,再鑽取成員股(走真 sector_members
-    // fetch,不 mock)— assert 成員列表非空。404 contract 由 backend
-    // tests_e2e/test_api_market.py 覆蓋,e2e 只鎖 happy path。
-    await page.getByTestId("sector-toggle-半導體業").click();
+    // MK-3(mod/batch-ui-update):整列點擊展開 → 子產業列;點副族群列 →
+    // 成員股表巢狀內嵌該列下(走真 sector_members fetch,不 mock)。
+    await page.getByTestId("sector-row-btn-半導體業").click();
     const subRow = page.getByTestId("sub-row-半導體業-晶圓代工");
     await expect(subRow).toBeVisible();
     await expect(subRow).toContainText("+0.90%");
 
-    await page.getByTestId("sector-drill-半導體業").click();
+    await subRow.click();
     const membersPanel = page.getByTestId("sector-members-panel");
     await expect(membersPanel).toBeVisible();
     const membersTable = page.getByTestId("sector-members-table");
     await expect(membersTable).toBeVisible();
     await expect(page.getByTestId("sector-member-2330")).toContainText("台積電");
-    await expect(page.getByTestId("sector-member-2454")).toContainText("聯發科");
     await expect(rotationList).not.toContainText("資料暫缺");
-  });
-
-  test("M5: 經典檢視預設展開,舊 heatmap/leaderboard 可見(D-2,M1 顯性防回歸)", async ({ page }) => {
-    // 痛點:layout 重組把舊 panel 收進折疊區,若預設收合 M1 靜默失效。
-    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.marketLeaderboard)).toBeVisible();
-  });
-
-  test("M6: 折疊 toggle → 舊 panel hidden → 再點恢復(SC-9 hidden 慣例)", async ({ page }) => {
-    // 痛點:hidden attribute 慣例(保留 mount)— 若誤用條件 render,重展開會
-    // 重新 mount 重抓資料。assert hidden 而非 detached。
-    await page.getByTestId(TESTIDS.marketClassicToggle).click();
-    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeHidden();
-    await page.getByTestId(TESTIDS.marketClassicToggle).click();
-    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeVisible();
   });
 
 });
@@ -182,14 +146,13 @@ test.describe("market mode @1440x900", () => {
 test.describe("market mode — mobile viewport", () => {
   test.use({ viewport: { width: 375, height: 667 } });
 
-  test("M8: 375px 下 v2 grid + heatmap 可見且無水平溢出", async ({ page }) => {
-    // 痛點:classic 區 h-[560px] 曾在手機硬擠雙 panel(改 mobile 明確列高);
-    // 主 grid grid-cols-1 堆疊。鎖 SC2 無水平溢出。
+  test("M8: 375px 下 v2 grid 可見且無水平溢出", async ({ page }) => {
+    // 痛點:主 grid grid-cols-1 堆疊;鎖 SC2 無水平溢出(經典檢視已於 MK-4 刪)。
     await installFixtureClock(page);
     await page.addInitScript(() => localStorage.setItem("mode", "market"));
     await page.goto("/");
     await expect(page.getByTestId("market-v2-grid")).toBeVisible();
-    await expect(page.getByTestId(TESTIDS.marketHeatmap)).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.marketIndexStrength)).toBeVisible();
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
