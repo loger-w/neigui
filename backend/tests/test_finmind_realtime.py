@@ -266,6 +266,9 @@ async def test_fetch_market_snapshot_happy_path() -> None:
     assert "leaderboards" not in result
     assert "index_strength" in result
     assert "cap_tiers" in result
+    # MK-7:breadth 節(2330 上漲一檔)
+    assert result["breadth"]["twse"]["up"] == 1
+    assert result["breadth"]["rows"][0]["stock_id"] == "2330"
 
 
 @pytest.mark.usefixtures("bypass_finmind_rate_limiter")
@@ -691,10 +694,12 @@ async def test_snapshot_payload_today_fields_shape() -> None:
                new=AsyncMock(return_value=None)):
         result = await fetch_market_snapshot(refresh=False)
 
-    for k in ("breadth", "sector_breadth", "sector_volume_ratio",
+    # MK-7 註:EOD 舊 breadth 鍵 2026-07-20 移除後,MK-5/7 重新引入同名新契約
+    # (今日 tick 口徑,shape 完全不同)— 不再列入「舊鍵不得殘留」。
+    for k in ("sector_breadth", "sector_volume_ratio",
               "sector_amount_share", "eod_pending", "eod_as_of"):
         assert k not in result, f"EOD 舊鍵 {k} 應已隨管線移除"
-    for k in ("index_strength", "cap_tiers", "sector_rotation"):
+    for k in ("index_strength", "cap_tiers", "breadth", "sector_rotation"):
         assert k in result, f"新鍵 {k} 應存在:{list(result.keys())}"
 
     # index_rows 有 001/101 → 兩側非 null(SC-1)

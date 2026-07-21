@@ -12,6 +12,24 @@ test.describe("market mode", () => {
     await page.goto("/");
   });
 
+  test("M10: 漲跌家數 + 量比排行 + 扣除台積電 資料級(MK-1/5/6/7 mod/batch-ui-update)", async ({ page }) => {
+    // 痛點:populated tick fixture 5 檔皆 twse(+0.90/+0.50/+0.30 上漲;
+    // −1.20/−2.00 下跌,無漲跌停)— 鎖家數防 visibility 假綠;量比門檻預設
+    // 1.5 的過濾與排序走真資料;漲停樣本因會連鎖改動 M9 全部手算基準而未入
+    // fixture,tick 規則判定由 backend test_market_today.py 手算覆蓋。
+    const breadthTwse = page.getByTestId("breadth-twse");
+    await expect(breadthTwse).toContainText("上漲 3");
+    await expect(breadthTwse).toContainText("下跌 2");
+    await expect(breadthTwse).toContainText("漲停 0");
+    // MK-1:扣除台積電列(fixture 2330 貢獻 +149.9、指數 −180 點 → ex 非 null)
+    const exRow = page.getByTestId("idx-ex-tsmc");
+    await expect(exRow).toContainText("扣除台積電");
+    await expect(exRow).not.toContainText("—");
+    // MK-6:量比排行 panel(門檻可調;fixture 個股量比詳 gen 腳本)
+    await expect(page.getByTestId("market-volume-ratio")).toBeVisible();
+    await expect(page.getByLabel("量比門檻")).toHaveValue("1.5");
+  });
+
   test("M1: 經典檢視(heatmap/leaderboard)已整刪(MK-4 mod/batch-ui-update)", async ({ page }) => {
     // 痛點:MK-4 刪除經典檢視後,heatmap / leaderboard / 折疊 toggle 不得殘留;
     // 三卡照常 render(由 M4 覆蓋 visibility)。

@@ -20,9 +20,11 @@ const mockSnapshot: MarketSnapshot = {
     twse: null,
     tpex: null,
     tsmc: { change_rate: null, contrib_points: null },
+    ex_tsmc: { change_points: null, change_rate: null },
     contrib: { twse: null, tpex: null },
   },
   cap_tiers: null,
+  breadth: null,
   sector_rotation: null,
 };
 

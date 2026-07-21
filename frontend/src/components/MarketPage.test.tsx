@@ -38,6 +38,7 @@ const emptyIndexStrength: MarketSnapshot["index_strength"] = {
   twse: null,
   tpex: null,
   tsmc: { change_rate: null, contrib_points: null },
+  ex_tsmc: { change_points: null, change_rate: null },
   contrib: { twse: null, tpex: null },
 };
 
@@ -51,6 +52,7 @@ const baseSnapshot: MarketSnapshot = {
   excluded_count: { etf: 347, warrant: 67, watch_list: 57 },
   index_strength: emptyIndexStrength,
   cap_tiers: null,
+  breadth: null,
   sector_rotation: null,
 };
 
@@ -94,6 +96,7 @@ describe("MarketPage", () => {
       twse: { close: 42650.6, change_rate: -0.04, median_change_rate: -1.8, spread: 1.76 },
       tpex: { close: 370.4, change_rate: -2.11, median_change_rate: -2.4, spread: 0.29 },
       tsmc: { change_rate: 1.2, contrib_points: 210.5 },
+      ex_tsmc: { change_points: -227.6, change_rate: -0.53 },
       contrib: {
         twse: {
           up: [{ stock_id: "2330", name: "台積電", change_rate: 1.2, contrib_points: 210.5 }],
@@ -147,6 +150,21 @@ describe("MarketPage", () => {
       expect(screen.getByTestId("market-cap-tiers")).toBeTruthy();
       expect(screen.getByTestId("market-sector-rotation")).toBeTruthy();
     });
+  });
+
+  // MK-5/6(mod/batch-ui-update):經典檢視位置換上漲跌家數 + 量比排行。
+  it("漲跌家數與量比排行 panel 掛在三卡 grid 之後", async () => {
+    vi.spyOn(marketApi, "fetchMarketSnapshot").mockResolvedValue(richSnapshot);
+    render(wrap(<MarketPage isActive={true} onSymbolPick={() => {}} />));
+    await waitFor(() => {
+      expect(screen.getByTestId("market-breadth")).toBeTruthy();
+      expect(screen.getByTestId("market-volume-ratio")).toBeTruthy();
+    });
+    const grid = screen.getByTestId("market-v2-grid");
+    const breadthRow = screen.getByTestId("market-breadth-row");
+    expect(
+      grid.compareDocumentPosition(breadthRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("data=null(fetch 未 resolve)→ 三新卡 data-state=loading", () => {

@@ -17,6 +17,7 @@ const fixture: MarketSnapshot = {
     twse: { close: 42650.6, change_rate: -0.04, median_change_rate: -1.8, spread: 1.76 },
     tpex: { close: 370.4, change_rate: -2.11, median_change_rate: -2.4, spread: 0.29 },
     tsmc: { change_rate: 1.2, contrib_points: 210.5 },
+    ex_tsmc: { change_points: -227.6, change_rate: -0.53 },
     contrib: {
       twse: {
         up: [{ stock_id: "2330", name: "台積電", change_rate: 1.2, contrib_points: 210.5 }],
@@ -30,6 +31,22 @@ const fixture: MarketSnapshot = {
     { tier: "mid100", members: 100, avg_change_rate: -1.9, up_ratio: 0.18 },
     { tier: "rest", members: 1600, avg_change_rate: -2.2, up_ratio: 0.15 },
   ],
+  breadth: {
+    twse: { limit_up: 3, up: 500, flat: 100, down: 380, limit_down: 2 },
+    tpex: { limit_up: 1, up: 300, flat: 80, down: 250, limit_down: 0 },
+    rows: [
+      {
+        stock_id: "2330",
+        name: "台積電",
+        market: "twse",
+        change_rate: 1.2,
+        volume_ratio: 1.31,
+        total_amount: 5e10,
+        limit_up: false,
+        limit_down: false,
+      },
+    ],
+  },
   sector_rotation: {
     as_of: "2026-07-20 13:07:05",
     industries: [
@@ -45,7 +62,7 @@ const fixture: MarketSnapshot = {
 };
 
 describe("MarketSnapshot contract lock (market-today-only)", () => {
-  it("contract: 10 top-level keys 存在(MK-4:sectors/leaderboards 已隨經典檢視刪除)", () => {
+  it("contract: 11 top-level keys 存在(MK-4 刪 sectors/leaderboards;MK-7 加 breadth)", () => {
     const keys = [
       "as_of",
       "last_tick",
@@ -56,6 +73,7 @@ describe("MarketSnapshot contract lock (market-today-only)", () => {
       "excluded_count",
       "index_strength",
       "cap_tiers",
+      "breadth",
       "sector_rotation",
     ];
     for (const k of keys) {
@@ -63,11 +81,38 @@ describe("MarketSnapshot contract lock (market-today-only)", () => {
     }
     for (const removed of [
       "sectors", "leaderboards",
-      "breadth_legacy", "sector_breadth", "sector_volume_ratio", "sector_amount_share",
+      "sector_breadth", "sector_volume_ratio", "sector_amount_share",
       "eod_pending", "eod_as_of",
     ]) {
       expect(removed in fixture).toBe(false);
     }
+  });
+
+  it("contract: breadth — counts 五桶 + rows shape,null 降級容許(MK-5/7)", () => {
+    expect(fixture.breadth).not.toBeNull();
+    for (const m of ["twse", "tpex"] as const) {
+      const counts = fixture.breadth![m];
+      for (const k of ["limit_up", "up", "flat", "down", "limit_down"] as const) {
+        expect(typeof counts[k]).toBe("number");
+      }
+    }
+    const r = fixture.breadth!.rows[0]!;
+    expect(["twse", "tpex"]).toContain(r.market);
+    expect(typeof r.limit_up).toBe("boolean");
+    const degraded: MarketSnapshot = { ...fixture, breadth: null };
+    expect(degraded.breadth).toBeNull();
+  });
+
+  it("contract: index_strength.ex_tsmc — 點數/% 兩欄,null 容許(MK-1)", () => {
+    expect(fixture.index_strength.ex_tsmc.change_points).toBeCloseTo(-227.6);
+    const degraded: MarketSnapshot = {
+      ...fixture,
+      index_strength: {
+        ...fixture.index_strength,
+        ex_tsmc: { change_points: null, change_rate: null },
+      },
+    };
+    expect(degraded.index_strength.ex_tsmc.change_rate).toBeNull();
   });
 
   it("contract: index_strength — twse/tpex 側 null 容許,tsmc 恆為物件", () => {
@@ -77,6 +122,7 @@ describe("MarketSnapshot contract lock (market-today-only)", () => {
         twse: null,
         tpex: null,
         tsmc: { change_rate: null, contrib_points: null },
+        ex_tsmc: { change_points: null, change_rate: null },
         contrib: { twse: null, tpex: null },
       },
     };

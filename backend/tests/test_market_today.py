@@ -21,6 +21,7 @@ from __future__ import annotations
 import pytest
 
 from services.market_today import (
+    compute_breadth,
     compute_cap_tiers,
     compute_index_strength,
     compute_sector_members,
@@ -77,6 +78,19 @@ def test_compute_index_strength_hand_calc() -> None:
     # 台積電貢獻點數 = twse eligible 內 2330 的 contrib_points
     assert out["tsmc"]["change_rate"] == 2.0
     assert out["tsmc"]["contrib_points"] == pytest.approx(266.6666667, rel=1e-6)
+
+    # MK-1(mod/batch-ui-update):扣除台積電 — 加權漲跌點數 change_price=100,
+    # 扣 2330 貢獻 266.667 → ex 點數 = 100 − 266.667 = −166.667;
+    # prev_close = 20000 → ex 漲跌率 = −166.667/20000×100 = −0.8333%
+    assert out["ex_tsmc"]["change_points"] == pytest.approx(-166.6666667, rel=1e-6)
+    assert out["ex_tsmc"]["change_rate"] == pytest.approx(-0.8333333, rel=1e-5)
+
+
+def test_compute_index_strength_ex_tsmc_null_when_tsmc_missing() -> None:
+    # MK-1 降級:2330 不在 eligible(mv 缺)→ ex_tsmc 兩欄 null
+    mv_no_tsmc = {k: v for k, v in _MV_MAP.items() if k != "2330"}
+    out = compute_index_strength(_INDEX_ROWS, _UNIVERSE_ROWS, mv_no_tsmc, _TYPE_MAP, _NAME_MAP)
+    assert out["ex_tsmc"] == {"change_points": None, "change_rate": None}
 
 
 def test_compute_index_strength_twse_index_row_missing_side_null() -> None:
@@ -409,3 +423,79 @@ def test_compute_sector_members_vol_ratio_missing_or_zero_denominator_is_none() 
     ]
     out = compute_sector_members(universe, chain, {}, "半導體業", "IC設計")
     assert all(m["vol_ratio"] is None for m in out["members"])
+
+
+# ---------------------------------------------------------------------------
+# MK-5/7(mod/batch-ui-update)— compute_breadth:漲跌家數 + 全量 rows
+# ---------------------------------------------------------------------------
+
+_BREADTH_TYPE_MAP = {"1101": "twse", "1102": "twse", "1103": "twse", "6001": "tpex"}
+
+
+def _brow(sid: str, close: float, change_price: float, chg: float, **over: object) -> dict:
+    return {
+        "stock_id": sid,
+        "close": close,
+        "change_price": change_price,
+        "change_rate": chg,
+        "total_volume": 3000,
+        "yesterday_volume": 2000,
+        "total_amount": 1_000_000,
+        **over,
+    }
+
+
+def test_compute_breadth_buckets_exclusive_hand_calc() -> None:
+    # 痛點:MK-5 — 漲停判定用 prev_close = close − change_price + tick 規則,
+    # 桶互斥(漲停不重複計入上漲)。
+    universe = [
+        _brow("1101", 110.0, 10.0, 10.0),  # prev 100 → 漲停價 110.0 → limit_up
+        _brow("1102", 105.0, 5.0, 5.0),    # 上漲(未達 110)
+        _brow("1103", 90.0, -10.0, -10.0),  # prev 100 → 跌停價 90.0 → limit_down
+        _brow("6001", 50.0, 0.0, 0.0),      # 平盤(tpex)
+    ]
+    out = compute_breadth(universe, _BREADTH_TYPE_MAP, {"1101": "台泥A"})
+    assert out["twse"] == {"limit_up": 1, "up": 1, "flat": 0, "down": 0, "limit_down": 1}
+    assert out["tpex"] == {"limit_up": 0, "up": 0, "flat": 1, "down": 0, "limit_down": 0}
+    by_id = {r["stock_id"]: r for r in out["rows"]}
+    assert by_id["1101"]["limit_up"] is True
+    assert by_id["1101"]["name"] == "台泥A"
+    assert by_id["1101"]["market"] == "twse"
+    assert by_id["1102"]["limit_up"] is False
+    assert by_id["1103"]["limit_down"] is True
+    assert by_id["1102"]["volume_ratio"] == pytest.approx(1.5)
+
+
+def test_compute_breadth_tick_rounding_boundary() -> None:
+    # 痛點:R4 — 漲停價非整數倍時向內取 tick(prev 56.5 → raw 62.15 →
+    # tick 0.1 → 漲停 62.1,change_rate 僅 9.91% 仍應判漲停);
+    # 9.8% 近似法在此類 case 靠運氣,tick 規則是決定性的。
+    universe = [
+        _brow("1101", 62.1, 5.6, 9.91),  # prev = 62.1 − 5.6 = 56.5
+        _brow("1102", 62.0, 5.5, 9.73),  # 同價位但未達 62.1 → 只是上漲
+    ]
+    tmap = {"1101": "twse", "1102": "twse"}
+    out = compute_breadth(universe, tmap, {})
+    assert out["twse"]["limit_up"] == 1
+    assert out["twse"]["up"] == 1
+
+
+def test_compute_breadth_null_change_rate_skipped_and_prev_missing_no_limit() -> None:
+    universe = [
+        {"stock_id": "1101", "close": 100.0, "change_price": 1.0, "change_rate": None},
+        # prev 不可得(change_price 缺)
+        {"stock_id": "1102", "close": 105.0, "change_price": None, "change_rate": 5.0,
+         "total_volume": 3000, "yesterday_volume": 2000, "total_amount": 1_000_000},
+    ]
+    tmap = {"1101": "twse", "1102": "twse"}
+    out = compute_breadth(universe, tmap, {})
+    # 1101 change_rate null → 整檔跳過;1102 prev 缺 → 不判 limit,仍計上漲
+    assert out["twse"] == {"limit_up": 0, "up": 1, "flat": 0, "down": 0, "limit_down": 0}
+    assert len(out["rows"]) == 1
+    assert out["rows"][0]["limit_up"] is False
+
+
+def test_compute_breadth_unknown_market_excluded_and_empty_returns_none() -> None:
+    universe = [_brow("9999", 100.0, 1.0, 1.0)]  # type_map 查無 → 排除
+    assert compute_breadth(universe, {}, {}) is None
+    assert compute_breadth([], _BREADTH_TYPE_MAP, {}) is None

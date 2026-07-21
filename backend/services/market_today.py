@@ -13,6 +13,7 @@ name_map)由 caller(services/finmind_realtime.py)組好傳入,方便手算 fixtu
 
 from __future__ import annotations
 
+import math
 import statistics
 
 _MARKET_INDEX_KEYS = {"twse": "001", "tpex": "101"}
@@ -155,10 +156,27 @@ def compute_index_strength(
         twse_eligible[_TSMC_STOCK_ID]["contrib_points"] if _TSMC_STOCK_ID in twse_eligible else None
     )
 
+    # MK-1(mod/batch-ui-update):扣除台積電後的加權漲跌 — ex 點數 = 指數漲跌
+    # 點數(change_price)− 2330 貢獻點數;ex 漲跌率以 prev_close 為分母。
+    # 任一輸入缺(index row / change_price / tsmc 貢獻)→ 兩欄 null。
+    ex_tsmc: dict = {"change_points": None, "change_rate": None}
+    twse_index_row = index_rows.get(_MARKET_INDEX_KEYS["twse"])
+    if twse_index_row is not None and tsmc_contrib_points is not None:
+        idx_close = twse_index_row.get("close")
+        idx_change_price = twse_index_row.get("change_price")
+        if idx_close is not None and idx_change_price is not None:
+            prev_index = idx_close - idx_change_price
+            ex_points = idx_change_price - tsmc_contrib_points
+            ex_tsmc = {
+                "change_points": ex_points,
+                "change_rate": (ex_points / prev_index * 100) if prev_index else None,
+            }
+
     return {
         "twse": sides["twse"],
         "tpex": sides["tpex"],
         "tsmc": {"change_rate": tsmc_change_rate, "contrib_points": tsmc_contrib_points},
+        "ex_tsmc": ex_tsmc,
         "contrib": contrib_out,
     }
 
@@ -292,6 +310,111 @@ def compute_sector_rotation(
 
     industries.sort(key=lambda i: i["avg_change_rate"], reverse=True)
     return {"industries": industries}
+
+
+# ---------------------------------------------------------------------------
+# MK-5/7(mod/batch-ui-update)— compute_breadth:漲跌家數 + 全量 rows
+# ---------------------------------------------------------------------------
+
+_LIMIT_RATE = 0.10  # 普通股漲跌幅限制;ETF/處置股例外由 universe filter 先剔除
+
+
+def _tick_size(price: float) -> float:
+    """台股普通股檔位(TWSE 升降單位):價位區間 → tick。"""
+    if price < 10:
+        return 0.01
+    if price < 50:
+        return 0.05
+    if price < 100:
+        return 0.1
+    if price < 500:
+        return 0.5
+    if price < 1000:
+        return 1.0
+    return 5.0
+
+
+def _limit_price(prev_close: float, direction: int) -> float:
+    """漲停(direction=+1)/ 跌停(−1)價:prev_close×(1±10%) 後向 prev_close
+    方向取合法 tick(漲停向下取、跌停向上取);1e-9 epsilon 吸收浮點誤差。"""
+    raw = prev_close * (1 + direction * _LIMIT_RATE)
+    tick = _tick_size(raw)
+    if direction > 0:
+        steps = math.floor(raw / tick + 1e-9)
+    else:
+        steps = math.ceil(raw / tick - 1e-9)
+    return steps * tick
+
+
+def compute_breadth(
+    universe_rows: list[dict],
+    type_map: dict[str, str],
+    name_map: dict[str, str],
+) -> dict | None:
+    """MK-5/7:上市/上櫃 漲停/上漲/平盤/下跌/跌停 家數 + 全量 rows(前端門檻
+    /排序自理)。桶互斥(漲停不重複計入上漲)。
+
+    漲停判定(R4):prev_close = close − change_price(tick snapshot 精確欄位,
+    不用 change_rate 反推),與 tick 級容差(半個 tick)比較;prev/close 缺 →
+    不判 limit,只按 change_rate 正負分桶。change_rate null 整檔跳過;type_map
+    查無市場的股(index/未收錄)排除。全空 → None。
+    """
+    counts: dict[str, dict[str, int]] = {
+        m: {"limit_up": 0, "up": 0, "flat": 0, "down": 0, "limit_down": 0} for m in ("twse", "tpex")
+    }
+    rows_out: list[dict] = []
+
+    for r in universe_rows:
+        sid = r.get("stock_id")
+        market = type_map.get(sid or "")
+        chg = r.get("change_rate")
+        if not sid or market not in counts or chg is None:
+            continue
+
+        close = r.get("close")
+        change_price = r.get("change_price")
+        prev_close = (
+            close - change_price if close is not None and change_price is not None else None
+        )
+        limit_up = False
+        limit_down = False
+        if prev_close is not None and prev_close > 0 and close is not None:
+            up_price = _limit_price(prev_close, 1)
+            down_price = _limit_price(prev_close, -1)
+            limit_up = abs(close - up_price) < _tick_size(up_price) / 2
+            limit_down = abs(close - down_price) < _tick_size(down_price) / 2
+
+        if limit_up:
+            bucket = "limit_up"
+        elif limit_down:
+            bucket = "limit_down"
+        elif chg > 0:
+            bucket = "up"
+        elif chg < 0:
+            bucket = "down"
+        else:
+            bucket = "flat"
+        counts[market][bucket] += 1
+
+        tv = r.get("total_volume")
+        yv = r.get("yesterday_volume")
+        vol_ratio = (tv / yv) if (tv is not None and yv) else None
+        rows_out.append(
+            {
+                "stock_id": sid,
+                "name": name_map.get(sid) or sid,
+                "market": market,
+                "change_rate": chg,
+                "volume_ratio": vol_ratio,
+                "total_amount": r.get("total_amount"),
+                "limit_up": limit_up,
+                "limit_down": limit_down,
+            }
+        )
+
+    if not rows_out:
+        return None
+    return {"twse": counts["twse"], "tpex": counts["tpex"], "rows": rows_out}
 
 
 # ---------------------------------------------------------------------------
