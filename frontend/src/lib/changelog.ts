@@ -40,6 +40,63 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.39.0",
+    date: "2026-07-21",
+    highlights: "介面大改版:自選清單、泡泡圖過濾、權證評分、大盤漲跌家數與量比排行",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "新增自選清單:可把個股加入清單並建立分組,點擊即切換個股;桌面固定在畫面左側可收合,手機收合在頂部",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "泡泡圖新增「過濾清單」:不想看到的分點可加入排除,泡泡、成交列表與統計都不再顯示;設定跨個股共用並會記住",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "前 15 大買賣超與交易量清單每列新增「看泡泡圖」按鈕,一鍵跳到泡泡圖並聚焦該分點;若該分點原本被排除會自動移回並提示",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "檢視多日區間時,K 線資訊與主力、三大法人、融資融券、分點各列改顯示區間加總;十字游標在所有子圖跟隨,拖曳圖表不再誤選到文字",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "右側面板精簡:主力與三大法人併為一列、移除重複標題與日期,前 15 大清單可看到更多列",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證新增「評分」欄:以估價差、買賣價差、實質槓桿與剩餘天數綜合計算 0-100 可買性分數,預設依評分排序;理論價欄位並加上計算基準說明",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "權證類型欄改用台股多空慣例配色:認購紅、認售綠;引波展開圖與權證分點的淨額時序圖移除,頁面更聚焦",
+      },
+      {
+        kind: "feature",
+        scope: "global",
+        text: "分點反查升格為頂部獨立頁面(券差旁),不再藏在個股分頁裡;點反查結果仍可直接跳回個股籌碼",
+      },
+      {
+        kind: "feature",
+        scope: "global",
+        text: "大盤頁新增「漲跌家數」(上市/上櫃漲停、上漲、平盤、下跌、跌停家數,漲停跌停可點開看清單)與「量比排行」(門檻可調,點列直接跳個股)",
+      },
+      {
+        kind: "feature",
+        scope: "global",
+        text: "大盤強弱卡新增「扣除台積電」列,看指數漲跌有多少來自台積電;族群輪動改整列點擊展開,個股直接列在族群下方;舊版熱力圖與排行榜區塊移除",
+      },
+    ],
+  },
+  {
     version: "0.38.2",
     date: "2026-07-21",
     changes: [
