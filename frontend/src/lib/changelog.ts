@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.38.0",
+    date: "2026-07-21",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "個股頁新增「分點反查」:搜尋任一券商分點,即可看到它當天金額買超與賣超的股票排行(張數與金額並列),點任一檔股票直接跳到籌碼總覽,並自動帶入該分點的買賣超走勢",
+      },
+    ],
+  },
+  {
     version: "0.37.0",
     date: "2026-07-20",
     changes: [

@@ -30,6 +30,11 @@ vi.mock("./components/WarrantFlowPanel", () => ({
     <div data-testid="warrant-flow-panel" data-active={String(active)}>flow</div>
   ),
 }));
+vi.mock("./components/BrokerFlowsPanel", () => ({
+  BrokerFlowsPanel: ({ active }: { active: boolean }) => (
+    <div data-testid="broker-flows-panel" data-active={String(active)}>flows</div>
+  ),
+}));
 vi.mock("./components/SymbolSearch", () => ({
   SymbolSearch: () => <div data-testid="symbol-search">search</div>,
 }));
@@ -139,6 +144,17 @@ describe("App mode persistence (SC-4)", () => {
     // 切回總覽:hidden 保 DOM(active gate 停止 fetch),panel 仍 mounted
     fireEvent.click(screen.getByRole("button", { name: "籌碼總覽" }));
     expect(screen.getByTestId("warrant-flow-panel").getAttribute("data-active")).toBe("false");
+  });
+
+  it("分點反查 tab:點擊切換 mount panel 並帶 active(feat/broker-daily-flows SC-4)", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "分點反查" }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("broker-flows-panel")).toBeTruthy();
+    });
+    expect(screen.getByTestId("broker-flows-panel").getAttribute("data-active")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "籌碼總覽" }));
+    expect(screen.getByTestId("broker-flows-panel").getAttribute("data-active")).toBe("false");
   });
 
   it("ignores invalid localStorage mode value and falls back to equity", () => {
