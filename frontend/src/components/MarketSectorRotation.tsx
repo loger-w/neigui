@@ -8,44 +8,14 @@ type Props = { data: SectorRotation | null; loading: boolean };
 
 type Drill = { industry: string; subIndustry: string | null };
 
-/** SC-3:量比 >1.5 過熱 / <0.7 冷清,null → 無 flag。中性標色(不用 accent —
- * frontend-conventions:資料 badge 禁用 accent,避免撞多頭紅語意)。 */
-function volRatioFlag(v: number | null): "hot" | "cold" | null {
-  if (v === null) return null;
-  if (v > 1.5) return "hot";
-  if (v < 0.7) return "cold";
-  return null;
-}
-
-function VolRatioBadge({ v }: { v: number | null }): ReactElement {
-  const flag = volRatioFlag(v);
-  return (
-    <span className="flex items-center gap-1">
-      <span className="text-ink-dim">{formatRatio(v)}</span>
-      {flag === "hot" && (
-        <span data-flag="hot" className="px-1 rounded bg-ink/10 text-ink text-[0.625rem]">
-          過熱
-        </span>
-      )}
-      {flag === "cold" && (
-        <span
-          data-flag="cold"
-          className="px-1 rounded border border-line-strong text-ink-dim text-[0.625rem]"
-        >
-          冷清
-        </span>
-      )}
-    </span>
-  );
-}
-
+/** SC-5(mod/batch-ui-polish):過熱/冷清 flag tag 退役,只留量比數值。 */
 function GroupStatsRow({ group }: { group: SectorRotationGroup }): ReactElement {
   return (
     <span className="flex items-center gap-2">
       <span className={changeColorClass(group.avg_change_rate)}>
         {signedPercent(group.avg_change_rate)}
       </span>
-      <VolRatioBadge v={group.vol_ratio} />
+      <span className="text-ink-dim">{formatRatio(group.vol_ratio)}</span>
     </span>
   );
 }
