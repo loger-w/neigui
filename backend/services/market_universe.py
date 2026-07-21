@@ -17,11 +17,13 @@ import asyncio
 import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import Any, Awaitable, Callable
 
 import httpx
 
 from services import clock
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
+from utils.concurrency import run_once
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,7 @@ _CACHE_VERSION_UNIVERSE = 1
 _DISPOSITION_TTL_HOURS = 24
 _DISPOSITION_LOOKBACK_DAYS = 60  # 處置期間最長見過 ~30 天,60 天 buffer
 
-_inflight: dict[str, asyncio.Task] = {}
+_inflight: dict[str, dict[str, Any]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -143,14 +145,10 @@ def _is_fresh(cached: dict, ttl_hours: float) -> bool:
     return datetime.now() - dt < timedelta(hours=ttl_hours)
 
 
-async def _run_once(key: str, coro_fn):
-    if key in _inflight:
-        return await _inflight[key]
-    _inflight[key] = asyncio.ensure_future(coro_fn())
-    try:
-        return await _inflight[key]
-    finally:
-        _inflight.pop(key, None)
+async def _run_once(key: str, coro_fn: Callable[[], Awaitable[Any]]) -> Any:
+    """Inflight dedup — 委派 utils.concurrency.run_once(refcount + shield;
+    F-3 收斂,spec SC-2 拍板由裸 await 版升級 refcount 語意)。"""
+    return await run_once(_inflight, key, coro_fn)
 
 
 # ---------------------------------------------------------------------------
