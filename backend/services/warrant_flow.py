@@ -16,7 +16,7 @@ import os
 import re
 from datetime import date as date_type, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from fastapi import HTTPException
@@ -91,12 +91,6 @@ def get_finmind() -> "FinMindClient":
     from services.finmind import get_finmind as _real
 
     return _real()
-
-
-async def _run_once(key: str, coro_fn: Callable[[], Awaitable[Any]]) -> Any:
-    """Inflight dedup — 委派 utils.concurrency.run_once(refcount + shield)。
-    (2026-07-21 WF-1:warrant_flow_history 已刪,跨模組直呼者不再存在。)"""
-    return await run_once(_inflight, key, coro_fn)
 
 
 # ---------------------------------------------------------------- dates / caches
@@ -200,7 +194,7 @@ async def _fetch_price_day(d: str, refresh: bool) -> list[dict]:
 
     # R14:dedup key 帶 refresh 旗標(F2 precedent),refresh 請求
     # 不得 join 到 cache-read 路徑的 in-flight task
-    return await _run_once(f"flow_prices_{d}_r{int(refresh)}", _do_fetch)
+    return await run_once(_inflight, f"flow_prices_{d}_r{int(refresh)}", _do_fetch)
 
 
 async def _fetch_report(wid: str, d: str) -> list[dict]:
@@ -481,7 +475,7 @@ async def get_flow(stock_id: str, date: str | None = None, refresh: bool = False
             return payload
         raise HTTPException(status_code=404, detail={"error": "no_data"})
 
-    result = await _run_once(f"flow_{stock_id}_{date or 'latest'}_{int(refresh)}", _impl)
+    result = await run_once(_inflight, f"flow_{stock_id}_{date or 'latest'}_{int(refresh)}", _impl)
     if date is not None and result.get("as_of_date") not in (None, date):
         # flag 不烙進 cache(同 cache entry 服務預設與顯式 date 查詢)— impl-R5
         result = {**result, "no_trading_day": True}
