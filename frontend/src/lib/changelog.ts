@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.38.2",
+    date: "2026-07-21",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "分點反查:搜尋命中超過 50 筆時,下拉清單尾端顯示「共 N 筆,僅列前 50」提示,不再靜默截斷讓人誤以為找不到分點",
+      },
+    ],
+  },
+  {
     version: "0.38.1",
     date: "2026-07-21",
     changes: [

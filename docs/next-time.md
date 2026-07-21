@@ -11,7 +11,7 @@
 > 2026-07-21 user 指示:以下兩條 + `_run_once` 複本組已獨立成 `docs/specs/broker-flows-followups/spec.md`(F-1/F-2/F-3),由新 session 處理;做完刪本節條目 + 對應 spec 節。
 
 - (原「[→ spec F-1] 新開分點 24h cache 窗內查無」條目已由 mod/broker-directory-refresh 解決刪除,2026-07-21:`get_daily_flows(refresh=True)` 目錄一併強制重抓,dedup key `broker_directory_r{0,1}`;search_traders 不長 refresh 面)
-- **[→ spec F-2] 分點搜尋 50 筆上限無「已截斷」提示**:寬 query(如「證券」)命中 >50 時 UI 靜默截斷。
+- (原「[→ spec F-2] 分點搜尋 50 筆上限無截斷提示」條目已由 mod/trader-search-truncation 解決刪除,2026-07-21:shape 改 `{hits, total}`(user 拍板 (a)),dropdown 尾端非 option 提示列;本節三條全數收割,spec `broker-flows-followups` 全部結案)
 
 ## From /mod chip-major-lazy-window Phase 2 probe(2026-07-16)
 
