@@ -1,0 +1,46 @@
+{
+  "data": [
+    {
+      "securities_trader_id": "9600",
+      "securities_trader": "富邦",
+      "date": "1988-09-16",
+      "address": "台北市仁愛路4段169號3樓",
+      "phone": "02-87716888"
+    },
+    {
+      "securities_trader_id": "9604",
+      "securities_trader": "富邦-陽明",
+      "date": "2000-09-09",
+      "address": "台北市北投區裕民六路2號1樓",
+      "phone": "02-28230688"
+    },
+    {
+      "securities_trader_id": "9608",
+      "securities_trader": "富邦-台東",
+      "date": "2000-09-11",
+      "address": "台東市中華路1段366號2樓",
+      "phone": "089-341022"
+    },
+    {
+      "securities_trader_id": "9200",
+      "securities_trader": "凱基",
+      "date": "1988-04-25",
+      "address": "台北市明水路700號",
+      "phone": "02-21818888"
+    },
+    {
+      "securities_trader_id": "1020",
+      "securities_trader": "合庫",
+      "date": "1996-05-14",
+      "address": "台北市館前路77號3樓",
+      "phone": "02-23820486"
+    },
+    {
+      "securities_trader_id": "5850",
+      "securities_trader": "統一",
+      "date": "1988-10-24",
+      "address": "台北市東興路8號B1",
+      "phone": "02-27463798"
+    }
+  ]
+}
