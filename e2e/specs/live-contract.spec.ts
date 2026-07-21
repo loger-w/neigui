@@ -70,14 +70,16 @@ test.describe("@live upstream contract", () => {
     const r = await request.get("/api/market/snapshot");
     expect(r.status()).toBe(200);
     const body = await r.json();
-    expect(body).toHaveProperty("sectors");
-    expect(body).toHaveProperty("leaderboards");
-    // mod/market-today-only:EOD 四欄(breadth/sector_breadth/
-    // sector_volume_ratio/sector_amount_share)隨管線移除退役,改今日三欄
-    // 存在性(值可 null — 降級語意見 change-spec §1 SC-5)。
+    // MK-4(mod/batch-ui-update):經典檢視退役 — sectors / leaderboards
+    // 停算停傳,鎖不存在防回歸。
+    expect(body).not.toHaveProperty("sectors");
+    expect(body).not.toHaveProperty("leaderboards");
+    // mod/market-today-only:今日三欄 + MK-7 breadth 存在性(值可 null —
+    // 降級語意見 change-spec §1 SC-5)。
     expect(body).toHaveProperty("index_strength");
     expect(body).toHaveProperty("cap_tiers");
     expect(body).toHaveProperty("sector_rotation");
+    expect(body).toHaveProperty("breadth");
     expect(body).toHaveProperty("universe_size");
     if (body.sector_rotation != null) {
       expect(Array.isArray(body.sector_rotation.industries)).toBe(true);
