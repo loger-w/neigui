@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useWarrants } from "../hooks/useWarrants";
 import { useWarrantQuotes } from "../hooks/useWarrantQuotes";
-import { WarrantIvHistory } from "./WarrantIvHistory";
 import { WarrantColumnMenu } from "./WarrantColumnMenu";
 import { Checkbox } from "./ui/checkbox";
 import { NumberField } from "./ui/number-field";
@@ -53,7 +52,6 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
   const [filters, setFilters] = useState<WarrantFilters>(DEFAULT_FILTERS);
   const [sortKey, setSortKey] = useState<WarrantSortKey>("spread_lev_ratio");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   // 篩選 input 用 defaultValue + epoch remount:controlled value 會沖掉
   // 「-」「0.」等打字中間態;重製 / 換標的靠 epoch 重掛同步顯示值
   const [filterEpoch, setFilterEpoch] = useState(0);
@@ -73,9 +71,8 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
       .filter((c): c is WarrantColumnDef => c != null);
   }, [colPrefs]);
 
-  // 換標的:展開列與篩選歸零(舊標的殘留會誤導)
+  // 換標的:篩選歸零(舊標的殘留會誤導)
   useEffect(() => {
-    setExpandedId(null);
     setFilters(DEFAULT_FILTERS);
     setFilterEpoch((e) => e + 1);
   }, [symbol]);
@@ -366,7 +363,6 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
           <table className="w-max min-w-full text-xs whitespace-nowrap">
             <thead className="sticky top-0 bg-bg z-10">
               <tr className="border-b border-line-strong text-ink-dim">
-                <th className="px-2 py-1.5" aria-label="展開" />
                 {visibleColumns.map((c) => (
                   <th
                     key={c.id}
@@ -398,13 +394,9 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
             </thead>
             <tbody>
               {rows.map((r) => (
-                <RowPair
+                <WarrantTableRow
                   key={r.warrant_id}
                   row={r}
-                  expanded={expandedId === r.warrant_id}
-                  onToggle={() =>
-                    setExpandedId((cur) => (cur === r.warrant_id ? null : r.warrant_id))
-                  }
                   slrClass={slrClass(r.spread_lev_ratio)}
                   columns={visibleColumns}
                 />
@@ -417,51 +409,26 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
   );
 }
 
-function RowPair({
+// WA-1(mod/batch-ui-update):引波展開整刪 — 單純資料列,無展開態。
+function WarrantTableRow({
   row: r,
-  expanded,
-  onToggle,
   slrClass,
   columns,
 }: {
   row: WarrantRow;
-  expanded: boolean;
-  onToggle: () => void;
   slrClass: string;
   columns: WarrantColumnDef[];
 }) {
   const ctx: WarrantColumnCtx = { slrClass };
   return (
-    <>
-      <tr
-        data-testid="warrant-row"
-        data-warrant-id={r.warrant_id}
-        className="border-b border-line hover:bg-bg-deep transition-colors"
-      >
-        <td className="px-2 py-1">
-          <button
-            type="button"
-            onClick={onToggle}
-            aria-expanded={expanded}
-            aria-label={`展開明細 ${r.name}`}
-            className="w-5 h-5 pointer-coarse:min-h-11 inline-flex items-center justify-center text-ink-dim hover:text-accent cursor-pointer transition-colors"
-          >
-            {expanded ? "−" : "+"}
-          </button>
-        </td>
-        {columns.map((c) => (
-          <Fragment key={c.id}>{c.cell(r, ctx)}</Fragment>
-        ))}
-      </tr>
-      {expanded && (
-        <tr className="border-b border-line bg-bg-deep/50">
-          <td colSpan={columns.length + 1} className="px-8 py-2">
-            <div className="text-xs">
-              <WarrantIvHistory warrantId={r.warrant_id} ivPercentile={r.iv_percentile ?? null} />
-            </div>
-          </td>
-        </tr>
-      )}
-    </>
+    <tr
+      data-testid="warrant-row"
+      data-warrant-id={r.warrant_id}
+      className="border-b border-line hover:bg-bg-deep transition-colors"
+    >
+      {columns.map((c) => (
+        <Fragment key={c.id}>{c.cell(r, ctx)}</Fragment>
+      ))}
+    </tr>
   );
 }

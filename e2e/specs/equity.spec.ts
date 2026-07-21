@@ -317,21 +317,12 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(row13.getByTestId(TESTIDS.ivDriftLabel)).toHaveText("—");
   });
 
-  test("E13: row 展開 IV 時序圖(warrant-iv-drift SC-7 / warrant-iv-redesign)", async ({ page }) => {
-    // 痛點:iv-history endpoint → hook → computeIvHistoryChart → svg path 全鏈;
-    // 鎖 path d 屬性非空(資料級),空 geometry 時 svg 不 render。重設計後
-    // 加鎖標的收盤 panel(underlying_close 欄位斷了 = price path 空)與摘要列。
+  test("E13: 權證表無展開鈕(WA-1 mod/batch-ui-update 引波展開整刪)", async ({ page }) => {
+    // 痛點:WA-1 刪除引波展開後,展開鈕/IV 時序圖不得殘留(iv_drift 欄仍在,
+    // 由 E12 覆蓋 — service 保留、endpoint 已刪)。
     await page.getByRole("button", { name: /^權證$/ }).click();
-    const row12 = page.locator('[data-warrant-id="030012"]');
-    await row12.getByRole("button", { name: /展開明細/ }).click();
-    const chart = page.getByTestId(TESTIDS.warrantIvChart);
-    await expect(chart).toBeVisible();
-    const bidD = await chart.locator('path[data-side="bid"]').getAttribute("d");
-    expect(bidD).toMatch(/^M[\d.]+,[\d.]+L/); // 至少一段 M + L 連線
-    const priceD = await chart.locator('path[data-series="price"]').getAttribute("d");
-    expect(priceD).toMatch(/^M[\d.]+,[\d.]+L/); // 標的收盤序列資料級
-    await expect(page.getByTestId("warrant-iv-summary")).toBeVisible();
-    await expect(page.getByText("買價IV", { exact: true })).toBeVisible();
+    await expect(page.getByTestId(TESTIDS.warrantRow).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /展開明細/ })).toHaveCount(0);
   });
 });
 

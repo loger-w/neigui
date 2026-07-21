@@ -47,9 +47,8 @@ export const TESTIDS = {
   warrantRow: "warrant-row",
   warrantKindBadge: "warrant-kind-badge",
   mispricingLabel: "mispricing-label",
-  // 權證 IV 趨勢(feat/warrant-iv-drift)
+  // 權證 IV 趨勢(feat/warrant-iv-drift;iv-history 展開圖已於 WA-1 刪除)
   ivDriftLabel: "iv-drift-label",
-  warrantIvChart: "warrant-iv-chart",
   // 權證挑選強化(mod/warrant-selector-enhance)
   columnMenuBtn: "column-menu-btn",
   // 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux;E23-E29 補課 2026-07-20)

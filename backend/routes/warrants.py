@@ -1,8 +1,8 @@
-"""權證選擇器 routes — EOD 快照 / MIS 盤中 quotes / IV 歷史 / 分點流向。
+"""權證選擇器 routes — EOD 快照 / MIS 盤中 quotes / 分點流向。
 
-Error 邊界逐 endpoint(design R9):warrants/quotes/iv-history 上游是
-TWSE/TPEx/MIS,自己 catch httpx 基類 → 502 warrant_upstream(中央 handler
-會錯標 finmind_error);flow 上游是 FinMind → 不 catch,沿中央 handler。
+Error 邊界逐 endpoint(design R9):warrants/quotes 上游是 TWSE/TPEx/MIS,
+自己 catch httpx 基類 → 502 warrant_upstream(中央 handler 會錯標
+finmind_error);flow 上游是 FinMind → 不 catch,沿中央 handler。
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from fastapi import APIRouter, HTTPException, Request
 from services import (
     warrant_flow,
     warrant_flow_history,
-    warrant_iv_history,
     warrant_quotes,
     warrants,
 )
@@ -56,22 +55,6 @@ async def get_warrant_quotes(request: Request, stock_id: str, refresh: bool = Fa
     except httpx.HTTPError as exc:
         logger.warning("warrant quotes upstream error: %s", exc)
         raise HTTPException(status_code=502, detail={"error": "warrant_upstream"}) from exc
-
-
-@router.get("/api/warrants/{warrant_id}/iv-history")
-async def get_warrant_iv_history(request: Request, warrant_id: str, refresh: bool = False) -> dict:
-    _validate_id(warrant_id)
-    try:
-        payload = await run_with_disconnect(
-            request, warrant_iv_history.get_iv_history(warrant_id, refresh)
-        )
-    except httpx.HTTPError as exc:
-        # snapshot 冷 build 可觸 TWSE/TPEx 網路 — 同 warrants/quotes 自 catch(R9)
-        logger.warning("warrant iv-history upstream error: %s", exc)
-        raise HTTPException(status_code=502, detail={"error": "warrant_upstream"}) from exc
-    if payload is None:
-        raise HTTPException(status_code=404, detail={"error": "not_found"})
-    return payload
 
 
 @router.get("/api/warrants/{stock_id}/flow/history")

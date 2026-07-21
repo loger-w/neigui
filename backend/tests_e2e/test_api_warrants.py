@@ -88,28 +88,11 @@ async def test_warrants_rows_carry_iv_drift(client):
     assert by_id["030011"]["iv_drift"] == "insufficient"  # fixture 僅 5 日
 
 
-async def test_iv_history_contract(client):
-    # SC-5 contract:series 升冪 + drift 攤平 shape(前端 lib/api.ts 依賴)
+async def test_iv_history_route_removed(client):
+    # WA-1(mod/batch-ui-update):/iv-history endpoint 已刪(引波展開整刪);
+    # iv_drift 欄由上面的測試持續覆蓋(service 保留)
     r = await client.get("/api/warrants/030012/iv-history")
-    assert r.status_code == 200
-    body = r.json()
-    assert body["warrant_id"] == "030012"
-    assert len(body["series"]) == 25
-    dates = [p["date"] for p in body["series"]]
-    assert dates == sorted(dates)
-    assert body["series"][-1]["date"] == "2026-06-26"  # FAKE_TODAY
-    assert body["series"][-1]["iv_bid"] == pytest.approx(0.35, abs=0.01)
-    # 標的收盤序列(warrant-iv-redesign):FAKE fixture 的 s 直通 payload
-    assert body["series"][-1]["underlying_close"] == pytest.approx(1000.0)
-    assert body["drift"]["label"] == "declining"
-    assert set(body["drift"]) == {"label", "slope_bid", "slope_ask", "n_valid"}
-    assert body["terms_approx_dates"] == []
-
-
-async def test_iv_history_unknown_warrant_404(client):
-    r = await client.get("/api/warrants/039999/iv-history")
-    assert r.status_code == 404
-    assert r.json()["detail"]["error"] == "not_found"
+    assert r.status_code in (404, 405)
 
 
 async def test_flow_happy_path_shape_and_values(client):

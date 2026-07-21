@@ -22,27 +22,6 @@ export interface WarrantTerm {
   iv_drift: IvDriftLabel | null;
 }
 
-export interface WarrantIvPoint {
-  date: string;
-  iv_bid: number | null;
-  iv_ask: number | null;
-  underlying_close: number | null;
-}
-
-export interface WarrantIvDrift {
-  label: IvDriftLabel;
-  slope_bid: number | null;
-  slope_ask: number | null;
-  n_valid: number;
-}
-
-export interface WarrantIvHistoryPayload {
-  warrant_id: string;
-  terms_approx_dates: string[];
-  series: WarrantIvPoint[];
-  drift: WarrantIvDrift;
-}
-
 export interface WarrantQuote {
   price: number | null;
   best_bid: number | null;
