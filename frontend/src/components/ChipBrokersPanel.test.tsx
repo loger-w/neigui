@@ -657,6 +657,61 @@ describe("ChipBrokersPanel — B2 chip bar 容器常駐 (C3 🔴)", () => {
   });
 });
 
+// SC-3 (mod/batch-ui-polish 🔴): 精簡列表 chrome — 賣超半區不重複 header
+// (欄位語意由買超 header 承載)、# 序號欄整個移除(net + volume 一致)。
+describe("ChipBrokersPanel — SC-3 header/序號精簡", () => {
+  const renderPanel = () =>
+    render(
+      <ChipBrokersPanel
+        summary={mkSummary(topBrokers)}
+        dayTotalLots={1000}
+        selectedBrokerIds={new Set()}
+        onToggleBroker={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+
+  it("net 模式只有買超半區有欄位 header(賣超半區無「淨買賣」標題)", () => {
+    const { container } = renderPanel();
+    const buyers = container.querySelector('[data-testid="buyers-scroll"]')!;
+    const sellers = container.querySelector('[data-testid="sellers-scroll"]')!;
+    expect((buyers.textContent ?? "").includes("淨買賣")).toBe(true);
+    expect((sellers.textContent ?? "").includes("淨買賣")).toBe(false);
+    // 分隔帶仍在
+    expect((sellers.textContent ?? "").includes("賣超")).toBe(true);
+  });
+
+  it("買超 header 無「#」欄標題", () => {
+    const { container } = renderPanel();
+    const buyers = container.querySelector('[data-testid="buyers-scroll"]')!;
+    const headerSpans = [...buyers.querySelectorAll(".sticky span")].map(
+      (s) => s.textContent,
+    );
+    expect(headerSpans.includes("#")).toBe(false);
+    expect(headerSpans.includes("分點")).toBe(true);
+  });
+
+  it("列不再顯示序號數字(checkbox 後第一欄即分點名)", () => {
+    const { container } = renderPanel();
+    const row = container.querySelector('[role="button"][aria-pressed]')!;
+    // 舊版 checkbox 與名稱之間有 rank span;移除後 children[1] 直接是
+    // 帶 title 的名稱欄
+    const second = row.children[1] as HTMLElement;
+    expect(second.getAttribute("title")).toBeTruthy();
+  });
+
+  it("volume 模式 header 無「#」且保留當沖率欄", () => {
+    const { container, getByText } = renderPanel();
+    fireEvent.click(getByText("前 15 大交易量分點"));
+    const vol = container.querySelector('[data-testid="volume-scroll"]')!;
+    const headerSpans = [...vol.querySelectorAll(".sticky span")].map(
+      (s) => s.textContent,
+    );
+    expect(headerSpans.includes("#")).toBe(false);
+    expect(headerSpans.includes("當沖率")).toBe(true);
+  });
+});
+
 // B1 (C8 🟢): 整 row 可點,擴大 hit area 讓 tap target 從 checkbox 16px
 // 提升到整 row 高度。同時保留 checkbox 可獨立點擊(不 double-toggle)。
 describe("ChipBrokersPanel — B1 整 row 可點 (C8 🟢)", () => {
@@ -676,10 +731,9 @@ describe("ChipBrokersPanel — B1 整 row 可點 (C8 🟢)", () => {
     );
     const row = container.querySelector('[role="button"][aria-pressed]') as HTMLElement;
     expect(row).toBeTruthy();
-    // Click on the rank number span (not inside the checkbox <label>)
-    const rankSpan = row.querySelector(".text-ink-dim.tabular-nums") as HTMLElement;
-    expect(rankSpan).toBeTruthy();
-    fireEvent.click(rankSpan);
+    // Click the row itself (empty area, not inside the checkbox <label>);
+    // SC-3 後序號欄已移除,不再有 rank span 可點。
+    fireEvent.click(row);
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onToggle).toHaveBeenCalledWith("B0");
   });

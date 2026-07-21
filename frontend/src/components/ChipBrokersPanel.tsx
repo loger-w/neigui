@@ -63,7 +63,6 @@ function rateClass(r: number | null): string {
 }
 
 interface RowProps {
-  rank: number;
   broker: TopBroker | TopVolumeBroker;
   mode: Mode;
   selected: boolean;
@@ -71,7 +70,7 @@ interface RowProps {
   onShowInBubble?: (brokerId: string, name: string) => void;
 }
 
-function BrokerRow({ rank, broker, mode, selected, onToggle, onShowInBubble }: RowProps) {
+function BrokerRow({ broker, mode, selected, onToggle, onShowInBubble }: RowProps) {
   const badge = brokerBadge(broker.name);
   const netCls = broker.net > 0 ? "text-accent" : broker.net < 0 ? "text-bear" : "text-ink-dim";
   // Column order: 買均 → 賣均 → 買張 → 賣張 (avg-price pair first, then
@@ -79,8 +78,8 @@ function BrokerRow({ rank, broker, mode, selected, onToggle, onShowInBubble }: R
   // Responsive spec §4.3:窄容器(<400px,px 基準 container query — 用 rem 的 @md 在大螢幕 root 放大後門檻會超過預設面板寬 420px,反而藏欄)隱藏買均/賣均,
   // 手機至少保住「誰、買賣超多少」。
   const cls = mode === "net"
-    ? "grid-cols-[22px_28px_1fr_64px_52px_52px] @[400px]:grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]"
-    : "grid-cols-[22px_28px_1fr_52px_52px_56px] @[400px]:grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
+    ? "grid-cols-[22px_1fr_64px_52px_52px] @[400px]:grid-cols-[22px_1fr_64px_56px_56px_52px_52px]"
+    : "grid-cols-[22px_1fr_52px_52px_56px] @[400px]:grid-cols-[22px_1fr_56px_56px_52px_52px_56px]";
 
   // C8 B1 (🟢): 整 row 可點,擴大 hit area。checkbox 保留但用 span wrapper
   // 攔 click bubble 避免 double-toggle。keyboard Enter/Space 也觸發。
@@ -114,7 +113,6 @@ function BrokerRow({ rank, broker, mode, selected, onToggle, onShowInBubble }: R
           aria-label={`勾選 ${broker.name}`}
         />
       </span>
-      <span className="text-ink-dim tabular-nums">{rank}</span>
       <span
         className="relative flex items-center gap-1.5 text-ink-muted min-w-0 group/name"
         title={broker.name}
@@ -227,9 +225,9 @@ export function ChipBrokersPanel({
   const { margin } = summary;
   const N = selectedBrokerIds.size;
   const netHeaderCols =
-    "grid-cols-[22px_28px_1fr_64px_52px_52px] @[400px]:grid-cols-[22px_28px_1fr_64px_56px_56px_52px_52px]";
+    "grid-cols-[22px_1fr_64px_52px_52px] @[400px]:grid-cols-[22px_1fr_64px_56px_56px_52px_52px]";
   const volHeaderCols =
-    "grid-cols-[22px_28px_1fr_52px_52px_56px] @[400px]:grid-cols-[22px_28px_1fr_56px_56px_52px_52px_56px]";
+    "grid-cols-[22px_1fr_52px_52px_56px] @[400px]:grid-cols-[22px_1fr_56px_56px_52px_52px_56px]";
 
   return (
     <div
@@ -403,7 +401,6 @@ export function ChipBrokersPanel({
             >
               <div className={`${flowScroll ? "" : "sticky top-0 z-[2] "}grid ${netHeaderCols} text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep`}>
                 <span></span>
-                <span>#</span>
                 <span>分點</span>
                 <span className="text-right">淨買賣</span>
                 <span className="hidden @[400px]:block text-right">買均</span>
@@ -415,10 +412,9 @@ export function ChipBrokersPanel({
                 買超
               </div>
               {buyers.length > 0 ? (
-                buyers.slice(0, 15).map((b, i) => (
+                buyers.slice(0, 15).map((b) => (
                   <BrokerRow
                     key={b.broker_id}
-                    rank={i + 1}
                     broker={b}
                     mode="net"
                     selected={selectedBrokerIds.has(b.broker_id)}
@@ -438,24 +434,14 @@ export function ChipBrokersPanel({
                   : "flex-1 min-h-0 overflow-y-auto scroll-editorial border-t border-line"
               }
             >
-              <div className={`${flowScroll ? "" : "sticky top-0 z-[2] "}grid ${netHeaderCols} text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep`}>
-                <span></span>
-                <span>#</span>
-                <span>分點</span>
-                <span className="text-right">淨買賣</span>
-                <span className="hidden @[400px]:block text-right">買均</span>
-                <span className="hidden @[400px]:block text-right">賣均</span>
-                <span className="text-right">買張</span>
-                <span className="text-right">賣張</span>
-              </div>
+              {/* SC-3: 賣超半區不重複欄位 header,語意由買超 header 承載 */}
               <div className="px-2 py-1 text-2xs text-bear bg-bear/[0.04] uppercase tracking-wider">
                 賣超
               </div>
               {sellers.length > 0 ? (
-                sellers.slice(0, 15).map((b, i) => (
+                sellers.slice(0, 15).map((b) => (
                   <BrokerRow
                     key={b.broker_id}
-                    rank={i + 1}
                     broker={b}
                     mode="net"
                     selected={selectedBrokerIds.has(b.broker_id)}
@@ -475,7 +461,6 @@ export function ChipBrokersPanel({
           >
             <div className={`${flowScroll ? "" : "sticky top-0 z-[2] "}grid ${volHeaderCols} text-sm text-ink-dim px-2 py-1.5 border-b border-line bg-bg-deep`}>
               <span></span>
-              <span>#</span>
               <span>分點</span>
               <span className="hidden @[400px]:block text-right">買均</span>
               <span className="hidden @[400px]:block text-right">賣均</span>
@@ -483,10 +468,9 @@ export function ChipBrokersPanel({
               <span className="text-right">賣張</span>
               <span className="text-right">當沖率</span>
             </div>
-            {volumeBrokers.map((b, i) => (
+            {volumeBrokers.map((b) => (
               <BrokerRow
                 key={b.broker_id}
-                rank={i + 1}
                 broker={b}
                 mode="volume"
                 selected={selectedBrokerIds.has(b.broker_id)}
