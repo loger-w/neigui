@@ -41,3 +41,8 @@
 - 前端改動(重新整理鈕已傳 refresh=true,鏈路自然通)。
 - `search_traders` refresh 面。
 - F-2(搜尋截斷提示)。
+
+## Phase 5 自評記錄
+
+- 對抗式 review(medium):無 P0/P1;P2 ×1(changelog 文案對純搜尋情境過度承諾 — 重新整理鈕僅在已選定分點時 render)→ accepted,文案改「檢視分點時按重新整理」。
+- self_review_head: 見下行(自評收斂後回填)。
