@@ -108,4 +108,38 @@ describe("BrokerFlowsPanel", () => {
     await pickFubon(mk({ stock_count: 1136 }));
     expect(screen.getByText(/共 1136 檔/)).toBeTruthy();
   });
+
+  it("搜尋無結果 → 「查無符合分點」(review S4)", async () => {
+    vi.spyOn(api, "brokerTraders").mockResolvedValue([]);
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    fireEvent.change(screen.getByLabelText("搜尋分點"), { target: { value: "不存在" } });
+    expect(await screen.findByText("查無符合分點", undefined, { timeout: 3000 })).toBeTruthy();
+  });
+
+  it("目錄故障 → 搜尋框下方顯示繁中錯誤,不靜默(review C1)", async () => {
+    vi.spyOn(api, "brokerTraders").mockRejectedValue(new Error("broker_directory_unavailable"));
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    fireEvent.change(screen.getByLabelText("搜尋分點"), { target: { value: "富邦" } });
+    expect(
+      await screen.findByText("分點目錄暫時無法取得", undefined, { timeout: 5000 }),
+    ).toBeTruthy();
+  });
+
+  it("flows 錯誤碼映射繁中(review P2SUM-2)", async () => {
+    vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+    vi.spyOn(api, "brokerDailyFlows").mockRejectedValue(new Error("broker_not_found"));
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    fireEvent.change(screen.getByLabelText("搜尋分點"), { target: { value: "富邦" } });
+    const option = await screen.findByText("9600 富邦", undefined, { timeout: 3000 });
+    fireEvent.mouseDown(option);
+    expect(
+      await screen.findByText("找不到該分點", undefined, { timeout: 5000 }),
+    ).toBeTruthy();
+  });
 });

@@ -17,6 +17,14 @@ interface Props {
   onPickStock: (stockId: string, stockName: string | null, brokerId: string) => void;
 }
 
+// detail.error code → 繁中(review C1/P2SUM-2;未知 code 原樣顯示,對齊
+// WarrantFlowPanel 慣例)
+const ERROR_TEXT: Record<string, string> = {
+  broker_flows_unavailable: "分點資料尚未上料(每交易日約 21:00 更新)",
+  broker_not_found: "找不到該分點",
+  broker_directory_unavailable: "分點目錄暫時無法取得",
+};
+
 export function BrokerFlowsPanel({ active, onPickStock }: Props) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -81,31 +89,47 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
             onKeyDown={handleKeyDown}
             className="w-full px-3 py-1.5 text-sm bg-bg border border-line text-ink placeholder:text-ink-dim focus:border-accent focus:outline-none"
           />
-          {open && debounced && hits.length > 0 && (
-            <ul
-              role="listbox"
-              aria-label="分點搜尋結果"
-              className="absolute z-10 top-full left-0 right-0 mt-px max-h-64 overflow-y-auto bg-bg-deep border border-line-strong text-sm"
-            >
-              {hits.map((h, i) => (
-                <li
-                  key={h.broker_id}
-                  role="option"
-                  aria-selected={i === activeIdx}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    pickTrader(h);
-                  }}
-                  onMouseEnter={() => setActiveIdx(i)}
-                  className={cn(
-                    "px-3 py-1.5 cursor-pointer",
-                    i === activeIdx ? "bg-accent/10 text-ink" : "text-ink-muted",
-                  )}
-                >
-                  {h.broker_id} {h.broker_name}
-                </li>
-              ))}
-            </ul>
+          {open && debounced && (
+            hits.length > 0 ? (
+              <ul
+                role="listbox"
+                aria-label="分點搜尋結果"
+                className="absolute z-10 top-full left-0 right-0 mt-px max-h-64 overflow-y-auto bg-bg-deep border border-line-strong text-sm"
+              >
+                {hits.map((h, i) => (
+                  <li
+                    key={h.broker_id}
+                    role="option"
+                    aria-selected={i === activeIdx}
+                    ref={
+                      i === activeIdx
+                        ? (el) => el?.scrollIntoView?.({ block: "nearest" })
+                        : undefined
+                    }
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      pickTrader(h);
+                    }}
+                    onMouseEnter={() => setActiveIdx(i)}
+                    className={cn(
+                      "px-3 py-1.5 cursor-pointer",
+                      i === activeIdx ? "bg-accent/10 text-ink" : "text-ink-muted",
+                    )}
+                  >
+                    {h.broker_id} {h.broker_name}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              // review C1/S4:目錄故障 / 查無結果不得靜默 — 搜尋框下方要有出口
+              <div className="absolute z-10 top-full left-0 right-0 mt-px px-3 py-1.5 bg-bg-deep border border-line-strong text-sm text-ink-dim">
+                {search.error
+                  ? ERROR_TEXT[search.error] ?? search.error
+                  : search.loading
+                    ? "搜尋中..."
+                    : "查無符合分點"}
+              </div>
+            )
           )}
         </div>
         {selected && (
@@ -142,9 +166,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
       )}
       {flows.error && (
         <div className="shrink-0 px-4 py-2 text-sm text-accent bg-accent/[0.06] border-b border-line">
-          {flows.error === "broker_flows_unavailable"
-            ? "分點資料尚未上料(每交易日約 21:00 更新)"
-            : flows.error}
+          {ERROR_TEXT[flows.error] ?? flows.error}
         </div>
       )}
 

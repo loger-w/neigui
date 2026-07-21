@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import date as date_type, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
@@ -31,6 +32,9 @@ _TOP_N = 30
 _TODAY_TTL_MINUTES = 30
 _DIRECTORY_TTL_MINUTES = 24 * 60
 _SEARCH_LIMIT = 50
+# 真實 id 樣態:9600 / 779c / 9A00 / 075T — 白名單擋路徑穿越 / Windows 非法
+# 字元進 cache 檔名(review S6:目錄降級窗口內 404 gate 不在,這裡是唯一防線)
+_BROKER_ID_RE = re.compile(r"[0-9A-Za-z]{1,10}")
 
 _inflight: dict[str, dict[str, Any]] = {}
 
@@ -159,13 +163,14 @@ def _aggregate_flows(rows: list) -> tuple[list[dict], list[dict], int]:
 # ---------------------------------------------------------------- directory
 
 
-async def _get_directory_or_none(refresh: bool = False) -> dict[str, str] | None:
+async def _get_directory_or_none() -> dict[str, str] | None:
     """分點目錄 id → name;上游故障回 None(R10:呼叫端自行降級,
-    不得讓目錄故障拖垮 flows 路徑)。空 rows 不落 cache。"""
-    if not refresh:
-        cached = _read_versioned(_directory_cache_path())
-        if cached is not None and not _is_stale(cached, _DIRECTORY_TTL_MINUTES):
-            return cached.get("traders") or None
+    不得讓目錄故障拖垮 flows 路徑)。空 rows 不落 cache。
+    無 refresh 參數(review S5:design 只承諾 24h TTL;新開分點短窗 404
+    屬 Known Risk 2)。"""
+    cached = _read_versioned(_directory_cache_path())
+    if cached is not None and not _is_stale(cached, _DIRECTORY_TTL_MINUTES):
+        return cached.get("traders") or None
 
     async def _do_fetch() -> dict[str, str] | None:
         rows = await get_finmind().fetch_securities_trader_info()
@@ -183,7 +188,7 @@ async def _get_directory_or_none(refresh: bool = False) -> dict[str, str] | None
         return traders
 
     try:
-        return await _run_once(f"broker_directory_r{int(refresh)}", _do_fetch)
+        return await _run_once("broker_directory", _do_fetch)
     except (httpx.HTTPError, HTTPException) as exc:
         logger.warning("broker directory fetch failed: %s", exc)
         return None
@@ -191,10 +196,13 @@ async def _get_directory_or_none(refresh: bool = False) -> dict[str, str] | None
 
 async def search_traders(q: str) -> list[dict]:
     """SC-3:id 前綴(casefold)或名稱 substring,≤ _SEARCH_LIMIT 筆。"""
+    needle = q.strip().casefold()
+    if not needle:
+        # route min_length=1 擋不住純空白;startswith("") 會全表命中(review C3)
+        return []
     directory = await _get_directory_or_none()
     if not directory:
         raise HTTPException(503, {"error": "broker_directory_unavailable"})
-    needle = q.strip().casefold()
     hits = [
         {"broker_id": bid, "broker_name": name}
         for bid, name in directory.items()
@@ -232,6 +240,11 @@ async def get_daily_flows(broker_id: str, date_param: str | None, refresh: bool)
     else:
         start = clock.today()
 
+    # 1.5 id 格式白名單(review S6):目錄降級窗口內 404 gate 不在,這裡擋
+    # 路徑穿越 / Windows 非法字元進 cache 檔名
+    if not _BROKER_ID_RE.fullmatch(broker_id):
+        raise HTTPException(404, {"error": "broker_not_found"})
+
     # 2. 目錄前置檢查(不可得 → 降級跳過,R10)
     directory = await _get_directory_or_none()
     if directory is not None and broker_id not in directory:
@@ -244,11 +257,14 @@ async def get_daily_flows(broker_id: str, date_param: str | None, refresh: bool)
     today_str = clock.today().isoformat()
     day_payload: dict | None = None
     for d in _candidate_dates(start):
+        stale_today: dict | None = None
         if not refresh:
             cached = _read_versioned(_flows_cache_path(broker_id, d))
-            if cached is not None and (d != today_str or not _is_stale(cached, _TODAY_TTL_MINUTES)):
-                day_payload = cached
-                break
+            if cached is not None:
+                if d != today_str or not _is_stale(cached, _TODAY_TTL_MINUTES):
+                    day_payload = cached
+                    break
+                stale_today = cached
 
         async def _do_fetch(d: str = d) -> dict | None:
             rows = await get_finmind().fetch_daily_report_by_trader(broker_id, d)
@@ -267,6 +283,15 @@ async def get_daily_flows(broker_id: str, date_param: str | None, refresh: bool)
             return payload
 
         day_payload = await _run_once(f"bflow_{broker_id}_{d}_r{int(refresh)}", _do_fetch)
+        if day_payload is None and stale_today is not None:
+            # review C4:今日 TTL 過期後重抓遇上游短暫空回應 — 用 stale cache
+            # 頂住,不倒退前一交易日(下次請求上游恢復即自癒)
+            logger.warning(
+                "broker flows refetch empty for %s/%s — serving stale cache",
+                broker_id,
+                d,
+            )
+            day_payload = stale_today
         if day_payload is not None:
             break
     if day_payload is None:

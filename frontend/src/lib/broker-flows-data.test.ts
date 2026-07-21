@@ -22,4 +22,9 @@ describe("formatAmountZh", () => {
     expect(formatAmountZh(0)).toBe("0");
     expect(formatAmountZh(-123_456)).toBe("-12.3萬");
   });
+
+  it("萬/億邊界:round 後 ≥10000萬 進位為億,不出現「10000萬」(review P2SUM-1)", () => {
+    expect(formatAmountZh(99_996_000)).toBe("1.00億");
+    expect(formatAmountZh(99_994_000)).toBe("9999萬");
+  });
 });
