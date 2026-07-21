@@ -3,7 +3,7 @@ name: auto-verify
 description: 跑「自動化驗證指令(tsc / vitest / pytest / ruff / build)」與「真實環境驗證(dev server + DevTools MCP + 截圖 / curl / CLI)」。在 /feat /bug /mod /refactor /perf 流程的「完成前 gate」階段呼叫,確認改動沒打壞既有測試與 build。先檢查專案形狀再選對應驗證指令來源,不硬跑 `cd frontend/` 撞牆。本 skill 是形狀偵測表與驗證方式表的唯一 source of truth(command 檔不重抄)。
 metadata:
   author: user
-  version: "2.3.0"
+  version: "2.4.0"
 ---
 
 # Auto-Verify
@@ -28,6 +28,8 @@ metadata:
 任一步紅 → 停下修,套鐵則 F「失敗處理 3 次上限」(見 `~/.claude/CLAUDE.md`)。
 
 **驗證 / 長跑指令不得接管線後綴**(`| tail` / `| head` / `| grep` 等)— pipeline 會把 exit code 換成末端指令的,紅燈顯示成假綠燈(2026-07-11 copycat 兩度實證:ruff 紅著 commit、backfill 崩掉顯示成功)。要摘要就先重導到檔案再讀,或分開檢查 exit code(bash `$?` / PowerShell `$LASTEXITCODE`)。
+
+**驗證指令與 commit 禁止同一 shell 鏈**(上一條的姊妹條,同族 = exit code 完整性):PowerShell `;` 不看 exit code、Windows PowerShell 5.1 亦無 `&&`,`vitest ...; git commit ...` 會紅著 commit(2026-07-18 neigui 實證,事後補 commit 修)。先跑驗證、確認 exit code 綠,再**單獨下** commit 指令。
 
 ## 非 monorepo 專案形狀對應
 

@@ -24,8 +24,8 @@
 ## Phase 0:Brainstorm + 可驗證性 gate + S/M/L 分流
 
 1. 呼叫 `superpowers:brainstorming`,**遵循 skill 的對話流程**(一次一問、2-3 方案、分節確認)。以下 2-4 是本流程的**加值 gate**,疊在 skill 之上,不取代其流程。
-2. **SC gate**:每條成功條件編號 `SC-1, SC-2…`,強制附「驗證方式」一行(指令 / 測試名 / 截圖步驟)。**量化 SC(size / time / count)必附 measurement unit + 量法指令** — `size ≤ 50 KB` 不合格,要寫 `size ≤ 50 KB(gzip 後;量法 curl --compressed | wc -c)`。寫不出 → 該條不合格(gate 不是建議)。
-3. 寫入 `brainstorm.md`(後續修改必標 `[amendment YYYY-MM-DD: <原因>]`)+ ≥ 3 edge cases + out of scope。
+2. **SC gate**:每條成功條件編號 `SC-1, SC-2…`,強制附「驗證方式」一行(指令 / 測試名 / 截圖步驟)。**量化 SC(size / time / count)必附 measurement unit + 量法指令** — `size ≤ 50 KB` 不合格,要寫 `size ≤ 50 KB(gzip 後;量法 curl --compressed | wc -c)`。**驗證有外部時效窗口的 SC(僅盤中可驗 / 僅特定交易日可跑)必標「驗證窗口」(anytime / 盤中 / 特定日)+ 窗口外的降級策略**(fallback 證據形式)— Phase 0 就決定,不留給 review 補抓(2026-07-18 實證:週六跑盤中限定 spike 觸發降級鏈,design review 才抓到)。寫不出 → 該條不合格(gate 不是建議)。
+3. 寫入 `brainstorm.md`(後續修改必標 `[amendment YYYY-MM-DD: <原因>]`)+ ≥ 3 edge cases + out of scope。**延續型 feature(沿用前輪 design / 架構)**:必先掃前輪 design.md / brainstorm.md 的 user 指示與慣例語句(grep「user 指示」「呼叫」及 skill 名),逐條轉入本輪 brainstorm.md 的「執行約束」節 — 只取架構不取指示會漏跨輪約定(2026-07-18 實證:前輪 design 明載的設計 skill 指示未帶入,user 中途提醒才補跑,重工 3 張證據截圖)。
 4. **S/M/L 分流**(寫 `state.json.scope`):
    - **S**:單檔 / 無新資料流 / 無新依賴 / 不在 hot path、安全邊界、共用 util、對外 API → 跳 Phase 1 文件化,Phase 2 0 輪 review(hot path 判準:有 profile 證據或專案文件 / skill 點名的路徑才算;無證據視為不在)
    - **M**:2-4 檔 → Phase 1/2 各 1 輪 review
@@ -63,6 +63,7 @@
    - 實作到綠:`git add <實作檔>` + `🟢 feat(<area>): implement SC-N [green]`(body 註 `red→green for <red-sha>`)
    - Refactor(再跑測試綠才 commit):`🔵 refactor(<area>): ... [refactor]`
    - **goal_efficiency_mode**(見 auto.md):可改 wave batch,單 `[waveN]` tag,commit body 列該 wave 涵蓋的 SC-N
+   - **Tag 判準**:`[green]` 只掛在有對應 `[red]` 的 commit;同步產物(e2e spec 補寫 / changelog / 版本 pin / build-gate 修 / flake 修)**不掛 TDD tag**,只用 🟢/🔵/🔴 分類(2026-07-18 實證:慣性掛 [green] ×4,Phase 8 tag 驗證 FAIL 被迫 cherry-pick 重建 5 個 commit)
 3. 新發現 case:先回 Phase 2 文件追加(只追加不重跑 review)再寫紅。**test-infra 例外**:selector / matcher / jsdom 行為修正(非新 SC 行為)可同階段直接 patch test 檔,commit body 註 `test-infra-fix: <reason>`,不回 Phase 2
 4. **失敗回退**(禁止「就地改 code 不更新上游文件」):(a) 介面 / 資料流無法實作 → 回 Phase 1(快速路徑:只 review 變更段落)/(b) signature 細節錯 → 回 Phase 2 /(c) edge case 沒列 → 回 Phase 0 補 SC
 5. **next-time.md 鉤子**:每次 commit 前 cat `docs/next-time.md`,順手改動衝動寫進去或拆獨立 commit。**Subagent 模式下 main agent 在每 task dispatch 前代查**,有相關條目才塞進 dispatch prompt(fresh context 的 subagent 不知道檔案存在)
@@ -72,9 +73,9 @@
 
 1. 跑 `/code-review`(**預設 medium 檔位**;xhigh 全量掃描保留給 user 顯式要求 — 2026-07-06 實證:xhigh 52 候選中真 P1 僅 1 條),**雙焦點**:(a) implementation bug;(b) **missing-from-spec** — 回看 design.md 交叉確認「spec 機制在 impl 有沒有 spec 沒提到的副作用」。寫 `code-review-round-<N>.json`
    - **輸出契約**:round JSON 只逐條展開 P0/P1;P2 慣例 / 風格類彙總為 `p2_summary`(計數 + 主題一行),**不逐條 receiving**。例外:P2 中疑似行為級(資料正確性 / 時序 / 邊界)照常展開
-   - **Dispatch / 快篩紀律**(2026-07-11 meta-review,同根因收斂:minimal-model finder 對「機械事實」與「prompt 內排除契約」皆不可靠,把關在 main agent 不在 finder):(a) finder prompt 的排除清單(已文件化慣例 / 刻意 pattern)放 prompt **開頭**並要求輸出前對照自檢 — 此為降噪手段,不可依賴;(b) candidate 進 receiving / verifier dispatch 前 main agent **先機械快篩**:grep/Read 可直接查證的 claim(pragma / import / 行號 / 檔案存在)先反證,誤報直接記 REFUTED 不 dispatch verifier;命中排除清單者彙總計數丟棄,不逐條 receiving
+   - **Dispatch / 快篩紀律**(2026-07-11 meta-review,同根因收斂:minimal-model finder 對「機械事實」與「prompt 內排除契約」皆不可靠,把關在 main agent 不在 finder):(a) finder prompt 的排除清單(已文件化慣例 / 刻意 pattern)放 prompt **開頭**並要求輸出前對照自檢 — 此為降噪手段,不可依賴;(b) candidate 進 receiving / verifier dispatch 前 main agent **先機械快篩**:grep/Read 可直接查證的 claim(pragma / import / 行號 / 檔案存在)先反證,誤報直接記 REFUTED 不 dispatch verifier;命中排除清單者彙總計數丟棄,不逐條 receiving;(c) **效能類 claim 要 runtime 證據**:dispatch 效能 lens 時 main agent 把已有 runtime 量測(server log / 實測耗時)注入 finder prompt;無量測數據 → 效能判定由 main agent 實測直判,不採信 finder 的量級推算(2026-07-18 實證:haiku 推算「不痛」而回空,實測 280 檔 ~10 分鐘);(d) **reviewer 類 dispatch prompt 固定註明「以純文字回傳 JSON,勿呼叫 ReportFindings」**(該工具結果不會到達主 agent,誤用需 SendMessage 追討一輪;typed reviewer agent 已由 tools 白名單天然擋掉,此條管的是 ad-hoc dispatch)
 2. 呼叫 `superpowers:receiving-code-review` 對每條 finding 分類。**Verify / skeptic 階段前,先摘 design.md changelog 的 accepted findings + rationale 注入 verify prompt**(避免 refute 事後合理的設計收窄)。Lens 經驗值:mature codebase 上 test_coverage lens 命中率最高,correctness / consistency 易產生被 refute 的風格建議 — lens prompt 要角度真差異化
-3. accepted 依層級回對應 phase:spec 漏 → Phase 1/2 改文件 / impl 漏 → Phase 3 / test 漏 → Phase 3 紅先行(鐵則 C)。**Test-gap finding 補 lock test**:鎖「已正確行為」天生無紅 → 走 mutation 抽驗(手動改壞 → lock test 紅 → 還原 → 綠),commit 用 `[lock]` tag + body 註 `mutation-verified`。**改壞 / 還原一律用 Edit 工具成對操作,禁止 `git checkout` / `git restore`**(會連同掃掉同檔尚未 commit 的 review fix;2026-07-11 實證損失後補)
+3. accepted 依層級回對應 phase:spec 漏 → Phase 1/2 改文件 / impl 漏 → Phase 3 / test 漏 → Phase 3 紅先行(鐵則 C)。**Test-gap finding 補 lock test**:鎖「已正確行為」天生無紅 → 走 mutation 抽驗(手動改壞 → lock test 紅 → 還原 → 綠),commit 用 `[lock]` tag + body 註 `mutation-verified`。**改壞 / 還原一律用 Edit 工具成對操作,禁止 `git checkout` / `git restore`**(會連同掃掉同檔尚未 commit 的 review fix;2026-07-11 實證損失後補)。**同檔混類 finding(fix + refactor 同一檔)**:fix 先落地先 commit(必要時分批 add / Edit),refactor 類後動 — 不准一次 `git add` 全檔混 commit(2026-07-11 實證被迫 `reset --soft` + 成對還原重上)
 4. **退場條件**:round 1 accepted ≤ 5 且無 P0 且 fix 後自動化測試全綠 → 可單輪退場;accepted > 5 或有 P0 → 強制 round 2 verify。loop max 3 輪
 5. 完成後跑 **inline 完工自查 checklist**(不呼叫 requesting-code-review — 該 skill 是 dispatch reviewer 流程,不是自查):測試齊全 / commit 分類分明 / 文件同步 / known-risk 已標記
 6. 自評收斂後把當下 HEAD sha 寫入 state.json `self_review_head`(收尾節 review 增量判準:`self_review_head..HEAD` 非空才補增量 review)

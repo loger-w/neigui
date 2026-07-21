@@ -3,7 +3,7 @@ name: branch-lifecycle
 description: 分支生命週期單一 source of truth:開工(主線同步 + 開分支)與收尾(push → PR → review 補齊 → 自動 merge,全程無確認;離線 fallback local merge)。/feat /bug /mod /refactor /perf 的第一個 phase 與 Done 全過後呼叫。
 metadata:
   author: user
-  version: "2.2.0"
+  version: "2.3.0"
 ---
 
 # Branch Lifecycle
@@ -19,6 +19,7 @@ metadata:
    - **領先**(本地 commit 未推)→ 直接 `git push` 推平(鐵則 H 2026-07-18 全自動),回覆附 commit 清單告知
    - **分岔**(`--ff-only` 會失敗)→ 停下回報,不自動 rebase
    - 無遠端 / 離線 → 跳過同步,註記一行繼續(不阻塞)
+   - **Detached HEAD / main 被其他 worktree 占用** → 基準點一律取 `origin/main`(fetch 後),不信任何 local main;先跑 `git merge-base --is-ancestor main origin/main` 驗 local main 是否 stale(不成立 = local main 在落後或分岔線上,勿當基準;2026-07-18 實證:以 rebase-merge 後的 stale local main 開分支,中途才發現,被迫 rebase + 全套 gate 重跑)
 3. `git switch -c <prefix>/<slug>`;slug 從 $ARGUMENTS 推導 kebab-case。prefix 對照表(零例外):
 
 | Command | prefix |

@@ -31,7 +31,8 @@ location 用雙欄(`file` 填被審檔案,`section` 填章節標題;無明確章
 6. **Scope creep**:做了 brainstorm.md 沒要求的 → P1
 7. **隱性假設**(資料格式 / 外部 API / 效能):未寫明 → P1
 8. **動態 trace**:用真實輸入紙上跑主資料流(fetch → cache → invalidate → response)看時序 / race,不只靜態 contract 檢查;發現 race → P0
-9. **量化 SC 的量法可重現**(unit + 指令真的量得出來):不可重現 → P1
+9. **量化 SC 的量法可重現**(unit + 指令真的量得出來),**含取證通道可達性** — 依賴 log 的量測證據要確認真實環境該 log 真的看得到(log level / 輸出位置,如 uvicorn 預設只出 WARNING、logger.info 不會出現):不可重現或取證通道不通 → P1
+10. **量化 payload 欄位資訊量**:對照資料源覆蓋特性,檢查聚合 / 淨額公式是否存在守恆或恆等式使其恆為常數(例:對全分點覆蓋報表做 per-key 買賣淨額 = 守恆恆等式,恆 0);可疑就用 1 筆真實樣本手算驗證 → 恆常數 → P0
 
 ## 輸入
 dispatch prompt 提供:design.md 路徑、brainstorm.md 路徑;round ≥ 2 時另有上一輪 review JSON 路徑 + 本輪 changelog 摘要 — 必須做 cross-round 檢查(上輪 fix 是否引入新問題)。
