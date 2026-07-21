@@ -40,6 +40,27 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.41.0",
+    date: "2026-07-22",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "分點名稱顯示更簡潔:編號只在搜尋時顯示,清單、標籤與提示一律只顯示分點名稱",
+      },
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "搜尋分點時照畫面上的名稱輸入即可命中,不再需要自行補上名稱中間的連字號",
+      },
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "泡泡圖的分點搜尋框加寬,較長的分點名稱不再被截斷",
+      },
+    ],
+  },
+  {
     version: "0.40.1",
     date: "2026-07-21",
     changes: [
