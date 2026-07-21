@@ -32,7 +32,8 @@ export function formatAmountZh(n: number): string {
   const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
   // 先在整數域 round 再除,避免 toFixed 浮點半值陷阱((4.005).toFixed(2) → "4.00")
-  if (abs >= 1e8) return `${sign}${(Math.round(abs / 1e6) / 100).toFixed(2)}億`;
+  // 門檻 99,995,000:萬支 round 後 ≥10000 的值應進位顯示 1.00億,不出現「10000萬」
+  if (abs >= 99_995_000) return `${sign}${(Math.round(abs / 1e6) / 100).toFixed(2)}億`;
   if (abs >= 1e4) {
     const wan = abs / 1e4;
     return `${sign}${wan >= 100 ? String(Math.round(wan)) : wan.toFixed(1)}萬`;

@@ -266,6 +266,70 @@ async def test_daily_flows_concurrent_same_key_dedup(monkeypatch, frozen_today, 
     assert len(fake.report_calls) == 1  # SC-8 inflight dedup
 
 
+async def test_daily_flows_stale_today_cache_served_when_fetch_empty(
+    monkeypatch, frozen_today, names,
+):
+    """C4:今日 cache 過 TTL + FinMind 短暫回空 → 用 stale cache,不倒退前一日。"""
+    fake = _install(monkeypatch, _FakeFM({"2026-07-17": [_row("2330", 1000.0, 2000, 0)]}))
+    await bf.get_daily_flows("9600", None, False)
+    path = bf._flows_cache_path("9600", "2026-07-17")
+    from utils.cache import read_json
+
+    payload = read_json(path)
+    payload["fetched_at"] = (datetime.now() - timedelta(hours=2)).isoformat(timespec="seconds")
+    atomic_write_json(path, payload)
+    fake.day_rows.clear()  # 重抓時上游短暫空回應
+    result = await bf.get_daily_flows("9600", None, False)
+    assert result["as_of_date"] == "2026-07-17"  # 不得倒退 07-16
+    assert result["no_trading_day"] is False
+
+
+async def test_daily_flows_rejects_malformed_broker_id_even_degraded(
+    monkeypatch, frozen_today, names,
+):
+    """S6:目錄降級窗口內,非法格式 id 不得進 cache 檔名(路徑穿越面)。"""
+    fake = _install(monkeypatch, _FakeFM({}))
+    monkeypatch.setattr(bf, "_get_directory_or_none", _async_ret(None))
+    with pytest.raises(HTTPException) as ei:
+        await bf.get_daily_flows("../evil", None, False)
+    assert ei.value.status_code == 404
+    assert ei.value.detail == {"error": "broker_not_found"}
+    assert fake.report_calls == []
+
+
+async def test_directory_fetch_error_degrades_broker_name(monkeypatch, frozen_today, names):
+    """S2 lock:真穿過 _get_directory_or_none 的 httpx catch(不 monkeypatch 整顆)
+    — 目錄 fetch raise → flows 仍成功 + broker_name fallback = id。"""
+    import httpx as _httpx
+
+    fake = _install(monkeypatch, _FakeFM({"2026-07-17": [_row("2330", 1000.0, 2000, 0)]}))
+
+    async def _boom():
+        raise _httpx.ConnectError("directory down")
+
+    fake.fetch_securities_trader_info = _boom  # type: ignore[method-assign]
+    payload = await bf.get_daily_flows("9600", None, False)
+    assert payload["broker_name"] == "9600"
+
+
+async def test_daily_flows_past_date_cache_unconditional(monkeypatch, frozen_today, names):
+    """S3 lock:過去日 cache 不套 30min TTL — fetched_at 陳舊也 0 fetch(SC-8)。"""
+    fake = _install(monkeypatch, _FakeFM({}))
+    path = bf._flows_cache_path("9600", "2026-07-16")
+    atomic_write_json(path, {
+        "_cache_version": bf._CACHE_VERSION,
+        "fetched_at": (datetime.now() - timedelta(hours=48)).isoformat(timespec="seconds"),
+        "as_of_date": "2026-07-16",
+        "stock_count": 1,
+        "buy_top": [{"stock_id": "2330", "stock_name": "", "buy_lots": 2, "sell_lots": 0,
+                     "net_lots": 2, "net_amount": 2_000_000}],
+        "sell_top": [],
+    })
+    result = await bf.get_daily_flows("9600", "2026-07-16", False)
+    assert result["as_of_date"] == "2026-07-16"
+    assert fake.report_calls == []
+
+
 # ---------------------------------------------------------------- search_traders
 
 async def test_search_traders_id_prefix_case_insensitive(monkeypatch, frozen_today):
@@ -289,6 +353,12 @@ async def test_search_traders_caps_at_50(monkeypatch, frozen_today):
     _install(monkeypatch, _FakeFM({}, directory=rows))
     hits = await bf.search_traders("測試")
     assert len(hits) == 50
+
+
+async def test_search_traders_blank_query_returns_empty(monkeypatch, frozen_today):
+    """C3:純空白 query(route min_length=1 擋不住)不得全表命中回任意 50 筆。"""
+    _install(monkeypatch, _FakeFM({}))
+    assert await bf.search_traders("   ") == []
 
 
 async def test_search_traders_directory_unavailable_503(monkeypatch, frozen_today):
