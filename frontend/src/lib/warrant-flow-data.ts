@@ -55,26 +55,6 @@ export interface WarrantFlowPayload {
   warrants: WarrantFlowWarrantRow[];
 }
 
-// ---- 外部淨額時序(warrant-flow-net-history design v3 §3.1)----
-
-export interface WarrantFlowHistoryDay {
-  date: string;
-  /** built = result cache 已建(值仍可為 null — no_volume / 對映失敗);missing = 未建槽 */
-  status: "built" | "missing";
-  call: WarrantFlowSideValue | null;
-  put: WarrantFlowSideValue | null;
-}
-
-export interface WarrantFlowHistoryPayload {
-  window: number;
-  built: number;
-  missing_count: number;
-  backfilled: number;
-  empty_reason: "no_warrants" | null;
-  /** 舊→新;length 可 < window(掃描 cap 截斷) */
-  days: WarrantFlowHistoryDay[];
-}
-
 /** bar 寬比例(0..1);max <= 0 防除零回 0;負值取 abs(賣超欄同一把尺) */
 export function barRatio(value: number, max: number): number {
   if (max <= 0) return 0;

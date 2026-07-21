@@ -181,25 +181,13 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(firstRow.getByTestId("flow-warrant-net")).toHaveText("1,695 元");
   });
 
-  test("E22: 外部淨額時序區塊資料級 assertion(warrant-flow-net-history SC-6)", async ({ page }) => {
-    // 痛點:FAKE distilled fixture 滿窗 20 日(06-17 call null / 06-09 put null)—
-    // 鎖段數 + 點數防 visibility 假綠(圖殼在但線空也算 visible);null 斷點
-    // 反映在段數(call:16 日前段 12 點 + 18 日後段 7 點),補 0 會併成單段。
+  test("E22: 外部淨額時序區塊已整刪(WF-1 mod/batch-ui-update)", async ({ page }) => {
+    // 痛點:WF-1 刪除時序圖 + 補建缺日 CTA 整鏈後,主面板不得殘留該區塊
+    // (主面板 summary / top15 由 E14 覆蓋)。
     await page.getByRole("button", { name: /^權證分點$/ }).click();
-    const block = page.getByTestId("flow-net-history");
-    await expect(block).toBeVisible();
-    await expect(block.getByTestId("flow-net-history-chart")).toBeVisible();
-    const callSegs = block.locator('polyline[data-testid="net-history-call-seg"]');
-    await expect(callSegs).toHaveCount(2);
-    expect(((await callSegs.nth(0).getAttribute("points")) ?? "").split(" ").length).toBe(12);
-    expect(((await callSegs.nth(1).getAttribute("points")) ?? "").split(" ").length).toBe(7);
-    await expect(block.locator('polyline[data-testid="net-history-put-seg"]')).toHaveCount(2);
-    // 中性配色鎖(SC-7):線不套 bull/bear
-    const cls = (await callSegs.nth(0).getAttribute("class")) ?? "";
-    expect(/bull|bear/.test(cls)).toBe(false);
-    // 滿窗 → 無補建 CTA / 無累積文案
-    await expect(block.getByRole("button", { name: "補建缺日" })).toHaveCount(0);
-    await expect(block).not.toContainText("已累積");
+    await expect(page.getByTestId("flow-summary")).toBeVisible();
+    await expect(page.getByTestId("flow-net-history")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "補建缺日" })).toHaveCount(0);
   });
 
   test("E30: 分點反查 tab — 搜尋選分點 → 雙表資料級 → 點列跳轉總覽(broker-daily-flows SC-4/5/7)", async ({ page }) => {

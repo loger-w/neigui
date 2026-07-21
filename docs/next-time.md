@@ -55,6 +55,11 @@
 
 - **分點搜尋 combobox 的 a11y 缺口**(Phase 5 review P2,deferred):dropdown 本就未實作 `aria-activedescendant`,新加的截斷提示列(`role="presentation"`)對螢幕閱讀器完全不朗讀 — 截斷資訊只有明眼使用者可感。補法:truncated 時加 visually-hidden `role="status" aria-live="polite"` 鏡射文案,與 aria-activedescendant 缺口一併補。觸發重評估:做任何 a11y pass、或第二個 combobox 元件出現時
 
+## From /mod batch-ui-update(2026-07-21)
+
+- **`warrant_flow._run_once` 薄 wrapper 保留前提已消失**(WF-1 刪 warrant_flow_history 後,run-once-dedup 當初「跨模組直呼故保留公開名」的唯一理由不在):下次動 warrant_flow 時可把 `_run_once` wrapper 內聯回 `run_once(_inflight, ...)` 直呼。觸發重評估:下次 refactor warrant_flow、或第二個人問「這 wrapper 為何存在」時
+- **權證流通在外比率資料源調查結論**(Q2 拍板本輪擱置):TWSE OpenAPI(t187ap37_L 僅發行單位數量、t187ap42_L 僅成交值/張)與 TPEx OpenAPI(tpex_warrant 有 Original/FollowOn/Cancellation 累計,仍為發行面)**皆無每日流通在外(扣發行人庫存)**;真實來源 = MOPS 發行人每日申報(無公開批次 JSON)或券商權證網(元大 warrantwin 等,非官方源)。觸發重評估:user 再提流通在外需求時,先評 MOPS scraping 穩定性 vs 券商網 ToS
+
 ## From /refactor run-once-dedup(2026-07-21)
 
 - **date query 驗證嚴格度/錯誤碼字面統一(/mod 候選)**:`parse_date_param` 現以參數保留三處歷史差異 — warrants strict+`bad_date`、daytrade_fee 寬鬆+`bad_date`(接受 `20260721` ISO 變體)、broker_flows 寬鬆+`invalid_date`。統一(全 strict + 單一錯誤碼)= 對外行為改動,要同步前端 `lib/api.ts` 錯誤處理與 contract tests。觸發重評估:任一 date 參數 endpoint 新增時、或前端要對 date 錯誤做特化文案時
