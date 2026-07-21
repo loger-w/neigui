@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 from services import clock
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
 from utils.concurrency import run_once
+from utils.validation import parse_date_param
 
 logger = logging.getLogger(__name__)
 
@@ -220,10 +221,8 @@ async def get_daily_flows(broker_id: str, date_param: str | None, refresh: bool)
     """SC-1/SC-2/SC-8:單分點單日買賣超股票排行(design §2.2 步驟 1-6)。"""
     # 1. date 驗證 + clamp(R2:regex 擋不住 2026-02-31;future → today)
     if date_param is not None:
-        try:
-            parsed = date_type.fromisoformat(date_param)
-        except ValueError:
-            raise HTTPException(400, {"error": "invalid_date"}) from None
+        # strict=False + invalid_date:保留收斂前行為與錯誤碼(F-3 零行為差異)
+        parsed = parse_date_param(date_param, error_code="invalid_date", strict=False)
         start = min(parsed, clock.today())
     else:
         start = clock.today()

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -22,6 +21,7 @@ from services import (
     warrants,
 )
 from utils.cancel import run_with_disconnect
+from utils.validation import parse_date_param
 
 logger = logging.getLogger(__name__)
 
@@ -29,22 +29,11 @@ router = APIRouter()
 
 # R2-3:warrant_id 同驗 — 未驗證直傳 FinMind data_id 會以 ×5 日回退放大配額浪費
 _VALID_ID = re.compile(r"^[0-9A-Za-z]{4,6}$")
-_VALID_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _validate_id(value: str) -> None:
     if not _VALID_ID.fullmatch(value):
         raise HTTPException(status_code=400, detail={"error": "bad_symbol"})
-
-
-def _validate_date(value: str) -> None:
-    """regex + fromisoformat 雙驗(impl R2-2:2026-13-99 形狀合法但日曆非法)。"""
-    if not _VALID_DATE.fullmatch(value):
-        raise HTTPException(status_code=400, detail={"error": "bad_date"})
-    try:
-        date.fromisoformat(value)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail={"error": "bad_date"}) from exc
 
 
 @router.get("/api/warrants/{stock_id}")
@@ -102,7 +91,7 @@ async def get_warrant_flow(
 ) -> dict:
     _validate_id(stock_id)
     if date is not None:
-        _validate_date(date)
+        parse_date_param(date)
     # FinMind httpx 錯誤不 catch → 中央 handler finmind_error;
     # 快照(TWSE/TPEx)錯誤 service 內已轉 502 warrant_upstream(design R16)
     return await run_with_disconnect(request, warrant_flow.get_flow(stock_id, date, refresh))
