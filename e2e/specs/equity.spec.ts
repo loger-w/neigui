@@ -578,7 +578,7 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(bar).toContainText("分點001");
     // checkbox 本體 sr-only(1px 不可點)→ force(E18 同款前例);click 事件
     // 仍真實從 input 冒泡到 stopPropagation wrapper,double-toggle 語意照驗
-    await row.getByRole("checkbox", { name: "勾選 BROKER001 分點001" }).click({ force: true });
+    await row.getByRole("checkbox", { name: "勾選 分點001" }).click({ force: true });
     await expect(bar).toContainText("未選擇分點");
   });
 
