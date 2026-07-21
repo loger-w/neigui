@@ -133,11 +133,74 @@ describe("BrokerFlowsPanel", () => {
       wrapper: makeQueryWrapper(),
     });
     fireEvent.change(screen.getByLabelText("搜尋分點"), { target: { value: "富邦" } });
+    // 該變 assertion(a11y 收割):文案同時鏡射進 sr-only status,findByText
+    // 全域查會撞雙元素 → 收斂到 listbox 內驗視覺提示列
+    await screen.findByText("9600 富邦", undefined, { timeout: 3000 });
     expect(
-      await screen.findByText("共 173 筆,僅列前 2,請輸入更精確關鍵字", undefined, {
-        timeout: 3000,
-      }),
+      within(screen.getByRole("listbox")).getByText(
+        "共 173 筆,僅列前 2,請輸入更精確關鍵字",
+      ),
     ).toBeTruthy();
+  });
+
+  // a11y 收割(next-time:/mod trader-search-truncation Phase 5 review P2):
+  // combobox 契約補齊 — 截斷資訊原本只有明眼使用者可感(role=presentation
+  // 不朗讀),activedescendant 缺口讓 SR 使用者不知鍵盤焦點在哪個選項。
+  it("combobox aria 契約:role/expanded/controls + activedescendant 跟隨 ArrowDown", async () => {
+    vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    const input = screen.getByLabelText("搜尋分點");
+    expect(input.getAttribute("role")).toBe("combobox");
+    expect(input.getAttribute("aria-expanded")).toBe("false");
+    expect(input.getAttribute("aria-autocomplete")).toBe("list");
+    fireEvent.change(input, { target: { value: "富邦" } });
+    await screen.findByText("9600 富邦", undefined, { timeout: 3000 });
+    expect(input.getAttribute("aria-expanded")).toBe("true");
+    const listbox = screen.getByRole("listbox");
+    expect(listbox.id).toBeTruthy();
+    expect(input.getAttribute("aria-controls")).toBe(listbox.id);
+    const first = input.getAttribute("aria-activedescendant");
+    expect(first).toBeTruthy();
+    expect(document.getElementById(first!)?.textContent).toContain("9600 富邦");
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    const second = input.getAttribute("aria-activedescendant");
+    expect(document.getElementById(second!)?.textContent).toContain("9604 富邦陽明");
+  });
+
+  it("dropdown 關閉 → aria-expanded false 且無 activedescendant", async () => {
+    vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    const input = screen.getByLabelText("搜尋分點");
+    fireEvent.change(input, { target: { value: "富邦" } });
+    await screen.findByText("9600 富邦", undefined, { timeout: 3000 });
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(input.getAttribute("aria-expanded")).toBe("false");
+    expect(input.getAttribute("aria-activedescendant")).toBeNull();
+  });
+
+  it("截斷提示鏡射進 role=status(aria-live),SR 可感;無截斷時 status 空", async () => {
+    vi.spyOn(api, "brokerTraders").mockResolvedValue({ hits: HITS.hits, total: 173 });
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    fireEvent.change(screen.getByLabelText("搜尋分點"), { target: { value: "富邦" } });
+    await screen.findByText("9600 富邦", undefined, { timeout: 3000 });
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("共 173 筆,僅列前 2,請輸入更精確關鍵字");
+  });
+
+  it("total == hits → status 區空字串(不產生噪音朗讀)", async () => {
+    vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    fireEvent.change(screen.getByLabelText("搜尋分點"), { target: { value: "富邦" } });
+    await screen.findByText("9600 富邦", undefined, { timeout: 3000 });
+    expect(screen.getByRole("status").textContent).toBe("");
   });
 
   it("total == hits → 無截斷提示(F-2 SC-2)", async () => {

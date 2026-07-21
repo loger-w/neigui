@@ -254,6 +254,22 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(page.locator("header")).toContainText("2330");
   });
 
+  test("E37: 分點搜尋 combobox a11y — activedescendant 跟隨鍵盤導航(a11y 收割)", async ({ page }) => {
+    // 痛點:aria-activedescendant 缺口 = SR 使用者不知鍵盤焦點落在哪個選項
+    // (視覺 highlight 只有明眼可感);真 browser 驗 keyboard 事件 →
+    // activedescendant id 指向真實存在的 option 元素,jsdom 測不到焦點語意。
+    await page.getByRole("button", { name: "分點反查" }).click();
+    const input = page.getByLabel("搜尋分點");
+    await input.fill("富邦");
+    await expect(page.getByRole("listbox", { name: "分點搜尋結果" })).toBeVisible();
+    await expect(input).toHaveAttribute("aria-expanded", "true");
+    // fixture 目錄序:9600 富邦 / 9604 富邦-陽明 / 9608 富邦-台東
+    await expect(input).toHaveAttribute("aria-activedescendant", "trader-search-option-9600");
+    await input.press("ArrowDown");
+    await expect(input).toHaveAttribute("aria-activedescendant", "trader-search-option-9604");
+    await expect(page.locator("#trader-search-option-9604")).toHaveAttribute("role", "option");
+  });
+
   test("E10: 無權證標的空狀態(SC-7)", async ({ page }) => {
     // 痛點:2412 不在權證 fixture 的標的內 → 空 list → 繁中空狀態;
     // 若 backend 空標的誤回 404/500,這裡會看到 error 而非空狀態文案。
