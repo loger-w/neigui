@@ -26,6 +26,11 @@ description: FinMind 接入慣例與配額真相。接新 FinMind dataset、寫 
 - **候選日自適應**:資料上料時點未知(如權證分點「當晚幾點」)不要 hardcode 起點 — 從 today 起試 + probe 偵測 + 空結果不落 cache(晚間上料自動吃到),消除對未知時點的依賴。代價 = 每查詢 ≤2 request。Trigger:接 T+1 lag 且上料時點不明的 dataset。
 - **非交易日 negative cache(marker)必帶 recent-floor guard + 短 retention**(2026-07-18 warrant-flow-net-history 沉澱):判「dump 空 = 假日」寫 marker 前,`d >= today−1` 一律不寫(近日空可能只是未上料,誤標會把真交易日永久踢出序列);marker retention 短窗(14 天)= transient 空回應的自癒窗。實證:2026-07-10 真假日 marker 正確、當日/昨日槽保持 missing 明日自然重判。樣板 `services/warrant_flow_history.py::_backfill`。Trigger:任何「以單次空回應推斷非交易日/無資料」的 negative cache 設計。
 
+## 分點反查(TradingDailyReport)
+
+- **trader-only 反查只有專用 path 支援**:`GET {base}/taiwan_stock_trading_daily_report?securities_trader_id=X&date=D` 一發回該分點單日全部 price-level rows(2026-07-21 probe:9600 → 13,079 rows / 1,136 檔);`/api/v4/data` 入口與 SecIdAgg 變體(含專用 path)都強制 `data_id`,**不支援** broker reverse(probe 400 ×3)。資料週一至五 **21:00 上料** → 「當日」在 21:00 前必然回退前一交易日,候選日自適應處理。樣板 `services/broker_flows.py::get_daily_flows`。Trigger:接任何「分點 → 股票」反查需求時。
+- **分點目錄 = `TaiwanSecuritiesTraderInfo`**(/data,無 data_id/日期參數,一發 ~1,011 筆 `{securities_trader_id, securities_trader, date(開業日), address, phone}`);變動極低頻,24h cache 足夠。樣板 `broker_flows.py::_get_directory_or_none`(上游故障回 None 降級,不拖垮 caller)。Trigger:需要分點 id↔名稱對映 / 搜尋時。
+
 ## 共用 window 設計
 
 - `services/finmind.py::fetch_taiwan_option_daily_window` 是「一份 250-day window 給三個 endpoint 共用」的範本。新 chip endpoint 跟著:
