@@ -146,6 +146,29 @@
 - **整檔刪除**:WarrantIvHistory.test / useWarrantIvHistory.test / warrant-iv-svg.test / WarrantFlowNetHistory.test / useWarrantFlowHistory.test / warrant-flow-history-svg.test / test_warrant_flow_history.py / MarketHeatmap.test / MarketLeaderboard.test / **heatmap-svg.test(R1)**。
 - **不該紅**:其餘全部 — 特別是 useChipData / useBrokerHistory / chip-svg 系列 / OptionsPage 全系 / BorrowFee 全系 / warrant_flow(主面板)/ warrant_iv_history service 測試 / finmind* 測試。
 
+## 6.5 進度帳(session 交接用,2026-07-21 session 1 收尾時寫)
+
+**已完成(每步 commit 時全套自動化綠:backend pytest+ruff、frontend vitest+build)**:
+- 🔵 R1 popover 骨架抽共用(70b6636)
+- 🔴 B1 籌碼總攬 CH-2/3/4(窗聚合 HUD/子圖加總/整疊十字軸/右欄瘦身;e2e E31)
+- 🔴 B2 NAV-1 分點反查升格 mode + mode 白名單(30ebce4;e2e N1/N4)
+- 🔴 B3 WA-1/3/4 引波展開整刪 + 紅call綠put + 理論價 tooltip(e2e E13 改鎖)
+- 🔴 B4 WF-1 外部淨額時序整鏈刪(含 R8 fixture/註解;next-time 兩條已記)
+- 🔴 B5 MK-3/4 輪動整列展開+巢狀個股、經典檢視整刪(e2e M1 改鎖、M2/M3/M5/M6 刪、V3/V6/N4 selector 改)
+- 🟢 G5 MK-1/2/5/6/7 扣除台積電 + pp hint + breadth + 量比排行(e2e M10)
+
+**剩餘(Phase 4 🟢 × 4 → Phase 5-8)**:
+1. 🟢 G1 CH-1 看泡泡圖鈕(ChipBrokersPanel BrokerRow 動作鈕 stopPropagation;App bubbleFocus state(id+seq)→ ChipBubbleView 聚焦 prop;R6/R10 交互:聚焦分點在排除清單 → 自動移除 + 提示「已自過濾清單移除〈名〉」;當日無成交 → 空狀態)+ e2e
+2. 🟢 G2 BB-1 泡泡圖過濾清單(lib/bubble-blocklist.ts localStorage `neigui.bubble-broker-blocklist.v1` 全域;popover 用 ui/PopoverPanel — 第 3 個 consumer)+ e2e
+3. 🟢 G3 WL-1 自選清單(lib/watchlist.ts `neigui.watchlist.v1`;WatchlistSidebar 桌面左欄可收合、mobile 摺疊;分組建立/刪除/歸組)+ e2e
+4. 🟢 G4 WA-2 評分欄(lib/warrant-score.ts:per-factor 橫斷面 percentile `(rank−1)/(n−1)×100`、n=1→50、tie 平均 rank、days_left≤21 該因子 0;權重 35/25/20/20;null 因子→score null 排序末端;WarrantSelector 預設排序改 score desc + 重製鈕同步;warrant-columns 註冊 + prefs merge)+ e2e
+5. Phase 5 /code-review medium → receiving → `self_review_head` 記入本檔末尾
+6. Phase 6 auto-verify 全套(含 e2e `cd e2e; npm test` — 本 session 未跑過整套 e2e,新 E31/E13/E22/M1/M10/N 系列與 fixture 假設未經真跑驗證,預期要 triage)
+7. Phase 7 真實環境驗證(dev server + DevTools 截圖 → docs/specs/batch-ui-update/screenshots/)+ 白名單逐條
+8. changelog 0.39.0(寫前讀 changelog-conventions)+ next-time 收割(popover 條目標已收)+ Phase 8 回頭核 + branch-lifecycle 收尾(push→PR→merge 全自動)
+
+**注意**:e2e visual baseline(V3/V6/market/equity)需 e2e-update-snapshots workflow 重生,PR 註明。
+
 ## 7. Review 記錄
 
 - Round 1(2026-07-21):P0×0 / P1×4 / P2×4,全數 accepted 併入 — R1 heatmap-svg 刪除鏈、R2 test_finmind_realtime 該紅、R3 market-types/useMarketSnapshot 該紅、R4 漲停判定改 change_price + tick 容差、R5 mode 白名單、R6 CH-1×BB-1 交互規則、R7 評分演算法定序 + null 排序、R8 warrant_flow fixture/註解殘留。
