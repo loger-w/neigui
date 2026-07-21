@@ -107,6 +107,13 @@ class FakeFinMindClient(FinMindClient):
             )
             return []
 
+        # 複製上游 trader 過濾語意(feat/broker-daily-flows):真實 API 帶
+        # securities_trader_id 只回該分點 rows — 分點反查(trader-only)與
+        # SecIdAgg(data_id+trader)都吃這條;無此參數的呼叫不受影響。
+        trader_id = params.get("securities_trader_id", "")
+        if trader_id:
+            rows = [r for r in rows if r.get("securities_trader_id") == trader_id]
+
         # In-memory date filter — 對應 service 層 per-day fan-out 切片(R2-P0-2)
         target_dates: set[str] = set()
         if start and end:

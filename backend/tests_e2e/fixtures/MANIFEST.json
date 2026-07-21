@@ -93,6 +93,16 @@
     "data_id": "03001P",
     "_note": "warrant-broker-flow:put summary 驗證;rows 日期 = 2026-06-25(R18)"
   },
+  "taiwan_stock_trading_daily_report_trader_9600_2026-06-26.json": {
+    "dataset": "taiwan_stock_trading_daily_report",
+    "data_id": "",
+    "_note": "broker-daily-flows 分點反查(trader-only 查詢,FAKE _get 靠 securities_trader_id 過濾);手算基準:2330 買500張/賣100張 net_amount 400,500,000、2412 獨特值 -7777 張(data_id fallback 汙染防護,design R5)、0050 僅買 50 張。與 per-stock 檔 (dataset, \"2330\") 不撞 key"
+  },
+  "taiwan_securities_trader_info.json": {
+    "dataset": "TaiwanSecuritiesTraderInfo",
+    "data_id": "",
+    "_note": "broker-daily-flows 分點目錄縮樣 6 筆;9600/9604/9608 名稱取 probe 2026-07-20 真值(warrant fixtures 內 9600=富邦建國為既存手造 artifact,design R12)"
+  },
   "taiwan_stock_industry_chain.json": {
     "dataset": "TaiwanStockIndustryChain",
     "data_id": "",

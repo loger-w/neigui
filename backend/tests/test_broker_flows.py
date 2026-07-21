@@ -314,6 +314,55 @@ async def test_directory_cached_24h(monkeypatch, frozen_today):
     assert fake.info_calls == 2  # 過期重抓
 
 
+# ---------------------------------------------------------------- FAKE 層(finmind_fake + 真 fixture 整合)
+
+_FM_BASE = "https://api.finmindtrade.com/api/v4"
+
+
+@pytest.fixture
+def fake_client(monkeypatch):
+    monkeypatch.setenv("FAKE_FINMIND", "1")
+    from services.finmind_fake import FakeFinMindClient
+
+    return FakeFinMindClient()
+
+
+async def test_fake_get_filters_by_securities_trader_id(fake_client):
+    """FAKE _get 須複製上游 trader 過濾語意(e2e-conventions)。"""
+    rows = await fake_client._get(
+        f"{_FM_BASE}/taiwan_stock_trading_daily_report",
+        {"securities_trader_id": "9600", "date": "2026-06-26"},
+    )
+    assert rows, "trader fixture 沒接到(MANIFEST/檔名/日期任一漂移)"
+    assert all(r["securities_trader_id"] == "9600" for r in rows)
+
+
+async def test_fake_get_trader_filter_excludes_other_ids(fake_client):
+    rows = await fake_client._get(
+        f"{_FM_BASE}/taiwan_stock_trading_daily_report",
+        {"securities_trader_id": "0000", "date": "2026-06-26"},
+    )
+    assert rows == []
+
+
+async def test_fake_directory_returns_full_table(fake_client):
+    rows = await fake_client._get(
+        f"{_FM_BASE}/data", {"dataset": "TaiwanSecuritiesTraderInfo"},
+    )
+    ids = {r["securities_trader_id"] for r in rows}
+    assert {"9600", "9604", "9608"} <= ids  # 富邦系縮樣(名稱取 probe 真值,design R12)
+
+
+async def test_fake_secid_agg_existing_call_shape_unchanged(fake_client):
+    """既有 SecIdAgg 呼叫(data_id + trader)在新過濾下行為不變。"""
+    rows = await fake_client._get(
+        f"{_FM_BASE}/taiwan_stock_trading_daily_report_secid_agg",
+        {"data_id": "2330", "start_date": "2026-06-12", "end_date": "2026-06-26",
+         "securities_trader_id": "BROKER001"},
+    )
+    assert rows and all(r["securities_trader_id"] == "BROKER001" for r in rows)
+
+
 # ---------------------------------------------------------------- FinMindClient fetch 參數
 
 async def test_fetch_daily_report_by_trader_params(monkeypatch):

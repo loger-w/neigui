@@ -1,0 +1,40 @@
+{
+  "data": [
+    {
+      "securities_trader": "富邦",
+      "securities_trader_id": "9600",
+      "stock_id": "2330",
+      "date": "2026-06-26",
+      "price": 1000.0,
+      "buy": 300000,
+      "sell": 0
+    },
+    {
+      "securities_trader": "富邦",
+      "securities_trader_id": "9600",
+      "stock_id": "2330",
+      "date": "2026-06-26",
+      "price": 1005.0,
+      "buy": 200000,
+      "sell": 100000
+    },
+    {
+      "securities_trader": "富邦",
+      "securities_trader_id": "9600",
+      "stock_id": "2412",
+      "date": "2026-06-26",
+      "price": 120.0,
+      "buy": 0,
+      "sell": 7777000
+    },
+    {
+      "securities_trader": "富邦",
+      "securities_trader_id": "9600",
+      "stock_id": "0050",
+      "date": "2026-06-26",
+      "price": 200.0,
+      "buy": 50000,
+      "sell": 0
+    }
+  ]
+}
