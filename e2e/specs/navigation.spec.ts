@@ -118,7 +118,8 @@ test.describe("navigation & persistence", () => {
     await page.reload();
     const row = page.getByTestId("saved-brokers-row");
     await expect(row).toBeVisible();
-    await row.getByRole("button", { name: "9600 富邦", exact: true }).click();
+    // mod/broker-label-search-only-id:chip 非搜尋框 → accessible name 只剩名稱
+    await row.getByRole("button", { name: "富邦", exact: true }).click();
     await expect(page.getByTestId("broker-flows-buy")).toBeVisible();
     await expect(page.getByLabel("搜尋分點")).toHaveValue("9600 富邦");
   });

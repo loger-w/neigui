@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { TopBroker } from "../lib/chip-data";
 import { fmtVol } from "../lib/chip-data";
-import { formatBrokerLabel } from "../lib/broker-name";
+import { formatBrokerName } from "../lib/broker-name";
 import { Checkbox } from "./ui/checkbox";
 import { PopoverPanel } from "./ui/PopoverPanel";
 
@@ -108,8 +108,8 @@ export function BrokerFilterPopover({
       ) : (
         filtered.map((b) => {
           const selected = selectedBrokerIds.has(b.broker_id);
-          // SC-7:顯示/aria/title 統一「id 去dash名」
-          const label = formatBrokerLabel(b.broker_id, b.name);
+          // 顯示/aria/title 只顯去dash名稱(popover 清單非搜尋框)
+          const label = formatBrokerName(b.broker_id, b.name);
           const netCls = b.net > 0
             ? "text-accent"
             : b.net < 0

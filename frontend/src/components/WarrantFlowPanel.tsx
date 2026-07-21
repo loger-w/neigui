@@ -9,7 +9,7 @@ import {
   type WarrantFlowPayload,
 } from "../lib/warrant-flow-data";
 import { cn } from "../lib/utils";
-import { formatBrokerLabel } from "../lib/broker-name";
+import { formatBrokerName } from "../lib/broker-name";
 
 const KIND_TEXT = { call: "認購", put: "認售" } as const;
 // SC-5:認購/認售 badge 零紅綠(accent==bull 同色值,資料標籤禁用)—
@@ -270,14 +270,14 @@ function BranchColumn({
                   type="button"
                   onClick={() => onToggleBroker(b.broker_id)}
                   aria-expanded={expanded}
-                  aria-label={`${expanded ? "收合" : "展開"} ${formatBrokerLabel(b.broker_id, b.broker_name)} 權證明細`}
+                  aria-label={`${expanded ? "收合" : "展開"} ${formatBrokerName(b.broker_id, b.broker_name)} 權證明細`}
                   className="w-full flex items-center gap-2 px-1 py-1 pointer-coarse:min-h-11 text-xs hover:bg-bg-deep transition-colors cursor-pointer"
                 >
                   <span
                     className="w-24 shrink-0 text-left text-ink truncate"
-                    title={formatBrokerLabel(b.broker_id, b.broker_name)}
+                    title={formatBrokerName(b.broker_id, b.broker_name)}
                   >
-                    {formatBrokerLabel(b.broker_id, b.broker_name)}
+                    {formatBrokerName(b.broker_id, b.broker_name)}
                   </span>
                   <span className="relative flex-1 h-2.5 bg-bg-deep overflow-hidden">
                     <span

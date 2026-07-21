@@ -206,7 +206,7 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(buyCol).toContainText("3,960 元"); // 淨買超金額(fixtures 手算)
     await expect(page.getByTestId(TESTIDS.flowSellCol)).toContainText("元大");
     // 展開分點 → 權證明細(payload 內嵌,零額外 API);SC-7 aria 帶 id
-    await buyCol.getByRole("button", { name: /展開 920A 凱基台北/ }).click();
+    await buyCol.getByRole("button", { name: /展開 凱基台北/ }).click();
     await expect(buyCol).toContainText("030011");
     await expect(buyCol).toContainText("台積凱基61購01");
     // 明細表金額降序首列 = 030011(5,000,000)+ 外部淨額 −(凱基 HO −1695)
@@ -402,8 +402,8 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await page.getByPlaceholder("搜尋分點...").fill("分點001");
     await page.getByTestId(TESTIDS.brokerSearchItem).first().click();
     const jump = page.getByTestId(TESTIDS.bubbleJumpToOverview);
-    // SC-7:顯示統一「id 名稱」
-    await expect(jump).toContainText("查看 BROKER001 分點001 於籌碼總覽");
+    // mod/broker-label-search-only-id:非搜尋顯示點只顯名稱
+    await expect(jump).toContainText("查看 分點001 於籌碼總覽");
     await jump.click();
     // tab 已切回籌碼總覽 + 該分點在已選 chip bar
     await expect(page.getByTestId(TESTIDS.chipBrokersPanel)).toBeVisible();

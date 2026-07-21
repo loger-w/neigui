@@ -104,7 +104,7 @@ scripts/git-hooks/   git pre-push 測試防線(core.hooksPath 指向此)
 - **Cache version bump**:`_CACHE_VERSION`(在各 service 內)+1 即作廢所有舊 cache,不需手動清。
 - **Contract ID 格式**(options):`<option_id><contract_date>` 串平,例如 `TXO202607`(月) / `TXO202607W2`(週)。解析靠 `_resolve_contract`,**不要在前端拆字串**。
 - **三大法人鍵名一律 `foreign / dealer / trust`**(自營商 = dealer),**不是 `prop`** — 對齊 `chip-data.ts`;同 repo 用兩個 key 表示同一監管實體會撞 bug + 撞測試。
-- **分點名稱顯示一律走 `lib/broker-name.ts::formatBrokerLabel`**(「id 去dash名」,例 `9801 元大松江`;兩個 FinMind dataset 名稱格式不同,前端統一)— **只動顯示字串**,selection / API / callback 契約仍以 `broker_id`(或原始 name,如 BrokerSearch)為 key。新分點顯示點不准直接印 raw name。
+- **分點名稱顯示一律走 `lib/broker-name.ts`**(兩個 FinMind dataset 名稱格式不同,前端統一;2026-07-22 mod/broker-label-search-only-id 分工):搜尋框情境(input echo + combobox dropdown)用 `formatBrokerLabel`(「id 去dash名」,例 `9801 元大松江`);其他顯示點用 `formatBrokerName`(只顯去dash名,名稱缺 fallback id)— **只動顯示字串**,selection / API / callback 契約仍以 `broker_id`(或原始 name,如 BrokerSearch)為 key。新分點顯示點不准直接印 raw name。搜尋比對一律 dash-insensitive(前端 `normalizeBrokerQuery` 雙邊去 dash;backend `search_traders` 同義)。
 - **TXO domain 鐵則**:
   - 支撐 = bull(紅)/ 壓力 = bear(綠):Call Wall = 壓力 = bear 色、Put Wall = 支撐 = bull 色。顏色 binding 一律加 data-testid + 正向 assertion 鎖住。
   - PCR / Max Pain UI **嚴禁方向性文案**(不寫「做多 / 做空 / 賣選 / 滿倉」),只呈現分位 + region 標(高/中/低)+ 統計表;元件測試 `expect(screen.queryByText(/做多|做空|賣選|滿倉/)).toBeNull()` 鎖住。

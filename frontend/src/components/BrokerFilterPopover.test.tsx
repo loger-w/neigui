@@ -101,8 +101,8 @@ describe("BrokerFilterPopover — 開啟後互動", () => {
     expect(items[0]!.textContent).toContain("Bravo");
     expect(items[1]!.textContent).toContain("Alpha");
     expect(items[2]!.textContent).toContain("Charlie");
-    // SC-7(mod/batch-ui-polish):清單顯示「id 去dash名」統一格式
-    expect(items[0]!.textContent).toContain("B1 Bravo");
+    // mod/broker-label-search-only-id:popover 清單非搜尋框 → 只顯名稱
+    expect(items[0]!.textContent).not.toContain("B1 Bravo");
   });
 
   it("搜尋框過濾:輸入 'alp' 只留 Alpha", () => {
