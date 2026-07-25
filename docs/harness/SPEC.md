@@ -14,7 +14,16 @@
 - **組成**:全域鐵則(~/.claude/CLAUDE.md,8 條)+ 6 個 slash command(486 行)+ **9 個 Python hook / script(1,638 行 + 1,589 行測試)**+ 2 個流程 skill(auto-verify 驗證、branch-lifecycle 版控)+ **4 個 review agent 定義(115 行)**+ **`harness/refs/` 按需載入層(10 檔 388 行)**+ git pre-push 防線(repo 側)+ 7 個專案主題 skill + 三層 memory + 自我改進迴路。repo 內 `docs/harness/` 有全部鏡像。
 - **2026-07-25 phase 分層改版**:phase 細節自 command 移入 `~/.claude/harness/refs/`,command 只留「觸發偵測」層(六檔總和 41,224 → 29,891 bytes,−27.5%);rationale 移入 `harness/RATIONALE.md`(執行期永不載入);載入帳由 `harness/load-manifest.json` 承載,`hooks/harness_load_estimate.py` 求和並驗 `harness/dispositions.json`。設計與驗收見 `docs/specs/harness-context-slimdown/`。
   > **這是注意力優化,不是成本優化 —— 命名別再誤導下一個人。** 事後以真實 token 量測(`docs/specs/harness-cost-research/`,45 個實驗):走到 Phase 3 的載入量 9,353 → 11,731 tokens,**貴 25.4%**,因為搬進 refs 是換位置不是刪掉,而跨 phase 分開讀還有每檔約 142 token 的固定開銷。真正的收益是 **phase 峰值**(Phase 3 −11.7% / Phase 8 −37.1%)與「Phase 4 時不必扛著 Phase 8.5 的規則」。成本熱點另有其人,見下條。
-- **2026-07-26 成本熱點實測**(`docs/specs/harness-cost-research/`):對一次 opus session,槓桿排名是 (1) **prompt cache 命中**(同 token 數成本差 **9.5×**)、(2) **CLAUDE.md**(−8,826 tok/session,−20.4%)、(3) **turn 數**(每多一 turn 整個 context 再付一次)、(4) plugin 停用(−6.4%)、(5) command 檔瘦身(六檔合計 −4,846 tok,且單次只載入一支)。**改 harness 檔會讓下一個 session 的 cached prefix 失效** —— 集中改、不要一天散改五次,這條不需動任何檔案,效益高於本輪所有結構改動的總和。
+- **2026-07-26 成本熱點實測(round 1)**(`docs/specs/harness-cost-research/`,45 個實驗):對一次 opus session,槓桿排名是 (1) prompt cache 命中(同 token 數成本差 9.5×)、(2) CLAUDE.md(−8,826 tok/session)、(3) turn 數、(4) plugin 停用、(5) command 檔瘦身。
+  > **這份排名當天就被 round 2 推翻了前兩名 —— 照下一條,不要照這條。** 留著是因為「為什麼會排錯」比排名本身有用:round 1 全部用「回 OK」的**單次 API call** 探針,那種 session 裡開場 prompt 就是全部成本;真實 `/feat` 有 344 個 turn,開場只佔 1/344 的權重。
+- **2026-07-26 成本熱點實測(round 2,以真實語料為分母)**(`docs/specs/harness-cost-research/round2/`,66 個實驗 + 303 個真實 session、32,645 個 API call、還原花費 **$6,640**):
+  1. **model 選擇**(唯一數量級槓桿):同一題 `claude-fable-5` $0.687 vs `claude-opus-5` $0.145 = **4.74×**,而語料 **76.6% 的花費落在 fable-5**。牌價只解釋一半,另一半是 fable 在同題上多用 26% prompt。**牌價便宜 ≠ 總成本低** —— sonnet-5 牌價最低卻比 opus-5 貴 49%(探索了 2.1× context)。
+  2. **turn 數**:同樣 5 個檔,拆成 5 個 turn 讀 vs 一個 message 平行讀完 —— prompt **3.08×**、成本 **+29%**。成本的 85% 落在 >100 turn 的 session。
+  3. **effort**:`xhigh` 是 `medium` 的 **2.10×**(流程檔目前沒設這個旋鈕)。
+  4. output 指令:天花板 = output 佔總成本的 **9.0%**。
+  5. 常駐層瘦身:整份專案 CLAUDE.md 只值 **$67 / 總成本 1.0%**。常駐層佔每 turn prompt 僅 **24.1%**,其中最大一塊是**動不了的內建 tool schema(57.8%)**,CLAUDE.md 只佔 14.3%。
+  - **撤回 round 1 的「集中改 harness 檔」**:實測失效是**局部**(40k 只重寫後段 14-19k)、**一次性**(改回去立刻全命中)、且按**狀態**計價不按次數(同一個 git 狀態第二次出現就命中)。一次約 **$0.37**,對中位 $97.93 的 `/auto` session 是 0.4%。不值得任何作業節奏上的犧牲。
+  - **SC 指標別再量 bytes / 載入量**:那最多碰到 1/4 的成本且是加數;turn 數與 model 是乘數,兩者都能從 transcript 直接取(`round2/corpus3_flows.py`)。
 
 ## 2. 分層架構
 
