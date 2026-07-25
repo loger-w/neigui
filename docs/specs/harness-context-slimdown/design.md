@@ -1,10 +1,22 @@
-# Harness Context 瘦身改版 — design v8
+# Harness Context 瘦身改版 — design v9
 
 - 日期:2026-07-25
 - 範圍:`~/.claude/commands/{feat,mod,perf,refactor,auto,bug}.md` + `~/.claude/skills/{auto-verify,branch-lifecycle}` + `~/.claude/agents/*.md`(四個 reviewer)+ 為達成上述所需的 hook / 腳本改動
 - 不在範圍:常駐層(user / 專案 CLAUDE.md、MEMORY.md)、`chore.md`、superpowers plugin 檔本體
 
 ## Changelog
+
+**v9(2026-07-25)** — 第 8 輪審視:2 條 P1。**「落點窮舉」lens 也回傳「已收斂,可進實作」** —— 兩條實質性 lens(規則會不會被弄丟、決議有沒有落點)現在都乾淨,只剩機制自洽那條有 finding。
+
+兩條 finding 指向同一個根因:**五值極性模型表達不了巢狀與部分處置**。一個標 `ref` 的段落裡有一行要 `改寫`(改寫後的字串在落點檔、不在來源檔);一行「刪一半留一半」(既要驗消失也要驗留存,而且同一檔)。每遇到一種就得加一條例外規則,而規則本身開始生 bug —— 連續三輪各冒出 2-4 條這類交互問題。
+
+因此 v9 **換模型而非再加規則**:
+
+| 改動 | 效果 |
+|---|---|
+| SC-3 從「處置值 → 極性推斷」改為**每列自帶檢查**:`{kind: absent\|present, file, string}`,每個檢查明寫自己的檔案 | 巢狀、部分、跨檔全部可表達,不需要任何例外規則。處置欄退化為人讀標籤,不參與驗證。整個「這個處置值該驗哪個檔」的 bug 類別消失 |
+| 「只刪一部分的列必須同時填 `absent` 與 `present`」成為唯一的填寫規則 | 三輪來反覆出現的漏洞型態(跨檔版「併入再刪」、同檔版「刪半句留半句」)統一成一條規則,不再是新極性 |
+| 修 §5.6 `goal_efficiency_mode` 三 commit 列、§5.2 mod.md SC gate 列 | 兩者正是上述兩種型態的實例,新模型下直接寫得出檢查 |
 
 **v8(2026-07-25)** — 第 7 輪審視:4 條 P1。**關鍵訊號:「最後防漏網」lens 首次回傳「已收斂,可進實作」且零 finding** —— 該 lens 管的是「規則會不會被弄丟」,也就是本次改版的實質風險,前六輪每輪都有斬獲。剩下 4 條**全部落在驗證機制本身**(`dispositions.json` / SC 極性 / grep 範圍),其中一條又是 v7 修正引入的。
 
@@ -115,9 +127,9 @@ v3 同時修正的實質問題:
 | SC-1 | 六個 command 檔總和**降幅 ≥ 30%** | `Get-ChildItem ~/.claude/commands -Filter *.md \| Where-Object { $_.Name -ne 'chore.md' } \| Measure-Object Length -Sum`。改為降幅是因為絕對門檻與 §5 處置表互斥:五個非 feat 檔的現況總和本身就超過任何合理絕對值,而它們大部分內容是 §5 判定的 load-bearing 核心 |
 | SC-2 | 典型 L 級 `/feat` **主 agent 窗口**載入降幅 ≥ **40%** | `python ~/.claude/hooks/harness_load_estimate.py --profile feat-L --scope main`(該腳本於步驟 1d 建立)|
 | SC-2b | **subagent context** 另計,無門檻,只要求有數字並在報告中呈現 | `... --scope subagent` |
-| SC-3 | §5 處置表每一列依其處置極性驗證通過 | `python ~/.claude/hooks/harness_load_estimate.py --verify-dispositions`。**處置值只有五種,極性定義如下**;違反數 = 0 |
+| SC-3 | `dispositions.json` 的所有檢查通過 | `python ~/.claude/hooks/harness_load_estimate.py --verify-dispositions`。每列自帶 0-2 個檢查,每個檢查明寫自己的檔案:所有 `absent` 皆不命中、所有 `present` 皆命中。違反數 = 0。**不從處置值推斷驗哪個檔**(理由見 §5)|
 | SC-4 | hook 測試不退步 | 步驟 0a 記錄 `cd ~/.claude/hooks && python -m pytest tests -q` 的 passed 數 `B`,與 `pytest tests/test_harness_push_gate.py --collect-only -q` 的計數 `G`。步驟 11 要求 **passed ≥ B − G 且 failed = 0**(不等式:步驟 5、6 都紅先行會新增 case,等式必不成立)|
-| SC-5 | `/code-review` 命中數 = **0** | `Grep -rn -- "/code-review" ~/.claude/{commands,skills,agents} --glob '*.md'` **加上** `~/.claude/harness/refs/*.md`。**必須含新落點 `harness/refs`** —— 否則 `review-protocol.md` 照抄一份也是 0 命中,F1 的根因等於沒被驗到。**限 `*.md` 且 `dispositions.json` 不放在 `refs/`**(見 §5):該 JSON 的 `anchor_removed` 依定義就含 `/code-review` 字串,掃進去 SC-5 會由建構上恆 FAIL。`harness/RATIONALE.md` 不在掃描路徑內(它記錄歷史,提到該字串是正確的)|
+| SC-5 | `/code-review` 命中數 = **0** | `Grep -rn -- "/code-review" ~/.claude/{commands,skills,agents} --glob '*.md'` **加上** `~/.claude/harness/refs/*.md`。**必須含新落點 `harness/refs`** —— 否則 `review-protocol.md` 照抄一份也是 0 命中,F1 的根因等於沒被驗到。**限 `*.md` 且 `dispositions.json` 不放在 `refs/`**(見 §5):該 JSON 的 `absent` 檢查字串依定義就含 `/code-review`,掃進去 SC-5 會由建構上恆 FAIL。`harness/RATIONALE.md` 不在掃描路徑內(它記錄歷史,提到該字串是正確的)|
 | SC-6 | 新流程真實環境跑得通 | 用一個真實 `/mod` 或 `/bug` 小案子跑完整流程,附 commit 清單 + 驗證輸出 |
 | SC-7 | 鏡像同步器涵蓋新路徑且**非假綠** | 步驟 7 完成後 `python scripts/sync-harness-mirror.py --check` → exit 0。反向驗證兩項,皆須 exit 1,且**必須分打兩側**:(a) 改壞一個來源 `harness/refs/*.md` → 走 `build_pairs` 的 DRIFT;(b) 在**鏡像側** `docs/harness/` 對應的新目錄下放一個無來源的檔 → 走 `find_orphans` 的 ORPHAN。(b) 若放在來源側只會報 MISSING,那還是 `build_pairs` 那條路,測不到 orphan 側的 glob 假綠 |
 | SC-8 | **前置 gate** — `skillOverrides` 對 plugin skill 生效 | 設定後開新 session,確認 available-skills 清單不再列 `superpowers:subagent-driven-development`,且 `/superpowers:subagent-driven-development` 仍可手動叫用。**未通過則 §4.1 整條作廢,走 §4.1 備案** |
@@ -304,35 +316,36 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 
 ## 5. 逐檔處置表(單一資料源,取代 v2 的 §5 + §6)
 
-**處置值只有五種,無例外。** 表中若出現「保留」「留原檔」一律讀作 `核心`;「改寫後才刪」讀作 `改寫`。只列需要決策的項目;未列出者一律照原樣留在核心。
+**處置欄是人讀標籤,不參與機器驗證。** 常用值:`核心` / `ref` / `刪` / `改寫` / `移入`(「保留」「留原檔」同 `核心`;「改寫後才刪」同 `改寫`)。只列需要決策的項目;未列出者一律照原樣留在核心。
 
-| 處置 | 意義 | SC-3 極性(兩個錨的驗收條件)|
-|---|---|---|
-| `核心` | 留在原檔不動 | `anchor_kept` 在**來源檔**找得到 |
-| `ref` | 整段搬進 reference 檔 | `anchor_kept` 在**落點檔**找得到 **且** 在來源檔**找不到** |
-| `刪` | 刪除,由別處覆蓋 | `anchor_removed` 在來源檔**找不到** |
-| `改寫` | 同一檔就地改 | `anchor_removed` 找不到 **且** `anchor_kept` 找得到(只驗一個錨會什麼都驗不到)|
-| `移入` | 從 A 檔搬到 B 檔(跨檔,非搬進 ref)| `anchor_removed` 在來源檔找不到 **且** `anchor_kept` 在目標檔找得到 |
+### SC-3 的驗證模型:每列自帶檢查,不從處置值推斷
 
-> `移入` 與 `刪` 的差別是這次改版最容易靜默出錯的地方:**帶有「須先併入 X 再刪」側條件的列,一律標 `移入` 不標 `刪`** —— `刪` 只驗「從來源消失」,不驗「在目標出現」,政策會被靜默刪掉而 SC-3 全綠。凡標 `移入` 者,目標檔那側必須在 §5 對應小節有一列呼應。
+v8 之前用「處置值 → 極性」的推斷模型,連續三輪各冒出 2-4 條交互問題。根因是**五值模型表達不了巢狀與部分處置** —— 一個標 `ref` 的段落裡可能有一行要 `改寫`(改寫後的字串在落點檔不在來源檔);一行可能是「刪一半、留一半」(既要驗消失也要驗留存,而且都在同一檔)。每遇到一種就得加一條例外規則,規則本身開始生 bug。
 
-**本表是人讀版。** 步驟 1d 將它轉成 **`~/.claude/harness/dispositions.json`**(注意:**放在 `harness/` 不放在 `harness/refs/`** —— 該 JSON 的 `anchor_removed` 依定義會包含各種被刪字串,放進 `refs/` 會讓 SC-5 這類「某字串應為零命中」的驗收由建構上恆 FAIL),每列一筆:
+改為**統一模型**:每列自帶 0-2 個檢查,每個檢查明寫自己的檔案:
 
 ```json
-{ "source": "commands/feat.md", "target": "harness/refs/review-protocol.md",
-  "disposition": "ref",
-  "anchor_kept":    "改版後應存在的唯一字串(核心 / ref / 改寫 列必填)",
-  "anchor_removed": "改版後應消失的唯一字串(刪 / 改寫 列必填)" }
+{ "note": "人讀說明,對應 §5 表某列", "disposition": "ref",
+  "checks": [
+    { "kind": "absent",  "file": "commands/auto.md",              "string": "…" },
+    { "kind": "present", "file": "harness/refs/auto-wave.md",     "string": "…" }
+  ] }
 ```
+
+**SC-3 = 所有 `absent` 檢查皆不命中、所有 `present` 檢查皆命中。** 沒有極性推斷,沒有「這個處置值該驗哪個檔」的隱含規則 —— 檔案由每個檢查自己指定,所以巢狀、部分、跨檔全部可表達。
+
+填檢查的兩條硬性要求(步驟 1d):
+
+1. **`absent` 的字串必須先在該檔實際 grep 命中且唯一**(否則驗不到東西);`present` 的字串必須是改版後預期會存在的實際文字。
+2. **任何「只刪一部分」的列必須同時填 `absent` 與 `present`** —— 只填 `absent` 的話,實作者把整段刪光也會全綠。這是三輪來反覆出現的漏洞型態(跨檔版是「併入再刪」,同檔版是「刪半句留半句」),統一模型下它變成一條檢查填寫規則而不是新的極性。
+
+**本表是人讀版。** 步驟 1d 將它轉成 **`~/.claude/harness/dispositions.json`**(**放在 `harness/` 不放在 `harness/refs/`** —— 該 JSON 的 `absent` 字串依定義會包含各種被刪內容,放進 `refs/` 會讓 SC-5 這類「某字串應為零命中」的驗收由建構上恆 FAIL)。
 
 SC-3 掃這份 JSON,**不解析 markdown 表格** —— 表中多數格是中文散文(如「核心原則:receiving 分類」),在原始檔裡 grep 不到,無法當機器錨點。
 
-填錨是步驟 1d 的工作,兩條硬性要求:
+**字串唯一性**:`absent` 的字串在其指定檔中必須唯一。反例:`superpowers:subagent-driven-development` 在 feat.md 出現兩次(顯式覆寫段與 Phase 3 分流表),拿它當 `absent` 會連該留的那句一起要求刪除 —— 這種情況要把字串延長到單一行可辨識的長度。
 
-1. **每個錨都必須先在來源檔實際 grep 命中才算填完**,且**在該檔中必須唯一**。反例:`superpowers:subagent-driven-development` 在 feat.md 出現兩次(顯式覆寫段與 Phase 3 分流表),拿它當「刪」的錨會連核心那句一起判成該刪 —— 這種情況要把錨延長到單一行可辨識的長度。
-2. **改寫列必填兩個錨**。改寫是就地修改同一行,只填 `anchor_kept` 會驗不到任何東西(它本來就在),只填 `anchor_removed` 則證明不了改對。
-
-「段落列」與「細粒度列」是疊加關係(例:「Phase 8 收尾操作 → ref」與「`finishing-a-development-branch` 指標句 → 核心」同時成立,後者不隨前者搬走),`dispositions.json` 允許同一 `source` 出現多筆。
+「段落列」與「細粒度列」是**疊加**關係:「Phase 8 收尾操作 → ref」與「`finishing-a-development-branch` 指標句 → 核心」同時成立,後者不隨前者搬走。統一模型下這不需要特殊規則 —— 前者的 `present` 指向 ref 檔,後者的 `present` 指向來源檔,兩筆各自獨立。同一檔允許出現多筆。
 
 ### 5.1 feat.md
 
@@ -389,7 +402,7 @@ SC-3 掃這份 JSON,**不解析 markdown 表格** —— 表中多數格是中�
 | Phase 8 白名單打勾 + migration 可逆 | 核心 | /mod 唯一終局對帳點 |
 | S/M/L 重寫 | ref | `refs/scope-tiers.md` |
 | 自主模式建議節 | 刪 | 退出條件範例**移入 auto.md 表**(該表現缺 S/M 列)|
-| SC gate 的「同 /feat Phase 0 SC gate」指涉 | 刪 | **只刪指涉,保留「量化條件必附 unit + 量法」本體** —— /mod 不繼承 feat.md 的 Phase 0,全檔只有這一處寫 unit/量法,而 Phase 7 / Phase 8 / Done 三處都依賴「Phase 2 成功條件」。整句刪掉 = /mod 全流程沒有任何成功條件品質要求 |
+| SC gate 的「同 /feat Phase 0 SC gate」指涉 | **改寫** | **檢查**:`absent` = 「同 /feat Phase 0 SC gate」在 `commands/mod.md`;`present` = 「量化條件必附 unit + 量法」在 `commands/mod.md`。兩者在同一行括號內,只填 `absent` 的話實作者把整行刪掉也會全綠。**只刪指涉,保留本體** —— /mod 不繼承 feat.md 的 Phase 0,全檔只有這一處寫 unit/量法,而 Phase 7 / Phase 8 / Done 三處都依賴「Phase 2 成功條件」。整句刪掉 = /mod 全流程沒有任何成功條件品質要求 |
 | 開工括號步驟 / 收尾括號說明 | 刪 | |
 | 禁止清單與鐵則 B/E 重疊條 | 刪 | 保留流程特有條 |
 | Done 一句 + 收尾呼叫句 | 核心 | |
@@ -456,7 +469,7 @@ SC-3 掃這份 JSON,**不解析 markdown 表格** —— 表中多數格是中�
 | 各流程建議用法表 | 核心 | turn 1 把模糊需求轉成機械退出條件的唯一來源 |
 | /mod S/M 級退出條件範例 | **移入**(自 mod.md) | 現表缺此列 |
 | /feat L 級疊 /auto 的告誡(「Phase 0 對齊價值高;想在 merge 前人工試用就不要疊 /auto 跑完收尾」) | **移入**(自 feat.md) | §5.1 該列的呼應側。auto.md 現行只有「⚠ 不建議全自動」一句,沒有這條可操作指示 |
-| `goal_efficiency_mode` 節內「逐檔 red→green→refactor 三 commit」「不啟用時維持標準 TDD 三 commit」 | **改寫** | 依 §6.1 改為兩 commit + `[refactor]` 選配;不改則與 feat.md 改寫後的判準相反 |
+| `goal_efficiency_mode` 節內「逐檔 red→green→refactor 三 commit」「不啟用時維持標準 TDD 三 commit」 | **改寫**(隨整節搬進 ref) | 依 §6.1 改為兩 commit + `[refactor]` 選配;不改則與 feat.md 改寫後的判準相反。**檢查**:`absent` 在 `commands/auto.md`(整節已搬走)+ `present` 在 `harness/refs/auto-wave.md`(改寫後的兩 commit 文字)。這列就是「巢狀處置」的典型 —— 舊的極性推斷模型會把 `present` 驗到 auto.md 而恆 FAIL |
 | `goal_efficiency_mode` 整節 + wave 歸屬半語意判定 | ref | `refs/auto-wave.md` |
 | 疊加內建 `/goal` 段落 | 改寫 | 壓成兩行 |
 
