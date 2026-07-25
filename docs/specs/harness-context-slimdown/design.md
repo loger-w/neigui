@@ -1,10 +1,18 @@
-# Harness Context 瘦身改版 — design v6
+# Harness Context 瘦身改版 — design v7
 
 - 日期:2026-07-25
 - 範圍:`~/.claude/commands/{feat,mod,perf,refactor,auto,bug}.md` + `~/.claude/skills/{auto-verify,branch-lifecycle}` + `~/.claude/agents/*.md`(四個 reviewer)+ 為達成上述所需的 hook / 腳本改動
 - 不在範圍:常駐層(user / 專案 CLAUDE.md、MEMORY.md)、`chore.md`、superpowers plugin 檔本體
 
 ## Changelog
+
+**v7(2026-07-25)** — 第 6 輪審視:3 條 P1,兩個 lens 皆判「仍有阻斷問題」。三條都是前五輪沒碰到的角落,其中第一條是 **v6 的修正自己引入的**。
+
+| 修正 | 問題 |
+|---|---|
+| `<superpowers>` 解析改以 **profile 的 `project_root`** 為比對基準,禁用 process cwd;manifest 因此加 `project_root` 必填欄 | v6 寫「若 `projectPath` 涵蓋**當前 cwd**」。但腳本住在 `~/.claude/hooks`,SC-4 的量法本身就 `cd` 進該目錄 —— 從那裡跑會命中 project-scope 而解到非在役的舊版本,兩版 SDD 差距超過該檔本身的一半。SC-1 / SC-2 是百分比,before/after 從不同 cwd 量比值直接失真;而「印出絕對路徑」只是資訊不是 gate,解到舊版反而會被判成「照規則正確」。腳本改為:兩次量測解到不同版本即 exit 非 0 |
+| §5.3 補兩列(Phase 4 benchmark 句、Done 行) | §6.3 的 /perf 決議在處置表**沒有任何落點** —— §6.1→§5.1 兩列、§6.4→§5.5 一列、§6.2→§7 步驟 6,唯獨 §6.3 兩處皆無。決議會靜默落空,或 1d 填的 Done 錨撞 SC-3 |
+| SC-5 的 grep 範圍加 `harness/refs` | 原範圍只有 `commands` / `skills` / `agents`,不含新落點 —— `review-protocol.md` 照抄一份 `/code-review` 也是 0 命中,F1 的根因等於沒被驗到 |
 
 **v6(2026-07-25)** — 第 5 輪審視:**1 條 finding、0 推翻**,三個 lens 中兩個回傳「已收斂,可進實作」且 findings 為空。存活趨勢 39 → 40 → 24 → 18 → **1**。
 
@@ -98,7 +106,7 @@ v3 同時修正的實質問題:
 | SC-2b | **subagent context** 另計,無門檻,只要求有數字並在報告中呈現 | `... --scope subagent` |
 | SC-3 | §5 處置表每一列依其處置極性驗證通過 | `python ~/.claude/hooks/harness_load_estimate.py --verify-dispositions`。**極性**:`核心` → `anchor_kept` 在來源檔找得到;`ref` → `anchor_kept` 在落點檔找得到、在來源檔找不到;`刪` → `anchor_removed` 在來源檔找不到;`改寫` → `anchor_removed` 找不到**且** `anchor_kept` 找得到(改寫是就地改,只驗一個錨會什麼都驗不到)。違反數 = 0 |
 | SC-4 | hook 測試不退步 | 步驟 0a 記錄 `cd ~/.claude/hooks && python -m pytest tests -q` 的 passed 數 `B`,與 `pytest tests/test_harness_push_gate.py --collect-only -q` 的計數 `G`。步驟 11 要求 **passed ≥ B − G 且 failed = 0**(不等式:步驟 5、6 都紅先行會新增 case,等式必不成立)|
-| SC-5 | `/code-review` 命中數 = **0** | `Grep -rn -- "/code-review" ~/.claude/{commands,skills,agents}`。現況每一處都必須在 §5 表中有對應列(由 SC-3 保證),spec 不記處數與檔數 |
+| SC-5 | `/code-review` 命中數 = **0** | `Grep -rn -- "/code-review" ~/.claude/{commands,skills,agents,harness/refs}`。**必須含新落點 `harness/refs`** —— 否則 `review-protocol.md` 照抄一份 `/code-review` 也是 0 命中,F1 的根因等於沒被驗到。`harness/RATIONALE.md` 排除在外(它記錄歷史,提到該字串是正確的)|
 | SC-6 | 新流程真實環境跑得通 | 用一個真實 `/mod` 或 `/bug` 小案子跑完整流程,附 commit 清單 + 驗證輸出 |
 | SC-7 | 鏡像同步器涵蓋新路徑且**非假綠** | 步驟 7 完成後 `python scripts/sync-harness-mirror.py --check` → exit 0。反向驗證兩項,皆須 exit 1,且**必須分打兩側**:(a) 改壞一個來源 `harness/refs/*.md` → 走 `build_pairs` 的 DRIFT;(b) 在**鏡像側** `docs/harness/` 對應的新目錄下放一個無來源的檔 → 走 `find_orphans` 的 ORPHAN。(b) 若放在來源側只會報 MISSING,那還是 `build_pairs` 那條路,測不到 orphan 側的 glob 假綠 |
 | SC-8 | **前置 gate** — `skillOverrides` 對 plugin skill 生效 | 設定後開新 session,確認 available-skills 清單不再列 `superpowers:subagent-driven-development`,且 `/superpowers:subagent-driven-development` 仍可手動叫用。**未通過則 §4.1 整條作廢,走 §4.1 備案** |
@@ -243,7 +251,7 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 ```json
 {
   "profiles": {
-    "feat-L": [
+    "feat-L": { "project_root": "C:/side-project/neigui", "files": [
       { "path": "commands/feat.md",                    "scope": "main" },
       { "path": "harness/refs/scope-tiers.md",         "scope": "main", "phase": 0 },
       { "path": "agents/design-reviewer.md",           "scope": "subagent", "phase": 1 },
@@ -251,15 +259,17 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
         "condition": "收到 test-gap finding" },
       { "path": "<superpowers>/finishing-a-development-branch/SKILL.md",
         "scope": "main", "phase": 8, "condition": "Phase 8 若仍被 invoke" }
-    ],
-    "feat-L-before": [ "…改版前實際會載入的檔,供 SC-1/SC-2 算降幅…" ],
-    "mod-M": [], "mod-M-before": [],
-    "bug": [], "bug-before": [],
-    "refactor": [], "refactor-before": [],
-    "perf": [], "perf-before": []
+    ] },
+    "feat-L-before": { "project_root": "…同上…", "files": [ "…改版前實際會載入的檔…" ] },
+    "mod-M": {}, "mod-M-before": {},
+    "bug": {}, "bug-before": {},
+    "refactor": {}, "refactor-before": {},
+    "perf": {}, "perf-before": {}
   }
 }
 ```
+
+`project_root` 是**必填**:它是 `<superpowers>` 解析的比對基準(見下),不可省略、不可用 process cwd 代替。同一組 `X` / `X-before` 兩個 profile 的 `project_root` 必須相同,否則降幅的分子分母不同基準。
 
 **`-before` profile 是降幅制的必要條件**:SC-1 / SC-2 都是「相對改版前下降 N%」,沒有 before 側的檔案清單就算不出分母。v4 漏了這點。
 
@@ -268,7 +278,11 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 - `phase`:載入時機,供 `refs_for_phase()` 產生 `PHASE_REFS`(**單一資料源,不手抄兩份**)
 - `condition`:有此欄即為條件式;`--worst` 時計入,否則不計
 - **一支 ref 對多個 phase** → 同 `path` 列多筆(這是 record list 不是 path-keyed map)。求和時**不去重** —— 每次 Read 都真的佔窗口,去重反而低估
-- **`<superpowers>` 佔位符解析規則**:讀 `~/.claude/plugins/installed_plugins.json` 的 `superpowers@claude-plugins-official` 陣列,取 **user-scope 那筆的 `installPath`**;**但若同陣列中存在 project-scope 那筆、且其 `projectPath` 涵蓋當前 cwd,則以 project-scope 為準**(實測該陣列同時有兩筆不同版本的 entry,對 neigui 而言 project-scope 的 `projectPath` 不涵蓋 cwd 故不適用,但換個專案就會)。**不要**用「cache 底下版本號最大的目錄」—— cache 內存在未在役的版本(實測有一個版本在 cache 但不在 installed),而且字串排序會把 `6.10.0` 排在 `6.2.0` 之前,是個會延遲爆炸的啟發式。腳本必須在輸出中**印出實際解到的絕對路徑**;解不到則 exit 非 0,不得靜默略過
+- **`<superpowers>` 佔位符解析規則**:讀 `~/.claude/plugins/installed_plugins.json` 的 `superpowers@claude-plugins-official` 陣列。**比對基準是 profile 自己宣告的 `project_root`,不是 process cwd** —— 若某筆 project-scope entry 的 `projectPath` 涵蓋該 `project_root` 則用它,否則用 user-scope 那筆的 `installPath`。
+
+  **絕對不能用 process cwd**:腳本住在 `~/.claude/hooks`,而 SC-4 的量法本身就 `cd ~/.claude/hooks`;從那裡跑的話 project-scope 的 `projectPath` 恰好涵蓋 cwd,會解到一個非在役的舊版本,兩版 SDD 的 SKILL.md 差距超過該檔本身大小的一半。SC-1 / SC-2 是百分比降幅,before 與 after 若從不同 cwd 量,比值直接失真,而「印出絕對路徑」只是資訊不是 gate —— 解到舊版反而會被判成「照規則正確」。
+
+  因此每個 profile 必須有 `"project_root"` 欄位;腳本在輸出中印出**解到的版本目錄**,並在 before / after 兩次量測解到不同版本時 **exit 非 0**(降幅制的前提是分子分母同基準)。**不要**用「cache 底下版本號最大的目錄」—— cache 內存在未在役的版本(實測有一個版本在 cache 但不在 installed),而且字串排序會把 `6.10.0` 排在 `6.2.0` 之前,是個會延遲爆炸的啟發式。腳本必須在輸出中**印出實際解到的絕對路徑**;解不到則 exit 非 0,不得靜默略過
 
 `load-manifest.json` 與 `dispositions.json` 都必須進鏡像同步範圍 —— 現行 `DIR_MAPS` 的 pattern 只有 `*.md` / `*.py`,步驟 7 要一併加 `*.json`。
 
@@ -371,6 +385,8 @@ SC-3 掃這份 JSON,**不解析 markdown 表格** —— 表中多數格是中�
 | Phase 5 量其他不該退化的 metric | 核心 | |
 | Phase 6「結果跟優化前完全一樣」+ 大量輸入 edge | 核心 | auto-verify 無此兩項 |
 | 第 17 行對 auto-verify「何時呼叫」節的指涉 | **改寫** | 該節將刪;改成自帶「baseline 量測前先跑 auto-verify 自動化節」 |
+| Phase 4 的「加 performance test / benchmark(可重複跑的,入庫 — Done 條件之一)」 | **改寫** | 依 §6.3:改為「before/after 量測指令寫進 `optimize-plan.md` 且可重跑」;benchmark script 入庫降為條件式(該 metric 需長期監控才做,且入庫則必須進 `harness.json` 或 pytest suite)|
+| Done 行的「benchmark 入庫」 | **改寫** | 同上。**§6.3 的決議原本在本表沒有任何落點** —— 其餘三條決議都有對應列,只有它沒有,決議會靜默落空 |
 | 第 3 行中與 Phase 1 gate 三重的「目標數字」重述 | 刪 | 只刪重述,保留提問句 |
 | 自主模式建議節 / 禁止清單重疊條 | 刪 | |
 | Done 一句 + 收尾呼叫句 | 核心 | |
