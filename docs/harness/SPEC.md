@@ -12,7 +12,9 @@
 - **時間軸**:2026-06-22 起以此 harness 開發;2026-07-06 對 harness 本身完成 v2 審計重構 + v3 強制層三件工程(§6)。
 - **規模數據**:app 版本 `0.22.0`(user-facing changelog 22+ 個 release);應用測試 **480 backend pytest + 585 frontend vitest + 62 Playwright e2e ≈ 1,100+**;**harness 自身有 154 個 pytest**(hooks 130 + 鏡像同步器 17 + pre-push 7;強制層有 bug 比沒有更糟);9 個 feature 以完整流程留痕交付。
 - **組成**:全域鐵則(~/.claude/CLAUDE.md,8 條)+ 6 個 slash command(486 行)+ **9 個 Python hook / script(1,638 行 + 1,589 行測試)**+ 2 個流程 skill(auto-verify 驗證、branch-lifecycle 版控)+ **4 個 review agent 定義(115 行)**+ **`harness/refs/` 按需載入層(10 檔 388 行)**+ git pre-push 防線(repo 側)+ 7 個專案主題 skill + 三層 memory + 自我改進迴路。repo 內 `docs/harness/` 有全部鏡像。
-- **2026-07-25 context 瘦身改版**:phase 細節自 command 移入 `~/.claude/harness/refs/`,command 只留「觸發偵測」層(六檔總和 41,224 → 29,503 bytes,−28.4%);rationale 移入 `harness/RATIONALE.md`(執行期永不載入);載入帳由 `harness/load-manifest.json` 承載,`hooks/harness_load_estimate.py` 求和並驗 `harness/dispositions.json`。設計與驗收見 `docs/specs/harness-context-slimdown/`。
+- **2026-07-25 phase 分層改版**:phase 細節自 command 移入 `~/.claude/harness/refs/`,command 只留「觸發偵測」層(六檔總和 41,224 → 29,891 bytes,−27.5%);rationale 移入 `harness/RATIONALE.md`(執行期永不載入);載入帳由 `harness/load-manifest.json` 承載,`hooks/harness_load_estimate.py` 求和並驗 `harness/dispositions.json`。設計與驗收見 `docs/specs/harness-context-slimdown/`。
+  > **這是注意力優化,不是成本優化 —— 命名別再誤導下一個人。** 事後以真實 token 量測(`docs/specs/harness-cost-research/`,45 個實驗):走到 Phase 3 的載入量 9,353 → 11,731 tokens,**貴 25.4%**,因為搬進 refs 是換位置不是刪掉,而跨 phase 分開讀還有每檔約 142 token 的固定開銷。真正的收益是 **phase 峰值**(Phase 3 −11.7% / Phase 8 −37.1%)與「Phase 4 時不必扛著 Phase 8.5 的規則」。成本熱點另有其人,見下條。
+- **2026-07-26 成本熱點實測**(`docs/specs/harness-cost-research/`):對一次 opus session,槓桿排名是 (1) **prompt cache 命中**(同 token 數成本差 **9.5×**)、(2) **CLAUDE.md**(−8,826 tok/session,−20.4%)、(3) **turn 數**(每多一 turn 整個 context 再付一次)、(4) plugin 停用(−6.4%)、(5) command 檔瘦身(六檔合計 −4,846 tok,且單次只載入一支)。**改 harness 檔會讓下一個 session 的 cached prefix 失效** —— 集中改、不要一天散改五次,這條不需動任何檔案,效益高於本輪所有結構改動的總和。
 
 ## 2. 分層架構
 
