@@ -1,0 +1,413 @@
+{
+  "_comment": "design v12 §5 逐檔處置表的機器可讀版。SC-3 = 所有 absent 檢查皆不命中、所有 present 檢查皆命中。處置欄是人讀標籤,不參與驗證 —— 每個檢查自己指定檔案,所以巢狀 / 部分 / 跨檔都表達得出來。刻意放在 harness/ 而非 harness/refs/:本檔的 absent 字串依定義含各種被刪內容,放進 refs/ 會讓 SC-5 由建構上恆 FAIL。",
+  "rows": [
+    { "note": "§5.1 檔頭骨架 + 共通鐵則與 auto.md 契約指標", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "自主模式契約見" }] },
+    { "note": "§5.1 核心原則:receiving 分類", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "rejected_with_reason" }] },
+    { "note": "§5.1 核心原則:review 3 輪上限", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "Review 輪數上限 3" }] },
+    { "note": "§5.1 核心原則:P1 帶額度退場", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "P1 帶額度退場" }] },
+    { "note": "§5.1 核心原則:失敗類型分流", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "失敗類型分流" }] },
+    { "note": "§5.1 核心原則:跨 phase meta-cycle", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "sc_cycle_counts" }] },
+    { "note": "§5.1 核心原則:findings 量大先收斂", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "group-by-file dedup" }] },
+    { "note": "§5.1 核心原則第 10 行的 review CLI 字樣 → 改指 review 協定", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "/code-review` finding" },
+        { "kind": "present", "file": "commands/feat.md", "string": "review 協定" }
+      ] },
+    { "note": "§5.1 SC gate 完整版(含驗證窗口 + 降級策略)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "驗證窗口" }] },
+    { "note": "§5.1 superpowers 顯式覆寫的操作面 → refs/sp-overrides.md", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "docs/superpowers/" },
+        { "kind": "present", "file": "harness/refs/sp-overrides.md", "string": "docs/superpowers/" },
+        { "kind": "present", "file": "commands/feat.md", "string": "refs/sp-overrides.md" }
+      ] },
+    { "note": "§5.1 S/M/L 分流 → refs/scope-tiers.md + 核心一行指標", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "無新資料流" },
+        { "kind": "present", "file": "harness/refs/scope-tiers.md", "string": "無新資料流" },
+        { "kind": "present", "file": "commands/feat.md", "string": "refs/scope-tiers.md" }
+      ] },
+    { "note": "§5.1 Phase -1 setup + state 初始化 → refs/feat-state.md(指標句留核心)", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "初始化 state.json" },
+        { "kind": "present", "file": "harness/refs/feat-state.md", "string": "初始化 state.json" },
+        { "kind": "present", "file": "commands/feat.md", "string": "refs/feat-state.md" }
+      ] },
+    { "note": "§5.1 延續型 feature 掃前輪指示 → refs/feat-phase0-2.md", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "延續型 feature" },
+        { "kind": "present", "file": "harness/refs/feat-phase0-2.md", "string": "延續型 feature" }
+      ] },
+    { "note": "§5.1 Phase 1/2 review 迴圈細節 → refs/review-protocol.md", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "design-review-round-" },
+        { "kind": "present", "file": "harness/refs/review-protocol.md", "string": "review-round-" }
+      ] },
+    { "note": "§5.1 Phase 2 模式選擇(condensed 預設 / per_file opt-in)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "condensed" }] },
+    { "note": "§5.1 實作模式表 + Phase 3 失敗回退表 → refs/feat-phase3.md", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "≤ 2 檔且函式清單明確" },
+        { "kind": "present", "file": "harness/refs/feat-phase3.md", "string": "≤ 2 檔且函式清單明確" }
+      ] },
+    { "note": "§5.1 SDD 三條紀律摘寫進 refs/feat-phase3.md(步驟 1b)", "disposition": "ref",
+      "checks": [
+        { "kind": "present", "file": "harness/refs/feat-phase3.md", "string": "禁止並行 dispatch implementer" },
+        { "kind": "present", "file": "harness/refs/feat-phase3.md", "string": "ledger" },
+        { "kind": "present", "file": "harness/refs/feat-phase3.md", "string": "每個 task 後就 review" }
+      ] },
+    { "note": "§5.1 + §6.1 TDD 三 commit 改為 red→green 兩 commit,[refactor] 選配", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "TDD 三 commit 各帶 tag" },
+        { "kind": "present", "file": "commands/feat.md", "string": "有重構才加" }
+      ] },
+    { "note": "§5.1 commit 前 cat docs/next-time.md + subagent 代查", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "next-time.md" }] },
+    { "note": "§5.1 Phase 4 步驟 1 的 review CLI(第 74 行)→ 依 review 協定", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "跑 `/code-review`" },
+        { "kind": "present", "file": "commands/feat.md", "string": "refs/review-protocol.md" }
+      ] },
+    { "note": "§5.1 Phase 4 雙焦點 + P2 彙總契約(missing-from-spec 模型不會自己做)", "disposition": "核心",
+      "checks": [
+        { "kind": "present", "file": "commands/feat.md", "string": "missing-from-spec" },
+        { "kind": "present", "file": "commands/feat.md", "string": "p2_summary" }
+      ] },
+    { "note": "§5.1 Phase 4 快篩四條 → refs/review-protocol.md", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "Dispatch / 快篩紀律" },
+        { "kind": "present", "file": "harness/refs/review-protocol.md", "string": "Dispatch / 快篩紀律" }
+      ] },
+    { "note": "§5.1 Phase 2 步驟 2 的 per_file fan-out 指涉(§4.1 判該 skill 不動的前提)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "dispatching-parallel-agents" }] },
+    { "note": "§5.1 Phase 4 修 finding 操作 → refs/feat-phase4-fix.md(條件式)", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "手動改壞 → lock test 紅" },
+        { "kind": "present", "file": "harness/refs/feat-phase4-fix.md", "string": "mutation-verified" },
+        { "kind": "present", "file": "harness/refs/feat-phase4-fix.md", "string": "git restore" }
+      ] },
+    { "note": "§5.1 同檔混類 finding 先 commit fix、refactor 後動(觸發偵測,留核心)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "同檔混類" }] },
+    { "note": "§5.1 self_review_head 寫入", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "self_review_head" }] },
+    { "note": "§5.1 Phase 6 失敗回退 (a)(b)(c) + real-env round JSON 產物", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "real-env-verification-round-" }] },
+    { "note": "§5.1 Phase 7 五欄證據表(最終 gate,不准 N/A)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "regression 抽樣對象" }] },
+    { "note": "§5.1 state.json 每 phase 回寫(一行)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "completed_phases" }] },
+    { "note": "§5.1 Phase 8 收尾操作 + artifact commit → refs/feat-phase8.md", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "git add -f" },
+        { "kind": "present", "file": "harness/refs/feat-phase8.md", "string": "git add -f" },
+        { "kind": "present", "file": "commands/feat.md", "string": "refs/feat-phase8.md" }
+      ] },
+    { "note": "§5.1 Phase 8.5 沉澱 → refs/feat-phase8.md", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "GC pass(寫入前強制)" },
+        { "kind": "present", "file": "harness/refs/feat-phase8.md", "string": "GC pass(寫入前強制)" }
+      ] },
+    { "note": "§5.1 SDD 點名 → SC-8 FAIL,改負向指示(§4.1 備案)", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "| ≥ 3 檔且彼此獨立 | `superpowers:subagent-driven-development` |" },
+        { "kind": "present", "file": "commands/feat.md", "string": "不呼叫 `superpowers:subagent-driven-development`" }
+      ] },
+    { "note": "§5.1 using-git-worktrees 指標句(v2 誤判可刪)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "using-git-worktrees" }] },
+    { "note": "§5.1 finishing-a-development-branch 指標句(須列入 manifest condition)", "disposition": "核心",
+      "checks": [
+        { "kind": "present", "file": "commands/feat.md", "string": "finishing-a-development-branch" },
+        { "kind": "present", "file": "harness/load-manifest.json", "string": "finishing-a-development-branch" }
+      ] },
+    { "note": "§5.1 git add 的「不要 -A」(safety-hooks.py 已 deny)", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "commands/feat.md", "string": "(不要 `-A`)" }] },
+    { "note": "§5.1 「等使用者確認」(brainstorming HARD-GATE 已涵蓋)", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "commands/feat.md", "string": "等使用者確認再進 Phase 1" }] },
+    { "note": "§5.1 自主模式建議節 → 移入 auto.md(L 級括號指示是唯一新增內容)", "disposition": "移入",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "## 自主模式建議" },
+        { "kind": "present", "file": "commands/auto.md", "string": "想在 merge 前人工試用就不要疊" }
+      ] },
+    { "note": "§5.1 日期實證敘事 → RATIONALE.md", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "commands/feat.md", "string": "2026-07-06 審計:9 個 feature" }] },
+    { "note": "§5.1 Done 一句 + 收尾呼叫句", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "## Done" }] },
+
+    { "note": "§5.2 mod 檔頭指標句", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "共通鐵則套用" }] },
+    { "note": "§5.2 Phase 1 caller map 落檔 current-state.md", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "current-state.md" }] },
+    { "note": "§5.2 Phase 2 不能破壞的既有行為白名單", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "不能破壞的既有行為白名單" }] },
+    { "note": "§5.2 Phase 3 change-spec-reviewer dispatch + max 2 輪(v2 兩張表都漏)", "disposition": "核心",
+      "checks": [
+        { "kind": "present", "file": "commands/mod.md", "string": "change-spec-reviewer" },
+        { "kind": "present", "file": "commands/mod.md", "string": "Max 2 輪" }
+      ] },
+    { "note": "§5.2 Phase 3 diff 級 spec 三類標記", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "三類動作分開標記" }] },
+    { "note": "§5.2 Phase 4 三類順序與「🔴 先改既有測試讓它紅」", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "先改測試讓它紅" }] },
+    { "note": "§5.2 Phase 5 的 review CLI(第 33 行)→ 依 review 協定", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/mod.md", "string": "`/code-review`(**預設 medium 檔位**" },
+        { "kind": "present", "file": "commands/mod.md", "string": "refs/review-protocol.md" }
+      ] },
+    { "note": "§5.2 Phase 5 inline 完工自查 checklist(實測模型做不到)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "完工自查 checklist" }] },
+    { "note": "§5.2 Phase 6「不該紅 → 不改 assertion」", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "不該紅 → 不改 assertion" }] },
+    { "note": "§5.2 Phase 7 白名單逐一檢查 + migration 真實環境", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "白名單逐一檢查" }] },
+    { "note": "§5.2 Phase 8 白名單打勾 + migration 可逆", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "migration 可逆" }] },
+    { "note": "§5.2 S/M/L 重寫 → refs/scope-tiers.md", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "commands/mod.md", "string": "## 規模分流" },
+        { "kind": "present", "file": "harness/refs/scope-tiers.md", "string": "## /mod" }
+      ] },
+    { "note": "§5.2 自主模式建議節 → 退出條件範例移入 auto.md 表", "disposition": "移入",
+      "checks": [
+        { "kind": "absent", "file": "commands/mod.md", "string": "## 自主模式建議" },
+        { "kind": "present", "file": "commands/auto.md", "string": "Phase 2 白名單行為保留" }
+      ] },
+    { "note": "§5.2 SC gate 指涉:只刪指涉保留本體(整句刪 = /mod 全流程沒有成功條件品質要求)", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/mod.md", "string": "同 /feat Phase 0 SC gate" },
+        { "kind": "present", "file": "commands/mod.md", "string": "量化條件必附 unit + 量法" }
+      ] },
+    { "note": "§5.2 開工括號步驟 / 收尾括號說明", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "commands/mod.md", "string": "status 乾淨 + 主線同步 + `git switch -c mod/<slug>`" }] },
+    { "note": "§5.2 禁止清單與鐵則 B/E 重疊條(保留流程特有條)", "disposition": "刪",
+      "checks": [
+        { "kind": "absent", "file": "commands/mod.md", "string": "❌ 「順手」refactor / rename / 風格修正" },
+        { "kind": "present", "file": "commands/mod.md", "string": "Backward compat 沒談就改 API" }
+      ] },
+    { "note": "§5.2 Done 一句 + 收尾呼叫句", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "## Done" }] },
+
+    { "note": "§5.3 perf 標題 + $ARGUMENTS 插槽 + 空參數提問", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/perf.md", "string": "$ARGUMENTS" }] },
+    { "note": "§5.3 perf 檔頭指標句(v2 曾誤判可刪)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/perf.md", "string": "共通鐵則套用" }] },
+    { "note": "§5.3 量化目標 gate 三件", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/perf.md", "string": "可重現量測步驟" }] },
+    { "note": "§5.3 root bottleneck 不是旁支 判準", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/perf.md", "string": "root bottleneck" }] },
+    { "note": "§5.3 3 輪定位不到 → 重新定義目標", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/perf.md", "string": "3 輪 profile 仍定位不到" }] },
+    { "note": "§5.3 cache invalidation 三欄 / 一策略一 commit", "disposition": "核心",
+      "checks": [
+        { "kind": "present", "file": "commands/perf.md", "string": "invalidation 三欄" },
+        { "kind": "present", "file": "commands/perf.md", "string": "一個策略一個 commit" }
+      ] },
+    { "note": "§5.3 Phase 5 量其他不該退化的 metric", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/perf.md", "string": "不該退化的 metric" }] },
+    { "note": "§5.3 Phase 6 結果跟優化前完全一樣 + 大量輸入 edge", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/perf.md", "string": "跟優化前完全一樣" }] },
+    { "note": "§5.3 第 17 行對 auto-verify「何時呼叫」節的指涉(該節將刪)", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/perf.md", "string": "對應該 skill「何時呼叫」的 /perf Phase 1 條目" },
+        { "kind": "present", "file": "commands/perf.md", "string": "Baseline 量測前" }
+      ] },
+    { "note": "§5.3 + §6.3 Phase 4 benchmark 入庫 → before/after 量測指令寫進 optimize-plan.md", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/perf.md", "string": "入庫 — Done 條件之一" },
+        { "kind": "present", "file": "commands/perf.md", "string": "optimize-plan.md 且可重跑" }
+      ] },
+    { "note": "§5.3 + §6.3 Done 行的 benchmark 入庫(§6.3 決議的第二個落點)", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/perf.md", "string": "benchmark 入庫 +" },
+        { "kind": "present", "file": "commands/perf.md", "string": "量測指令可重跑" }
+      ] },
+    { "note": "§5.3 第 3 行與 Phase 1 gate 三重的「目標數字」重述(只刪重述保留提問句)", "disposition": "刪",
+      "checks": [
+        { "kind": "absent", "file": "commands/perf.md", "string": "、目標數字是多少" },
+        { "kind": "present", "file": "commands/perf.md", "string": "先問我要優化什麼" }
+      ] },
+    { "note": "§5.3 自主模式建議節 / 禁止清單重疊條", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "commands/perf.md", "string": "## 自主模式建議" }] },
+    { "note": "§5.3 Done 一句 + 收尾呼叫句", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/perf.md", "string": "branch-lifecycle" }] },
+
+    { "note": "§5.4 refactor 檔頭 / Why? gate / characterization test 義務", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/refactor.md", "string": "characterization test" }] },
+    { "note": "§5.4 每步保持綠 + 100 行拆分門檻 + 大爆炸禁令", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/refactor.md", "string": "100 行" }] },
+    { "note": "§5.4 紅時預設 refactor 改錯的 implementation-detail 例外與切 /mod 出口", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/refactor.md", "string": "implementation detail" }] },
+    { "note": "§5.4 Phase 5 grep caller blast radius(鐵則 A 的 caller grep 只掛 Mod)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/refactor.md", "string": "Blast radius" }] },
+    { "note": "§5.4 砍 dead code 前查動態用法", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/refactor.md", "string": "動態用法" }] },
+    { "note": "§5.4 Phase 3 refactor-plan-reviewer dispatch + max 2 輪", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/refactor.md", "string": "refactor-plan-reviewer" }] },
+    { "note": "§5.4 第 19 行 auto-verify 抽樣數重述", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "commands/refactor.md", "string": "(同 auto-verify regression 抽樣數)" }] },
+    { "note": "§5.4 收尾括號步驟與日期 / 自主模式建議節 / 鐵則重疊條", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "commands/refactor.md", "string": "## 自主模式建議" }] },
+    { "note": "§5.4 Done 一句 + 收尾呼叫句", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/refactor.md", "string": "## Done" }] },
+
+    { "note": "§5.5 bug 檔頭 / 穩定重現 gate / 一次一假說 / 紅測試先行", "disposition": "核心",
+      "checks": [
+        { "kind": "present", "file": "commands/bug.md", "string": "一次一個假說" },
+        { "kind": "present", "file": "commands/bug.md", "string": "紅測試先行" }
+      ] },
+    { "note": "§5.5 最小修改 + 🔴 commit 標記", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/bug.md", "string": "最小修改" }] },
+    { "note": "§5.5 Phase 5 blast radius(鐵則 A 不含 Bug)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/bug.md", "string": "Blast radius" }] },
+    { "note": "§5.5 Phase 8 反向驗證(模型原生不會做)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/bug.md", "string": "反向驗證" }] },
+    { "note": "§5.5 Phase 9 留尾巴", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/bug.md", "string": "留尾巴" }] },
+    { "note": "§5.5 Phase 7 第 19 行:先補 auto-verify 呼叫再刪抽樣重述,保留 /bug 特有重現句", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/bug.md", "string": "抽 2 個沒改的相關功能確認沒打壞" },
+        { "kind": "present", "file": "commands/bug.md", "string": "重走 Phase 1 重現步驟" },
+        { "kind": "present", "file": "commands/bug.md", "string": "真實環境節" }
+      ] },
+    { "note": "§5.5 鐵則 F 全文重寫 → 一句引用", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/bug.md", "string": "STOP,質疑的是架構理解不是又一個假說" },
+        { "kind": "present", "file": "commands/bug.md", "string": "systematic-debugging" }
+      ] },
+    { "note": "§5.5 自主模式建議節 / 禁止清單重疊條", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "commands/bug.md", "string": "## 自主模式建議" }] },
+    { "note": "§5.5 + §6.4 .claude/bug/<slug>/repro.md 落檔義務(新增)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/bug.md", "string": "repro.md" }] },
+    { "note": "§5.5 Done 一句 + 收尾呼叫句", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/bug.md", "string": "## Done" }] },
+
+    { "note": "§5.6 退出條件語法 + 機械可判要求", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/auto.md", "string": "可機械判定" }] },
+    { "note": "§5.6 退出條件成立後總結、列出所有 [auto-default]", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/auto.md", "string": "auto-default" }] },
+    { "note": "§5.6 3 次不成立上限(鐵則 F 不涵蓋頂層迴圈)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/auto.md", "string": "3 次嘗試後仍不成立" }] },
+    { "note": "§5.6 自動核准範圍", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/auto.md", "string": "自動核准範圍" }] },
+    { "note": "§5.6 方向性抉擇判定準則(觸發偵測,不可延後)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/auto.md", "string": "方向性抉擇判定" }] },
+    { "note": "§5.6 review loop finding 免問授權", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/auto.md", "string": "Review loop 內的 finding 處置" }] },
+    { "note": "§5.6 必停三類 + push/merge 除外括號(鐵則 H 沒說 push 不算對外發布)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/auto.md", "string": "仍必停" }] },
+    { "note": "§5.6 各流程建議用法表(turn 1 轉機械退出條件的唯一來源)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/auto.md", "string": "各流程建議用法" }] },
+    { "note": "§5.6 + §6.1 goal_efficiency_mode 的三 commit 敘述改為兩 commit + [refactor] 選配", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/auto.md", "string": "不啟用時維持標準 TDD 三 commit" },
+        { "kind": "present", "file": "harness/refs/auto-wave.md", "string": "兩 commit" }
+      ] },
+    { "note": "§5.6 goal_efficiency_mode 整節 + wave 歸屬半語意判定 → refs/auto-wave.md", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "commands/auto.md", "string": "### goal_efficiency_mode" },
+        { "kind": "present", "file": "harness/refs/auto-wave.md", "string": "goal_efficiency_mode" },
+        { "kind": "present", "file": "commands/auto.md", "string": "refs/auto-wave.md" }
+      ] },
+    { "note": "§5.6 疊加內建 /goal 段落壓成兩行", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/auto.md", "string": "補上本契約「續跑靠模型自律」的弱點" },
+        { "kind": "present", "file": "commands/auto.md", "string": "/goal" }
+      ] },
+
+    { "note": "§5.7 auto-verify「何時呼叫」整節(反向硬編碼 phase 號 = drift 源)", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "skills/auto-verify/SKILL.md", "string": "## 何時呼叫" }] },
+    { "note": "§5.7 與 verification-before-completion 職責邊界整節 → 壓成開頭一行", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "skills/auto-verify/SKILL.md", "string": "## 與 verification-before-completion 的職責邊界" },
+        { "kind": "present", "file": "skills/auto-verify/SKILL.md", "string": "verification-before-completion" }
+      ] },
+    { "note": "§5.7 紀律邊界整節(兩條分別重複就近原則與鐵則 D)", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "skills/auto-verify/SKILL.md", "string": "## 紀律邊界" }] },
+    { "note": "§5.7 dispatching 點名句改寫(保留並行化與單一報告要求,非刪)", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "skills/auto-verify/SKILL.md", "string": "用 `superpowers:dispatching-parallel-agents` 同時跑" },
+        { "kind": "present", "file": "skills/auto-verify/SKILL.md", "string": "合併單一報告" }
+      ] },
+    { "note": "§5.7 E2E 是 harness.json 之外的條件 gate(下游依賴)", "disposition": "保留",
+      "checks": [{ "kind": "present", "file": "skills/auto-verify/SKILL.md", "string": "E2E 是 harness.json 之外的條件 gate" }] },
+    { "note": "§5.7 偵測不到驗證指令 → 停下問", "disposition": "保留",
+      "checks": [{ "kind": "present", "file": "skills/auto-verify/SKILL.md", "string": "偵測不到驗證指令" }] },
+    { "note": "§5.7 抽樣數的唯一 source of truth(refactor.md / bug.md 的重述正要刪)", "disposition": "保留",
+      "checks": [{ "kind": "present", "file": "skills/auto-verify/SKILL.md", "string": "抽 2 個沒改的相關功能" }] },
+    { "note": "§5.7 五步驟表 / harness.json 優先序 + stale 偵測 / 兩條 shell 紀律 / 形狀表 / 真實環境 shape 表", "disposition": "保留",
+      "checks": [
+        { "kind": "present", "file": "skills/auto-verify/SKILL.md", "string": "harness.json" },
+        { "kind": "present", "file": "skills/auto-verify/SKILL.md", "string": "不得接管線後綴" },
+        { "kind": "present", "file": "skills/auto-verify/SKILL.md", "string": "禁止同一 shell 鏈" }
+      ] },
+    { "note": "§5.7 兩條 shell 紀律的實證括號 → RATIONALE.md", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "skills/auto-verify/SKILL.md", "string": "backfill 崩掉顯示成功" }] },
+
+    { "note": "§5.8 異常處理表 + flake triage + gh pr create 失敗路徑 → references/exceptions.md", "disposition": "ref",
+      "checks": [
+        { "kind": "absent", "file": "skills/branch-lifecycle/SKILL.md", "string": "## 異常處理(兩節共用)" },
+        { "kind": "present", "file": "skills/branch-lifecycle/references/exceptions.md", "string": "異常處理表" },
+        { "kind": "present", "file": "skills/branch-lifecycle/SKILL.md", "string": "references/exceptions.md" }
+      ] },
+    { "note": "§5.8 溯源段 + 2026-07-18 取代 2026-07-07 沿革 → RATIONALE.md", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "skills/branch-lifecycle/SKILL.md", "string": "設計依據:開工節與漂移處理" }] },
+    { "note": "§5.8 自主模式節(收尾第 6 步已無條件全自動,該節描述不存在的差異)", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "skills/branch-lifecycle/SKILL.md", "string": "## 自主模式(/auto)" }] },
+    { "note": "§5.8 步驟 3 的 review CLI(第 40 行)", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "skills/branch-lifecycle/SKILL.md", "string": "跑 `/code-review`(medium)" },
+        { "kind": "present", "file": "skills/branch-lifecycle/SKILL.md", "string": "review-protocol.md" }
+      ] },
+    { "note": "§5.8 步驟 3 的 review CLI(第 41 行,self_review_head 判準句)— 保留判準只改 CLI 名", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "skills/branch-lifecycle/SKILL.md", "string": "補一輪 medium `/code-review`" },
+        { "kind": "present", "file": "skills/branch-lifecycle/SKILL.md", "string": "self_review_head" }
+      ] },
+    { "note": "§5.8 開工節 + prefix 表 + 收尾六步", "disposition": "保留",
+      "checks": [
+        { "kind": "present", "file": "skills/branch-lifecycle/SKILL.md", "string": "prefix" },
+        { "kind": "present", "file": "skills/branch-lifecycle/SKILL.md", "string": "gh pr merge --rebase --delete-branch" }
+      ] },
+
+    { "note": "§5.9 design-reviewer 前言移入 preamble(不刪)", "disposition": "移入",
+      "checks": [
+        { "kind": "absent", "file": "agents/design-reviewer.md", "string": "## 立場" },
+        { "kind": "present", "file": "agents/design-reviewer.md", "string": "reviewer-preamble.md" }
+      ] },
+    { "note": "§5.9 impl-spec-reviewer 前言移入 preamble", "disposition": "移入",
+      "checks": [
+        { "kind": "absent", "file": "agents/impl-spec-reviewer.md", "string": "## 立場" },
+        { "kind": "present", "file": "agents/impl-spec-reviewer.md", "string": "reviewer-preamble.md" }
+      ] },
+    { "note": "§5.9 change-spec-reviewer 前言移入 preamble", "disposition": "移入",
+      "checks": [
+        { "kind": "absent", "file": "agents/change-spec-reviewer.md", "string": "## 立場" },
+        { "kind": "present", "file": "agents/change-spec-reviewer.md", "string": "reviewer-preamble.md" }
+      ] },
+    { "note": "§5.9 refactor-plan-reviewer 前言移入 preamble", "disposition": "移入",
+      "checks": [
+        { "kind": "absent", "file": "agents/refactor-plan-reviewer.md", "string": "## 立場" },
+        { "kind": "present", "file": "agents/refactor-plan-reviewer.md", "string": "reviewer-preamble.md" }
+      ] },
+    { "note": "§5.9 輸出鐵則移入 preamble,不刪(command 明文說 schema 固化在 agent 定義)", "disposition": "移入",
+      "checks": [
+        { "kind": "present", "file": "harness/refs/reviewer-preamble.md", "string": "## 輸出鐵則" },
+        { "kind": "present", "file": "harness/refs/reviewer-preamble.md", "string": "severity" }
+      ] },
+    { "note": "§5.9 各自的 Criteria 差異段留原檔", "disposition": "留原檔",
+      "checks": [
+        { "kind": "present", "file": "agents/design-reviewer.md", "string": "## Criteria" },
+        { "kind": "present", "file": "agents/impl-spec-reviewer.md", "string": "## Criteria" },
+        { "kind": "present", "file": "agents/change-spec-reviewer.md", "string": "## Criteria" },
+        { "kind": "present", "file": "agents/refactor-plan-reviewer.md", "string": "## Criteria" }
+      ] },
+    { "note": "§5.9 design-reviewer 的 neigui domain criteria 留原檔(tools 白名單無 Skill)", "disposition": "留原檔",
+      "checks": [{ "kind": "present", "file": "agents/design-reviewer.md", "string": "守恆" }] }
+  ]
+}

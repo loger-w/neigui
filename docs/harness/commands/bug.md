@@ -40,6 +40,8 @@
 
 ## Done
 紅測試綠 + 既有測試保持綠 + regression 抽樣綠 + 反向驗證通過 + `repro.md` 三段齊全。
+收尾前跑 `python ~/.claude/hooks/check_feat_tags.py`(自動取 merge-base 為起點;三類 emoji
+目前為 warning 模式)。
 **全過後呼叫 `branch-lifecycle` 收尾節**,再做最終回報。
 
 ## 禁止(本流程特有,共通禁止見 CLAUDE.md)

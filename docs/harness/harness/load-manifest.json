@@ -1,0 +1,187 @@
+{
+  "_comment": "載入帳的唯一資料源(design v12 §4.2)。路徑相對 ~/.claude/。<superpowers> 佔位符依 profile 自己的 project_root 解析,禁用 process cwd。一支 ref 對多個 phase → 同 path 列多筆,求和不去重(每次 Read 都真的佔窗口)。",
+  "profiles": {
+    "feat-L-before": {
+      "project_root": "C:/side-project/neigui",
+      "files": [
+        { "path": "commands/feat.md", "scope": "main" },
+        { "path": "<superpowers>/skills/brainstorming/SKILL.md", "scope": "main", "phase": 0 },
+        { "path": "<superpowers>/skills/writing-plans/SKILL.md", "scope": "main", "phase": 1 },
+        { "path": "<superpowers>/skills/receiving-code-review/SKILL.md", "scope": "main", "phase": 1 },
+        { "path": "<superpowers>/skills/receiving-code-review/SKILL.md", "scope": "main", "phase": 2 },
+        { "path": "<superpowers>/skills/test-driven-development/SKILL.md", "scope": "main", "phase": 3 },
+        { "path": "<superpowers>/skills/subagent-driven-development/SKILL.md", "scope": "main", "phase": 3 },
+        { "path": "<superpowers>/skills/receiving-code-review/SKILL.md", "scope": "main", "phase": 4 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 5 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 6 },
+        { "path": "<superpowers>/skills/verification-before-completion/SKILL.md", "scope": "main", "phase": 7 },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": -1 },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 8 },
+        { "path": "<superpowers>/skills/using-git-worktrees/SKILL.md", "scope": "main", "phase": -1,
+          "condition": "monorepo / 長隔離才改走 worktree" },
+        { "path": "<superpowers>/skills/dispatching-parallel-agents/SKILL.md", "scope": "main", "phase": 2,
+          "condition": "phase_2_mode = per_file" },
+        { "path": "<superpowers>/skills/finishing-a-development-branch/SKILL.md", "scope": "main", "phase": 8,
+          "condition": "Phase 8 若仍被 invoke" },
+        { "path": "agents/design-reviewer.md", "scope": "subagent", "phase": 1 },
+        { "path": "agents/impl-spec-reviewer.md", "scope": "subagent", "phase": 2 }
+      ]
+    },
+    "feat-L": {
+      "project_root": "C:/side-project/neigui",
+      "files": [
+        { "path": "commands/feat.md", "scope": "main" },
+        { "path": "harness/refs/feat-state.md", "scope": "main", "phase": -1 },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": -1 },
+        { "path": "<superpowers>/skills/brainstorming/SKILL.md", "scope": "main", "phase": 0 },
+        { "path": "harness/refs/sp-overrides.md", "scope": "main", "phase": 0 },
+        { "path": "harness/refs/scope-tiers.md", "scope": "main", "phase": 0 },
+        { "path": "harness/refs/feat-phase0-2.md", "scope": "main", "phase": 0 },
+        { "path": "<superpowers>/skills/writing-plans/SKILL.md", "scope": "main", "phase": 1 },
+        { "path": "harness/refs/review-protocol.md", "scope": "main", "phase": 1 },
+        { "path": "<superpowers>/skills/receiving-code-review/SKILL.md", "scope": "main", "phase": 1 },
+        { "path": "harness/refs/feat-phase0-2.md", "scope": "main", "phase": 2 },
+        { "path": "harness/refs/review-protocol.md", "scope": "main", "phase": 2 },
+        { "path": "<superpowers>/skills/receiving-code-review/SKILL.md", "scope": "main", "phase": 2 },
+        { "path": "<superpowers>/skills/test-driven-development/SKILL.md", "scope": "main", "phase": 3 },
+        { "path": "harness/refs/feat-phase3.md", "scope": "main", "phase": 3 },
+        { "path": "<superpowers>/skills/subagent-driven-development/SKILL.md", "scope": "main", "phase": 3,
+          "_note": "SC-8 FAIL → 只有負向指示、無機械 gate。依 F2「靠 prompt 自律的規則實測失守」,誠實計入 after 側,不當作已省下" },
+        { "path": "harness/refs/review-protocol.md", "scope": "main", "phase": 4 },
+        { "path": "<superpowers>/skills/receiving-code-review/SKILL.md", "scope": "main", "phase": 4 },
+        { "path": "harness/refs/feat-phase4-fix.md", "scope": "main", "phase": 4,
+          "condition": "收到 test-gap finding" },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 5 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 6 },
+        { "path": "<superpowers>/skills/verification-before-completion/SKILL.md", "scope": "main", "phase": 7 },
+        { "path": "harness/refs/feat-phase8.md", "scope": "main", "phase": 8 },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 8 },
+        { "path": "<superpowers>/skills/using-git-worktrees/SKILL.md", "scope": "main", "phase": -1,
+          "condition": "monorepo / 長隔離才改走 worktree" },
+        { "path": "skills/branch-lifecycle/references/exceptions.md", "scope": "main", "phase": 8,
+          "condition": "收尾撞到異常" },
+        { "path": "<superpowers>/skills/finishing-a-development-branch/SKILL.md", "scope": "main", "phase": 8,
+          "condition": "Phase 8 若仍被 invoke" },
+        { "path": "agents/design-reviewer.md", "scope": "subagent", "phase": 1 },
+        { "path": "harness/refs/reviewer-preamble.md", "scope": "subagent", "phase": 1 },
+        { "path": "agents/impl-spec-reviewer.md", "scope": "subagent", "phase": 2 },
+        { "path": "harness/refs/reviewer-preamble.md", "scope": "subagent", "phase": 2 }
+      ]
+    },
+    "mod-M-before": {
+      "project_root": "C:/side-project/neigui",
+      "files": [
+        { "path": "commands/mod.md", "scope": "main" },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 0 },
+        { "path": "<superpowers>/skills/brainstorming/SKILL.md", "scope": "main", "phase": 2 },
+        { "path": "<superpowers>/skills/receiving-code-review/SKILL.md", "scope": "main", "phase": 5 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 6 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 7 },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 8 },
+        { "path": "agents/change-spec-reviewer.md", "scope": "subagent", "phase": 3 }
+      ]
+    },
+    "mod-M": {
+      "project_root": "C:/side-project/neigui",
+      "files": [
+        { "path": "commands/mod.md", "scope": "main" },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 0 },
+        { "path": "<superpowers>/skills/brainstorming/SKILL.md", "scope": "main", "phase": 2 },
+        { "path": "harness/refs/sp-overrides.md", "scope": "main", "phase": 2 },
+        { "path": "harness/refs/scope-tiers.md", "scope": "main", "phase": 2 },
+        { "path": "harness/refs/review-protocol.md", "scope": "main", "phase": 3 },
+        { "path": "harness/refs/review-protocol.md", "scope": "main", "phase": 5 },
+        { "path": "<superpowers>/skills/receiving-code-review/SKILL.md", "scope": "main", "phase": 5 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 6 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 7 },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 8 },
+        { "path": "skills/branch-lifecycle/references/exceptions.md", "scope": "main", "phase": 8,
+          "condition": "收尾撞到異常" },
+        { "path": "agents/change-spec-reviewer.md", "scope": "subagent", "phase": 3 },
+        { "path": "harness/refs/reviewer-preamble.md", "scope": "subagent", "phase": 3 }
+      ]
+    },
+    "bug-before": {
+      "project_root": "C:/side-project/neigui",
+      "files": [
+        { "path": "commands/bug.md", "scope": "main" },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 0 },
+        { "path": "<superpowers>/skills/systematic-debugging/SKILL.md", "scope": "main", "phase": 2 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 6 },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 9 }
+      ]
+    },
+    "bug": {
+      "project_root": "C:/side-project/neigui",
+      "files": [
+        { "path": "commands/bug.md", "scope": "main" },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 0 },
+        { "path": "<superpowers>/skills/systematic-debugging/SKILL.md", "scope": "main", "phase": 2 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 6 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 7 },
+        { "path": "harness/refs/review-protocol.md", "scope": "main", "phase": 9 },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 9 },
+        { "path": "skills/branch-lifecycle/references/exceptions.md", "scope": "main", "phase": 9,
+          "condition": "收尾撞到異常" }
+      ]
+    },
+    "refactor-before": {
+      "project_root": "C:/side-project/neigui",
+      "files": [
+        { "path": "commands/refactor.md", "scope": "main" },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 0 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 6 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 7 },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 8 },
+        { "path": "agents/refactor-plan-reviewer.md", "scope": "subagent", "phase": 3,
+          "condition": "大型 refactor 才 dispatch" }
+      ]
+    },
+    "refactor": {
+      "project_root": "C:/side-project/neigui",
+      "files": [
+        { "path": "commands/refactor.md", "scope": "main" },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 0 },
+        { "path": "harness/refs/review-protocol.md", "scope": "main", "phase": 3,
+          "condition": "大型 refactor 才 dispatch" },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 6 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 7 },
+        { "path": "harness/refs/review-protocol.md", "scope": "main", "phase": 8 },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 8 },
+        { "path": "skills/branch-lifecycle/references/exceptions.md", "scope": "main", "phase": 8,
+          "condition": "收尾撞到異常" },
+        { "path": "agents/refactor-plan-reviewer.md", "scope": "subagent", "phase": 3,
+          "condition": "大型 refactor 才 dispatch" },
+        { "path": "harness/refs/reviewer-preamble.md", "scope": "subagent", "phase": 3,
+          "condition": "大型 refactor 才 dispatch" }
+      ]
+    },
+    "perf-before": {
+      "project_root": "C:/side-project/neigui",
+      "files": [
+        { "path": "commands/perf.md", "scope": "main" },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 0 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 1 },
+        { "path": "<superpowers>/skills/systematic-debugging/SKILL.md", "scope": "main", "phase": 2 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 6 },
+        { "path": "<superpowers>/skills/verification-before-completion/SKILL.md", "scope": "main", "phase": 7 },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 7 }
+      ]
+    },
+    "perf": {
+      "project_root": "C:/side-project/neigui",
+      "files": [
+        { "path": "commands/perf.md", "scope": "main" },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 0 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 1 },
+        { "path": "<superpowers>/skills/systematic-debugging/SKILL.md", "scope": "main", "phase": 2 },
+        { "path": "skills/auto-verify/SKILL.md", "scope": "main", "phase": 6 },
+        { "path": "<superpowers>/skills/verification-before-completion/SKILL.md", "scope": "main", "phase": 7 },
+        { "path": "harness/refs/review-protocol.md", "scope": "main", "phase": 7 },
+        { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": 7 },
+        { "path": "skills/branch-lifecycle/references/exceptions.md", "scope": "main", "phase": 7,
+          "condition": "收尾撞到異常" }
+      ]
+    }
+  }
+}

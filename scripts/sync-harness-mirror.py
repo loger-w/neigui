@@ -27,11 +27,21 @@ from pathlib import Path
 EXCLUDED = {"harness-push-gate.py", "test_harness_push_gate.py"}
 
 # (原檔目錄相對 ~/.claude、glob pattern、鏡像目錄相對 docs/harness)
+# 來源目錄本身可含 `*`(見 _expand_dirs);落點保留相對子路徑,不扁平化。
 DIR_MAPS: list[tuple[str, str, str]] = [
     ("commands", "*.md", "commands"),
     ("hooks", "*.py", "hooks"),
     ("hooks/tests", "test_*.py", "hooks/tests"),
     ("agents", "*.md", "agents"),
+    # harness/ 新落點:RATIONALE.md 必須進鏡像(否則被移出的敘事無回退路徑),
+    # 兩份 manifest 是 JSON,pattern 不含 *.json 就不會進版控。
+    ("harness", "*.md", "harness"),
+    ("harness", "*.json", "harness"),
+    ("harness/refs", "*.md", "harness/refs"),
+    # 具名到兩支 harness skill —— **不要**寫 skills/*/references,
+    # 那會把個人 skill(neoapi-python 等)的 references 一起掃進來。
+    ("skills/auto-verify/references", "*.md", "skills/auto-verify/references"),
+    ("skills/branch-lifecycle/references", "*.md", "skills/branch-lifecycle/references"),
 ]
 
 # (原檔相對 ~/.claude、鏡像相對 docs/harness)
@@ -48,6 +58,11 @@ ORPHAN_SCOPES: list[tuple[str, str]] = [
     ("hooks/tests", "*.py"),
     ("agents", "*.md"),
     ("skills", "*.md"),
+    ("harness", "*.md"),
+    ("harness", "*.json"),
+    ("harness/refs", "*.md"),
+    ("skills/auto-verify/references", "*.md"),
+    ("skills/branch-lifecycle/references", "*.md"),
 ]
 
 
@@ -56,16 +71,44 @@ def _normalized(raw: bytes) -> bytes:
     return raw.replace(b"\r\n", b"\n")
 
 
+def _expand_dirs(root: Path, rel: str) -> list[Path]:
+    """來源 / 掃描目錄可含 `*`。
+
+    舊寫法是 `(root / rel).is_dir()` —— rel 含 `*` 時該路徑不存在,`is_dir()` False 被
+    靜默 continue,對映等於沒生效而 `--check` 照樣 exit 0(假綠)。build_pairs 與
+    find_orphans **各有一個**,只修其中一個只解決一半。
+    """
+    if "*" in rel:
+        return [p for p in sorted(root.glob(rel)) if p.is_dir()]
+    d = root / rel
+    return [d] if d.is_dir() else []
+
+
+def _static_prefix(rel: str) -> str:
+    """rel 中第一個帶 `*` 的路徑段之前的靜態部分 — 落點相對路徑的基準。"""
+    parts: list[str] = []
+    for part in rel.split("/"):
+        if "*" in part:
+            break
+        parts.append(part)
+    return "/".join(parts)
+
+
 def build_pairs(claude_home: Path, mirror: Path) -> list[tuple[Path, Path]]:
     pairs: list[tuple[Path, Path]] = []
     for src_rel, pattern, dst_rel in DIR_MAPS:
-        src_dir = claude_home / src_rel
-        if not src_dir.is_dir():
-            continue
-        for f in sorted(src_dir.glob(pattern)):
-            if f.name in EXCLUDED or not f.is_file():
-                continue
-            pairs.append((f, mirror / dst_rel / f.name))
+        base = claude_home / _static_prefix(src_rel) if _static_prefix(src_rel) else claude_home
+        for src_dir in _expand_dirs(claude_home, src_rel):
+            for f in sorted(src_dir.glob(pattern)):
+                if f.name in EXCLUDED or not f.is_file():
+                    continue
+                # 落點保留相對子路徑:扁平成 dst_rel/f.name 會把不同來源目錄的
+                # 同名檔(各 skill 的 references/exceptions.md)壓成同一個檔。
+                try:
+                    rel_out = f.relative_to(base)
+                except ValueError:
+                    rel_out = Path(f.name)
+                pairs.append((f, mirror / dst_rel / rel_out))
     for src_rel, dst_rel in SINGLE_MAPS:
         pairs.append((claude_home / src_rel, mirror / dst_rel))
     return pairs
@@ -75,12 +118,10 @@ def find_orphans(pairs: list[tuple[Path, Path]], mirror: Path) -> list[Path]:
     expected = {dst.resolve() for _, dst in pairs}
     orphans: list[Path] = []
     for sub, pattern in ORPHAN_SCOPES:
-        d = mirror / sub
-        if not d.is_dir():
-            continue
-        for f in sorted(d.glob(pattern)):
-            if f.is_file() and f.resolve() not in expected:
-                orphans.append(f)
+        for d in _expand_dirs(mirror, sub):
+            for f in sorted(d.glob(pattern)):
+                if f.is_file() and f.resolve() not in expected:
+                    orphans.append(f)
     return orphans
 
 
