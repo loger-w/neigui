@@ -1,10 +1,19 @@
-# Harness Context 瘦身改版 — design v11
+# Harness Context 瘦身改版 — design v12
 
 - 日期:2026-07-25
 - 範圍:`~/.claude/commands/{feat,mod,perf,refactor,auto,bug}.md` + `~/.claude/skills/{auto-verify,branch-lifecycle}` + `~/.claude/agents/*.md`(四個 reviewer)+ 為達成上述所需的 hook / 腳本改動
 - 不在範圍:常駐層(user / 專案 CLAUDE.md、MEMORY.md)、`chore.md`、superpowers plugin 檔本體
 
 ## Changelog
+
+**v12(2026-07-25)** — 第 11 輪審視:**1 條 P1**,實質風險 lens **第四度**判定收斂(該輪逐行驗證了每條「刪」的替代來源是否真的存在、跑了 pytest 與 `sync --check`、確認退役兩檔在鏡像歷史中可還原)。
+
+剩下那條:**SC-1 的 30% 同樣不可達**(逐區間量測 §5 全部 `ref` / `刪` 項約 10,900 / 41,224 ≈ 26%),而且 SC-1 **沒有** SC-2 那樣的未達標處置分支 —— 於是 v11 剛替 SC-2 堵掉的錯型會在 SC-1 原地復發:實作者為補那約 1,400 bytes,在「不准砍核心、不准縮分母、又沒有授權分支」三面封死下,唯一出路就是回頭動 feat.md 判為核心的 Phase 5/6、Phase 7、state schema 幾個大區塊。
+
+| 修正 | 內容 |
+|---|---|
+| SC-1 門檻 30% → **25%** | 依逐區間量測的可達值 |
+| 未達標處置分支改為**兩個 SC 都適用** | v11 只替 SC-2 補了分支。**只替其中一個補,錯型會在另一個上復發** —— 這是本輪最值得記住的一句 |
 
 **v11(2026-07-25)** — 第 10 輪審視:**1 條 P1**,「模型傳播完整性」lens 判定收斂。剩下那條由實質 lens 提出,附完整算式:
 
@@ -147,7 +156,7 @@ v3 同時修正的實質問題:
 
 | SC | 門檻 | 量法(步驟 0a 記錄 before,步驟 11 記錄 after)|
 |---|---|---|
-| SC-1 | 六個 command 檔總和**降幅 ≥ 30%** | `Get-ChildItem ~/.claude/commands -Filter *.md \| Where-Object { $_.Name -ne 'chore.md' } \| Measure-Object Length -Sum`。改為降幅是因為絕對門檻與 §5 處置表互斥:五個非 feat 檔的現況總和本身就超過任何合理絕對值,而它們大部分內容是 §5 判定的 load-bearing 核心 |
+| SC-1 | 六個 command 檔總和**降幅 ≥ 25%** | `Get-ChildItem ~/.claude/commands -Filter *.md \| Where-Object { $_.Name -ne 'chore.md' } \| Measure-Object Length -Sum`。改為降幅是因為絕對門檻與 §5 處置表互斥:五個非 feat 檔的現況總和本身就超過任何合理絕對值,而它們大部分內容是 §5 判定的 load-bearing 核心 |
 | SC-2 | 典型 L 級 `/feat` **主 agent 窗口**載入降幅 ≥ **30%** | `python ~/.claude/hooks/harness_load_estimate.py --profile feat-L --scope main`(該腳本於步驟 1d 建立)。門檻從 40% 下修的理由與**反作弊規則**見下方 |
 | SC-2b | **subagent context** 另計,無門檻,只要求有數字並在報告中呈現 | `... --scope subagent` |
 | SC-3 | `dispositions.json` 的所有檢查通過 | `python ~/.claude/hooks/harness_load_estimate.py --verify-dispositions`。每列自帶 1-2 個檢查,每個檢查明寫自己的檔案:所有 `absent` 皆不命中、所有 `present` 皆命中。違反數 = 0。**不從處置值推斷驗哪個檔**(理由見 §5)|
@@ -166,7 +175,9 @@ v3 同時修正的實質問題:
 1. **不得回頭刪 §5 判為「核心」的規則來湊數。** 那正是本 spec 反覆點名的錯型:v5 判 SC-1 絕對門檻不可達時的理由就是「硬達成只能砍自己判為 load-bearing 的規則」。
 2. **不得調整 `-before` profile 的組成來縮分母。** 把 before 縮成「只含 feat.md + SDD + 兩支 harness skill」的窄清單,同樣的淨刪量就能輕鬆過關 —— 但那違反 §2.1 對主 agent 窗口的定義,等於量法被調來遷就門檻,數字失去意義。`X` 與 `X-before` 兩個 profile 的檔案清單差異**只能來自本次改版實際搬動的檔**。
 
-**SC-2 未達標時的處置**(§4.1 備案只涵蓋 SC-8 未通過,不涵蓋這種):停下回報實測降幅與逐檔明細,由 user 三選一 —— [1] 接受實際降幅並記入 `feat-improvements.md` / [2] 擴大 scope(把常駐層納入,即本輪 Out of Scope 的下一輪)/ [3] 縮小 scope 重新設計。**不准自行調門檻或調量法。**
+**SC-1 或 SC-2 未達標時的處置**(§4.1 備案只涵蓋 SC-8 未通過,不涵蓋這種):停下回報實測降幅與逐檔明細,由 user 三選一 —— [1] 接受實際降幅並記入 `feat-improvements.md` / [2] 擴大 scope(把常駐層納入,即本輪 Out of Scope 的下一輪)/ [3] 縮小 scope 重新設計。**不准自行調門檻或調量法。**
+
+> 這條**兩個 SC 都適用**。第 11 輪的教訓:v11 只替 SC-2 補了這個分支,SC-1 沒有 —— 而 SC-1 的 25% 同樣只留約 1 千多 bytes 的餘裕,一旦沒達標,實作者在「不准砍核心、不准縮分母、又沒有授權分支」的三面封死下,唯一出路就是回頭動 feat.md 判為核心的 Phase 5/6、Phase 7、state schema 那幾段大區塊。**同一個錯型不要在第二個 SC 上復發。**
 
 **門檻為何是 30% 而非 40%**:主要淨刪項只有兩塊 —— 關掉 SDD,以及 rationale 與重疊條的刪除。搬進 `refs/` 的內容依 §2.1 仍全額計入 main scope(它是換位置不是刪掉),跨 phase 讀取還不去重。40% 在這個計帳邊界下不可達;30% 是留有餘裕的可達值。
 
@@ -252,7 +263,7 @@ references 放 **`~/.claude/harness/refs/`**。刻意不放 `commands/` / `skill
 
 ```
 ~/.claude/
-  commands/          目標:六檔總和降幅 ≥ 30%(SC-1)
+  commands/          目標:六檔總和降幅 ≥ 25%(SC-1)
     feat.md  mod.md  perf.md  refactor.md  bug.md  auto.md
     chore.md         不動
   harness/
@@ -624,7 +635,7 @@ Done 條件改為「before/after 量測指令寫進 `optimize-plan.md` 且可重
 | 風險 | 處置 |
 |---|---|
 | SC-8 未通過 → §4.1 整條作廢 | 步驟 0 為前置 gate;備案已具名(負向指示 + SC-2 降幅門檻放寬至 ≥ 5%)|
-| **SC-2 自己未達標**(SC-8 通過但降幅仍不足)| §1 反作弊規則已明文禁止「砍核心規則」與「縮 before 分母」兩條歪路;處置為停下回報 + user 三選一。**不准自行調門檻或調量法** |
+| **SC-1 或 SC-2 未達標**(SC-8 通過但降幅仍不足)| §1 反作弊規則已明文禁止「砍核心規則」與「縮 before 分母」兩條歪路;處置為停下回報 + user 三選一。**不准自行調門檻或調量法**。兩個 SC 都適用 —— 只替其中一個補分支,錯型會在另一個上復發 |
 | ref 該載入時沒載入 | §3 P1 機械注入。**Known Risk**:只涵蓋 `/feat`(其餘流程無 state.json,hook 不觸發);Phase -1 亦不涵蓋。兩者靠核心檔內指標句,列入下輪 |
 | 關掉 SDD 後流程紀律流失 | 步驟 1b 為關閉前提;SC-6 真實跑一輪驗紀律仍在 |
 | Workflow 驅動 review 未經真實流程驗證 | SC-6;本輪三次審視已是同形態實測 |
