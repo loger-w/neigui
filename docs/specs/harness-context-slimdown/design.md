@@ -1,10 +1,24 @@
-# Harness Context 瘦身改版 — design v3
+# Harness Context 瘦身改版 — design v4
 
 - 日期:2026-07-25
 - 範圍:`~/.claude/commands/{feat,mod,perf,refactor,auto,bug}.md` + `~/.claude/skills/{auto-verify,branch-lifecycle}` + `~/.claude/agents/*.md`(四個 reviewer)+ 為達成上述所需的 hook / 腳本改動
 - 不在範圍:常駐層(user / 專案 CLAUDE.md、MEMORY.md)、`chore.md`、superpowers plugin 檔本體
 
 ## Changelog
+
+**v4(2026-07-25)** — 第 3 輪審視:24 條、**推翻 3 條**、存活 21(2 P0 / 11 P1 / 8 P2)。總數較第 2 輪降四成,且首次出現有效推翻 —— v3 的結構改動確實收斂了「衍生數字漂移」該類問題(三輪趨勢 39 → 40 → 24)。v4 修的是**留下來的硬傷**:
+
+| 修正 | v3 錯在哪 |
+|---|---|
+| **SC-1 改為降幅門檻**(P0) | 五個非 feat 檔現況已 20,286 > 16,000,而處置表對它們只標了幾小段可刪;feat.md 尚有 15 列標「核心」。絕對值門檻不可達,硬達成只能砍自己判為 load-bearing 的規則 |
+| **補步驟 0a / 1d**(P0) | SC-2 / SC-2b / SC-3 全靠 `harness_load_estimate.py`,但該檔不存在且十二步無一建立它;SC-4 要求「改版前記錄基準」也沒有對應步驟 |
+| §5 表加**錨欄**,SC-3 依處置極性判定 | 表中約百列僅十列帶行號,其餘是中文散文,無機器可定位標的;且「刪」列遷移後本應找不到,`NOT FOUND = 0` 自相矛盾 |
+| PHASE_GATES **不加欄**,改另存 `PHASE_REFS` dict | 加第三欄後 `for p, gate in PHASE_GATES` 必 ValueError,被兩層 except 吞掉 → 整段注入靜默消失,正是 v3 宣稱已避開的失敗模式 |
+| SC-4 等式改**不等式** | 步驟 5、6 都紅先行會新增 case,`after == before − push_gate` 必然不成立 → SC-4 恆 FAIL |
+| 步驟 7 補修 `find_orphans` + 具名兩支 skill + 定義 dst 展開 | 只修 `build_pairs` 不夠,`find_orphans` 有同一個 glob 假綠;`skills/*/references` 會掃進 `neoapi-python` 的十個檔;dst 扁平化會撞名 |
+| §6.2 emoji 判準豁免 chore/docs | 真實 mod 分支必含 `chore(mod/...): Phase 7 驗證截圖` 這類無 emoji 的合法 commit,會恆誤報 → 「連續 10 次零誤報」門檻永遠達不到 |
+| §5.1 補 `feat.md:49` 列 | §4.1「dispatching 不動」的前提寫「§5 表已註明不刪該指涉」,但表中根本沒有這列 |
+| 刪掉殘留的檔數宣稱 | `/code-review` 是 5 處 **3** 檔(v3 寫 4);auto-verify 是**兩條** shell 紀律(v3 寫三條)—— 兩處都是 §0 自禁的量測數字 |
 
 **v3(2026-07-25)** — 第 2 輪 5 lens 審視回收 40 條存活 finding、0 條被推翻。分析兩輪 79 條的性質後做**結構性改版**,不只補洞。
 
@@ -50,16 +64,18 @@ v3 同時修正的實質問題:
 
 所有門檻以 **bytes** 表達(不用 KB,避免 10^3 / 2^10 歧義)。
 
-| SC | 門檻 | 量法(改版前後各跑一次,附輸出) |
+門檻一律**我選定**(不是量出來的);所有實際數字由量法指令在步驟 0a / 11 產生。
+
+| SC | 門檻 | 量法(步驟 0a 記錄 before,步驟 11 記錄 after)|
 |---|---|---|
-| SC-1 | 六個 command 檔總和 ≤ **16,000 bytes** | `Get-ChildItem ~/.claude/commands -Filter *.md \| Where-Object { $_.Name -ne 'chore.md' } \| Measure-Object Length -Sum` |
-| SC-2 | 典型 L 級 `/feat` 的**主 agent 窗口**載入 ≤ **66,000 bytes** | `python ~/.claude/hooks/harness_load_estimate.py --profile feat-L --scope main` |
-| SC-2b | 同上,**subagent context** 另計,無門檻,只要求有數字 | `... --scope subagent` |
-| SC-3 | §5 處置表每一列的落點都能定位 | `python ~/.claude/hooks/harness_load_estimate.py --verify-dispositions`,輸出 `NOT FOUND` 數 = 0 |
-| SC-4 | hook 測試不退步 | 改版前:`cd ~/.claude/hooks && python -m pytest tests -q`(記錄輸出)。步驟 9 退役 push-gate 後:`python -m pytest tests -q` 的 passed 數應等於「改版前 passed 數 − `pytest tests/test_harness_push_gate.py --collect-only -q` 的計數」。**兩個數字都由指令產生,spec 不寫死** |
-| SC-5 | `/code-review` 命中數 = **0** | `Grep -rn -- "/code-review" ~/.claude/{commands,skills,agents}`(現況 5 處 4 檔,全部列入 §5 處置表)|
+| SC-1 | 六個 command 檔總和**降幅 ≥ 30%** | `Get-ChildItem ~/.claude/commands -Filter *.md \| Where-Object { $_.Name -ne 'chore.md' } \| Measure-Object Length -Sum`。改為降幅是因為絕對門檻與 §5 處置表互斥:五個非 feat 檔的現況總和本身就超過任何合理絕對值,而它們大部分內容是 §5 判定的 load-bearing 核心 |
+| SC-2 | 典型 L 級 `/feat` **主 agent 窗口**載入降幅 ≥ **40%** | `python ~/.claude/hooks/harness_load_estimate.py --profile feat-L --scope main`(該腳本於步驟 1d 建立)|
+| SC-2b | **subagent context** 另計,無門檻,只要求有數字並在報告中呈現 | `... --scope subagent` |
+| SC-3 | §5 處置表每一列依其處置極性驗證通過 | `python ~/.claude/hooks/harness_load_estimate.py --verify-dispositions`。**極性**:`核心` / `ref` / `改寫` 列 → 該列「錨」字串必須在落點檔中找到;`刪` 列 → 該錨字串必須在**來源檔中找不到**。違反數 = 0 |
+| SC-4 | hook 測試不退步 | 步驟 0a 記錄 `cd ~/.claude/hooks && python -m pytest tests -q` 的 passed 數 `B`,與 `pytest tests/test_harness_push_gate.py --collect-only -q` 的計數 `G`。步驟 11 要求 **passed ≥ B − G 且 failed = 0**(不等式:步驟 5、6 都紅先行會新增 case,等式必不成立)|
+| SC-5 | `/code-review` 命中數 = **0** | `Grep -rn -- "/code-review" ~/.claude/{commands,skills,agents}`。現況每一處都必須在 §5 表中有對應列(由 SC-3 保證),spec 不記處數與檔數 |
 | SC-6 | 新流程真實環境跑得通 | 用一個真實 `/mod` 或 `/bug` 小案子跑完整流程,附 commit 清單 + 驗證輸出 |
-| SC-7 | 鏡像同步器涵蓋新路徑且回報一致 | 先完成步驟 7,再跑 `python scripts/sync-harness-mirror.py --check` → exit 0。**且須先證明它不是假綠**:故意改壞一個 `harness/refs/*.md` 再跑,必須 exit 1 |
+| SC-7 | 鏡像同步器涵蓋新路徑且**非假綠** | 步驟 7 完成後 `python scripts/sync-harness-mirror.py --check` → exit 0。反向驗證兩項,皆須 exit 1:(a) 改壞一個 `harness/refs/*.md`;(b) 在 `skills/branch-lifecycle/references/` 下新增一個鏡像沒有的檔(測 `find_orphans` 側的 glob 假綠)|
 | SC-8 | **前置 gate** — `skillOverrides` 對 plugin skill 生效 | 設定後開新 session,確認 available-skills 清單不再列 `superpowers:subagent-driven-development`,且 `/superpowers:subagent-driven-development` 仍可手動叫用。**未通過則 §4.1 整條作廢,走 §4.1 備案** |
 
 **驗證窗口**:全部 anytime。
@@ -78,7 +94,7 @@ v3 同時修正的實質問題:
 
 ### 2.2 三個實測發現
 
-**F1 — `/code-review` 主路徑不可執行。** agent 無法自行觸發該 user-triggered CLI(`feat-improvements.md` 兩個專案同根因、未結案)。現況 5 處引用形成 branch-lifecycle → mod → feat 的三段跳交叉引用(skill 反向依賴 command,最脆的耦合方向)。
+**F1 — `/code-review` 主路徑不可執行。** agent 無法自行觸發該 user-triggered CLI(`feat-improvements.md` 兩個專案同根因、未結案)。現況引用形成 branch-lifecycle → mod → feat 的三段跳交叉引用(skill 反向依賴 command,最脆的耦合方向)。引用位置逐筆列於 `dispositions.json`,由 SC-5 的 grep 產生實際處數,此處不記數。
 
 **F2 — 靠 prompt 自律的規則實測失守,靠 script 機驗的守得住。**(數字已固化於 `~/.claude/harness/RATIONALE.md`「2026-07-25 本輪瘦身的實證」節,此處只記結論與 gate 現況)
 
@@ -117,8 +133,9 @@ v3 同時修正的實質問題:
 
 **機械觸發**:`harness_lib.py` 的 `PHASE_GATES` 已是每 phase 一行的 gate 表,`harness-context.py` 註冊在 SessionStart + UserPromptSubmit,每回合注入「目前 phase + gate」。本輪:
 
-- `PHASE_GATES` 每列加一欄 **`list[str]`**(一個 phase 可對多支 ref)
-- **新增** `refs_for_phase()`,**不動** `gate_for_phase()` 的回傳型別 —— 既有兩個測試斷言的是 gate 字串,零影響
+- **不動 `PHASE_GATES`**,另存 `PHASE_REFS: dict[float, list[str]]`。
+  v3 寫「加第三欄」是錯的:`harness_lib.py` 的 `for p, gate in PHASE_GATES` 是兩元素解包,加欄必 `ValueError`,而該例外會被 `harness-context.py` 的 except 分支與外層 `except Exception` 兩層吞掉 → **整段 phase 注入靜默消失**,正是本原則要避免的失效模式。另存 dict 則解包不變、既有測試零影響。
+- **新增** `refs_for_phase()` 讀 `PHASE_REFS`;`gate_for_phase()` 完全不動
 - `harness-context.py` 在既有三行**之後追加**第四行,不取代任何一行(第三行 `last_updated` 是 `state_is_lagging` 警告的錨)
 
 **已知限制**:Phase -1 時 state.json 尚未建立,`find_active_feature` 回 None,hook 不觸發。因此 **Phase -1 的 ref 指標寫在 feat.md 核心,不靠 hook**。同理 `/mod` `/bug` `/refactor` 無 state.json → 該機制只涵蓋 `/feat`,其餘仍靠核心檔內的指標句(列入 §9 Known Risk)。
@@ -182,7 +199,7 @@ references 放 **`~/.claude/harness/refs/`**。刻意不放 `commands/` / `skill
 
 | skill | 為何不動 |
 |---|---|
-| `dispatching-parallel-agents` | 條件分支(per_file,實測未用);且 `feat.md:49` 仍指涉它 —— §5 表已註明不刪該指涉,故此前提成立 |
+| `dispatching-parallel-agents` | 條件分支(per_file,實測未用);且 `feat.md:49` 仍指涉它 —— §5.1 已補列該指涉為「核心」(v3 曾宣稱表中已有此列,實際沒有)|
 | `using-git-worktrees` | 實測有活躍 worktree,只是 state 欄位沒回寫;且 `EnterWorktree` 契約要求「被 user 或 CLAUDE.md 明確指示」才可用,刪指標反而沒人授權 |
 | `finishing-a-development-branch` | `feat.md:112` 保留其指標句(§5 表),依「description 常駐 + 1% 必用」模型它會在 Phase 8 載入 → **必須列入 manifest 的 `condition` 項**,不得從帳上憑空消失 |
 
@@ -217,8 +234,12 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 
 欄位語意:
 - `scope`:`main`(計入 SC-2)/ `subagent`(計入 SC-2b)
-- `phase`:載入時機,供 `refs_for_phase()` 產生 PHASE_GATES 的 ref 欄(**單一資料源,不手抄兩份**)
+- `phase`:載入時機,供 `refs_for_phase()` 產生 `PHASE_REFS`(**單一資料源,不手抄兩份**)
 - `condition`:有此欄即為條件式;`--worst` 時計入,否則不計
+- **一支 ref 對多個 phase** → 同 `path` 列多筆(這是 record list 不是 path-keyed map)。求和時**不去重** —— 每次 Read 都真的佔窗口,去重反而低估
+- **`<superpowers>` 佔位符解析規則**:取 `~/.claude/plugins/cache/claude-plugins-official/superpowers/` 底下**版本號最大的目錄**(現有三個版本並存,glob 全收會三重計)。腳本必須在輸出中**印出實際解到的絕對路徑**;解不到則 exit 非 0,不得靜默略過
+
+`load-manifest.json` 與 `dispositions.json` 都必須進鏡像同步範圍 —— 現行 `DIR_MAPS` 的 pattern 只有 `*.md` / `*.py`,步驟 7 要一併加 `*.json`。
 
 腳本模式:`--profile <name> --scope <main|subagent> [--worst]` 求和;`--before/--after` 對照;`--verify-dispositions` 掃 §5 表落點。
 
@@ -226,8 +247,16 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 
 ## 5. 逐檔處置表(單一資料源,取代 v2 的 §5 + §6)
 
-欄位:**處置** = `核心` / `ref` / `刪` / `改寫`;**驗收** = SC-3 逐列定位的依據。
-只列需要決策的項目;未列出者一律「照原樣留在核心」。
+欄位:**處置** = `核心` / `ref` / `刪` / `改寫`。只列需要決策的項目;未列出者一律「照原樣留在核心」。
+
+**本表是人讀版。** 步驟 1d 將它轉成 `~/.claude/harness/refs/dispositions.json`,每列一筆:
+
+```json
+{ "anchor": "在來源檔中可 grep 到的唯一字串", "source": "commands/feat.md",
+  "target": "harness/refs/review-protocol.md", "disposition": "ref" }
+```
+
+SC-3 掃這份 JSON,**不解析 markdown 表格** —— 表中多數格是中文散文(如「核心原則:receiving 分類」),在原始檔裡 grep 不到,無法當機器錨點。填 `anchor` 是步驟 1d 的工作,且**每個 anchor 必須先在來源檔實際 grep 命中才算填完**。「段落列」與「細粒度列」是疊加關係(例:「Phase 8 收尾操作 → ref」與「`finishing-a-development-branch` 指標句 → 核心」同時成立,後者不隨前者搬走),`dispositions.json` 允許同一 `source` 出現多筆。
 
 ### 5.1 feat.md
 
@@ -249,7 +278,9 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 | Phase 4 步驟 1 的 `/code-review`(第 74 行) | **改寫** | 改為依 `refs/review-protocol.md` 跑 Workflow 驅動 review |
 | Phase 4 雙焦點 + P2 彙總契約 | 核心 | missing-from-spec 模型不會自己做 |
 | Phase 4 快篩四條 | ref | `refs/review-protocol.md` |
-| Phase 4 修 finding 操作(`[lock]` / mutation / 禁 git checkout / 同檔混類) | ref | `refs/feat-phase4-fix.md`(條件式)|
+| Phase 2 步驟 2 的 `per_file` fan-out 指涉(`dispatching-parallel-agents`) | 核心 | §4.1 判該 skill「不動」的前提就是這句 |
+| Phase 4 修 finding 操作:`[lock]` / mutation / 禁 `git checkout` 還原 | ref | `refs/feat-phase4-fix.md`,`condition: 收到 test-gap finding` |
+| Phase 4 的「同檔混類 finding 先 commit fix、refactor 後動」 | **核心** | 觸發條件是「同一檔同時有 fix 與 refactor 類 finding」,與 test-gap 無關;綁在 test-gap 條件下該情境永遠不會載入。依 §3 P1 這是觸發偵測 |
 | `self_review_head` 寫入 | 核心 | 收尾判增量 review 的唯一依據 |
 | **Phase 6 失敗回退 (a)(b)(c) + real-env round JSON 產物** | 核心 | auto-verify 無此路由與產物契約 |
 | Phase 7 五欄證據表 | 核心 | 最終 gate,不准 N/A |
@@ -260,7 +291,7 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 | `superpowers:using-git-worktrees` / `finishing-a-development-branch` 指標句 | 核心 | v2 誤判為可刪;後者須列入 manifest `condition` |
 | `git add` 的「不要 `-A`」 | 刪 | `safety-hooks.py` 已 deny |
 | 鐵則 F 重述 / 「等使用者確認」 | 刪 | 前者共通層、後者 brainstorming HARD-GATE |
-| 自主模式建議節 | 刪 | 100% 字面重複,只留 auto.md |
+| 自主模式建議節 | 刪 | S 級與中段自動兩列字面重複;**L 級那條的括號指示**(「Phase 0 對齊價值高;想在 merge 前人工試用就不要疊 /auto 跑完收尾」)在 auto.md 不存在,須**併入 auto.md 表**再刪 |
 | 所有日期實證敘事 | 刪 | → RATIONALE.md(已建立)|
 | Done 一句 + 收尾呼叫句 | 核心 | |
 
@@ -325,7 +356,7 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 | Phase 5 blast radius | 核心 | 鐵則 A 不含 Bug |
 | Phase 8 反向驗證 | 核心 | 模型原生不會做 |
 | Phase 9 留尾巴 | 核心 | |
-| 第 19 行「抽 2 個沒改的相關功能」 | 刪 | 與 auto-verify 重複;**保留 /bug 特有的「重走 Phase 1 重現步驟」** |
+| Phase 7 第 19 行 | **改寫後才刪** | 該行**沒有呼叫 auto-verify**(全檔只有 Phase 6 有),直接刪抽樣句會讓 /bug 真實環境節失去 regression 指示。先把該行改成「呼叫 `auto-verify` 真實環境節」(對齊 refactor.md:19 的寫法),再刪抽樣數重述。**保留 /bug 特有的「重走 Phase 1 重現步驟,現在不會發生」** |
 | 鐵則 F 全文重寫 | 改寫 | 改成一句引用 |
 | 自主模式建議節 / 禁止清單重疊條 | 刪 | |
 | **`.claude/bug/<slug>/repro.md` 落檔義務** | **核心(新增)** | 見 §7.4 |
@@ -356,12 +387,12 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 | 「何時呼叫」整節 | 刪 | 反向硬編碼各 command phase 號 = drift 源;skill 被呼叫時已在該 phase。**同時改寫 perf.md:17 的指涉**(§5.3)|
 | 「與 verification-before-completion 職責邊界」整節 | 改寫 | 壓成開頭一行 |
 | 「紀律邊界」整節 | 刪 | 兩條分別重複就近原則與鐵則 D |
-| `dispatching-parallel-agents` 點名句 | 刪 | 註:§4.1 判「不動該 skill」的前提改引 `feat.md:49`,不再依賴此句 |
+| `dispatching-parallel-agents` 點名句 | **改寫**(非刪) | 整句還帶實質指示「frontend tsc/vitest/build 與 backend pytest/ruff 可並行跑、合併單一報告」—— 標「刪」會連這條一起丟且無來源接手。改成只去掉 skill 名、保留並行化與單一報告要求。§4.1 判「不動該 skill」的前提已改引 `feat.md:49`,不再依賴此句 |
 | E2E 是 harness.json 之外的條件 gate | **保留** | 下游依賴 |
 | 偵測不到驗證指令 → 停下問 | **保留** | |
-| happy + ≥2 edge + **抽 2 個沒改功能** | **保留** | `refactor.md:19` / `bug.md:19` 反向依賴此數 |
-| 五步驟表 / harness.json 優先序 + stale 偵測 / 三條 shell 紀律 / 形狀表 / 真實環境 shape 表 / subsumed / infra fallback | 保留 | |
-| 三條 shell 紀律的實證括號 | 刪 | → RATIONALE.md |
+| happy + ≥2 edge + **抽 2 個沒改功能** | **保留** | 這裡是抽樣數的**唯一 source of truth**(§5.4 / §5.5 正要刪掉 refactor.md / bug.md 的重述)|
+| 五步驟表 / harness.json 優先序 + stale 偵測 / **兩條** shell 紀律 / 形狀表 / 真實環境 shape 表 / subsumed / infra fallback | 保留 | shell 紀律實為兩條(管線後綴吃 exit code、驗證與 commit 不同 shell 鏈),v3 誤記三條 |
+| 兩條 shell 紀律的實證括號 | 刪 | → RATIONALE.md |
 
 ### 5.8 branch-lifecycle
 
@@ -378,7 +409,7 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 
 | 項目 | 處置 | 說明 |
 |---|---|---|
-| 立場三條 + severity 定義 + **finding 欄位 schema + 雙欄 location** + cross-round 檢查 | **移入** `refs/reviewer-preamble.md` | **不刪**。四個 command 明文說「schema 固化在 agent 定義」,刪掉則全 harness 無處定義。四者 `tools` 含 `Read`,首行 Read 可行 |
+| 立場三條 + severity 定義 + **finding 欄位 schema + 雙欄 location** + cross-round 檢查 | **移入** `refs/reviewer-preamble.md` | **不刪**。command 檔明文說「schema 固化在 agent 定義」(該句出現處由 SC-3 的 `dispositions.json` 逐筆列,spec 不記處數),刪掉則全 harness 無處定義。四者 `tools` 含 `Read`,首行 Read 可行 |
 | 各自的 Criteria 差異段 | 留原檔 | |
 | `design-reviewer` 的 neigui domain criteria | **留原檔** | 該 agent `tools` 白名單無 `Skill`,無法 invoke 專案 skill(v2 另引「protect-harness 守 agents/」為由 —— 該 hook 本輪已停用,理由撤銷,只留白名單理由)|
 
@@ -399,7 +430,7 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 
 **前提更正**:hooks 目前**完全沒有** emoji 檢查(F2)。所以這不是「推廣既有 gate」,是「新增一個 gate 並推廣到三個流程」。實作步驟:
 
-1. `check_feat_tags.py` 新增**三類 emoji checker**(掃 subject 開頭是否為 🔴/🟢/🔵 其一)
+1. `check_feat_tags.py` 新增**三類 emoji checker**。判準**不是**「range 內每個 subject 開頭都要有 emoji」—— 真實 mod 分支必然含 `chore(mod/<slug>): Phase 7 真實環境驗證截圖`、`chore(...): artifacts` 這類合法無 emoji commit,那樣會恆誤報,「連續 10 次零誤報」的升級門檻永遠達不到。判準改為:**`type` 為 `feat` / `fix` / `refactor` 的 commit 必須帶對應 emoji**;`chore` / `docs` / `test` / `perf` 型明文豁免。專案 CLAUDE.md §6 本來就只對流程內 TDD commit 強制
 2. `--state` 由 required 改 optional;新增 `--since <sha>`;兩者皆缺時 range 起點 fallback `git merge-base origin/main HEAD`
 3. 流程型別由當前分支 prefix 判定(`feat/` `mod/` `fix/` `refactor/` `perf/`),決定套哪組判準
 4. **在 `mod.md` / `bug.md` / `refactor.md` 的收尾加呼叫點** —— 三檔目前零處提及 `check_feat_tags.py`,不加呼叫等於 checker 永不執行
@@ -421,19 +452,28 @@ Done 條件改為「before/after 量測指令寫進 `optimize-plan.md` 且可重
 ## 7. 遷移步驟
 
 0. **SC-8 前置實測**:設 `skillOverrides` 兩種 key 各試一次 + 開新 session 觀察。通過 → 續行;未通過 → 走 §4.1 備案並調整 SC-2 門檻
+   - **0a 基準量測**(SC-1 / SC-2 / SC-4 的 before 值):跑 SC-1 指令記 bytes 總和;跑 `pytest tests -q` 記 passed 數 `B`;跑 `pytest tests/test_harness_push_gate.py --collect-only -q` 記計數 `G`。輸出落檔 `docs/specs/harness-context-slimdown/baseline.md`。**必須在任何改動前執行**
 1. 建 `~/.claude/harness/refs/`,寫 refs(內容從既有 command 剪下)
    - **1b**:自 SDD SKILL.md **摘寫**三條紀律進 `refs/feat-phase3.md`(來源是 plugin skill,不是 command,無法剪下)
    - **1c**:寫 `refs/load-manifest.json`
+   - **1d**:寫 `refs/dispositions.json`(§5 表逐列轉檔,每個 `anchor` 都要先在來源檔 grep 命中)+ 寫 `~/.claude/hooks/harness_load_estimate.py` 與其 pytest。**SC-2 / SC-2b / SC-3 三條驗收全靠這支腳本,v3 十二步無一建立它**
 2. 逐檔改寫 command(一檔一 commit)
 3. 改寫 auto-verify + branch-lifecycle(+ 建 `references/exceptions.md`)
 4. 抽 `refs/reviewer-preamble.md`,四個 agent 檔改為首行 Read 它(**輸出鐵則移入,不刪**)
-5. `harness_lib.py`:`PHASE_GATES` 加 `list[str]` ref 欄 + **新增** `refs_for_phase()`(不動 `gate_for_phase()`);`harness-context.py` 追加第四行(不取代既有三行)。ref 欄由 manifest 的 `phase` 產生,不手抄。紅先行
+5. `harness_lib.py`:**不動 `PHASE_GATES`**,另存 `PHASE_REFS: dict[float, list[str]]` + **新增** `refs_for_phase()`;`gate_for_phase()` 與其兩元素解包完全不改(理由見 §3 P1)。`harness-context.py` 追加第四行(不取代既有三行)。`PHASE_REFS` 由 manifest 的 `phase` 欄產生,不手抄。紅先行
 6. `check_feat_tags.py` 擴充(§6.2 六步,紅先行)
-7. **修 `scripts/sync-harness-mirror.py` 的 `build_pairs` 支援 glob 目錄**(現行把 `src_rel` 當實體路徑,`skills/*/references` 會 `is_dir()` False 被靜默 continue = 假綠),再擴 `DIR_MAPS` 收 `harness/`、`harness/refs/`、`skills/*/references/`,同步擴 `ORPHAN_SCOPES`,補該腳本的測試。驗收見 SC-7(含故意改壞驗它不是假綠)
-8. 更新 `docs/harness/SPEC.md` 與 `README.md`
+7. `scripts/sync-harness-mirror.py` 四項改動:
+   - **修 `build_pairs` 支援 glob 目錄**(現行把 `src_rel` 當實體路徑,含 `*` 必 `is_dir()` False 被靜默 continue = 假綠)
+   - **同步修 `find_orphans`** —— 它有**同一個** `is_dir()` 假綠,只修 `build_pairs` 只解決一半
+   - **定義 dst 展開規則**:現行 `mirror / dst_rel / f.name` 會把不同 skill 的同名 references 檔壓成一個。改為保留相對子路徑
+   - **來源具名到兩支 harness skill**(`skills/auto-verify/references`、`skills/branch-lifecycle/references`),**不要**用 `skills/*/references` —— 那會掃進 `neoapi-python` 的十個檔(§10 已把個人 skill 劃出範圍)
+   - `DIR_MAPS` 新增 `harness/`、`harness/refs/`,pattern 須含 `*.json`(否則兩份 manifest 不進鏡像),`ORPHAN_SCOPES` 同步擴,並補該腳本的測試。驗收見 SC-7 兩項反向驗證
+8. 更新 `docs/harness/SPEC.md` 與 `README.md`。**逐項清單**(改完對這些過時字串 grep 應零命中):
+   - `README.md`:「criteria + JSON schema + 唯讀 tools 固化在定義檔」(前兩者移入 preamble)、protect-harness 描述為在役(§9 已停用)、harness-context「注入 slug/phase/gate 三件」(步驟 5 加第四行)、同步範圍未含 `harness/` 與 `refs/`
+   - `SPEC.md`:「8 個 Python hook / script」(步驟 9 後為 7)、「81 個 pytest」(**現況即已錯**,實測遠多於此)、「每檔固化 立場+severity+輸出鐵則+criteria」(前三項移入 preamble)
 9. 退役 `hooks/harness-push-gate.py` + `hooks/tests/test_harness_push_gate.py`(後者以相對路徑執行前者,只移一個會全紅)。註:兩檔已在 `sync-harness-mirror.py` 的 `EXCLUDED`,鏡像不受影響。SC-4 基準依指令輸出更新
 10. 套用 SC-8 驗過的 `skillOverrides` key
-11. SC-1..SC-8 逐條驗證,附指令輸出
+11. SC-1..SC-8 逐條驗證,附指令輸出,與步驟 0a 的 `baseline.md` 對照
 
 ---
 
@@ -446,7 +486,9 @@ Done 條件改為「before/after 量測指令寫進 `optimize-plan.md` 且可重
 | 關掉 SDD 後流程紀律流失 | 步驟 1b 為關閉前提;SC-6 真實跑一輪驗紀律仍在 |
 | Workflow 驅動 review 未經真實流程驗證 | SC-6;本輪三次審視已是同形態實測 |
 | `check_feat_tags.py` 擴充 false positive | 紅先行 + warning 模式 + 連續 10 次零誤報才升 block |
-| 鏡像同步假綠 | 步驟 7 先修 `build_pairs`;SC-7 含「故意改壞必須 exit 1」的反向驗證 |
+| 鏡像同步假綠 | 步驟 7 同時修 `build_pairs` 與 `find_orphans`(兩處各有一個 `is_dir()` 假綠);SC-7 的兩項反向驗證分別打這兩側 |
+| `dispositions.json` 的 anchor 填不出來(規則在原檔沒有可 grep 的唯一字串)| 步驟 1d 遇到就是訊號:代表該列描述的東西與原檔對不上,回頭修 §5 表而非硬編一個 anchor |
+| `harness_load_estimate.py` 本身沒被驗證 | 步驟 1d 同時交付其 pytest;SC-7 的反向驗證思路同樣適用 —— 故意在 manifest 加一筆不存在的路徑,腳本必須 exit 非 0 |
 | 鐵則 A/B/E 半覆蓋(鐵則 B 缺 next-time.md 檔名與時機) | 本輪不動常駐層 → command 側保留該條;**Known Risk**:記入 `feat-improvements.md`,下輪處理 |
 | `protect-harness.py` 停用期間無防弱化守備 | 見 §9;本輪結束後建議還原 |
 
