@@ -10,8 +10,9 @@
 - **一句話**:把 AI 輔助開發(Claude Code)包裝成一個有工程紀律的生產系統 —— 每個改動有可驗證的完成定義、流程有不可繞過的強制層、知識有分層儲存與 GC、流程本身有 issue tracker 並會自我改進;v3 起流程合規**不依賴模型自律**(動機見 §6.2)。
 - **宿主專案**:neigui(台股籌碼 / 選擇權分析 dashboard),FastAPI + React 19 + TanStack Query + Playwright,solo 開發。
 - **時間軸**:2026-06-22 起以此 harness 開發;2026-07-06 對 harness 本身完成 v2 審計重構 + v3 強制層三件工程(§6)。
-- **規模數據**:app 版本 `0.22.0`(user-facing changelog 22+ 個 release);應用測試 **480 backend pytest + 585 frontend vitest + 62 Playwright e2e ≈ 1,100+**;**harness 自身有 81 個 pytest**(hooks 77 + pre-push 4;強制層有 bug 比沒有更糟);9 個 feature 以完整流程留痕交付。
-- **組成**:全域鐵則(~/.claude/CLAUDE.md,8 條)+ 6 個 slash command(430 行)+ **8 個 Python hook / script(1,201 行 + 713 行測試)**+ 2 個流程 skill(auto-verify 驗證、branch-lifecycle 版控)+ **4 個 review agent 定義(133 行)**+ git pre-push 防線(110 行,repo 側)+ 7 個專案主題 skill(244 行)+ 三層 memory + 自我改進迴路。repo 內 `docs/harness/` 有全部鏡像。
+- **規模數據**:app 版本 `0.22.0`(user-facing changelog 22+ 個 release);應用測試 **480 backend pytest + 585 frontend vitest + 62 Playwright e2e ≈ 1,100+**;**harness 自身有 154 個 pytest**(hooks 130 + 鏡像同步器 17 + pre-push 7;強制層有 bug 比沒有更糟);9 個 feature 以完整流程留痕交付。
+- **組成**:全域鐵則(~/.claude/CLAUDE.md,8 條)+ 6 個 slash command(486 行)+ **9 個 Python hook / script(1,638 行 + 1,589 行測試)**+ 2 個流程 skill(auto-verify 驗證、branch-lifecycle 版控)+ **4 個 review agent 定義(115 行)**+ **`harness/refs/` 按需載入層(10 檔 388 行)**+ git pre-push 防線(repo 側)+ 7 個專案主題 skill + 三層 memory + 自我改進迴路。repo 內 `docs/harness/` 有全部鏡像。
+- **2026-07-25 context 瘦身改版**:phase 細節自 command 移入 `~/.claude/harness/refs/`,command 只留「觸發偵測」層(六檔總和 41,224 → 29,503 bytes,−28.4%);rationale 移入 `harness/RATIONALE.md`(執行期永不載入);載入帳由 `harness/load-manifest.json` 承載,`hooks/harness_load_estimate.py` 求和並驗 `harness/dispositions.json`。設計與驗收見 `docs/specs/harness-context-slimdown/`。
 
 ## 2. 分層架構
 
@@ -20,14 +21,17 @@
   └─ 流程指令 /feat /bug /mod /refactor /perf + /auto 自主模式契約
        ├─ 驗證 skill auto-verify(形狀偵測,單一 source of truth)
        ├─ 版控 skill branch-lifecycle(開工/收尾/異常,五 command 共用)
-       └─ review agent 定義 ×4(criteria + JSON schema + 唯讀 tools 固化,
-                                dispatch 降級為「指名 + 傳路徑」)
+       ├─ review agent 定義 ×4(專屬 criteria + 唯讀 tools 固化;立場 /
+       │                        severity / JSON schema / 輸出鐵則共用
+       │                        harness/refs/reviewer-preamble.md,首行 Read)
+       └─ harness/refs/ 按需載入層(phase 細節 / review 協定 / 規模分流,
+                                command 只留觸發偵測 + 指路)
             └─ 專案知識層:CLAUDE.md(12k,每 session 必讀)
                           + 7 主題 skill(按需載入)
                           + decisions.md + next-time.md
 ─────────────────────────────────────────────
 強制層(hooks,5 個掛載事件,process-level enforcement)
-  PreToolUse:繞過攔截 / 危險操作 / push 強制確認(Bash+PowerShell)
+  PreToolUse:繞過攔截 / 危險操作(Bash+PowerShell;push 確認已於 2026-07-18 除役)
   SessionStart + UserPromptSubmit:進行中流程狀態注入(每回合錨定)
   Stop:回合末審計(state 回寫 / 收件匣義務),可 block
   PostToolUse:自動 format
@@ -58,7 +62,7 @@ H. **Git 推送紀律**:**2026-07-18 起 push / merge 全自動**(user 拍板,�
 | 0 | Brainstorm | **SC 可驗證性 gate**:每條成功條件編號 SC-N 且必附驗證方式;量化條件必附「單位 + 量法指令」;S/M/L 規模分流 |
 | 1 | 設計 spec | dispatch `design-reviewer` agent(P0/P1/P2 JSON),max 3 輪,退出條件「無 P0 且 P1≤2 進 Known Risks」;criteria 含動態 trace,固化在 agent 定義 |
 | 2 | 實作 spec | **預設 condensed**(單一 PLAN.md,對它單發 `impl-spec-reviewer`);per_file 逐檔 dispatch 降為 opt-in(L 級高風險面才用,2026-07-06 實證 token 成本差一個量級) |
-| 3 | TDD | 紅/綠/重構 commit 各帶 tag `[red]`/`[green]`/`[refactor]`;test-infra 修正與新 case 分流 |
+| 3 | TDD | `[red]` → `[green]` 兩 commit 各帶 tag(`[refactor]` 2026-07-25 起降為「有重構才加」,不列強制順序);test-infra 修正與新 case 分流 |
 | 4 | 自評 code-review | 雙焦點(impl bug + missing-from-spec);>10 findings 先 dedup;lock test 走 mutation 抽驗帶 `[lock]` tag |
 | 5 | 自動化驗證 | 呼叫 auto-verify(指令組優先讀專案 `.claude/harness.json`,與 pre-push 共用單一來源) |
 | 6 | 真實環境驗證 | 依 feature shape 分流;infra 失敗有標準 fallback 路徑 |
@@ -80,7 +84,7 @@ H. **Git 推送紀律**:**2026-07-18 起 push / merge 全自動**(user 拍板,�
 
 同 v2:CLAUDE.md(12k chars,每 session 必讀契約)+ 7 主題 skill(FinMind 配額真相 / market pipeline GIL 教訓 / cancel 五環鏈 / e2e fixture 架構含判準表 / 前端測試 / 前端版面 / changelog 詞例,條目全帶 code 錨點 + 寫入前強制 GC)+ `docs/decisions.md`(採納與刻意不採納)。v3 新增專案插槽 `.claude/harness.json`(驗證指令機器可讀,pre-push / auto-verify / 未來 harness-check 共用)。
 
-### 3.5 Hooks(process-level 強制層,Python,1,201 行 + 713 行 pytest)
+### 3.5 Hooks(process-level 強制層,Python,1,638 行 + 1,589 行 pytest)
 
 定位:**prompt 裡的規則是建議,hook 是強制** —— 依據 protocol-model-dependency 實證(§6.2),文字指令的遵循率高度依賴模型檔次,hook 不依賴。v3 從 3 hooks / 2 事件擴到 **7 hooks / 5 事件**(後續再加 `check_feat_tags.py` 機驗 script,共 8 檔):
 
@@ -89,21 +93,24 @@ H. **Git 推送紀律**:**2026-07-18 起 push / merge 全自動**(user 拍板,�
 - **`format-on-edit.py`**:PostToolUse 自動 format。
 - **`harness-context.py`(v3)**:SessionStart + UserPromptSubmit 注入「進行中 /feat 的 slug / phase / 下一個 gate / state 回寫狀態」— 弱模型長對話後遺忘流程位置,每回合重新錨定(soft reminder 機制);無進行中 feature 零輸出。
 - **`harness-stop-audit.py`(v3)**:Stop 事件審計兩件可機驗的事 — state.json 落後最新 commit(且該 commit 未含 state 變更,排除 false positive)→ **block 一次**令回寫;Phase 8.5 收件匣義務未履行 → systemMessage 提醒(不 block,「無瑕疵」是合法結果不可機驗真偽)。`stop_hook_active` 防無限迴圈。
-- **`harness-push-gate.py`(v3;2026-07-18 除役)**:曾將 `git push` / `gh pr merge` 強制跳 user 確認框(鐵則 H 硬攔後盾,fail-closed;2026-07-07 流程分支 push 放行 + merge ask 升格單一確認點)。**2026-07-18 user 拍板 push / merge 全自動後,自 `~/.claude/settings.json` 移除註冊、鏡像刪除**;原檔保留在 `~/.claude/hooks/` 供回滾。雙工具 matcher 教訓(Bash + PowerShell)由 block-no-verify / safety-hooks 延續。
-- **`harness_lib.py`(v3)**:共用庫 — state.json 探索(active 判定:未 paused / 未 merge / 8.5 未完成 / 未 archived)、lagging 判定(git show 對 root commit 也正確)、Windows cp950 → UTF-8 stdio 強制。
+- **`harness-push-gate.py`(v3;2026-07-18 停用,2026-07-25 連同其測試檔一併刪除)**:曾將 `git push` / `gh pr merge` 強制跳 user 確認框(鐵則 H 硬攔後盾,fail-closed)。user 拍板 push / merge 全自動後先移除註冊,再於 context 瘦身改版中退役 —— 測試檔以相對路徑執行 hook 本體,兩檔必須一起移除。雙工具 matcher 教訓(Bash + PowerShell)由 block-no-verify / safety-hooks 延續。
+- **`harness_lib.py`(v3)**:共用庫 — state.json 探索(active 判定:未 paused / 未 merge / 8.5 未完成 / 未 archived)、lagging 判定(git show 對 root commit 也正確)、Windows cp950 → UTF-8 stdio 強制。2026-07-25 新增 `refs_for_phase()`(讀 `load-manifest.json` 的 `phase` 欄產生,不手抄);**`PHASE_GATES` 刻意不加第三欄** —— `for p, gate in PHASE_GATES` 是兩元素解包,加欄必 ValueError 而被 harness-context 的兩層 except 吞掉,整段注入會靜默消失,已用測試釘住。
+- **`harness_load_estimate.py`(2026-07-25)**:讀 `harness/load-manifest.json` 求和主 agent 窗口 / subagent context 載入量(`--profile` / `--scope` / `--worst` / `--before --after`),並以 `--verify-dispositions` 驗 `harness/dispositions.json`。`<superpowers>` 佔位符以 **profile 宣告的 `project_root`** 解析,禁用 process cwd(腳本住在 hooks/,用 cwd 會解到非在役的舊版本);manifest 列了不存在的檔一律 exit 非 0,不靜默略過。
 - **git `pre-push` hook(repo 側,110 行)**:讀 `.claude/harness.json` 跑全套測試(479 pytest + 585 vitest + build),任一紅拒 push;user 手動 `git config core.hooksPath` 啟用一次,**Claude 被 block-no-verify 擋著動不了這條防線** — 防線保護自己。
-- **fail-open/closed 分層**:注入/審計 hook 內部錯誤 → 警告放行(輔助設施不癱瘓工作);push-gate 在役期間 fail-closed(寧可多問一次;2026-07-18 已除役)。
-- **hooks 自身 TDD**:81 個 pytest(hooks 77 + pre-push 4;subprocess 餵 stdin JSON fixture 驗 exit code / 輸出),紅燈階段抓到 3 個真環境 bug(§5 story 6)。
+- **fail-open/closed 分層**:注入/審計 hook 內部錯誤 → 警告放行(輔助設施不癱瘓工作);push-gate 在役期間 fail-closed(寧可多問一次;已除役)。
+- **`protect-harness.py`(2026-07-25 起停用註冊)**:solo 開發下改 harness 本體每次跳 ask 只是摩擦。hook 檔與其 pytest 保留、照常綠;還原片段見 `docs/specs/harness-context-slimdown/design.md` §9。**Known Risk**:停用期間「防被 prompt injection 的 agent 靜默弱化強制層」這道防線不存在。
+- **hooks 自身 TDD**:154 個 pytest(hooks 130 + 鏡像同步器 17 + pre-push 7;subprocess 餵 stdin JSON fixture 驗 exit code / 輸出),紅燈階段抓到 3 個真環境 bug(§5 story 6)。
 
 ### 3.6 三層記憶架構
 
 同 v2:專案 CLAUDE.md(每 session 全量,嚴控 12k)/ 主題 skills(trigger 常駐、本體按需)/ memory(帳號級,語意 recall)。沉澱目的地規則寫死在 /feat Phase 8.5,配強制 GC。
 
-### 3.7 Review agent 定義層(v3 新增,4 檔 133 行)
+### 3.7 Review agent 定義層(v3 新增,4 檔 115 行 + 共用 preamble)
 
 - **動機**:四個 dispatch 點的 criteria checklist 原寫在 command 文字,靠 main agent「記得抄進 prompt」— 又一個弱模型會漏的自律點。定義化後 dispatch 降級為「指名 agent type + 傳檔案路徑」。
 - **四檔**:`design-reviewer`(/feat P1,effort medium)/ `impl-spec-reviewer`(/feat P2,low)/ `change-spec-reviewer`(/mod P3,medium)/ `refactor-plan-reviewer`(/refactor P3,low)。effort 分級依鐵則 G:judge-heavy 才升 medium 且註明理由。
-- **每檔固化**:對抗立場(找問題不是背書、不確定標 P2 不准沉默)+ severity 定義 + **輸出鐵則(final message = 純 JSON array,main agent 直接 parse 落檔)**+ 專屬 criteria(從 command 搬入,逐項寫「檢什麼 + 怎麼算違反」)+ `tools: Read, Grep, Glob` 唯讀(reviewer 不准改檔案,工具層鎖死)+ 不鎖 model(inherit session — 弱模型時代自然跟降,不硬編強模型)。
+- **共用前言(2026-07-25 抽出)**:對抗立場(找問題不是背書、不確定標 P2 不准沉默)+ severity 定義 + **輸出鐵則(final message = 純 JSON array,main agent 直接 parse 落檔)**+ finding 欄位 schema + 雙欄 location + cross-round 檢查,四檔原本各抄一份,現統一在 `harness/refs/reviewer-preamble.md`,agent 檔首行 Read 它(四者 `tools` 含 `Read`,可行)。**是去重防 drift,不是省主 agent 窗口** —— agent 檔只在被 dispatch 時載入,屬 subagent context。
+- **每檔仍固化**:專屬 criteria(從 command 搬入,逐項寫「檢什麼 + 怎麼算違反」)+ `tools: Read, Grep, Glob` 唯讀(reviewer 不准改檔案,工具層鎖死)+ 不鎖 model(inherit session — 弱模型時代自然跟降,不硬編強模型)。`design-reviewer` 的 neigui domain criteria 留原檔(該 agent 的 tools 白名單無 `Skill`,叫不到專案 skill)。
 - **round ≥ 2 的 cross-round 檢查**(上輪 fix 是否引入新問題)寫進 agent 輸入規格;round 上限 / receiving 分類 / 退出條件留在 command(流程控制不是 reviewer 的事)。
 - **首發實戰**(§5 story 7):smoke test 當天抓到 branch-lifecycle 設計的真 P0。
 
@@ -118,11 +125,11 @@ H. **Git 推送紀律**:**2026-07-18 起 push / merge 全自動**(user 拍板,�
 | 指標 | 數字 |
 |---|---|
 | 交付 | 9 features 全流程留痕、app v0.22.0(22+ releases)、~1,100+ 應用測試(480 pytest / 585 vitest / 62 e2e) |
-| Harness 自身品質 | 8 hooks / script(1,201 行)+ 81 個 harness pytest;TDD 紅燈抓到 3 個環境級 bug(git root-commit、cp950、CRLF shebang) |
+| Harness 自身品質 | 9 hooks / script(1,638 行)+ 154 個 harness pytest;TDD 紅燈抓到 3 個環境級 bug(git root-commit、cp950、CRLF shebang) |
 | Context 工程 | 常駐 context 35k → 12,207 chars(**-65%**),61 條 lesson 遷移零技術遺失 |
 | Review loop 實效 | 抓到行為級 bug:Max Pain look-ahead bias、transient 鎖進 24h cache、None 排序 crash、naive/aware datetime、wrong-reason-green 測試;**v3 agent 化首日再抓 branch-lifecycle 設計 P0 ×1 + cross-round P1 ×2** |
 | 自我改進 | 20 條流程瑕疵提案 meta-review 全落地;Stop hook 上線首回合自動翻出 6 個 state 欠帳 |
-| 防繞過 | 20+ 種 git hook 繞過路徑封鎖;push 強制確認(Bash+PowerShell);pre-push 全套測試防線(user 手動 push 也過) |
+| 防繞過 | 20+ 種 git hook 繞過路徑封鎖(Bash+PowerShell 雙 matcher);pre-push 全套測試防線(user 手動 push 也過)。push 確認框已於 2026-07-18 依 user 拍板除役 |
 | E2E 基建 | FAKE_FINMIND 三層 fixture + 後端時鐘凍結 + MANIFEST drift 防護,CI 零外部依賴 |
 
 ## 5. War stories(面試展開用,細節齊全)
@@ -132,7 +139,7 @@ H. **Git 推送紀律**:**2026-07-18 起 push / merge 全自動**(user 拍板,�
 3. **量測單位事故 → 流程免疫**:SC 寫「≤ 50 KB」沒寫 gzip 前後,5 個 phase 白跑。修的不是 feature 是流程:SC gate 從此強制「單位 + 量法指令」。
 4. **GIL 假綠**:1.5GB JSON 用 `asyncio.to_thread` 包 `json.load`,sleep-mock 測試全綠,真實環境凍 6.35s(`json.load` 單一 C call 不放 GIL)。教訓:mock 測不到 GIL,必須真檔探針;解法 chunked JSONL。
 5. **Harness 自我審計(v2)**:4 平行蒐證 agent + 4 adversarial 驗證 agent,發現常駐 context 60% 是情境性知識、8 處 command 與方法論矛盾、收件匣 20 條無人收割 —— 全數裁決落地。
-6. **強制層自己也要 TDD**:v3 三個 hook 的紅燈階段連抓 3 個「弱模型環境下會靜默壞掉」的 bug — `git diff-tree` 對 root commit 輸出空(state 審計會誤判)、Windows pipe 預設 cp950(hook 印繁中直接 crash)、sh shim CRLF shebang 在 Git Bash 無法執行(`.gitattributes` 鎖 LF)。強制層有 bug 比沒有更糟,81 個 pytest 是防線的防線。
+6. **強制層自己也要 TDD**:v3 三個 hook 的紅燈階段連抓 3 個「弱模型環境下會靜默壞掉」的 bug — `git diff-tree` 對 root commit 輸出空(state 審計會誤判)、Windows pipe 預設 cp950(hook 印繁中直接 crash)、sh shim CRLF shebang 在 Git Bash 無法執行(`.gitattributes` 鎖 LF)。強制層有 bug 比沒有更糟,154 個 pytest 是防線的防線。
 7. **Reviewer agent 首發抓 P0 + cross-round 抓 fix 的 fix**:agent 定義化完成當天,`design-reviewer` smoke test 對剛寫好的 branch-lifecycle 設計回傳 5 findings — 其中 P0 是「主線漂移路徑的重驗跑在 merge 前的純新 main 上,merge 後的組合狀態從沒被驗過」(harness 核心承諾在最常見情境失效)。round 2 的 cross-round 檢查再抓到 round 1 fix 自己引入的 PR 永久分岔問題。兩輪收斂,漂移判準操作化為 `git merge-base --is-ancestor`。「固化 criteria 有用」不是自述,是它上線第一天就修正了同一天寫的設計。
 8. **Stop hook 上線第一擊**:註冊後的第一個回合結束就 block —— 抓到的正是 v2 審計自承「state 3/9 不同步」的完整欠帳名單(6 個已出貨 feature 從未收尾)。處置時不偽造 completed_phases,而是擴充 `archived` 語意(誠實標記「已出貨但流程未留痕」)。文字規則連強模型都會漏,機械層第一天就自動收割。
 
@@ -146,7 +153,7 @@ H. **Git 推送紀律**:**2026-07-18 起 push / merge 全自動**(user 拍板,�
 ### 6.2 v3 強制層工程(2026-07-06 下午,三件)
 
 - **動機(外部實證)**:protocol-model-dependency 一文實測 — 同一份文字指令,Fable 5 遵循、Opus 4.x 12 sessions 遵循率 0%;加 hook(注入 + 審計)後回 ~37%。盤點本 harness:機械強制僅 3 hooks,約九成機制靠模型自律,且 state 3/9 不同步、review 跑 6 輪超限等失效前科**發生在強模型上**。結論:文字規則 = 建議,hook = 強制。
-- **件一 · 強制層第一期**:注入(SessionStart/UserPromptSubmit)+ Stop 審計 + 雙層 push gate(PreToolUse ask + git pre-push 跑全套測試)+ 專案插槽 `.claude/harness.json`。設計原則:可機驗的 gate 搬出模型;語意判斷(SC 品質、review 深度)誠實標注為殘餘風險。第二期(phase-exit 檢核 script 化 + state 自動回寫)依 rollout 觀察後啟動。
+- **件一 · 強制層第一期**:注入(SessionStart/UserPromptSubmit)+ Stop 審計 + 雙層 push gate(PreToolUse ask + git pre-push 跑全套測試;**PreToolUse 那層已於 2026-07-18 除役,只剩 pre-push**)+ 專案插槽 `.claude/harness.json`。設計原則:可機驗的 gate 搬出模型;語意判斷(SC 品質、review 深度)誠實標注為殘餘風險。第二期(phase-exit 檢核 script 化 + state 自動回寫)依 rollout 觀察後啟動。
 - **件二 · 版控生命週期**:四流程補自動開分支、收尾自動 merge + 刪分支、主線同步判準、merge 移出 /goal 必停清單(local merge 可逆 + push 仍硬攔)。
 - **件三 · Review agent 定義化**:criteria 出 command、入 agent 定義;dispatch 從「組 prompt」降級為「指名」。
 - 完整證據:`docs/specs/harness-enforcement/`、`harness-git-lifecycle/`、`harness-review-agents/`(各含 design + evidence)。
