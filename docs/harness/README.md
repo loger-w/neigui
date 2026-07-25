@@ -30,7 +30,15 @@
 ├─ Review agent 定義(agents/,~/.claude/agents/)
 │   design-reviewer(/feat P1,medium)/ impl-spec-reviewer(/feat P2,low)/
 │   change-spec-reviewer(/mod P3,medium)/ refactor-plan-reviewer(/refactor P3,low)
-│   criteria + JSON schema + 唯讀 tools 固化在定義檔,dispatch 降級為指名
+│   專屬 criteria + 唯讀 tools 固化在定義檔,dispatch 降級為指名;
+│   立場 / severity / JSON schema / 輸出鐵則共用 harness/refs/reviewer-preamble.md
+│
+├─ 按需載入層(harness/,~/.claude/harness/)
+│   refs/           — phase 細節 / review 協定 / 規模分流 / reviewer 前言
+│                     (command 只留觸發偵測 + 指路,2026-07-25 瘦身改版)
+│   RATIONALE.md    — 規則的「為什麼」,執行期永不載入,只在 meta-review 讀
+│   load-manifest.json  — 載入帳的唯一資料源(誰在哪個 phase 被載入)
+│   dispositions.json   — 瘦身處置表的機器可讀版(每列自帶 absent/present 檢查)
 │
 ├─ 專案知識層(repo 內,按需載入)
 │   CLAUDE.md         — 每 session 必讀的契約與風格(12k chars)
@@ -51,13 +59,16 @@
 │                        escape / printf 重組 flag 等 20+ 種繞過手法
 │   safety-hooks.py    — 攔截危險 rm -rf / bulk git add / 讀寫 secrets /
 │                        curl|bash / chmod 777
-│   protect-harness.py — 自我保護:改強制層本體(hooks / settings /
-│                        agents / harness.json / git hooks)→ ask 經 user 核准
+│   protect-harness.py — 自我保護:改強制層本體 → ask 經 user 核准
+│                        (2026-07-25 起**停用註冊**,檔與測試保留;
+│                         還原片段見 harness-context-slimdown design §9)
+│   harness_load_estimate.py — 載入帳求和 + dispositions 驗證(非 hook,CLI)
 │   format-on-edit.py  — 編輯後自動 format
 │   harness-context.py — SessionStart/UserPromptSubmit 注入進行中 /feat
 │                        的 phase 與 gate(soft reminder,弱模型防遺忘)
 │   harness-stop-audit.py — Stop 審計 state.json 回寫與收件匣義務
-│   (harness-push-gate.py 已於 2026-07-18 除役 — push / merge 全自動)
+│   (harness-push-gate.py 已於 2026-07-18 停用註冊、2026-07-25 連同其
+│    測試檔刪除 — push / merge 全自動)
 │   tests/             — hooks 的 pytest(強制層有 bug 比沒有更糟)
 │
 └─ 自我改進迴路
@@ -71,7 +82,7 @@
 ## 設計理念
 
 1. **證據先於宣稱**:任何「完成」必附指令輸出 / 測試數字 / 截圖。自動化全綠 ≠ Done — 還要真實環境驗證 + 回頭核對動機(brainstorm 的 SC 表逐條對證據)。
-2. **TDD 紅先行 + 機械化驗證**:紅測試 → 綠實作 → 重構各自帶 tag(`[red]`/`[green]`/`[refactor]`/`[lock]`),流程結束用 `git log --grep` 機械化驗證 TDD 序列真的發生過,不靠自由心證。
+2. **TDD 紅先行 + 機械化驗證**:紅測試 → 綠實作各自帶 tag(`[red]`/`[green]`;`[refactor]` 有重構才加,`[lock]` 用於鎖已正確行為並須 body 註 `mutation-verified`),流程結束用 `git log --grep` 機械化驗證 TDD 序列真的發生過,不靠自由心證。三類 emoji 🔴🟢🔵 的分離另有 checker(非 /feat 流程目前為 warning 模式)。
 3. **Review loop 有上限**:sub-agent review 以 P0/P1/P2 分級,3 輪上限強制收斂;超限必須向 user 回報結構化三件事(剩什麼 / 試了什麼 / 推測根因),禁止「繼續試試看」。
 4. **失敗分流不無腦重來**:驗證失敗依類型(goal 漏 / design 漏 / impl 漏 / test 漏)回對應階段,計數進 state.json,同一條件回退 2 次強制升級處理層級。
 5. **自我改進迴路閉環**:流程自己回報流程的 bug(收件匣),達門檻觸發 meta-review;知識沉澱有目的地規則 + 強制 GC(寫入前先合併 / 翻新 / 刪同主題舊條目)。
@@ -100,7 +111,7 @@
 
 ## 檔案同步說明
 
-`commands/`、`hooks/`、`agents/`、`skills/`、`global-rules.md` 為鏡像,**不要直接改這裡** — 改 `~/.claude/` 原檔後執行同步器(對映清單以腳本內 `DIR_MAPS` / `SINGLE_MAPS` 為準;原檔側新增檔案 glob 自動入列,鏡像側多出的檔報 ORPHAN):
+`commands/`、`hooks/`、`agents/`、`skills/`、`harness/`(含 `refs/` 與兩份 JSON)、`global-rules.md` 為鏡像,**不要直接改這裡** — 改 `~/.claude/` 原檔後執行同步器(對映清單以腳本內 `DIR_MAPS` / `SINGLE_MAPS` 為準;原檔側新增檔案 glob 自動入列,鏡像側多出的檔報 ORPHAN):
 
 ```bash
 python scripts/sync-harness-mirror.py --check   # 只報告,不一致 exit 1
