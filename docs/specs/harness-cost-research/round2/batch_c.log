@@ -1,0 +1,30 @@
+== Batch C:三條真實槓桿 ==
+
+H19 — floor 拆解(關掉一整類常駐內容,看 prompt 少多少)
+  E85   baseline(haiku,現況)                             prompt=  40,295 w=       0 r=  40,285 out=  214 $0.0051
+  E86   --tools ""(關掉所有內建工具 schema)                    prompt=  17,008 w=   8,499 r=   8,499 out=  209 $0.0189
+  E87   --disable-slash-commands(關掉 skill 清單)          prompt=  37,493 w=   8,190 r=  29,292 out=  140 $0.0200
+  E88   --safe-mode(全部 customization 關)                prompt=  25,485 w=   1,953 r=  23,522 out=   44 $0.0071
+
+H20 — 同樣 5 個檔:一個 turn 讀完 vs 逐個 turn 讀
+  E89   5 檔:parallel(一個 message 發完)                    prompt= 113,099 w=  39,538 r=  73,544 out=  648 $0.0897
+  E90   5 檔:serial(一個 message 一個 Read)                 prompt= 348,802 w=  40,466 r= 308,286 out=  782 $0.1157
+
+H21 — effort sweep(同一個真實任務,opus)
+  E91   opus effort=low                                prompt= 115,879 w=  16,049 r=  99,825 out=  363 $0.2195
+  E92   opus effort=medium                             prompt=  89,346 w=  13,823 r=  75,520 out=  403 $0.1861
+  E93   opus effort=high                               prompt= 165,887 w=  18,050 r= 147,830 out=  660 $0.2709
+  E94   opus effort=xhigh                              prompt= 170,439 w=  30,126 r= 140,306 out=  762 $0.3905
+
+H22 — 委派 vs 自己做(同一題,opus coordinator)
+  E95   opus 自己做                                       prompt= 138,023 w=  14,412 r= 123,606 out=  416 $0.2163
+  E96   opus 委派 subagent                               prompt=  87,411 w=  20,112 r=  67,296 out=  266 $0.4669
+
+H23 — output 指令的效果(output 只佔總成本 9%,天花板應該很低)
+  E97   解釋題:預設                                         prompt=  43,476 w=   9,846 r=  33,628 out=1,120 $0.1433
+  E98   解釋題:加簡潔指令                                      prompt=  43,496 w=   9,856 r=  33,638 out=  164 $0.1195
+
+H24 — model 選擇(觀測批:76.6% 的花費落在 fable-5,單價是 opus-5 的兩倍)
+  E99   同一題 × claude-fable-5                           prompt= 203,401 w=  23,852 r= 179,540 out=  606 $0.6870
+  E100  同一題 × claude-opus-5                            prompt= 161,060 w=   5,529 r= 155,524 out=  474 $0.1449
+  E101  同一題 × claude-sonnet-5                          prompt= 345,368 w=  17,242 r= 328,114 out=  970 $0.2165

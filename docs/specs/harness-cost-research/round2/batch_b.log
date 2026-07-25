@@ -1,0 +1,38 @@
+== Batch B:CLAUDE.md 10,288 chars / 10 節 ==
+
+  __head__                                                  214 chars
+  ## 0. 目的 & 結構                                             264 chars
+  ## 1. 啟動 & 驗證(覆寫 `auto-verify` 預設)                      1,839 chars
+  ## 2. Python 風格(專案特化)                                   1,207 chars
+  ## 3. React / TypeScript 風格(專案特化)                       1,844 chars
+  ## 4. 跨檔契約                                              1,623 chars
+  ## 5. 資料源                                                 380 chars
+  ## 6. 提交慣例                                                467 chars
+  ## 7. 版本管理慣例                                            1,210 chars
+  ## 8. 主題 skills 索引(累積慣例的按需載入層)                          1,240 chars
+
+  E73   baseline:完整 CLAUDE.md                          prompt=  40,286 w=       0 r=  40,276 out=   87 $0.0045
+  E74   刪掉 __head__                                    prompt=  40,122 w=  14,129 r=  25,983 out=   96 $0.0313
+        → Δ    -164 tok  (-0.766 tok/char, 佔 baseline -0.4%)
+  E75   刪掉 ## 0. 目的 & 結構                               prompt=  40,087 w=  14,094 r=  25,983 out=  186 $0.0317
+        → Δ    -199 tok  (-0.754 tok/char, 佔 baseline -0.5%)
+  E76   刪掉 ## 1. 啟動 & 驗證(覆寫 `auto-verify` 預設)          prompt=  39,287 w=  13,294 r=  25,983 out=   48 $0.0294
+        → Δ    -999 tok  (-0.543 tok/char, 佔 baseline -2.5%)
+  E77   刪掉 ## 2. Python 風格(專案特化)                       prompt=  39,670 w=  13,677 r=  25,983 out=   70 $0.0303
+        → Δ    -616 tok  (-0.510 tok/char, 佔 baseline -1.5%)
+  E78   刪掉 ## 3. React / TypeScript 風格(專案特化)           prompt=  39,298 w=   6,652 r=  32,636 out=  218 $0.0177
+        → Δ    -988 tok  (-0.536 tok/char, 佔 baseline -2.5%)
+  E79   刪掉 ## 4. 跨檔契約                                  prompt=  39,352 w=   6,680 r=  32,662 out=  160 $0.0174
+        → Δ    -934 tok  (-0.575 tok/char, 佔 baseline -2.3%)
+  E80   刪掉 ## 5. 資料源                                   prompt=  40,075 w=   7,041 r=  33,024 out=  148 $0.0181
+        → Δ    -211 tok  (-0.555 tok/char, 佔 baseline -0.5%)
+  E81   刪掉 ## 6. 提交慣例                                  prompt=  40,035 w=   7,021 r=  33,004 out=  134 $0.0180
+        → Δ    -251 tok  (-0.537 tok/char, 佔 baseline -0.6%)
+  E82   刪掉 ## 7. 版本管理慣例                                prompt=  39,548 w=  13,555 r=  25,983 out=  138 $0.0304
+        → Δ    -738 tok  (-0.610 tok/char, 佔 baseline -1.8%)
+  E83   刪掉 ## 8. 主題 skills 索引(累積慣例的按需載入層)              prompt=  39,595 w=   6,801 r=  32,784 out=  174 $0.0178
+        → Δ    -691 tok  (-0.557 tok/char, 佔 baseline -1.7%)
+  E84   全刪(只留一行標題)                                     prompt=  34,512 w=   8,519 r=  25,983 out=  292 $0.0211
+        → Δ  -5,774 tok(整份的價)
+
+CLAUDE.md 已還原(逐位元組比對通過)

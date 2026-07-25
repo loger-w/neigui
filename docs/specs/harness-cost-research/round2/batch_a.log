@@ -1,0 +1,20 @@
+== Batch A:cache 行為 ==
+
+H16 — TTL:寫入後隔多久再打還能 read
+  E61   間隔 ~1s 再打                                      prompt=  40,286 w=       0 r=  40,276 out=   45 $0.0043
+  E62   間隔 90s 再打                                      prompt=  40,280 w=       0 r=  40,270 out=  189 $0.0050
+  (等 400s 跨過 5 分鐘 TTL 邊界…)
+  E63   間隔 400s 再打(>5min)                              prompt=  40,286 w=       0 r=  40,276 out=   94 $0.0045
+
+H17 — 失效邊界(每條都:熱身 → 驗證熱 → 施加變更 → 量 → 還原 → 再量)
+  E64   對照:什麼都不改                                       prompt=  40,280 w=       0 r=  40,270 out=   85 $0.0045
+  E65   改 CLAUDE.md 內容(進 prompt 的檔)                    prompt=  40,286 w=  14,293 r=  25,983 out=   62 $0.0315
+  E66   把 CLAUDE.md 改回來                                prompt=  40,286 w=       0 r=  40,276 out=  104 $0.0046
+  E67   改 backend code(不進 prompt,但動到 git status)       prompt=  40,288 w=  18,709 r=  21,569 out=  205 $0.0406
+  E68   把 backend code 改回來                             prompt=  40,280 w=       0 r=  40,270 out=  208 $0.0051
+  E69   新增一個 untracked 檔(只動 git status)                prompt=  40,286 w=       0 r=  40,276 out=  239 $0.0052
+  E70   刪掉 untracked 檔                                 prompt=  40,286 w=       0 r=  40,276 out=   42 $0.0042
+
+H17 補 — 官方旗標:把 per-machine 段(cwd/git status)移出 system prompt
+  E71   --exclude-dynamic-system-prompt-sections 第一次   prompt=  40,093 w=  15,582 r=  24,501 out=   42 $0.0338
+  E72   --exclude-dynamic-system-prompt-sections 第二次   prompt=  40,093 w=       0 r=  40,083 out=   99 $0.0045

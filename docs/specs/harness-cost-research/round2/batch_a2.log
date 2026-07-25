@@ -1,0 +1,21 @@
+== Batch A2:失效源歸因 ==
+
+起始 git status --short:
+ M CLAUDE.md
+?? docs/specs/harness-cost-research/round2/
+
+  E102  對照 1:什麼都不改                                     prompt=  40,286 w=       0 r=  40,276 out=   72 $0.0044
+  E103  對照 2:什麼都不改(再一次)                                prompt=  40,286 w=       0 r=  40,276 out=  175 $0.0049
+  [git status 現在:['M CLAUDE.md', ' M backend/main.py', '?? docs/specs/harness-cost-research/round2/']]
+  E104  改 tracked 檔 backend/main.py(重跑 E67)            prompt=  40,294 w=  14,293 r=  25,991 out=  288 $0.0326
+  E105  同一個改動不動,再打一次                                   prompt=  40,294 w=       0 r=  40,284 out=  189 $0.0050
+  E106  改另一個 tracked 檔 frontend/src/App.tsx            prompt=  40,290 w=  18,711 r=  21,569 out=  226 $0.0407
+  [git status 現在:['M CLAUDE.md', '?? _probe_untracked.txt', '?? docs/specs/harness-cost-research/round2/']]
+  E107  新增 untracked 檔在 repo 根目錄                       prompt=  40,297 w=  18,718 r=  21,569 out=   46 $0.0398
+  E108  新增被 gitignore 的檔(git status 不變)                prompt=  40,823 w=  14,830 r=  25,983 out=   45 $0.0325
+  E109  重寫 tracked 檔但內容逐位元組相同(只動 mtime)                prompt=  40,286 w=       0 r=  40,276 out=  148 $0.0048
+
+收尾 git status --short:
+ M CLAUDE.md
+?? docs/specs/harness-cost-research/round2/
+
