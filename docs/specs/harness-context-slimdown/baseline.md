@@ -46,18 +46,43 @@ python -m pytest tests/test_harness_push_gate.py --collect-only -q → G
 
 ---
 
-## SC-2 before — 尚未量測(依 spec 設計,非遺漏)
+## SC-2 before(2026-07-25 步驟 1d 結束時量,步驟 2 動 command 之前)
 
-SC-2 的量法需要 `~/.claude/hooks/harness_load_estimate.py`,該腳本於**步驟 1d** 才建立。
-
-依 v9 起的規定:**SC-2 的 before 在步驟 1d 結束、步驟 2 動 command 之前執行**,此時所有原始檔仍未改動,量到的就是改版前狀態,結果追加寫入本頁。
-
-指令:
+量法:
 ```
-python ~/.claude/hooks/harness_load_estimate.py --profile feat-L-before --scope main
+python ~/.claude/hooks/harness_load_estimate.py --profile <name> --scope main [--worst]
 ```
 
-> 把 SC-2 掛在 0a 是 v4 的順序矛盾,v5 已修正。此處留白是刻意的,不是漏做。
+`<superpowers>` 解到:`C:\Users\USER\.claude\plugins\cache\claude-plugins-official\superpowers\6.2.0`
+(user-scope 在役版本)。
+
+> **v7 陷阱的實地驗證**:本次量測的 cwd = `~/.claude/hooks`,而 project-scope entry 的
+> `projectPath` = `C:\Users\USER` **確實涵蓋該 cwd**。腳本仍解到 user-scope 的 6.2.0,
+> 因為比對基準是 profile 宣告的 `project_root`(`C:/side-project/neigui`)而非 process cwd。
+> 若當初照 v6 寫法用 cwd,這裡會解到非在役的 5.0.6,而兩版 SDD 的 SKILL.md 差距超過該檔
+> 本身的一半 —— 降幅比值直接失真且不會被任何 gate 抓到。
+
+| profile | scope | bytes |
+|---|---|---|
+| **feat-L-before** | main | **123,885** |
+| feat-L-before | main `--worst` | 143,798 |
+| feat-L-before | subagent(SC-2b)| 4,689 |
+| mod-M-before | main | 48,111 |
+| bug-before | main | 33,755 |
+| refactor-before | main | 30,344 |
+| perf-before | main | 43,916 |
+
+**門檻**(SC-8 FAIL → §4.1 備案,SC-2 自 ≥30% 下修至 **≥ 5%**):
+feat-L 的 main scope 改版後須 **≤ 117,690 bytes**。
+
+> 把 SC-2 掛在 0a 是 v4 的順序矛盾,v5 已修正 —— 它的量法需要 1d 才建立的腳本。
+
+### 量測過程中被 gate 擋下的一次真錯(留存為證據)
+
+首次執行時 manifest 把 superpowers 路徑寫成 `<superpowers>/<name>/SKILL.md`,少了一層
+`skills/`。腳本依「manifest 列了不存在的檔 → exit 非 0」拒絕輸出數字,五個 profile 中有四個
+報錯。若當初設計成「找不到就跳過」,這四個 profile 會各自少算數萬 bytes 且**全部顯示為成功**,
+而 before 側偏低會讓後續降幅百分比虛高。修正路徑後才得到上表數字。
 
 ---
 
