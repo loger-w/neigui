@@ -1,10 +1,19 @@
-# Harness Context 瘦身改版 — design v9
+# Harness Context 瘦身改版 — design v10
 
 - 日期:2026-07-25
 - 範圍:`~/.claude/commands/{feat,mod,perf,refactor,auto,bug}.md` + `~/.claude/skills/{auto-verify,branch-lifecycle}` + `~/.claude/agents/*.md`(四個 reviewer)+ 為達成上述所需的 hook / 腳本改動
 - 不在範圍:常駐層(user / 專案 CLAUDE.md、MEMORY.md)、`chore.md`、superpowers plugin 檔本體
 
 ## Changelog
+
+**v10(2026-07-25)** — 第 9 輪審視:2 條 P1。「防漏網」lens 再次判定收斂;「新模型自洽」lens 明確推演了三種最刁鑽的列(巢狀 `ref`+`改寫`、同檔刪一半、跨檔移入)並確認**新模型全部表達得出來** —— 模型本身站得住。
+
+兩條 finding 是同一件事:**v9 換模型時沒把改動傳播到 §7 步驟 1d 與 §8 風險表**。
+
+| 修正 | 問題 |
+|---|---|
+| 步驟 1d 改引 §5 的填寫規則,並明寫「`present` 指向落點檔、填寫當下 grep 不到是正常的」 | 1d 還留著舊模型的「每個 anchor 都要先在**來源檔** grep 命中」。但 `present` 多半指向落點檔,而落點檔在 1d 當下還沒寫完 —— 照做只填得出 `absent`,「整段刪光也全綠」的漏洞直接回歸。1d 是全 spec 唯一講怎麼寫 `dispositions.json` 的步驟 |
+| §5 補第三條填寫規則:每列至少一個檢查,`核心` / `保留` / `留原檔` 列**必填 `present`** | v9 的兩條規則只管 `absent` 唯一性與「只刪一部分」。核心列的動作是「不要動它」,直覺上沒東西可驗 —— 但步驟 2 改寫 command 時順手刪掉一條 load-bearing 核心規則正是本次最大風險。舊極性模型下這類列有「必須找得到」的覆蓋,換模型時沒承接 |
 
 **v9(2026-07-25)** — 第 8 輪審視:2 條 P1。**「落點窮舉」lens 也回傳「已收斂,可進實作」** —— 兩條實質性 lens(規則會不會被弄丟、決議有沒有落點)現在都乾淨,只剩機制自洽那條有 finding。
 
@@ -127,7 +136,7 @@ v3 同時修正的實質問題:
 | SC-1 | 六個 command 檔總和**降幅 ≥ 30%** | `Get-ChildItem ~/.claude/commands -Filter *.md \| Where-Object { $_.Name -ne 'chore.md' } \| Measure-Object Length -Sum`。改為降幅是因為絕對門檻與 §5 處置表互斥:五個非 feat 檔的現況總和本身就超過任何合理絕對值,而它們大部分內容是 §5 判定的 load-bearing 核心 |
 | SC-2 | 典型 L 級 `/feat` **主 agent 窗口**載入降幅 ≥ **40%** | `python ~/.claude/hooks/harness_load_estimate.py --profile feat-L --scope main`(該腳本於步驟 1d 建立)|
 | SC-2b | **subagent context** 另計,無門檻,只要求有數字並在報告中呈現 | `... --scope subagent` |
-| SC-3 | `dispositions.json` 的所有檢查通過 | `python ~/.claude/hooks/harness_load_estimate.py --verify-dispositions`。每列自帶 0-2 個檢查,每個檢查明寫自己的檔案:所有 `absent` 皆不命中、所有 `present` 皆命中。違反數 = 0。**不從處置值推斷驗哪個檔**(理由見 §5)|
+| SC-3 | `dispositions.json` 的所有檢查通過 | `python ~/.claude/hooks/harness_load_estimate.py --verify-dispositions`。每列自帶 1-2 個檢查,每個檢查明寫自己的檔案:所有 `absent` 皆不命中、所有 `present` 皆命中。違反數 = 0。**不從處置值推斷驗哪個檔**(理由見 §5)|
 | SC-4 | hook 測試不退步 | 步驟 0a 記錄 `cd ~/.claude/hooks && python -m pytest tests -q` 的 passed 數 `B`,與 `pytest tests/test_harness_push_gate.py --collect-only -q` 的計數 `G`。步驟 11 要求 **passed ≥ B − G 且 failed = 0**(不等式:步驟 5、6 都紅先行會新增 case,等式必不成立)|
 | SC-5 | `/code-review` 命中數 = **0** | `Grep -rn -- "/code-review" ~/.claude/{commands,skills,agents} --glob '*.md'` **加上** `~/.claude/harness/refs/*.md`。**必須含新落點 `harness/refs`** —— 否則 `review-protocol.md` 照抄一份也是 0 命中,F1 的根因等於沒被驗到。**限 `*.md` 且 `dispositions.json` 不放在 `refs/`**(見 §5):該 JSON 的 `absent` 檢查字串依定義就含 `/code-review`,掃進去 SC-5 會由建構上恆 FAIL。`harness/RATIONALE.md` 不在掃描路徑內(它記錄歷史,提到該字串是正確的)|
 | SC-6 | 新流程真實環境跑得通 | 用一個真實 `/mod` 或 `/bug` 小案子跑完整流程,附 commit 清單 + 驗證輸出 |
@@ -322,7 +331,7 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 
 v8 之前用「處置值 → 極性」的推斷模型,連續三輪各冒出 2-4 條交互問題。根因是**五值模型表達不了巢狀與部分處置** —— 一個標 `ref` 的段落裡可能有一行要 `改寫`(改寫後的字串在落點檔不在來源檔);一行可能是「刪一半、留一半」(既要驗消失也要驗留存,而且都在同一檔)。每遇到一種就得加一條例外規則,規則本身開始生 bug。
 
-改為**統一模型**:每列自帶 0-2 個檢查,每個檢查明寫自己的檔案:
+改為**統一模型**:每列自帶 1-2 個檢查,每個檢查明寫自己的檔案:
 
 ```json
 { "note": "人讀說明,對應 §5 表某列", "disposition": "ref",
@@ -338,6 +347,7 @@ v8 之前用「處置值 → 極性」的推斷模型,連續三輪各冒出 2-4 
 
 1. **`absent` 的字串必須先在該檔實際 grep 命中且唯一**(否則驗不到東西);`present` 的字串必須是改版後預期會存在的實際文字。
 2. **任何「只刪一部分」的列必須同時填 `absent` 與 `present`** —— 只填 `absent` 的話,實作者把整段刪光也會全綠。這是三輪來反覆出現的漏洞型態(跨檔版是「併入再刪」,同檔版是「刪半句留半句」),統一模型下它變成一條檢查填寫規則而不是新的極性。
+3. **每一列至少要有一個檢查,且標 `核心` / `保留` / `留原檔` 的列必填 `present`。** 這條容易被漏掉:那些列的動作是「不要動它」,直覺上沒東西可驗 —— 但步驟 2 改寫 command 時把一條 load-bearing 核心規則順手刪掉,正是本次改版最大的風險,沒有 `present` 檢查就完全驗不到(舊極性模型下這類列本來有「必須找得到」的覆蓋,換模型時要記得承接)。`present` 的檔案就填來源檔本身。
 
 **本表是人讀版。** 步驟 1d 將它轉成 **`~/.claude/harness/dispositions.json`**(**放在 `harness/` 不放在 `harness/refs/`** —— 該 JSON 的 `absent` 字串依定義會包含各種被刪內容,放進 `refs/` 會讓 SC-5 這類「某字串應為零命中」的驗收由建構上恆 FAIL)。
 
@@ -556,7 +566,8 @@ Done 條件改為「before/after 量測指令寫進 `optimize-plan.md` 且可重
 1. 建 `~/.claude/harness/refs/`,寫 refs(內容從既有 command 剪下)
    - **1b**:自 SDD SKILL.md **摘寫**三條紀律進 `refs/feat-phase3.md`(來源是 plugin skill,不是 command,無法剪下)
    - **1c**:寫 `harness/load-manifest.json`(**不放 `refs/`**)
-   - **1d**:寫 `harness/dispositions.json`(**不放 `refs/`**;§5 表逐列轉檔,每個 `anchor` 都要先在來源檔 grep 命中)+ 寫 `~/.claude/hooks/harness_load_estimate.py` 與其 pytest。**SC-2 / SC-2b / SC-3 三條驗收全靠這支腳本,v3 十二步無一建立它**
+   - **1d**:寫 `harness/dispositions.json`(**不放 `refs/`**;§5 表逐列轉檔,**填寫規則以 §5 那三條為準**)+ 寫 `~/.claude/hooks/harness_load_estimate.py` 與其 pytest。
+     注意 `present` 檢查多半指向**落點檔**,而落點檔在本步驟當下可能還沒寫完 —— 這是正常的:`dispositions.json` 描述的是**改版後**的預期狀態,SC-3 在步驟 11 才跑。**不要因為「現在 grep 不到」就把 `present` 檢查省略掉**(那正是「整段刪光也全綠」漏洞的來源)。只有 `absent` 的字串需要在填寫當下就能在來源檔 grep 命中且唯一。**SC-2 / SC-2b / SC-3 三條驗收全靠這支腳本,v3 十二步無一建立它**
 2. 逐檔改寫 command(一檔一 commit)
 3. 改寫 auto-verify + branch-lifecycle(+ 建 `references/exceptions.md`)
 4. 抽 `refs/reviewer-preamble.md`,四個 agent 檔改為首行 Read 它(**輸出鐵則移入,不刪**)
@@ -591,7 +602,7 @@ Done 條件改為「before/after 量測指令寫進 `optimize-plan.md` 且可重
 | Workflow 驅動 review 未經真實流程驗證 | SC-6;本輪三次審視已是同形態實測 |
 | `check_feat_tags.py` 擴充 false positive | 紅先行 + warning 模式 + 連續 10 次零誤報才升 block |
 | 鏡像同步假綠 | 步驟 7 同時修 `build_pairs` 與 `find_orphans`(兩處各有一個 `is_dir()` 假綠);SC-7 的兩項反向驗證分別打這兩側 |
-| `dispositions.json` 的 anchor 填不出來(規則在原檔沒有可 grep 的唯一字串)| 步驟 1d 遇到就是訊號:代表該列描述的東西與原檔對不上,回頭修 §5 表而非硬編一個 anchor |
+| `dispositions.json` 的 `absent` 字串填不出來(規則在原檔沒有可 grep 的唯一字串)| 步驟 1d 遇到就是訊號:代表該列描述的東西與原檔對不上,回頭修 §5 表而非硬編一個字串 |
 | `harness_load_estimate.py` 本身沒被驗證 | 步驟 1d 同時交付其 pytest;SC-7 的反向驗證思路同樣適用 —— 故意在 manifest 加一筆不存在的路徑,腳本必須 exit 非 0 |
 | 鐵則 A/B/E 半覆蓋(鐵則 B 缺 next-time.md 檔名與時機) | 本輪不動常駐層 → command 側保留該條;**Known Risk**:記入 `feat-improvements.md`,下輪處理 |
 | `protect-harness.py` 停用期間無防弱化守備 | 見 §9;本輪結束後建議還原 |
