@@ -1,10 +1,19 @@
-# Harness Context 瘦身改版 — design v5
+# Harness Context 瘦身改版 — design v6
 
 - 日期:2026-07-25
 - 範圍:`~/.claude/commands/{feat,mod,perf,refactor,auto,bug}.md` + `~/.claude/skills/{auto-verify,branch-lifecycle}` + `~/.claude/agents/*.md`(四個 reviewer)+ 為達成上述所需的 hook / 腳本改動
 - 不在範圍:常駐層(user / 專案 CLAUDE.md、MEMORY.md)、`chore.md`、superpowers plugin 檔本體
 
 ## Changelog
+
+**v6(2026-07-25)** — 第 5 輪審視:**1 條 finding、0 推翻**,三個 lens 中兩個回傳「已收斂,可進實作」且 findings 為空。存活趨勢 39 → 40 → 24 → 18 → **1**。
+
+| 修正 | 來源 |
+|---|---|
+| **「退役 push-gate」與「更新 SPEC.md / README.md」兩步對調** | 第 5 輪唯一 finding:文件那步要寫 hook 檔數與 pytest 總數,但退役那步在它之後才砍掉兩個檔 —— 寫進去的數字當場作廢,且無任何後續步驟回修(`sync-harness-mirror` 的對映表不含 `SPEC.md` / `README.md`,SC-7 打不到),錯誤記錄會直接進版控鏡像 |
+| `<superpowers>` 解析補 project-scope 例外 | 主 agent 自行複驗 `installed_plugins.json` 時發現:該陣列同時有 user-scope 與 project-scope 兩筆不同版本的 entry。對 neigui 而言 project-scope 的 `projectPath` 不涵蓋 cwd 故不適用,但換個專案會靜默量到錯的版本 |
+
+> **步驟編號注意**:v6 起「退役 push-gate」是步驟 8、「更新文件」是步驟 9(v5 之前相反)。歷史 Changelog 條目中的步驟編號以該版當時為準;**正文 §7 為唯一現行編號**。
 
 **v5(2026-07-25)** — 第 4 輪審視:18 條、推翻 1 條、存活 17(P0 經 verify 降 P1)。趨勢 39 → 40 → 24 → 18,finding 明顯轉為局部。
 
@@ -20,7 +29,7 @@
 | §6.1 同步移除「同檔混類」 | v4 在 §5.1 改判核心卻沒同步 §6.1,兩節對同一規則相反處置 —— 正是 §2.3 點名的互斥錯型 |
 | §5.2 SC gate 列限縮 | 整句刪會刪掉 /mod 唯一的「量化條件必附 unit + 量法」;/mod 不繼承 feat.md Phase 0,而 Phase 7/8/Done 三處都依賴「Phase 2 成功條件」|
 | §5.1 補 `sp-overrides.md` 落點 | §4 樹列了該檔但表中無對應列,步驟 1 無內容可寫 |
-| 步驟 8 改為「先 grep 再列」 | v4 預寫的過時字串清單有幾條與實檔對不上(同一件事在 SPEC.md 有四種措辭),照那份清單 grep 會假綠 |
+| 「更新 SPEC.md / README.md」該步改為「先 grep 再列」 | v4 預寫的過時字串清單有幾條與實檔對不上(同一件事在 SPEC.md 有四種措辭),照那份清單 grep 會假綠 |
 
 **v4(2026-07-25)** — 第 3 輪審視:24 條、**推翻 3 條**、存活 21(2 P0 / 11 P1 / 8 P2)。總數較第 2 輪降四成,且首次出現有效推翻 —— v3 的結構改動確實收斂了「衍生數字漂移」該類問題(三輪趨勢 39 → 40 → 24)。v4 修的是**留下來的硬傷**:
 
@@ -259,7 +268,7 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 - `phase`:載入時機,供 `refs_for_phase()` 產生 `PHASE_REFS`(**單一資料源,不手抄兩份**)
 - `condition`:有此欄即為條件式;`--worst` 時計入,否則不計
 - **一支 ref 對多個 phase** → 同 `path` 列多筆(這是 record list 不是 path-keyed map)。求和時**不去重** —— 每次 Read 都真的佔窗口,去重反而低估
-- **`<superpowers>` 佔位符解析規則**:讀 `~/.claude/plugins/installed_plugins.json`,取 **user-scope 那筆的 `installPath`**。**不要**用「cache 底下版本號最大的目錄」—— cache 內存在未在役的版本(實測有一個版本在 cache 但不在 installed),而且字串排序會把 `6.10.0` 排在 `6.2.0` 之前,是個會延遲爆炸的啟發式。腳本必須在輸出中**印出實際解到的絕對路徑**;解不到則 exit 非 0,不得靜默略過
+- **`<superpowers>` 佔位符解析規則**:讀 `~/.claude/plugins/installed_plugins.json` 的 `superpowers@claude-plugins-official` 陣列,取 **user-scope 那筆的 `installPath`**;**但若同陣列中存在 project-scope 那筆、且其 `projectPath` 涵蓋當前 cwd,則以 project-scope 為準**(實測該陣列同時有兩筆不同版本的 entry,對 neigui 而言 project-scope 的 `projectPath` 不涵蓋 cwd 故不適用,但換個專案就會)。**不要**用「cache 底下版本號最大的目錄」—— cache 內存在未在役的版本(實測有一個版本在 cache 但不在 installed),而且字串排序會把 `6.10.0` 排在 `6.2.0` 之前,是個會延遲爆炸的啟發式。腳本必須在輸出中**印出實際解到的絕對路徑**;解不到則 exit 非 0,不得靜默略過
 
 `load-manifest.json` 與 `dispositions.json` 都必須進鏡像同步範圍 —— 現行 `DIR_MAPS` 的 pattern 只有 `*.md` / `*.py`,步驟 7 要一併加 `*.json`。
 
@@ -506,12 +515,14 @@ Done 條件改為「before/after 量測指令寫進 `optimize-plan.md` 且可重
    - **定義 dst 展開規則**:現行 `mirror / dst_rel / f.name` 會把不同 skill 的同名 references 檔壓成一個。改為保留相對子路徑
    - **來源具名到兩支 harness skill**(`skills/auto-verify/references`、`skills/branch-lifecycle/references`),**不要**用 `skills/*/references` —— 那會掃進 `neoapi-python` 的十個檔(§10 已把個人 skill 劃出範圍)
    - `DIR_MAPS` 新增 `harness/`、`harness/refs/`,pattern 須含 `*.json`(否則兩份 manifest 不進鏡像),`ORPHAN_SCOPES` 同步擴,並補該腳本的測試。驗收見 SC-7 兩項反向驗證
-8. 更新 `docs/harness/SPEC.md` 與 `README.md`。**做法**:先對兩檔逐一 grep 下列**主題**,把實際命中的行號列成清單再改 —— spec 不預寫字串,因為 v4 試著預寫時就有幾條與實檔對不上(同一件事在 SPEC.md 用了四種措辭),照那份清單 grep 會得到假綠。
+8. 退役 `hooks/harness-push-gate.py` + `hooks/tests/test_harness_push_gate.py`(後者以相對路徑執行前者,只移一個會全紅)。註:兩檔已在 `sync-harness-mirror.py` 的 `EXCLUDED`,鏡像不受影響。SC-4 基準依指令輸出更新
+9. 更新 `docs/harness/SPEC.md` 與 `README.md`。**必須排在步驟 8 之後** —— 這兩檔記載了 hook / script 檔數與 pytest 總數,步驟 8 退役兩個檔會讓那些數字變動;若先更新文件再退役,寫進去的數字當場作廢,而且沒有任何後續步驟會回頭修(`sync-harness-mirror` 的對映表不含 `SPEC.md` / `README.md`,SC-7 打不到,錯誤記錄會直接進版控鏡像)。
+
+   **做法**:先對兩檔逐一 grep 下列**主題**,把實際命中的行號列成清單再改 —— spec 不預寫字串,因為 v4 試著預寫時就有幾條與實檔對不上(同一件事在 SPEC.md 用了四種措辭),照那份清單 grep 會得到假綠。
 
    要掃的主題:reviewer agent 檔的內容宣稱(立場 / severity / 輸出鐵則 / schema 將移入 preamble)、`protect-harness` 是否在役、`harness-context` 注入幾行、鏡像同步範圍、hook / script 檔數、pytest 總數、TDD tag 規則(`[refactor]` 已降選配)。
 
-   驗收:改完後對「該清單上每一條實際命中的字串」重跑 grep,零命中。
-9. 退役 `hooks/harness-push-gate.py` + `hooks/tests/test_harness_push_gate.py`(後者以相對路徑執行前者,只移一個會全紅)。註:兩檔已在 `sync-harness-mirror.py` 的 `EXCLUDED`,鏡像不受影響。SC-4 基準依指令輸出更新
+   驗收:改完後對「該清單上每一條實際命中的字串」重跑 grep,零命中;其中檔數與 pytest 數須與步驟 8 之後的實測輸出一致。
 10. 套用 SC-8 驗過的 `skillOverrides` key
 11. SC-1..SC-8 逐條驗證,附指令輸出,與步驟 0a 的 `baseline.md` 對照
 
