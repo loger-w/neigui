@@ -43,6 +43,15 @@ def main() -> int:
             f"目前 phase:{phase} — 此 phase 的 gate:{gate}",
             f"state.json 上次回寫:{state.get('last_updated')}",
         ]
+        # 第四行:此 phase 的 refs(追加,不取代上面三行 — 第三行是 state_is_lagging 的錨)
+        try:
+            refs = harness_lib.refs_for_phase(float(phase))
+        except (TypeError, ValueError):
+            refs = []
+        if refs:
+            lines.append(
+                "此 phase 的 refs:" + " / ".join(f"~/.claude/{r}" for r in refs)
+            )
         if harness_lib.state_is_lagging(cwd, state_path, state):
             lines.append("⚠ state.json 已落後最新 commit — 先回寫再繼續其他工作。")
         print("\n".join(lines))

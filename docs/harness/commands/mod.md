@@ -64,6 +64,8 @@
 
 ## Done
 目標成功條件全綠 + 既有行為白名單全保留 + 三類 commit 分明 + migration 可逆(若有)。
+收尾前跑 `python ~/.claude/hooks/check_feat_tags.py`(自動取 merge-base 為起點;三類 emoji
+目前為 warning 模式)。
 **全過後呼叫 `branch-lifecycle` 收尾節**,再做最終回報。
 
 ## 禁止(本流程特有,共通禁止見 CLAUDE.md)

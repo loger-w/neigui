@@ -42,6 +42,8 @@
 ## Done
 所有既有測試 refactor 前後都全綠 + refactor commits 純 🔵(characterization test 為 🟢 獨立
 commit)+ Phase 1 動機被處理。
+收尾前跑 `python ~/.claude/hooks/check_feat_tags.py`(自動取 merge-base 為起點;三類 emoji
+目前為 warning 模式)。
 **全過後呼叫 `branch-lifecycle` 收尾節**,再做最終回報。
 
 ## 禁止(本流程特有,共通禁止見 CLAUDE.md)

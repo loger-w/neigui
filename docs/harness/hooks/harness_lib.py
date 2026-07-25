@@ -45,6 +45,46 @@ def gate_for_phase(phase: float) -> str:
     return "(未知 phase,查 ~/.claude/commands/feat.md)"
 
 
+# PHASE_REFS 刻意**不加進 PHASE_GATES 當第三欄** — 上面那個 `for p, gate in PHASE_GATES`
+# 是兩元素解包,加欄必 ValueError,而該例外會被 harness-context.py 的兩層 except 吞掉,
+# 結果是整段 phase 注入靜默消失。另存 dict 則解包不變、既有測試零影響。
+#
+# 內容由 load-manifest.json 的 `phase` 欄產生,**不手抄**(單一資料源)。
+def _phase_refs(claude_dir: Path) -> dict[float, list[str]]:
+    manifest = claude_dir / "harness" / "load-manifest.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        records = data["profiles"]["feat-L"]["files"]
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError, KeyError, TypeError):
+        return {}  # fail-open:manifest 不見 / 壞掉不能讓注入整段炸掉
+
+    out: dict[float, list[str]] = {}
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        path = rec.get("path", "")
+        if not path.startswith("harness/refs/"):
+            continue
+        if rec.get("scope") != "main":
+            continue  # subagent context 不佔主 agent 窗口,不提醒主 agent 讀
+        if rec.get("condition"):
+            continue  # 條件式 ref 每回合提醒是噪音;觸發條件寫在 command 核心
+        try:
+            phase = float(rec["phase"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        bucket = out.setdefault(phase, [])
+        if path not in bucket:
+            bucket.append(path)
+    return out
+
+
+def refs_for_phase(phase: float, claude_dir: Path | None = None) -> list[str]:
+    """該 phase 要 Read 的 refs(相對 ~/.claude)。查無 / 讀不到一律回 []。"""
+    root = claude_dir if claude_dir is not None else Path.home() / ".claude"
+    return _phase_refs(Path(root)).get(phase, [])
+
+
 def _parse_ts(value: object) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
