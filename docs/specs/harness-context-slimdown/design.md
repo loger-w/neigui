@@ -1,10 +1,24 @@
-# Harness Context 瘦身改版 — design v10
+# Harness Context 瘦身改版 — design v11
 
 - 日期:2026-07-25
 - 範圍:`~/.claude/commands/{feat,mod,perf,refactor,auto,bug}.md` + `~/.claude/skills/{auto-verify,branch-lifecycle}` + `~/.claude/agents/*.md`(四個 reviewer)+ 為達成上述所需的 hook / 腳本改動
 - 不在範圍:常駐層(user / 專案 CLAUDE.md、MEMORY.md)、`chore.md`、superpowers plugin 檔本體
 
 ## Changelog
+
+**v11(2026-07-25)** — 第 10 輪審視:**1 條 P1**,「模型傳播完整性」lens 判定收斂。剩下那條由實質 lens 提出,附完整算式:
+
+**SC-2 的 40% 降幅門檻不可達。** 分母約 98,156(feat.md + 兩支共用 skill + SDD + 五支不變的 superpowers),真正可淨刪的只有 SDD 的 28,077 加上約 5,700 的敘事與重疊條 → **約 34%**。搬進 `refs/` 的內容依 §2.1 仍全額計入 main scope(換位置不是刪掉),跨 phase 讀取還不去重。
+
+更關鍵的是它指出湊到 40% 只剩兩條路,而兩條都是錯的:回頭砍 §5 判為「核心」的規則(v5 對 SC-1 判過的同一錯型),或縮 `-before` profile 的分母(量法被調來遷就門檻)。
+
+| 修正 | 內容 |
+|---|---|
+| SC-2 門檻 40% → **30%** | 在現行計帳邊界下的可達值,留有餘裕 |
+| 新增 **§1 反作弊規則** | 明文禁止「砍核心規則湊數」與「縮 `-before` 分母」;`X` 與 `X-before` 的清單差異只能來自本次實際搬動的檔 |
+| 新增 **SC-2 未達標的處置分支** | §4.1 備案只涵蓋 SC-8 未通過,不涵蓋這種。改為停下回報 + user 三選一(接受實際降幅 / 擴大 scope 納入常駐層 / 縮小 scope 重設計),**不准自行調門檻或調量法** |
+| SC-8 未通過時的備案門檻 15% → **5%** | SDD 佔淨刪量絕大部分,關不掉時只剩 rationale 與重疊條。數字難看但誠實,而那正是 user 用來決定要不要繼續的資訊 |
+| 誠實註記:真正的改善在**峰值**不在總量 | 「Phase 4 時不必扛著 Phase 8.5 的規則」是注意力與峰值窗口的改善,總量降幅只捕捉得到一部分。**不另立 SC** —— 定義每個 phase 的載入集合又是一層會生 bug 的機制(v9 的教訓)|
 
 **v10(2026-07-25)** — 第 9 輪審視:2 條 P1。「防漏網」lens 再次判定收斂;「新模型自洽」lens 明確推演了三種最刁鑽的列(巢狀 `ref`+`改寫`、同檔刪一半、跨檔移入)並確認**新模型全部表達得出來** —— 模型本身站得住。
 
@@ -134,7 +148,7 @@ v3 同時修正的實質問題:
 | SC | 門檻 | 量法(步驟 0a 記錄 before,步驟 11 記錄 after)|
 |---|---|---|
 | SC-1 | 六個 command 檔總和**降幅 ≥ 30%** | `Get-ChildItem ~/.claude/commands -Filter *.md \| Where-Object { $_.Name -ne 'chore.md' } \| Measure-Object Length -Sum`。改為降幅是因為絕對門檻與 §5 處置表互斥:五個非 feat 檔的現況總和本身就超過任何合理絕對值,而它們大部分內容是 §5 判定的 load-bearing 核心 |
-| SC-2 | 典型 L 級 `/feat` **主 agent 窗口**載入降幅 ≥ **40%** | `python ~/.claude/hooks/harness_load_estimate.py --profile feat-L --scope main`(該腳本於步驟 1d 建立)|
+| SC-2 | 典型 L 級 `/feat` **主 agent 窗口**載入降幅 ≥ **30%** | `python ~/.claude/hooks/harness_load_estimate.py --profile feat-L --scope main`(該腳本於步驟 1d 建立)。門檻從 40% 下修的理由與**反作弊規則**見下方 |
 | SC-2b | **subagent context** 另計,無門檻,只要求有數字並在報告中呈現 | `... --scope subagent` |
 | SC-3 | `dispositions.json` 的所有檢查通過 | `python ~/.claude/hooks/harness_load_estimate.py --verify-dispositions`。每列自帶 1-2 個檢查,每個檢查明寫自己的檔案:所有 `absent` 皆不命中、所有 `present` 皆命中。違反數 = 0。**不從處置值推斷驗哪個檔**(理由見 §5)|
 | SC-4 | hook 測試不退步 | 步驟 0a 記錄 `cd ~/.claude/hooks && python -m pytest tests -q` 的 passed 數 `B`,與 `pytest tests/test_harness_push_gate.py --collect-only -q` 的計數 `G`。步驟 11 要求 **passed ≥ B − G 且 failed = 0**(不等式:步驟 5、6 都紅先行會新增 case,等式必不成立)|
@@ -144,6 +158,19 @@ v3 同時修正的實質問題:
 | SC-8 | **前置 gate** — `skillOverrides` 對 plugin skill 生效 | 設定後開新 session,確認 available-skills 清單不再列 `superpowers:subagent-driven-development`,且 `/superpowers:subagent-driven-development` 仍可手動叫用。**未通過則 §4.1 整條作廢,走 §4.1 備案** |
 
 **驗證窗口**:全部 anytime。
+
+### SC-1 / SC-2 的反作弊規則(降幅制的必要配套)
+
+降幅門檻有兩條天然的作弊路徑,兩條都**明文禁止**:
+
+1. **不得回頭刪 §5 判為「核心」的規則來湊數。** 那正是本 spec 反覆點名的錯型:v5 判 SC-1 絕對門檻不可達時的理由就是「硬達成只能砍自己判為 load-bearing 的規則」。
+2. **不得調整 `-before` profile 的組成來縮分母。** 把 before 縮成「只含 feat.md + SDD + 兩支 harness skill」的窄清單,同樣的淨刪量就能輕鬆過關 —— 但那違反 §2.1 對主 agent 窗口的定義,等於量法被調來遷就門檻,數字失去意義。`X` 與 `X-before` 兩個 profile 的檔案清單差異**只能來自本次改版實際搬動的檔**。
+
+**SC-2 未達標時的處置**(§4.1 備案只涵蓋 SC-8 未通過,不涵蓋這種):停下回報實測降幅與逐檔明細,由 user 三選一 —— [1] 接受實際降幅並記入 `feat-improvements.md` / [2] 擴大 scope(把常駐層納入,即本輪 Out of Scope 的下一輪)/ [3] 縮小 scope 重新設計。**不准自行調門檻或調量法。**
+
+**門檻為何是 30% 而非 40%**:主要淨刪項只有兩塊 —— 關掉 SDD,以及 rationale 與重疊條的刪除。搬進 `refs/` 的內容依 §2.1 仍全額計入 main scope(它是換位置不是刪掉),跨 phase 讀取還不去重。40% 在這個計帳邊界下不可達;30% 是留有餘裕的可達值。
+
+> **要看真正的改善,看 SC-2b 與 phase 峰值而非總量。** 本次改版的主要價值是「Phase 4 時不必扛著 Phase 8.5 的規則」,那是**注意力**與**峰值窗口**的改善,總量降幅只捕捉得到其中一部分。這點誠實記在這裡,不另立 SC —— 因為「峰值」需要定義每個 phase 的載入集合,那又是一層會生 bug 的機制(見 v9 的教訓)。
 
 ---
 
@@ -259,7 +286,7 @@ references 放 **`~/.claude/harness/refs/`**。刻意不放 `commands/` / `skill
 - 選 `user-invocable-only` 不選 `off`:官方 changelog 記載 `off` 對模型與 `/` 都隱藏(逃生門焊死),`user-invocable-only` 只對模型隱藏 —— 省 context 又保留 `/superpowers:subagent-driven-development` 手動入口。
 - **key 格式未驗**:現有兩個樣板都是個人 skill(裸名),SDD 是 plugin skill(清單顯示帶 `superpowers:` 前綴)。這正是本 spec 點名的「配置外推」錯型,**不得憑推論寫死**。步驟 10 先實測裸名與前綴兩種,SC-8 通過才算數。
 
-**備案(SC-8 未通過時)**:不關 SDD,改為在 `feat.md` Phase 3 寫一行負向指示(「本流程不呼叫 `subagent-driven-development`,改用 Workflow;紀律見 `refs/feat-phase3.md`」),並接受該 skill 仍佔 context —— 此時 **SC-2 降幅門檻放寬至 ≥ 15%**(與 SC-2 同單位;SDD 本身就佔改版前總量的兩成以上,關不掉時 40% 不可能達到),並在 `feat-improvements.md` 記一條待解。
+**備案(SC-8 未通過時)**:不關 SDD,改為在 `feat.md` Phase 3 寫一行負向指示(「本流程不呼叫 `subagent-driven-development`,改用 Workflow;紀律見 `refs/feat-phase3.md`」),並接受該 skill 仍佔 context —— 此時 **SC-2 降幅門檻放寬至 ≥ 5%**(與 SC-2 同單位)。理由:SDD 佔了淨刪量的絕大部分,關不掉的話剩下的只有 rationale 與重疊條 —— 30% 不可能達到。這個數字很難看,但它誠實反映「最大槓桿被封死時這次改版還剩多少價值」,而那正是 user 該用來決定要不要繼續的資訊,並在 `feat-improvements.md` 記一條待解。
 
 **其餘三支不動**,理由逐一具名:
 
@@ -596,7 +623,8 @@ Done 條件改為「before/after 量測指令寫進 `optimize-plan.md` 且可重
 
 | 風險 | 處置 |
 |---|---|
-| SC-8 未通過 → §4.1 整條作廢 | 步驟 0 為前置 gate;備案已具名(負向指示 + SC-2 降幅門檻放寬至 ≥ 15%)|
+| SC-8 未通過 → §4.1 整條作廢 | 步驟 0 為前置 gate;備案已具名(負向指示 + SC-2 降幅門檻放寬至 ≥ 5%)|
+| **SC-2 自己未達標**(SC-8 通過但降幅仍不足)| §1 反作弊規則已明文禁止「砍核心規則」與「縮 before 分母」兩條歪路;處置為停下回報 + user 三選一。**不准自行調門檻或調量法** |
 | ref 該載入時沒載入 | §3 P1 機械注入。**Known Risk**:只涵蓋 `/feat`(其餘流程無 state.json,hook 不觸發);Phase -1 亦不涵蓋。兩者靠核心檔內指標句,列入下輪 |
 | 關掉 SDD 後流程紀律流失 | 步驟 1b 為關閉前提;SC-6 真實跑一輪驗紀律仍在 |
 | Workflow 驅動 review 未經真實流程驗證 | SC-6;本輪三次審視已是同形態實測 |
