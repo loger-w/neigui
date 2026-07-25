@@ -1,10 +1,26 @@
-# Harness Context 瘦身改版 — design v4
+# Harness Context 瘦身改版 — design v5
 
 - 日期:2026-07-25
 - 範圍:`~/.claude/commands/{feat,mod,perf,refactor,auto,bug}.md` + `~/.claude/skills/{auto-verify,branch-lifecycle}` + `~/.claude/agents/*.md`(四個 reviewer)+ 為達成上述所需的 hook / 腳本改動
 - 不在範圍:常駐層(user / 專案 CLAUDE.md、MEMORY.md)、`chore.md`、superpowers plugin 檔本體
 
 ## Changelog
+
+**v5(2026-07-25)** — 第 4 輪審視:18 條、推翻 1 條、存活 17(P0 經 verify 降 P1)。趨勢 39 → 40 → 24 → 18,finding 明顯轉為局部。
+
+| 修正 | v4 錯在哪 |
+|---|---|
+| 清掉 v3 絕對門檻殘留 | SC 表已改降幅,但檔案樹仍寫「≤ 16,000」、備案與風險表仍寫「放寬至 94,000 bytes」—— 與降幅%單位不相容,SC-8 失敗時無判定基準。三個 lens 各自獨立抓到同一處 |
+| `dispositions.json` 改**雙錨** | 單一 `anchor` 對「改寫」列驗不到東西(就地改,錨本來就在);且錨不唯一會出事 —— `superpowers:subagent-driven-development` 在 feat.md 出現兩次,拿它當「刪」的錨會連核心那句一起判成該刪 |
+| manifest 補 `-before` profile | SC-1 / SC-2 是降幅制,沒有 before 側清單就沒有分母 |
+| SC-2 的 before 移出 0a | 其量法需要 1d 才建立的腳本,掛在 0a 是順序矛盾。改在 1d 結束、步驟 2 動 command 之前量 |
+| `<superpowers>` 改讀 `installed_plugins.json` 的 user-scope `installPath` | 「取版本號最大的目錄」是會延遲爆炸的啟發式:cache 內有未在役的版本,且字串排序會把 `6.10.0` 排在 `6.2.0` 前 |
+| emoji 判準第二次修正 | 「type 必須帶**對應** emoji」仍會誤報 —— 實測 type 與 emoji 非一對一(同為 `fix` 型有的掛 🔴 有的掛 🟢),且豁免 `test`/`perf` 會放掉大量帶 emoji 的 TDD commit、`mod` 型兩邊都不在。改為只驗「有做三類分離」,分類正確性屬半語意判定留給 main agent |
+| SC-7 (b) 改打鏡像側 | 在來源側新增檔只會走 `build_pairs` 報 MISSING,打不到 `find_orphans`;orphan 側假綠仍無驗收 |
+| §6.1 同步移除「同檔混類」 | v4 在 §5.1 改判核心卻沒同步 §6.1,兩節對同一規則相反處置 —— 正是 §2.3 點名的互斥錯型 |
+| §5.2 SC gate 列限縮 | 整句刪會刪掉 /mod 唯一的「量化條件必附 unit + 量法」;/mod 不繼承 feat.md Phase 0,而 Phase 7/8/Done 三處都依賴「Phase 2 成功條件」|
+| §5.1 補 `sp-overrides.md` 落點 | §4 樹列了該檔但表中無對應列,步驟 1 無內容可寫 |
+| 步驟 8 改為「先 grep 再列」 | v4 預寫的過時字串清單有幾條與實檔對不上(同一件事在 SPEC.md 有四種措辭),照那份清單 grep 會假綠 |
 
 **v4(2026-07-25)** — 第 3 輪審視:24 條、**推翻 3 條**、存活 21(2 P0 / 11 P1 / 8 P2)。總數較第 2 輪降四成,且首次出現有效推翻 —— v3 的結構改動確實收斂了「衍生數字漂移」該類問題(三輪趨勢 39 → 40 → 24)。v4 修的是**留下來的硬傷**:
 
@@ -71,11 +87,11 @@ v3 同時修正的實質問題:
 | SC-1 | 六個 command 檔總和**降幅 ≥ 30%** | `Get-ChildItem ~/.claude/commands -Filter *.md \| Where-Object { $_.Name -ne 'chore.md' } \| Measure-Object Length -Sum`。改為降幅是因為絕對門檻與 §5 處置表互斥:五個非 feat 檔的現況總和本身就超過任何合理絕對值,而它們大部分內容是 §5 判定的 load-bearing 核心 |
 | SC-2 | 典型 L 級 `/feat` **主 agent 窗口**載入降幅 ≥ **40%** | `python ~/.claude/hooks/harness_load_estimate.py --profile feat-L --scope main`(該腳本於步驟 1d 建立)|
 | SC-2b | **subagent context** 另計,無門檻,只要求有數字並在報告中呈現 | `... --scope subagent` |
-| SC-3 | §5 處置表每一列依其處置極性驗證通過 | `python ~/.claude/hooks/harness_load_estimate.py --verify-dispositions`。**極性**:`核心` / `ref` / `改寫` 列 → 該列「錨」字串必須在落點檔中找到;`刪` 列 → 該錨字串必須在**來源檔中找不到**。違反數 = 0 |
+| SC-3 | §5 處置表每一列依其處置極性驗證通過 | `python ~/.claude/hooks/harness_load_estimate.py --verify-dispositions`。**極性**:`核心` → `anchor_kept` 在來源檔找得到;`ref` → `anchor_kept` 在落點檔找得到、在來源檔找不到;`刪` → `anchor_removed` 在來源檔找不到;`改寫` → `anchor_removed` 找不到**且** `anchor_kept` 找得到(改寫是就地改,只驗一個錨會什麼都驗不到)。違反數 = 0 |
 | SC-4 | hook 測試不退步 | 步驟 0a 記錄 `cd ~/.claude/hooks && python -m pytest tests -q` 的 passed 數 `B`,與 `pytest tests/test_harness_push_gate.py --collect-only -q` 的計數 `G`。步驟 11 要求 **passed ≥ B − G 且 failed = 0**(不等式:步驟 5、6 都紅先行會新增 case,等式必不成立)|
 | SC-5 | `/code-review` 命中數 = **0** | `Grep -rn -- "/code-review" ~/.claude/{commands,skills,agents}`。現況每一處都必須在 §5 表中有對應列(由 SC-3 保證),spec 不記處數與檔數 |
 | SC-6 | 新流程真實環境跑得通 | 用一個真實 `/mod` 或 `/bug` 小案子跑完整流程,附 commit 清單 + 驗證輸出 |
-| SC-7 | 鏡像同步器涵蓋新路徑且**非假綠** | 步驟 7 完成後 `python scripts/sync-harness-mirror.py --check` → exit 0。反向驗證兩項,皆須 exit 1:(a) 改壞一個 `harness/refs/*.md`;(b) 在 `skills/branch-lifecycle/references/` 下新增一個鏡像沒有的檔(測 `find_orphans` 側的 glob 假綠)|
+| SC-7 | 鏡像同步器涵蓋新路徑且**非假綠** | 步驟 7 完成後 `python scripts/sync-harness-mirror.py --check` → exit 0。反向驗證兩項,皆須 exit 1,且**必須分打兩側**:(a) 改壞一個來源 `harness/refs/*.md` → 走 `build_pairs` 的 DRIFT;(b) 在**鏡像側** `docs/harness/` 對應的新目錄下放一個無來源的檔 → 走 `find_orphans` 的 ORPHAN。(b) 若放在來源側只會報 MISSING,那還是 `build_pairs` 那條路,測不到 orphan 側的 glob 假綠 |
 | SC-8 | **前置 gate** — `skillOverrides` 對 plugin skill 生效 | 設定後開新 session,確認 available-skills 清單不再列 `superpowers:subagent-driven-development`,且 `/superpowers:subagent-driven-development` 仍可手動叫用。**未通過則 §4.1 整條作廢,走 §4.1 備案** |
 
 **驗證窗口**:全部 anytime。
@@ -160,7 +176,7 @@ references 放 **`~/.claude/harness/refs/`**。刻意不放 `commands/` / `skill
 
 ```
 ~/.claude/
-  commands/          目標:六檔總和 ≤ 16,000(SC-1)
+  commands/          目標:六檔總和降幅 ≥ 30%(SC-1)
     feat.md  mod.md  perf.md  refactor.md  bug.md  auto.md
     chore.md         不動
   harness/
@@ -193,7 +209,7 @@ references 放 **`~/.claude/harness/refs/`**。刻意不放 `commands/` / `skill
 - 選 `user-invocable-only` 不選 `off`:官方 changelog 記載 `off` 對模型與 `/` 都隱藏(逃生門焊死),`user-invocable-only` 只對模型隱藏 —— 省 context 又保留 `/superpowers:subagent-driven-development` 手動入口。
 - **key 格式未驗**:現有兩個樣板都是個人 skill(裸名),SDD 是 plugin skill(清單顯示帶 `superpowers:` 前綴)。這正是本 spec 點名的「配置外推」錯型,**不得憑推論寫死**。步驟 10 先實測裸名與前綴兩種,SC-8 通過才算數。
 
-**備案(SC-8 未通過時)**:不關 SDD,改為在 `feat.md` Phase 3 寫一行負向指示(「本流程不呼叫 `subagent-driven-development`,改用 Workflow;紀律見 `refs/feat-phase3.md`」),並接受該 skill 仍佔 context —— 此時 SC-2 門檻放寬至 **94,000 bytes**,並在 `feat-improvements.md` 記一條待解。
+**備案(SC-8 未通過時)**:不關 SDD,改為在 `feat.md` Phase 3 寫一行負向指示(「本流程不呼叫 `subagent-driven-development`,改用 Workflow;紀律見 `refs/feat-phase3.md`」),並接受該 skill 仍佔 context —— 此時 **SC-2 降幅門檻放寬至 ≥ 15%**(與 SC-2 同單位;SDD 本身就佔改版前總量的兩成以上,關不掉時 40% 不可能達到),並在 `feat-improvements.md` 記一條待解。
 
 **其餘三支不動**,理由逐一具名:
 
@@ -227,17 +243,23 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
       { "path": "<superpowers>/finishing-a-development-branch/SKILL.md",
         "scope": "main", "phase": 8, "condition": "Phase 8 若仍被 invoke" }
     ],
-    "mod-M": [], "bug": [], "refactor": [], "perf": []
+    "feat-L-before": [ "…改版前實際會載入的檔,供 SC-1/SC-2 算降幅…" ],
+    "mod-M": [], "mod-M-before": [],
+    "bug": [], "bug-before": [],
+    "refactor": [], "refactor-before": [],
+    "perf": [], "perf-before": []
   }
 }
 ```
+
+**`-before` profile 是降幅制的必要條件**:SC-1 / SC-2 都是「相對改版前下降 N%」,沒有 before 側的檔案清單就算不出分母。v4 漏了這點。
 
 欄位語意:
 - `scope`:`main`(計入 SC-2)/ `subagent`(計入 SC-2b)
 - `phase`:載入時機,供 `refs_for_phase()` 產生 `PHASE_REFS`(**單一資料源,不手抄兩份**)
 - `condition`:有此欄即為條件式;`--worst` 時計入,否則不計
 - **一支 ref 對多個 phase** → 同 `path` 列多筆(這是 record list 不是 path-keyed map)。求和時**不去重** —— 每次 Read 都真的佔窗口,去重反而低估
-- **`<superpowers>` 佔位符解析規則**:取 `~/.claude/plugins/cache/claude-plugins-official/superpowers/` 底下**版本號最大的目錄**(現有三個版本並存,glob 全收會三重計)。腳本必須在輸出中**印出實際解到的絕對路徑**;解不到則 exit 非 0,不得靜默略過
+- **`<superpowers>` 佔位符解析規則**:讀 `~/.claude/plugins/installed_plugins.json`,取 **user-scope 那筆的 `installPath`**。**不要**用「cache 底下版本號最大的目錄」—— cache 內存在未在役的版本(實測有一個版本在 cache 但不在 installed),而且字串排序會把 `6.10.0` 排在 `6.2.0` 之前,是個會延遲爆炸的啟發式。腳本必須在輸出中**印出實際解到的絕對路徑**;解不到則 exit 非 0,不得靜默略過
 
 `load-manifest.json` 與 `dispositions.json` 都必須進鏡像同步範圍 —— 現行 `DIR_MAPS` 的 pattern 只有 `*.md` / `*.py`,步驟 7 要一併加 `*.json`。
 
@@ -252,11 +274,20 @@ spec 不列載入數字。改由 manifest 承載,`harness_load_estimate.py` 讀�
 **本表是人讀版。** 步驟 1d 將它轉成 `~/.claude/harness/refs/dispositions.json`,每列一筆:
 
 ```json
-{ "anchor": "在來源檔中可 grep 到的唯一字串", "source": "commands/feat.md",
-  "target": "harness/refs/review-protocol.md", "disposition": "ref" }
+{ "source": "commands/feat.md", "target": "harness/refs/review-protocol.md",
+  "disposition": "ref",
+  "anchor_kept":    "改版後應存在的唯一字串(核心 / ref / 改寫 列必填)",
+  "anchor_removed": "改版後應消失的唯一字串(刪 / 改寫 列必填)" }
 ```
 
-SC-3 掃這份 JSON,**不解析 markdown 表格** —— 表中多數格是中文散文(如「核心原則:receiving 分類」),在原始檔裡 grep 不到,無法當機器錨點。填 `anchor` 是步驟 1d 的工作,且**每個 anchor 必須先在來源檔實際 grep 命中才算填完**。「段落列」與「細粒度列」是疊加關係(例:「Phase 8 收尾操作 → ref」與「`finishing-a-development-branch` 指標句 → 核心」同時成立,後者不隨前者搬走),`dispositions.json` 允許同一 `source` 出現多筆。
+SC-3 掃這份 JSON,**不解析 markdown 表格** —— 表中多數格是中文散文(如「核心原則:receiving 分類」),在原始檔裡 grep 不到,無法當機器錨點。
+
+填錨是步驟 1d 的工作,兩條硬性要求:
+
+1. **每個錨都必須先在來源檔實際 grep 命中才算填完**,且**在該檔中必須唯一**。反例:`superpowers:subagent-driven-development` 在 feat.md 出現兩次(顯式覆寫段與 Phase 3 分流表),拿它當「刪」的錨會連核心那句一起判成該刪 —— 這種情況要把錨延長到單一行可辨識的長度。
+2. **改寫列必填兩個錨**。改寫是就地修改同一行,只填 `anchor_kept` 會驗不到任何東西(它本來就在),只填 `anchor_removed` 則證明不了改對。
+
+「段落列」與「細粒度列」是疊加關係(例:「Phase 8 收尾操作 → ref」與「`finishing-a-development-branch` 指標句 → 核心」同時成立,後者不隨前者搬走),`dispositions.json` 允許同一 `source` 出現多筆。
 
 ### 5.1 feat.md
 
@@ -266,6 +297,7 @@ SC-3 掃這份 JSON,**不解析 markdown 表格** —— 表中多數格是中�
 | 核心原則:receiving 分類 / 3 輪上限 / P1≤2 退場 / 失敗類型分流 | 核心 | |
 | 核心原則中的 `/code-review` 字樣(第 10 行) | **改寫** | 改指 `refs/review-protocol.md`,不點名 CLI(SC-5)|
 | SC gate 完整版(含驗證窗口 + 降級策略) | 核心 | 專案特有,盤中限定驗證 |
+| superpowers 顯式覆寫的**操作面**(artifact 落點改 `.claude/<type>/<slug>/`、不提前 commit 設計文件) | ref | `refs/sp-overrides.md`;呼叫 brainstorming / writing-plans 時才需要。**覆寫的理由**(為何覆寫無上限迴圈、為何 P1≤2)已在 RATIONALE.md,不重複 |
 | S/M/L 分流 | ref | `refs/scope-tiers.md`(與 mod 合一)+ 核心一行指標 |
 | Phase -1 setup + state 初始化 | ref | `refs/feat-state.md`;**指標句留核心**(hook 此時不觸發)|
 | 延續型 feature 掃前輪指示 | ref | `refs/feat-phase0-2.md` |
@@ -312,7 +344,8 @@ SC-3 掃這份 JSON,**不解析 markdown 表格** —— 表中多數格是中�
 | Phase 8 白名單打勾 + migration 可逆 | 核心 | /mod 唯一終局對帳點 |
 | S/M/L 重寫 | ref | `refs/scope-tiers.md` |
 | 自主模式建議節 | 刪 | 退出條件範例**移入 auto.md 表**(該表現缺 S/M 列)|
-| SC gate 重述 / 開工括號步驟 / 收尾括號說明 | 刪 | |
+| SC gate 的「同 /feat Phase 0 SC gate」指涉 | 刪 | **只刪指涉,保留「量化條件必附 unit + 量法」本體** —— /mod 不繼承 feat.md 的 Phase 0,全檔只有這一處寫 unit/量法,而 Phase 7 / Phase 8 / Done 三處都依賴「Phase 2 成功條件」。整句刪掉 = /mod 全流程沒有任何成功條件品質要求 |
+| 開工括號步驟 / 收尾括號說明 | 刪 | |
 | 禁止清單與鐵則 B/E 重疊條 | 刪 | 保留流程特有條 |
 | Done 一句 + 收尾呼叫句 | 核心 | |
 
@@ -422,7 +455,8 @@ SC-3 掃這份 JSON,**不解析 markdown 表格** —— 表中多數格是中�
 ### 6.1 `[refactor]` 與 `[lock]` — 降為選配 + 進 reference
 
 - TDD 核心只留 `red → green` 兩 commit;`[refactor]` 改為「有重構才加」,不列強制順序。
-- `[lock]` + mutation 抽驗 + 禁 `git checkout` + 同檔混類分批 commit → `refs/feat-phase4-fix.md`(條件式)。
+- `[lock]` + mutation 抽驗 + 禁 `git checkout` 還原 → `refs/feat-phase4-fix.md`(條件式)。
+  **「同檔混類 finding 先 commit fix、refactor 後動」不進 ref,留核心** —— 它的觸發條件是「同一檔同時有 fix 與 refactor 類 finding」,與 test-gap 無關,綁在 test-gap 條件下永遠不會載入(§5.1 同此處置)。
 - **不為此動 `check_feat_tags.py`** —— 該 script 從未要求 `[green]` 後必有 `[refactor]`(只計數)。v2 曾寫「同步放寬」,是對現況的錯誤宣稱。
 - `[lock]` 的 `mutation-verified` 強制**照常有效**:規則移進 ref 不等於 gate 消失。
 
@@ -430,7 +464,10 @@ SC-3 掃這份 JSON,**不解析 markdown 表格** —— 表中多數格是中�
 
 **前提更正**:hooks 目前**完全沒有** emoji 檢查(F2)。所以這不是「推廣既有 gate」,是「新增一個 gate 並推廣到三個流程」。實作步驟:
 
-1. `check_feat_tags.py` 新增**三類 emoji checker**。判準**不是**「range 內每個 subject 開頭都要有 emoji」—— 真實 mod 分支必然含 `chore(mod/<slug>): Phase 7 真實環境驗證截圖`、`chore(...): artifacts` 這類合法無 emoji commit,那樣會恆誤報,「連續 10 次零誤報」的升級門檻永遠達不到。判準改為:**`type` 為 `feat` / `fix` / `refactor` 的 commit 必須帶對應 emoji**;`chore` / `docs` / `test` / `perf` 型明文豁免。專案 CLAUDE.md §6 本來就只對流程內 TDD commit 強制
+1. `check_feat_tags.py` 新增**三類 emoji checker**。判準經兩次修正:
+   - ❌「range 內每個 subject 開頭都要有 emoji」—— 真實 mod 分支必然含 `chore(mod/<slug>): Phase 7 真實環境驗證截圖`、`chore(...): artifacts` 這類合法無 emoji commit,恆誤報
+   - ❌「`feat`/`fix`/`refactor` 型必須帶**對應**的 emoji」—— 實測 `git log` 交叉表顯示 type 與 emoji **不是一對一**(同為 `fix` 型的 commit 有的掛 🔴 有的掛 🟢,取決於它是行為改還是新功能);且豁免 `test` / `perf` 型會放掉大量確實帶 emoji 的 TDD commit,而 `mod` 型兩邊都不在
+   - ✅ **採用**:range 內**至少要有一個** commit 帶三類 emoji 其一,且**帶 emoji 的 commit 其 emoji 必須是 🔴/🟢/🔵 三者之一**(不驗 type↔emoji 對應)。這驗的是「這輪流程有做三類分離」而不是逐 commit 的分類正確性 —— 後者是半語意判定,照 `check_feat_tags.py` 既有慣例應留給 main agent 對照,不進 script
 2. `--state` 由 required 改 optional;新增 `--since <sha>`;兩者皆缺時 range 起點 fallback `git merge-base origin/main HEAD`
 3. 流程型別由當前分支 prefix 判定(`feat/` `mod/` `fix/` `refactor/` `perf/`),決定套哪組判準
 4. **在 `mod.md` / `bug.md` / `refactor.md` 的收尾加呼叫點** —— 三檔目前零處提及 `check_feat_tags.py`,不加呼叫等於 checker 永不執行
@@ -452,7 +489,8 @@ Done 條件改為「before/after 量測指令寫進 `optimize-plan.md` 且可重
 ## 7. 遷移步驟
 
 0. **SC-8 前置實測**:設 `skillOverrides` 兩種 key 各試一次 + 開新 session 觀察。通過 → 續行;未通過 → 走 §4.1 備案並調整 SC-2 門檻
-   - **0a 基準量測**(SC-1 / SC-2 / SC-4 的 before 值):跑 SC-1 指令記 bytes 總和;跑 `pytest tests -q` 記 passed 數 `B`;跑 `pytest tests/test_harness_push_gate.py --collect-only -q` 記計數 `G`。輸出落檔 `docs/specs/harness-context-slimdown/baseline.md`。**必須在任何改動前執行**
+   - **0a 基準量測**(SC-1 / SC-4 的 before 值):跑 SC-1 指令記 bytes 總和;跑 `pytest tests -q` 記 passed 數 `B`;跑 `pytest tests/test_harness_push_gate.py --collect-only -q` 記計數 `G`。輸出落檔 `docs/specs/harness-context-slimdown/baseline.md`。**必須在任何改動前執行**
+   - **SC-2 的 before 不在 0a**:它的量法需要 1d 才建立的腳本。改在 **1d 結束時、步驟 2 動 command 之前**執行 `--profile feat-L-before`,此時所有原始檔仍未改動,量到的就是改版前狀態,追加寫入同一份 `baseline.md`。(v4 把 SC-2 掛在 0a 是順序矛盾)
 1. 建 `~/.claude/harness/refs/`,寫 refs(內容從既有 command 剪下)
    - **1b**:自 SDD SKILL.md **摘寫**三條紀律進 `refs/feat-phase3.md`(來源是 plugin skill,不是 command,無法剪下)
    - **1c**:寫 `refs/load-manifest.json`
@@ -468,9 +506,11 @@ Done 條件改為「before/after 量測指令寫進 `optimize-plan.md` 且可重
    - **定義 dst 展開規則**:現行 `mirror / dst_rel / f.name` 會把不同 skill 的同名 references 檔壓成一個。改為保留相對子路徑
    - **來源具名到兩支 harness skill**(`skills/auto-verify/references`、`skills/branch-lifecycle/references`),**不要**用 `skills/*/references` —— 那會掃進 `neoapi-python` 的十個檔(§10 已把個人 skill 劃出範圍)
    - `DIR_MAPS` 新增 `harness/`、`harness/refs/`,pattern 須含 `*.json`(否則兩份 manifest 不進鏡像),`ORPHAN_SCOPES` 同步擴,並補該腳本的測試。驗收見 SC-7 兩項反向驗證
-8. 更新 `docs/harness/SPEC.md` 與 `README.md`。**逐項清單**(改完對這些過時字串 grep 應零命中):
-   - `README.md`:「criteria + JSON schema + 唯讀 tools 固化在定義檔」(前兩者移入 preamble)、protect-harness 描述為在役(§9 已停用)、harness-context「注入 slug/phase/gate 三件」(步驟 5 加第四行)、同步範圍未含 `harness/` 與 `refs/`
-   - `SPEC.md`:「8 個 Python hook / script」(步驟 9 後為 7)、「81 個 pytest」(**現況即已錯**,實測遠多於此)、「每檔固化 立場+severity+輸出鐵則+criteria」(前三項移入 preamble)
+8. 更新 `docs/harness/SPEC.md` 與 `README.md`。**做法**:先對兩檔逐一 grep 下列**主題**,把實際命中的行號列成清單再改 —— spec 不預寫字串,因為 v4 試著預寫時就有幾條與實檔對不上(同一件事在 SPEC.md 用了四種措辭),照那份清單 grep 會得到假綠。
+
+   要掃的主題:reviewer agent 檔的內容宣稱(立場 / severity / 輸出鐵則 / schema 將移入 preamble)、`protect-harness` 是否在役、`harness-context` 注入幾行、鏡像同步範圍、hook / script 檔數、pytest 總數、TDD tag 規則(`[refactor]` 已降選配)。
+
+   驗收:改完後對「該清單上每一條實際命中的字串」重跑 grep,零命中。
 9. 退役 `hooks/harness-push-gate.py` + `hooks/tests/test_harness_push_gate.py`(後者以相對路徑執行前者,只移一個會全紅)。註:兩檔已在 `sync-harness-mirror.py` 的 `EXCLUDED`,鏡像不受影響。SC-4 基準依指令輸出更新
 10. 套用 SC-8 驗過的 `skillOverrides` key
 11. SC-1..SC-8 逐條驗證,附指令輸出,與步驟 0a 的 `baseline.md` 對照
@@ -481,7 +521,7 @@ Done 條件改為「before/after 量測指令寫進 `optimize-plan.md` 且可重
 
 | 風險 | 處置 |
 |---|---|
-| SC-8 未通過 → §4.1 整條作廢 | 步驟 0 為前置 gate;備案已具名(負向指示 + SC-2 放寬至 94,000)|
+| SC-8 未通過 → §4.1 整條作廢 | 步驟 0 為前置 gate;備案已具名(負向指示 + SC-2 降幅門檻放寬至 ≥ 15%)|
 | ref 該載入時沒載入 | §3 P1 機械注入。**Known Risk**:只涵蓋 `/feat`(其餘流程無 state.json,hook 不觸發);Phase -1 亦不涵蓋。兩者靠核心檔內指標句,列入下輪 |
 | 關掉 SDD 後流程紀律流失 | 步驟 1b 為關閉前提;SC-6 真實跑一輪驗紀律仍在 |
 | Workflow 驅動 review 未經真實流程驗證 | SC-6;本輪三次審視已是同形態實測 |
