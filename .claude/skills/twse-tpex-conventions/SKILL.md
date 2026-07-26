@@ -1,6 +1,6 @@
 ---
 name: twse-tpex-conventions
-description: TWSE/TPEx/MIS 官方端點直抓慣例(非 FinMind、零配額)。接 TWSE RWD / OpenAPI、TPEx OpenAPI、MIS 盤中報價端點,處理民國日期、月批次/最新快照 cache、TPEx TLS、寫直抓 service 的 FAKE 層時先讀。樣板 = services/daytrade_fee.py(月批次)+ services/warrants.py(最新快照,2026-07-11 /feat warrant-selector 沉澱)。
+description: TWSE/TPEx/MIS 官方端點直抓慣例(非 FinMind、零配額)。接 TWSE RWD / OpenAPI、TPEx OpenAPI、MIS 盤中報價端點,處理民國日期、月批次/最新快照 cache、TPEx TLS、寫直抓 service 的 FAKE 層時先讀。
 ---
 
 # TWSE / TPEx / MIS 直抓慣例
