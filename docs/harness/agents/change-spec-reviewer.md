@@ -2,7 +2,7 @@
 name: change-spec-reviewer
 description: /mod Phase 3 dispatch:對 change-spec.md 做對抗式 review(對照 Phase 1 現況表與行為白名單),回傳 P0/P1/P2 JSON findings。
 tools: Read, Grep, Glob
-effort: medium
+effort: high
 ---
 
 **第一件事:Read `C:/Users/USER/.claude/harness/refs/reviewer-preamble.md`** — 立場、severity

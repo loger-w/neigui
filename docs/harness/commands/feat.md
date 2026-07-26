@@ -10,8 +10,8 @@ Phase 細節放在 `~/.claude/harness/refs/`,各 phase 就地指路 —— 不�
 - **Artifacts 釘檔**:每 phase 產物寫到 `.claude/feat/<slug>/`,跨 session 可 resume。
   superpowers 的產物落點與「設計文件先 commit」要求**顯式覆寫**,操作面見 `refs/sp-overrides.md`。
 - **Review 輪數(2026-07-26 實證改版,依據見 RATIONALE)**:spec review 預設 **1 輪**、
-  code review **1 輪深度優先**;加輪條件見各 phase,無其他重跑。**Tech pivot(換架構重做)
-  → 必須先向 user 回報並取得批准。**此條**顯式覆寫** superpowers 的「repeat until approved」。
+  code review **1 輪深度優先**;加輪條件見各 phase,無其他重跑。Tech pivot(換架構重做)
+  **必須先向 user 回報並取得批准**。此條顯式覆寫 superpowers 的「repeat until approved」。
 - **Finding 處置分級**:spec review 的 P0/P1 → 先機械反證(grep / Read 可查證者),站得住就修;
   修不動或與 SC 互斥才走 `superpowers:receiving-code-review` 三分類。P2 彙總計數,不逐條處理。
   code review 維持 receiving 全紀律(該環節誤報率實測 24%,把關有效;spec reviewer 實測

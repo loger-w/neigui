@@ -30,6 +30,8 @@
 > 2026-07-26 改版:`sc_cycle_counts` / `pending_review_rounds` / `blockers` / `phase_2_mode`
 > 已自 schema 移除(16 run 實測分別為 9/16 全零、14/16 全零、16/16 空、恆 condensed;
 > 依據見 RATIONALE)。舊 run 的 state.json 不回填。
+> 選配欄位 `archived: true`(schema 不預建):已出貨但 state 未收尾的歷史欠帳,盤點後標記
+> 封存 — `harness_lib.py` 據此跳過注入。
 
 ## rollbacks 記帳(取代 sc_cycle_counts)
 

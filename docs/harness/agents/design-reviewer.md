@@ -2,7 +2,7 @@
 name: design-reviewer
 description: /feat Phase 1 dispatch:對 design.md 做對抗式 review(對照 brainstorm.md 的 SC-N),回傳 P0/P1/P2 JSON findings。
 tools: Read, Grep, Glob
-effort: medium
+effort: high
 ---
 
 **第一件事:Read `C:/Users/USER/.claude/harness/refs/reviewer-preamble.md`** — 立場、severity
@@ -31,5 +31,12 @@ effort: medium
 
 ## 輸入
 
-dispatch prompt 提供:design.md 路徑、brainstorm.md 路徑;round ≥ 2 時另有上一輪 review JSON
-路徑 + 本輪 changelog 摘要。
+dispatch prompt 提供:design.md 路徑、brainstorm.md 路徑;**限縮輪**(round 2)時另有上一輪
+review JSON 路徑 + 本輪 changelog 摘要。
+
+## 限縮輪(round 2 唯一形態,2026-07-26 起)
+
+round 2 只在 round 1 有 accepted P0 時發生,審查範圍**限縮**:只讀 design.md 的 changelog /
+amendment 段落與其直接交叉引用的章節,判「fix 是否改出新矛盾 / 漏更新交叉引用 / 與上一輪
+其他 finding 的 fix 互相衝突」。**不重掃全文、不重跑 criteria 1-10 全套**;在限縮範圍內
+發現的新問題照常回報。

@@ -13,7 +13,8 @@
 - 後續修改必標 `[amendment YYYY-MM-DD: <原因>]`
 - ≥ 3 個 edge cases
 - out of scope 節
-- 對應 SC 旁只標 `cycle-count: [see state.json]`(state.json 為唯一資料源)
+- SC 旁**不標**任何 cycle-count 註記(2026-07-26 起回退改記 state.json `rollbacks`,
+  讀法 filter by sc;state.json 為唯一資料源)
 
 ## Phase 2:PLAN.md 粒度
 

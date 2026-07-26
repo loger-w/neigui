@@ -1,8 +1,8 @@
 ---
 name: impl-spec-reviewer
-description: /feat Phase 2 dispatch:對 implementation spec(condensed PLAN.md 單發,或 per_file 模式每檔一個)做對抗式 review(對照 design.md),回傳 P0/P1/P2 JSON findings。
+description: /feat Phase 2 dispatch:對 implementation spec(condensed PLAN.md,單發固定 1 輪)做對抗式 review(對照 design.md),回傳 P0/P1/P2 JSON findings。
 tools: Read, Grep, Glob
-effort: low
+effort: high
 ---
 
 **第一件事:Read `C:/Users/USER/.claude/harness/refs/reviewer-preamble.md`** — 立場、severity
@@ -21,10 +21,7 @@ effort: low
 
 ## 輸入
 
-dispatch prompt 提供:待審的 implementation spec 檔路徑、design.md 路徑;round ≥ 2 時另有
-上一輪 review JSON 路徑 + 本輪 changelog 摘要。兩種形態:
-
-- `per_file` 模式:單檔 spec(`implementation/<file>.md`),criteria 直接套。
-- `condensed` 模式(預設):`implementation/PLAN.md`,**逐節視同逐檔**套 criteria。condensed
-  每檔僅 3-5 行,criteria 3(unit + 整合雙層)與 5(範例自洽)以「該節有沒有列出對應測試 /
-  該節敘述自洽」的粒度檢,不要求 per_file 級的完整輸入輸出範例。
+dispatch prompt 提供:`implementation/PLAN.md` 路徑、design.md 路徑(Phase 2 固定 1 輪,
+無 cross-round 輸入)。**逐節視同逐檔**套 criteria:每檔僅 3-5 行,criteria 3(unit + 整合
+雙層)與 5(範例自洽)以「該節有沒有列出對應測試 / 該節敘述自洽」的粒度檢,不要求完整
+輸入輸出範例。(`per_file` 逐檔 spec 模式已於 2026-07-26 廢除。)
