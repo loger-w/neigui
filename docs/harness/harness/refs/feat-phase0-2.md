@@ -15,14 +15,13 @@
 - out of scope 節
 - 對應 SC 旁只標 `cycle-count: [see state.json]`(state.json 為唯一資料源)
 
-## Phase 2:模式選擇的落地細節
+## Phase 2:PLAN.md 粒度
 
-**預設 `condensed`** —— 單一 `implementation/PLAN.md`,每檔一節 3-5 行(動什麼 / 新增或
-變更的 signature / 失敗測試清單對應 SC-N)。
+單一 `implementation/PLAN.md`,每檔一節 3-5 行(動什麼 / 新增或變更的 signature /
+失敗測試清單對應 SC-N)。高風險面的檔(安全邊界 / 共用 util / 對外 API / hot path)
+該節放寬到完整 signature + 輸入輸出範例,**仍寫在 PLAN.md 同一檔內**。
 
-`per_file`(逐檔 `implementation/<file>.md`:signature / 輸入輸出範例 / 失敗測試清單)
-**降為 opt-in**:僅 L 級且該檔屬高風險面(安全邊界 / 共用 util / 對外 API / hot path)
-才逐檔寫。
+(`per_file` 逐檔 spec 模式已於 2026-07-26 廢除:7/7 run 全選 condensed,0 次使用。)
 
 ## Phase 3 對齊規則(取代舊「ad-hoc 對齊」)
 

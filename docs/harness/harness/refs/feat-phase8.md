@@ -2,7 +2,7 @@
 
 ## Phase 8:整合與收尾
 
-執行順序:**tag 驗證 → artifact commit → 收尾節**。
+執行順序:**tag 驗證 → artifact commit → graphify 圖更新(若有)→ 收尾節**。
 
 1. **Commit tag 機械化驗證**:
    ```bash
@@ -27,12 +27,15 @@
    **分支條件**:repo `.gitignore` 排除 `.claude/` → 沿專案政策 skip,state.json 記
    `artifact_commit: "skipped (.claude/ gitignored)"`。有 commit 前例的專案照常 commit。
 
-3. **收尾路徑**:預設走 `branch-lifecycle` 收尾節(push → PR → review 補齊 → 自動 merge)。
+3. **graphify 圖更新(條件式)**:`graphify-out/` 存在且本輪動了 code →
+   `graphify <專案根> --update`(AST 增量,免 LLM、零 token);不存在則跳過,不在收尾建圖。
 
-4. **非預設路徑(user 指定才走)**:保留 branch(state.json 標 `paused: <reason>`,
+4. **收尾路徑**:預設走 `branch-lifecycle` 收尾節(push → PR → review 補齊 → 自動 merge)。
+
+5. **非預設路徑(user 指定才走)**:保留 branch(state.json 標 `paused: <reason>`,
    不 push 不 merge)。merge 規則在 `branch-lifecycle`,不重抄。
 
-5. **Worktree 清理(若有)**:`git worktree remove <path>` + `git branch -d feat/<slug>`
+6. **Worktree 清理(若有)**:`git worktree remove <path>` + `git branch -d feat/<slug>`
 
 ## Phase 8.5:沉澱(閉環)
 

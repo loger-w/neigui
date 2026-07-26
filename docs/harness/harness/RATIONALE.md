@@ -15,7 +15,7 @@
 **[artifact 落點 `.claude/<type>/<slug>/`]**
 覆寫 `superpowers:brainstorming` / `writing-plans` 的 `docs/superpowers/` 落點與「設計文件先 commit」要求。理由:artifact 統一釘在專案內,流程結束(Phase 8)才 commit,避免半成品設計文件散在主線歷史。
 
-**[review 輪數上限 3]**
+**[review 輪數上限 3]**(→ 2026-07-26 被「1 輪制」取代,見文末當日節;tech pivot 需 user 批准的條款保留)
 覆寫 `superpowers:subagent-driven-development` 與 `requesting-code-review` 的「repeat until approved」無上限迴圈。理由:共通鐵則 G + token 經濟。**Tech pivot 想重置計數必須先取得 user 批准** —— 否則「換個方向重來」會變成繞過上限的後門。
 
 **[P1 ≤ 2 帶額度退場]**
@@ -284,3 +284,44 @@ cache read **54.7%**($3,634)> cache write **36.0%** > output **9.0%** > uncached
 **[方法論:陽性對照又擋下兩次]**
 (1) 三次「什麼都不改」的對照裡有一次也失效 —— 若沒做這個對照,那批 n=1 的歸因會被全盤採信。
 (2) 配對複製的第 1 輪完美支持「改檔 → 失效」,第 2、3 輪直接推翻。**只跑一輪就會發表一條反過來的操作規則。**
+
+---
+
+## 2026-07-26 /feat 改版:review 輪數與條文使用率實證(41 run artifact + 16 session transcript)
+
+證據檔:`scratchpad/artifact-analysis.md` + `scratchpad/transcript-analysis.md`(session 級,已滅失則以本節數字為準)。分析方法:opus agent 掃 `.claude/{feat,mod,bug,perf,refactor}/` 全部 41 個 run 的 state.json / round JSON,+ 559 個 transcript 篩出 16 個完整 /feat session 交叉稽核。
+
+**[spec review 降 1 輪制;design review 加輪限縮為 amendment diff-review]**
+- 26 個 round≥2 的 review 檔,10 個(38%)產出 0 條 accepted P0/P1,4 個字面是 `[]`。
+- impl-spec round 2:4 輪 5 條 finding,accepted P0/P1 = **0**,100% P2 → Phase 2 固定 1 輪。
+- design round 2/3 扣掉兩個異常大案(e2e-tests、txo-chip-framework,前者是 tech-pivot 正當案例)後:9 run 12 輪只有 14 條 accepted P0/P1,**reviewer 真正新抓的獨立 P0 只 1 條**;且 round 2 相當比例在修 round-1 fix 自己造成的傷(rationale 欄自承)→ 加輪只審 changelog/amendment。
+- code review round 2:3/14 跑到,唯一有價值的一次是 user 手動換 xhigh workflow 重跑(`phase_4_revisit`)——**輪數不是變因,方法深度才是** → 單輪深度優先(lens + verify 同輪)。
+- 成本錨點:單次 code-review round 實測 51 agent / 2.81M token(p1-universe-filter 留檔)。
+
+**[Finding 處置分級:spec review 不逐條 receiving]**
+design-reviewer 286 條 findings accepted 率 **99.6%**(只打回 1 條)、impl-spec 98.8% —— 逐條 receiving 已退化成蓋章儀式。code review lens finder 誤報率 24.3%(機械快篩 + verify 真的在把關)→ receiving 全紀律只留 code review;spec finding 改「機械反證 → 修;修不動才 receiving」。
+
+**[廢除 per_file / Findings>10 收斂 / inline 完工自查 / sc_cycle_counts]**
+- `per_file`:7/7 有記錄 run 全 condensed(07-25 已知,本輪 0 新增)→ 整個模式刪除,`phase_2_mode` 欄位隨刪。
+- 「Findings > 10 先收斂」:11 個 session 有 >10 findings 的 round,執行 **0/11** → 刪。
+- Phase 4 inline 完工自查 checklist:3/16,07-07 之後 10 個 session 全 0(靜默死亡);其檢查項由 Phase 5 gate / Phase 7 表格 / Phase 8 tag 驗證機械覆蓋 → 刪。
+- `sc_cycle_counts`:非零僅 5/16 且全在 07-02 前;之後回退有發生但全沒記帳(9/16 all-zero)→ per-phase counter 實測失守,改 `rollbacks` append log(發生當下記一筆,零回退零維護)。`pending_review_rounds` 14/16 全零、`blockers` 16/16 空,隨刪。
+- 佐證通則(07-25 條的再驗證):「有落地檔或省事的條文活著(scope 16/16、Phase 7 表 15/16、subsumed 7/8),只存在對話中的條文死亡(收斂 0/11、自查 3/16)」。**新條文要嘛產 artifact,要嘛別寫。**
+
+**[next-time.md 鉤子改 checkpoint 制]**
+「每次 commit 前 cat」實測 25/143(17%),條文更新後最好單輪 6/14 —— 每 commit 頻率從未達成 → 改 Phase 3 開工前 + Phase 8 收尾前各一次。
+
+**[Phase 7 固定檔名 phase7-verification.md;分流只寫 FAIL]**
+16 run 出現 9 種檔名(條文沒指定);6 個檔有「全 N/A 分流聲明」空轉段(通過的 SC 逐條寫 Type(1)N/A…)。表格品質本身是好的(cell 內 N/A 0 次)。
+
+**[graphify 接入(Phase 0-2 query 優先 + Phase 8 --update)]**
+Phase 0-2 平均 77 tool call 中 16.4 次純 code 探索(57KB/session);但**槓桿在 reviewer subagent 的重複讀**(subagent Read 52% 是重複,3.13MB vs main agent 0.9MB)→ 同時上 review-protocol B 節「diff 先落檔」。query 用 CLI 直呼不載 skill(SKILL.md ~30KB,載一次抵掉省的)。
+
+**[「重複讀 harness 檔」假設被推翻]**
+harness refs + superpowers SKILL 在 16 session 合計重複讀 3 次 / 4KB(Skill 注入不走 Read)。**不要再往「不重讀 refs」方向優化** —— 重複讀的主體是 subagent 之間的 design.md / diff / 源檔。
+
+**[dispositions.json 部分 rows 自本日起過期]**
+該檔是 harness-context-slimdown(design v12 §5)的驗收快照,不隨動。本次改版使以下 present 檢查失效:`Review 輪數上限 3`、`group-by-file dedup`、`sc_cycle_counts`、`condensed`(字樣仍在但語境變)、`dispatching-parallel-agents`、`完工自查 checklist`(feat 側)。重跑 `harness_load_estimate.py` 的 SC-3 驗證前先讀本條。
+
+**[mod/bug/perf/refactor 側零結構化 review artifact]**
+25 個非 feat run 的 review 記錄退化成 change-spec.md 散文,「多輪 review 制度」實際只在 /feat 落地 —— 其他流程的同步改版列入下次處理(本輪 user 指示只動 /feat)。

@@ -18,24 +18,22 @@
 ```json
 { "slug": "...", "start_sha": "...", "branch": "feat/<slug>", "worktree_path": null,
   "current_phase": -1, "completed_phases": [], "scope": null,
-  "phase_2_mode": null,
-  "pending_review_rounds": { "phase_1": 0, "phase_2": 0, "phase_4": 0 },
-  "blockers": [], "phase_6_blocked_reason": null,
+  "phase_6_blocked_reason": null,
   "scope_overrides": { "goal_efficiency_mode": false },
   "last_updated": "<ISO>", "project_shape": null,
   "last_commit_sha": null, "final_merge_sha": null, "self_review_head": null,
   "artifact_commit": null,
-  "sc_cycle_counts": {
-    "_unscoped": { "phase_1": 0, "phase_2": 0, "phase_3": 0, "phase_4": 0,
-                   "phase_5": 0, "phase_6": 0, "phase_7": 0, "total": 0 }
-  },
+  "rollbacks": [],
   "paused": null }
 ```
 
-## sc_cycle_counts 稀疏記帳
+> 2026-07-26 改版:`sc_cycle_counts` / `pending_review_rounds` / `blockers` / `phase_2_mode`
+> 已自 schema 移除(16 run 實測分別為 9/16 全零、14/16 全零、16/16 空、恆 condensed;
+> 依據見 RATIONALE)。舊 run 的 state.json 不回填。
 
-- 初始化**只建 `_unscoped`**;`SC-N` 條目在該 SC **首次回退時才建**,且只含實際發生過的
-  phase 欄 + `total`。零回退的 SC 不出現在 state。
-- `phase_7` 欄是「Phase 7 判定失敗後回退到該 phase」的記錄欄;**Phase 7 自身不
-  increment**。
-- meta-cycle 升級規則(同 SC ≥ 2 次 / 跨 phase 累計 ≥ 3 次 → 升回 Phase 0/1)讀法不變。
+## rollbacks 記帳(取代 sc_cycle_counts)
+
+- **回退發生當下 append 一筆**:`{ "sc": "SC-3" | "_unscoped", "from": 6, "to": 1,
+  "reason": "<一句話>" }`。零回退的 run 維持空陣列(免維護)。
+- meta-cycle 升級規則:**同一 SC 出現第 2 筆 → 停下升級回 Phase 0/1**(讀法:filter by sc)。
+- Phase -1 豁免不記。

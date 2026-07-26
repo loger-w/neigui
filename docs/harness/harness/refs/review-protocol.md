@@ -14,12 +14,16 @@
    Criteria / severity / JSON schema 固化在 agent 定義,dispatch prompt 不重抄。
 2. round ≥ 2 時另傳上一輪 review JSON 路徑 + 本輪 changelog 摘要(cross-round 檢查)。
 3. 回傳 JSON 落檔 `<review-type>-review-round-<N>.json`。
-4. main agent 對每條 finding 過 `superpowers:receiving-code-review` 分類
-   (`accepted` / `rejected_with_reason` / `needs_more_context`),附 `resolution` 欄位。
-5. 處理完 accepted 的 P0/P1 後計數 +1,重跑 review。
+4. main agent 對 finding **先機械快篩**(grep / Read 可直接查證的 claim 先反證,誤報記
+   REFUTED);餘下的處置粒度由各 command 定義 —— /feat:P0/P1 站得住就修,修不動或與 SC
+   互斥才走 `superpowers:receiving-code-review` 三分類,P2 彙總;/mod /refactor:逐條
+   receiving 三分類(`accepted` / `rejected_with_reason` / `needs_more_context`),附
+   `resolution` 欄位。
+5. 是否重跑 review 由各 command 定義,**預設不重跑**(2026-07-26 實證:spec review round 2
+   的新增 accepted P0/P1 趨近零,見 RATIONALE)。
 
-**退出條件與輪數上限由各 command 自訂**(/feat Phase 1/2 為 max 3 輪、無 P0 且 P1 ≤ 2;
-/mod /refactor Phase 3 為 max 2 輪、無 P0/P1)。本協定不覆寫。
+**退出條件與輪數由各 command 自訂**(/feat Phase 1 為 1 輪 + P0 觸發限縮加輪、Phase 2 固定
+1 輪、無 P0 且 P1 ≤ 2;/mod /refactor Phase 3 為 max 2 輪、無 P0/P1)。本協定不覆寫。
 
 ## B. Code review(/feat Phase 4;/mod Phase 5;收尾補齊)
 
@@ -32,6 +36,11 @@
 
 dispatch **≥ 2 個角度真差異化的 lens finder**(Workflow fan-out 或平行 Agent 皆可),
 結果彙整成單一 `code-review-round-<N>.json`。
+
+**Diff 先落檔**:main agent 先把待審 diff 寫成單一檔(如
+`git diff <base>..HEAD > <artifact>/review-diff.txt`),finder prompt 指向該檔 + 需要的
+spec 檔路徑;finder 需要脈絡才開全源檔。(實證:subagent 之間重複讀 design.md / diff /
+全源檔佔 /feat Read 成本的大宗 —— 52% 的 subagent Read 是重複讀。)
 
 Lens 經驗值:mature codebase 上 test_coverage lens 命中率最高;correctness /
 consistency 易產生會被 refute 的風格建議 —— lens prompt 要角度**真**差異化,不是換句話說。
