@@ -1,0 +1,10 @@
+== Batch B1:opus 基準(fable 側等額度)==
+
+H27 — opus 寫 change-spec(真實待辦:review-protocol 去重)
+  E147  opus 寫 change-spec 穩態                          prompt=1,035,773 out=26,755 $1.7360
+
+H28 — opus 自己做(委派對照組的分母)
+  E148  opus 自己做 穩態                                    prompt= 137,138 w=   4,177 r= 132,266 out=  528 $0.1226
+
+H30 — opus review design.md(已過 12 輪審視)
+  E149  opus review design.md 穩態                       prompt= 358,850 out=11,369 $0.8411

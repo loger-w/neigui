@@ -1,0 +1,13 @@
+== Batch A:effort ==
+
+H25 — opus × 四個 effort,n=5(round 2 同題 n=2 的複製)
+  E127  opus effort=low (n=5)                          prompt= 138,067 w=   4,634 r= 132,499 out=  515 $0.1545
+  E128  opus effort=medium (n=5)                       prompt= 135,447 w=   3,876 r= 131,629 out=  509 $0.1179
+  E129  opus effort=high (n=5)                         prompt= 137,043 w=   4,496 r= 132,541 out=  683 $0.1318
+  E130  opus effort=xhigh (n=5)                        prompt= 186,975 w=   6,731 r= 180,851 out=1,135 $0.1868
+
+H26 — fable × 四個 effort,n=2(看曲線形狀是否同向)
+  E131  fable effort=low                               prompt= 144,970 w=  19,638 r= 125,326 out=  555 $0.5459
+  E132  fable effort=medium                            FAILED {'error': 'ode_state":"off","fast_mode_disabled_reason":"sdk_opt_in_required","subtype":"success","api_error_status":429,"result":"You\'ve reached your Fable 5 limit. Run /usage-credits to continue or switch models with /model.","type":"result","duration_ms":12593,"uuid":"3561f8ac-c45d-451f-95bd-1d52199c6f7c"}\n'}
+  E133  fable effort=high                              FAILED {'error': '_mode_state":"off","fast_mode_disabled_reason":"sdk_opt_in_required","subtype":"success","api_error_status":429,"result":"You\'ve reached your Fable 5 limit. Run /usage-credits to continue or switch models with /model.","type":"result","duration_ms":552,"uuid":"0b420752-5b57-4bb2-8093-d435213d7457"}\n'}
+  E134  fable effort=xhigh                             FAILED {'error': '_mode_state":"off","fast_mode_disabled_reason":"sdk_opt_in_required","subtype":"success","api_error_status":429,"result":"You\'ve reached your Fable 5 limit. Run /usage-credits to continue or switch models with /model.","type":"result","duration_ms":705,"uuid":"09757af1-9c13-48cc-844b-b6470cfb7bb1"}\n'}

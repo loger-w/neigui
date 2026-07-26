@@ -1,0 +1,6 @@
+== Batch A2:effort 穩態(每條件先暖機 2 次丟棄)==
+
+  E143  opus effort=low 穩態                             prompt= 140,474 w=   5,691 r= 134,713 out=  492 $0.1372
+  E144  opus effort=medium 穩態                          prompt= 136,044 w=   3,522 r= 132,516 out=  549 $0.1119
+  E145  opus effort=high 穩態                            prompt= 184,605 w=   5,412 r= 179,740 out=  716 $0.1564
+  E146  opus effort=xhigh 穩態                           prompt= 187,440 w=   7,596 r= 181,287 out=1,055 $0.1846
