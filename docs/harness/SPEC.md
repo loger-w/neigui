@@ -17,9 +17,10 @@
 - **2026-07-26 成本熱點實測(round 1)**(`docs/specs/harness-cost-research/`,45 個實驗):對一次 opus session,槓桿排名是 (1) prompt cache 命中(同 token 數成本差 9.5×)、(2) CLAUDE.md(−8,826 tok/session)、(3) turn 數、(4) plugin 停用、(5) command 檔瘦身。
   > **這份排名當天就被 round 2 推翻了前兩名 —— 照下一條,不要照這條。** 留著是因為「為什麼會排錯」比排名本身有用:round 1 全部用「回 OK」的**單次 API call** 探針,那種 session 裡開場 prompt 就是全部成本;真實 `/feat` 有 344 個 turn,開場只佔 1/344 的權重。
 - **2026-07-26 成本熱點實測(round 2,以真實語料為分母)**(`docs/specs/harness-cost-research/round2/`,66 個實驗 + 303 個真實 session、32,645 個 API call、還原花費 **$6,640**):
-  1. **model 選擇**(唯一數量級槓桿):同一題 `claude-fable-5` $0.687 vs `claude-opus-5` $0.145 = **4.74×**,而語料 **76.6% 的花費落在 fable-5**。牌價只解釋一半,另一半是 fable 在同題上多用 26% prompt。**牌價便宜 ≠ 總成本低** —— sonnet-5 牌價最低卻比 opus-5 貴 49%(探索了 2.1× context)。
+  1. **model 選擇**(唯一數量級槓桿):語料 **76.6% 的花費落在 fable-5**。**牌價便宜 ≠ 總成本低** —— sonnet-5 牌價最低卻比 opus-5 貴 49%(探索了 2.1× context)。
+     > **原寫「fable 是 opus 的 4.74×」已作廢(round 3,`round3/findings.md` F4)。** 該數字 n=2 且未排除 warm-up,更根本的問題是它把**單一任務的比值當成 model 屬性**。opus/fable 同批實測:寫 change-spec **1.14×**(分佈重疊,分不出差異)、檢索 2.10×、review 一份 67KB design.md **3.17×**。機制:寫 spec 時 fable 只用 0.40× prompt / 0.53× output / 一半 turn 就交件,抵銷牌價的 2×;review 時反而用 1.64× prompt 探索更多。**判準是「這個任務收斂型還是發散型」,不是「fable 貴不貴」。** 語料平均的 $/turn 1.64× 只能當語料平均,不是任一任務的比值。
   2. **turn 數**:同樣 5 個檔,拆成 5 個 turn 讀 vs 一個 message 平行讀完 —— prompt **3.08×**、成本 **+29%**。成本的 85% 落在 >100 turn 的 session。
-  3. **effort**:`xhigh` 是 `medium` 的 **2.10×**(流程檔目前沒設這個旋鈕)。
+  3. **effort**:成本門檻**分 model**,且機制是 turn 不是 effort 本身(round 3,`round3/findings.md` F2/F2b,n=7-8 暖機後穩態)。**opus**:`low`≈`medium`≈`high`(都收斂在 4 turn,全距 15% 在噪音內),只有 `xhigh` 跳到 5-6 turn 而貴 **1.4-1.6×**(不是原寫的 2.10×,那批 n=2 未排除 warm-up)。**fable**:`low`→`medium` 就漲 30%(4 turn → 6 turn,分佈完全不重疊)。→ 設定:opus `high`、fable `medium`,一律避開 `xhigh`;已落地於 `settings.json` 與 `~/.claude/CLAUDE.md` §G。
   4. output 指令:天花板 = output 佔總成本的 **9.0%**。
   5. 常駐層瘦身:整份專案 CLAUDE.md 只值 **$67 / 總成本 1.0%**。常駐層佔每 turn prompt 僅 **24.1%**,其中最大一塊是**動不了的內建 tool schema(57.8%)**,CLAUDE.md 只佔 14.3%。
   - **撤回 round 1 的「集中改 harness 檔」**:實測失效是**局部**(40k 只重寫後段 14-19k)、**一次性**(改回去立刻全命中)、且按**狀態**計價不按次數(同一個 git 狀態第二次出現就命中)。一次約 **$0.37**,對中位 $97.93 的 `/auto` session 是 0.4%。不值得任何作業節奏上的犧牲。
