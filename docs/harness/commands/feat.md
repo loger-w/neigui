@@ -13,7 +13,7 @@ Phase 細節放在 `~/.claude/harness/refs/`,各 phase 就地指路 —— 不�
   code review **1 輪深度優先**;加輪條件見各 phase,無其他重跑。Tech pivot(換架構重做)
   **必須先向 user 回報並取得批准**。此條顯式覆寫 superpowers 的「repeat until approved」。
 - **Finding 處置分級**:spec review 的 P0/P1 → 先機械反證(grep / Read 可查證者),站得住就修;
-  修不動或與 SC 互斥才走 `superpowers:receiving-code-review` 三分類。P2 彙總計數,不逐條處理。
+  修不動或與 SC 互斥才走 `receiving-code-review` 三分類。P2 彙總計數,不逐條處理。
   code review 維持 receiving 全紀律(該環節誤報率實測 24%,把關有效;spec reviewer 實測
   99.6% 被 accept,逐條 receiving 是儀式)。
 - **P1 帶額度退場**:Phase 1/2 退出條件「無 P0 且 P1 ≤ 2(入 Known Risks)」,**顯式覆寫**
@@ -36,7 +36,7 @@ worktree 路徑寫 state.json。
 
 ## Phase 0:Brainstorm + 可驗證性 gate + S/M/L 分流
 
-1. 呼叫 `superpowers:brainstorming`,**遵循 skill 的對話流程**(一次一問、2-3 方案、分節確認)。
+1. 呼叫 `brainstorming`,**遵循 skill 的對話流程**(一次一問、2-3 方案、分節確認)。
    以下是疊在 skill 之上的**加值 gate**,不取代其流程。
 2. **SC gate**:每條成功條件編號 `SC-1, SC-2…`,強制附「驗證方式」一行(指令 / 測試名 /
    截圖步驟)。**量化 SC(size / time / count)必附 measurement unit + 量法指令** —
@@ -49,7 +49,7 @@ worktree 路徑寫 state.json。
 
 ## Phase 1:設計 spec(M/L: 1 輪 + 條件加輪;S: 跳過)
 
-1. 呼叫 `superpowers:writing-plans` 寫 `design.md`:架構 / 檔案組織 / 資料流 / 邊界 / 接點;
+1. 呼叫 `writing-plans` 寫 `design.md`:架構 / 檔案組織 / 資料流 / 邊界 / 接點;
    每條 SC-N 對應設計章節;標版本 v1(後續改 → v2…,檔頭保留 changelog)。
 2. Review 依 `refs/review-protocol.md` A 節 dispatch `design-reviewer`,**預設 1 輪**。
 3. **加輪條件(至多 1 次)**:round 1 有 accepted P0 → 修復後補一輪**限縮 review**:
@@ -71,7 +71,7 @@ worktree 路徑寫 state.json。
 
 ## Phase 3:TDD + 文件同步 + commit 三分類
 
-1. 呼叫 `superpowers:test-driven-development`。實作模式表、多 task dispatch 的三條紀律、
+1. 呼叫 `test-driven-development`。實作模式表、多 task dispatch 的三條紀律、
    失敗回退表見 `refs/feat-phase3.md`。
    **本流程不呼叫 `superpowers:subagent-driven-development`** — 改用 Workflow / 逐 task
    dispatch,該 skill 的流程紀律(每 task review gate、跨 compaction ledger、禁並行 implementer)
@@ -103,7 +103,7 @@ worktree 路徑寫 state.json。
    - **Diff 先落檔**:main agent 先 `git diff <start_sha>..HEAD > review-diff.txt`,finder
      prompt 指向該檔,需要脈絡才開全檔(subagent 重複讀 design.md / 全源檔實測佔 /feat
      成本大宗)。
-2. 呼叫 `superpowers:receiving-code-review` 對每條 finding 分類(code review 全紀律,
+2. 呼叫 `receiving-code-review` 對每條 finding 分類(code review 全紀律,
    見核心原則「Finding 處置分級」)。
 3. accepted 依層級回對應 phase:spec 漏 → Phase 1/2 改文件 / impl 漏 → Phase 3 / test 漏 →
    Phase 3 紅先行(鐵則 C)。**test-gap finding 的 lock test 與 mutation 抽驗操作見
@@ -141,7 +141,7 @@ worktree 路徑寫 state.json。
 
 1. **進入前 state.json 一致性自檢**:`current_phase` / `completed_phases` 與實際 artifact
    (review JSON / evidence 檔)對得上;不符先補回寫再開始。
-2. 呼叫 `superpowers:verification-before-completion`,重新讀 brainstorm.md 不憑記憶。
+2. 呼叫 `verification-before-completion`,重新讀 brainstorm.md 不憑記憶。
 3. **強制結構化表格**,固定落檔 **`phase7-verification.md`**(16 run 實測出現 9 種檔名,
    收斂為一)(每 SC-N 一列):
 

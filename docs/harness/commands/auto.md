@@ -16,7 +16,7 @@ $ARGUMENTS 解析不出「可機械判定的退出條件 + 接續指令」→ �
 ### 自動核准範圍(不停下問的)
 - 設計 / 實作選擇:採 own recommendation 推進,**每個 critical decision 在對應 artifact
   標 `[auto-default: <選擇> | reason: <理由>]`**,讓 user 事後可快速 audit。
-- `superpowers:brainstorming` 的 user-approval HARD-GATE **替代條件**:規格來自 user 撰寫或
+- `brainstorming` 的 user-approval HARD-GATE **替代條件**:規格來自 user 撰寫或
   拍板的文件(prompt 檔 / spec 檔 / 已核准的 design.md)→ 視為預核准,brainstorm.md 記來源;
   沒有文件但也**無**方向性抉擇 → 採 own recommendation 推進並標 `[auto-default]`;
   **沒有這類文件又遇到方向性抉擇 → 仍要停**(這是 blocker 不是 gate)。

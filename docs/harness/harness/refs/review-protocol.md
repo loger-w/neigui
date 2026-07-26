@@ -16,7 +16,7 @@
 3. 回傳 JSON 落檔 `<review-type>-review-round-<N>.json`。
 4. main agent 對 finding **先機械快篩**(grep / Read 可直接查證的 claim 先反證,誤報記
    REFUTED);餘下的處置粒度由各 command 定義 —— /feat:P0/P1 站得住就修,修不動或與 SC
-   互斥才走 `superpowers:receiving-code-review` 三分類,P2 彙總;/mod /refactor:逐條
+   互斥才走 `receiving-code-review` 三分類,P2 彙總;/mod /refactor:逐條
    receiving 三分類(`accepted` / `rejected_with_reason` / `needs_more_context`),附
    `resolution` 欄位。
 5. 是否重跑 review 由各 command 定義,**預設不重跑**(2026-07-26 實證:spec review round 2

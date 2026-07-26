@@ -13,7 +13,7 @@
 1. **Phase 1|重現 + 蒐證**:最小重現步驟 / stack trace / error log / 截圖 / 影響範圍
    (哪些功能、哪些使用者、嚴重度)。**無法穩定重現 → 停下問**,不靠猜。
    重現步驟落檔 `.claude/bug/<slug>/repro.md`
-2. **Phase 2|Root cause**:呼叫 `superpowers:systematic-debugging` 並**遵循其方法論**:
+2. **Phase 2|Root cause**:呼叫 `systematic-debugging` 並**遵循其方法論**:
    調查階段可先列候選假說清單(廣度),但**驗證嚴格一次一個假說、一次改一個變數**。
    用實驗證明 root cause(不是「看起來像」)。實驗記錄追加寫進 `repro.md`
 3. **Phase 3|紅測試先行**(鐵則 C):用 Phase 1 重現條件寫測試 → 現在紅且訊息符合 →
@@ -33,7 +33,7 @@
    (不在本次 fix 處理)
 
 ## 失敗 routing
-- **同一 root cause 假設下修 3 次還紅** → 遵循 `superpowers:systematic-debugging` 的處置並
+- **同一 root cause 假設下修 3 次還紅** → 遵循 `systematic-debugging` 的處置並
   回報 user(三策略 + 各自為何失敗 + 推測的架構層根因),等 user 決定
 - 重現步驟跑不出來 → 回 Phase 1 蒐證,不允許「姑且修一下」
 - Blast radius 抽樣紅 → 改錯方向,回 Phase 2

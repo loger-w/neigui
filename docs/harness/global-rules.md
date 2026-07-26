@@ -1,9 +1,11 @@
 # 共通鐵則(所有任務一律遵守)
 
-> **superpowers plugin 停用中(2026-07-26,省常駐層;skill 未複製)**:本檔與各 command / refs
-> 引用的 `superpowers:*` skill 呼叫會失敗 → 一律 fallback 到引用處 command / refs **內建 gate**
-> 照常執行(SC gate / TDD tag / receiving 分級 / Phase 7 表格即其內化版),**不因 skill 缺席跳過
-> 該步驟**。還原:settings.json `enabledPlugins` 該行改回 true。
+> **superpowers plugin 停用(2026-07-26);6 支常用 skill 已複製為 user skill 直呼**:
+> `brainstorming` / `writing-plans` / `test-driven-development` / `receiving-code-review` /
+> `verification-before-completion` / `systematic-debugging`(harness 引用已全部去前綴)。
+> 殘留的 `superpowers:*` 引用都是條件式罕用項(worktrees / finishing / executing-plans),
+> 呼叫失敗時依引用處內建 gate 照常執行,不跳過步驟。複製來源與還原方式見
+> `~/.claude/harness/RATIONALE.md` 共通層。
 
 ## A. 觀察優先(動手前)
 動手前先看:
@@ -22,10 +24,10 @@
 - 不順手 lint fix / rename / 升 dependency
 
 ## C. 測試紀律
-TDD 走 `superpowers:test-driven-development`(紅先行)。沒測試保護的 code 先寫 characterization 再動。既有測試紅 → 預設「動到不該動的」,測試是行為合約不是裝飾。
+TDD 走 `test-driven-development`(紅先行)。沒測試保護的 code 先寫 characterization 再動。既有測試紅 → 預設「動到不該動的」,測試是行為合約不是裝飾。
 
 ## D. 證據要求(完成 ≠ 自動化綠燈)
-完工前過 `superpowers:verification-before-completion` + `auto-verify`,完成必附證據(指令輸出 / 測試數字 / 截圖 / 量測對照)。不用「應該可以」「probably」「我覺得」收尾。自動化全綠 ≠ Done,還要真實環境 + 回到動機核對。
+完工前過 `verification-before-completion` + `auto-verify`,完成必附證據(指令輸出 / 測試數字 / 截圖 / 量測對照)。不用「應該可以」「probably」「我覺得」收尾。自動化全綠 ≠ Done,還要真實環境 + 回到動機核對。
 
 ## E. 禁止繞過手段
 - ❌ `--no-verify` / `--skip-hooks` / `--no-gpg-sign`
@@ -84,7 +86,7 @@ TDD 走 `superpowers:test-driven-development`(紅先行)。沒測試保護的 co
 # 溝通偏好
 - **始終用 Traditional Chinese 回覆**(不論我發問用什麼語言、不論引用的外部資料是英文)
 - code / 回覆不加 emoji,除非我明確要求
-- 引用 skill 時用明確名稱(`superpowers:brainstorming`),不用「反思一下」這種泛稱
+- 引用 skill 時用明確名稱(`brainstorming`),不用「反思一下」這種泛稱
 # graphify
 - **graphify** (`~/.claude/skills/graphify/SKILL.md`) - any input to knowledge graph. Trigger: `/graphify`
 When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.

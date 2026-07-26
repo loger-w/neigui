@@ -12,7 +12,7 @@ metadata:
 **本 skill 是「專案形狀 → 驗證指令」與「feature shape → 真實環境驗證方式」兩張表的唯一
 source of truth** — command 只寫「呼叫 auto-verify」,不重抄表格。
 
-> 本 skill 負責**跑指令拿證據**;`superpowers:verification-before-completion` 負責**回頭核對
+> 本 skill 負責**跑指令拿證據**;`verification-before-completion` 負責**回頭核對
 > 動機**(重讀 brainstorm.md / SC-N / metric 目標)。順序:本 skill 全綠 → 才進那一支。兩者都
 > 過才是 Done。專案層 `<project>/CLAUDE.md` 可覆寫本 skill 的預設指令(就近原則)。
 

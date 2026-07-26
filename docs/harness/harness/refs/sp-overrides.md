@@ -1,6 +1,6 @@
 # superpowers 顯式覆寫(操作面)
 
-呼叫 `superpowers:brainstorming` / `superpowers:writing-plans` /
+呼叫 `brainstorming` / `writing-plans` /
 `superpowers:finishing-a-development-branch` 時才需要讀本檔。**覆寫的理由**已記在
 `~/.claude/harness/RATIONALE.md`,此處只寫怎麼做。
 

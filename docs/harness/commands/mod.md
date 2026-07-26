@@ -19,7 +19,7 @@
    - 讀懂現有實作意圖(註解 / commit message / 為什麼這樣寫)
    - 整理表:現況 vs 目標(行為 / signature / 對 caller 影響 / backward compat / migration),
      **落檔 `.claude/mod/<slug>/current-state.md`**(Phase 3 reviewer dispatch 的必要輸入)
-2. **Phase 2|聚焦 brainstorm**:呼叫 `superpowers:brainstorming`(遵循 skill 對話流程 —
+2. **Phase 2|聚焦 brainstorm**:呼叫 `brainstorming`(遵循 skill 對話流程 —
    一次一問)。產物落點為 `.claude/mod/<slug>/change-spec.md`(**user preference,顯式覆寫**,
    操作面見 `~/.claude/harness/refs/sp-overrides.md`)。聚焦四件事:
    - 改完的成功條件(可驗收;**量化條件必附 unit + 量法**)
@@ -40,7 +40,7 @@
    - 🟢 新功能:先寫紅測試 → 實作 → 綠
    - Commit 前 cat `docs/next-time.md`(順手衝動寫進去)
 5. **Phase 5|自評**:依 `~/.claude/harness/refs/review-protocol.md` B 節跑 code review
-   (**預設 medium 檔位**)→ `superpowers:receiving-code-review` 分類處理 → inline
+   (**預設 medium 檔位**)→ `receiving-code-review` 分類處理 → inline
    **完工自查 checklist**(測試齊全 / 三類 commit 分明 / 文件同步)→ 自評收斂後把當下 HEAD sha
    追記到 change-spec.md 末尾一行 `self_review_head: <sha>`(收尾節 review 增量判準)
    - **輸出契約**:P0/P1 逐條展開,P2 慣例 / 風格類彙總計數不逐條 receiving,疑似行為級 P2

@@ -16,7 +16,7 @@
    - **可重現量測步驟**(寫下來,unit + 指令)
    - **Baseline 量測前**呼叫 `auto-verify` 自動化節確認全綠(壞掉的 tree 量出的 baseline 無意義)
    - 沒可量化目標 → 停,「感覺慢」不算
-2. **Phase 2|Profile 找真實 bottleneck**:呼叫 `superpowers:systematic-debugging`(profile 假說
+2. **Phase 2|Profile 找真實 bottleneck**:呼叫 `systematic-debugging`(profile 假說
    同樣是假說 — 一次驗一個,用實驗證明是 **root bottleneck** 不是「順便也慢」的旁支),
    不准靠直覺猜:
    - Frontend:DevTools Performance / React Profiler / bundle analyzer
@@ -42,7 +42,7 @@
 6. **Phase 6|行為驗證**:呼叫 `auto-verify` skill(自動化 + 真實環境)— 全部測試綠 + dev server
    真實場景結果**跟優化前完全一樣** + 邊界 case(空 / 大量 / 極端輸入)+ prod-like 量測
    (dev 數字常騙人)
-7. **Phase 7|回頭核**:呼叫 `superpowers:verification-before-completion` — 目標達標?
+7. **Phase 7|回頭核**:呼叫 `verification-before-completion` — 目標達標?
    (before / after 表)沒退化其他 metric?Trade-off 可接受?三個月後別人看得懂?
 
 ## 失敗 routing
