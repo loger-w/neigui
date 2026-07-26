@@ -6,28 +6,7 @@ User-global `~/.claude/CLAUDE.md` 的鐵則(觀察優先 / Scope / 測試 / 證�
 
 ## 0. 目的 & 結構
 
-- Backend = FastAPI(Python 3.12),把 FinMind / TAIFEX 資料整成內部 JSON API。
-- Frontend = React 19 + Vite 6 + Tailwind 4 + Radix UI primitives,dev server `:5173` 透過 vite proxy 轉 `/api` → `:8000`。
 - 三個頁面 mode:`equity`(個股籌碼 — 三大法人 / 主力券商)、`options`(TXO 大戶 OI + 量能階梯)、`market`(全市場即時「今日三卡」— 加權vs上櫃強弱+貢獻 top5 / 市值分層 / 族群輪動三層鑽取,+ heatmap / 排行;**零歷史窗**,全部吃 tick snapshot,2026-07-20 market-today 改版)。`App.tsx` 的 `mode` state 用 `localStorage` 持久化。
-
-```
-backend/
-  main.py            FastAPI app + CORS + Gzip + lifespan
-  routes/            chip / symbols / options / market — 每個 router 自己一個檔
-  services/          finmind*.py + rate_limiter.py(對外 IO)
-  utils/cache.py     atomic JSON cache(版本號 invalidate)
-  tests/             test_*.py,asyncio_mode = auto
-frontend/src/
-  App.tsx            equity 主頁面 + mode 切換
-  components/        頁面元件 + ui/(shadcn-ish)
-  hooks/             useXxx.ts,domain 資料 fetching
-  lib/               api client、純 SVG renderer、type 定義
-  index.css          @theme tokens(見 §4)
-docs/specs/          spec / plan(規格優先看這)
-docs/harness/        AI 開發 harness 鏡像(commands/hooks/skills/agents + SPEC)
-.claude/harness.json 驗證指令插槽(auto-verify 與 git pre-push 共用的機器可讀來源)
-scripts/git-hooks/   git pre-push 測試防線(core.hooksPath 指向此)
-```
 
 ---
 
