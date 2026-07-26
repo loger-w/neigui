@@ -16,7 +16,9 @@ H27 的題目**刻意選用真實待辦**(review-protocol 三次載入的去重 
 
 from __future__ import annotations
 
-from r3 import measure, measure_full
+import time
+
+from r3 import measure, measure_full, run
 
 H27 = "H27 寫 spec:fable vs opus"
 H28 = "H28 跨 model 委派是否翻轉 2.16× 懲罰"
@@ -62,29 +64,58 @@ REVIEW_TASK = (
 )
 
 
+EFFORT = ["--effort", "medium"]
+WARMUP = 2
+
+
+def warm(prompt: str, model: str, extra: list[str]) -> None:
+    """每個條件先跑 WARMUP 次丟棄 —— 見 findings.md F1。
+
+    A 批的教訓:換 model / 換 flag 就是換一條 cache prefix,前 1-2 次必然全額 write
+    (成本約 3x)。n=2 而不暖機 = 兩次都落在 warm-up 上,比的是 cache write 大小
+    不是處置效應。round 2 的 effort 與 model 兩條結論都栽在這裡。
+    """
+    for _ in range(WARMUP):
+        run(prompt, model=model, extra=extra)
+        time.sleep(0.5)
+
+
 def main() -> None:
-    print("== Batch B:model 分工 ==\n")
+    print("== Batch B:model 分工(每條件暖機 %d 次)==\n" % WARMUP)
 
     print("H27 — 寫 spec(真實待辦:review-protocol 去重)")
-    measure_full("E135", H27, "opus 寫 change-spec", prompt=SPEC_TASK, model="opus", n=2,
-                 extra=[*TOOLS, "--effort", "medium"],
-                 note="產出存 outputs/,供人讀比對")
-    measure_full("E136", H27, "fable 寫 change-spec", prompt=SPEC_TASK, model="fable", n=2,
-                 extra=[*TOOLS, "--effort", "medium"],
+    warm(SPEC_TASK, "opus", [*TOOLS, *EFFORT])
+    measure_full("E135", H27, "opus 寫 change-spec", prompt=SPEC_TASK, model="opus", n=3,
+                 extra=[*TOOLS, *EFFORT],
+                 note="產出存 outputs/;與 fable 同批,可直接相減")
+    warm(SPEC_TASK, "fable", [*TOOLS, *EFFORT])
+    measure_full("E136", H27, "fable 寫 change-spec", prompt=SPEC_TASK, model="fable", n=3,
+                 extra=[*TOOLS, *EFFORT],
                  note="user 拍板要 fable 寫 spec;本列量代價")
 
     print("\nH28 — 跨 model 委派(round 2 的 2.16× 是 opus→opus 量的)")
-    measure("E137", H28, "fable 自己做", prompt=TASK, model="fable", n=2,
-            extra=[*TOOLS, "--effort", "medium"], note="對照組")
-    measure("E138", H28, "fable 派 opus subagent", prompt=DELEGATE_TO_OPUS, model="fable", n=2,
-            extra=[*TOOLS, "Task", "--effort", "medium"],
+    warm(TASK, "fable", [*TOOLS, *EFFORT])
+    measure("E137", H28, "fable 自己做", prompt=TASK, model="fable", n=3,
+            extra=[*TOOLS, *EFFORT], note="對照組")
+    warm(DELEGATE_TO_OPUS, "fable", [*TOOLS, "Task", *EFFORT])
+    measure("E138", H28, "fable 派 opus subagent", prompt=DELEGATE_TO_OPUS, model="fable", n=3,
+            extra=[*TOOLS, "Task", *EFFORT],
             note="貴窗口 coordinator + 便宜 subagent")
 
     print("\nH30 — review 判斷力(同一份 design.md,已過 12 輪審視)")
-    measure_full("E139", H30, "opus review design.md", prompt=REVIEW_TASK, model="opus", n=2,
-                 extra=[*TOOLS, "--effort", "medium"])
-    measure_full("E140", H30, "fable review design.md", prompt=REVIEW_TASK, model="fable", n=2,
-                 extra=[*TOOLS, "--effort", "medium"])
+    warm(REVIEW_TASK, "opus", [*TOOLS, *EFFORT])
+    measure_full("E139", H30, "opus review design.md", prompt=REVIEW_TASK, model="opus", n=3,
+                 extra=[*TOOLS, *EFFORT], note="與 fable 同批;對照 findings.md F6 的四條")
+    warm(REVIEW_TASK, "fable", [*TOOLS, *EFFORT])
+    measure_full("E140", H30, "fable review design.md", prompt=REVIEW_TASK, model="fable", n=3,
+                 extra=[*TOOLS, *EFFORT])
+
+    print("\nH26 — fable 的 effort 曲線(A 批卡額度未完成)")
+    for exp, eff in (("E141", "low"), ("E142", "medium"), ("E150", "high"), ("E151", "xhigh")):
+        warm(TASK, "fable", [*TOOLS, "--effort", eff])
+        measure(exp, "H26 effort 曲線是否跨 model 同向", f"fable effort={eff} 穩態",
+                prompt=TASK, model="fable", n=3, extra=[*TOOLS, "--effort", eff],
+                note="對照 E143-E146(opus 同題穩態)")
 
 
 if __name__ == "__main__":

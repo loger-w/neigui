@@ -1,0 +1,19 @@
+== Batch B:model 分工(每條件暖機 2 次)==
+
+H27 — 寫 spec(真實待辦:review-protocol 去重)
+  E135  opus 寫 change-spec                             prompt= 920,432 out=26,053 $1.8448
+  E136  fable 寫 change-spec                            prompt= 365,602 out=13,799 $1.9828
+
+H28 — 跨 model 委派(round 2 的 2.16× 是 opus→opus 量的)
+  E137  fable 自己做                                      prompt= 142,805 w=   5,807 r= 136,992 out=  555 $0.2789
+  E138  fable 派 opus subagent                          prompt=  89,072 w=   2,706 r=  88,484 out=  442 $0.5752
+
+H30 — review 判斷力(同一份 design.md,已過 12 輪審視)
+  E139  opus review design.md                          prompt= 454,807 out=14,480 $1.2500
+  E140  fable review design.md                         prompt= 747,933 out=19,553 $3.2649
+
+H26 — fable 的 effort 曲線(A 批卡額度未完成)
+  E141  fable effort=low 穩態                            prompt= 143,954 w=   5,822 r= 137,831 out=  509 $0.2857
+  E142  fable effort=medium 穩態                         prompt= 195,243 w=   6,719 r= 188,137 out=  998 $0.3713
+  E150  fable effort=high 穩態                           prompt= 153,922 w=  11,715 r= 142,201 out=  858 $0.4124
+  E151  fable effort=xhigh 穩態                          prompt= 205,747 w=  11,835 r= 193,904 out=1,622 $0.4956

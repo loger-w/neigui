@@ -1,10 +1,11 @@
 # Harness 成本效率 — Round 3(1b)結論
 
-- 依據:E127-E149(opus 側已完成),逐條記錄於本檔;原始資料 `results3.jsonl`
+- 依據:E127-E151(**已完成**),逐條記錄於本檔;原始資料 `results3.jsonl`
 - 新方法:每個條件先跑 2 次**丟棄的暖機**,只量穩態(理由見下方 F1)
-- 狀態:**opus 側完成;fable 側四個條件卡在額度(429),待重置**
-- 一句話:**round 2 的 effort 結論與 model 比值都被同一個量測 artifact 污染 —— warm-up。
-  排除後,effort 的成本效應只存在於 xhigh 一格,而 fable/opus 的比值從 4.74× 掉到 2× 量級。**
+- 一句話:**round 2 的 effort 與 model 兩條結論都被同一個量測 artifact 污染 —— warm-up。
+  排除後:effort 的成本門檻分 model(opus 在 xhigh、fable 在 medium);而「fable 是 opus 的
+  4.74×」這個問題本身問錯了 —— 比值在 1.14×(寫 spec)到 3.17×(review)之間,取決於任務是
+  收斂型還是發散型。**
 
 ---
 
@@ -64,13 +65,38 @@ E130 xhigh   MISS MISS  hit  hit  hit
 | low 比 medium 貴 18% | round 2 H21(n=2) | **推翻**。warm-up artifact |
 | xhigh 是 medium 的 2.10× | round 2 H21 | **修正為 1.4-1.6×**,且原因是 turn |
 
+### F2b — 但曲線形狀**不跨 model 通用**(E141/E142/E150/E151)
+
+同一道題,fable 的 effort 曲線與 opus **形狀不同**:
+
+| effort | opus 中位 | fable 中位 | fable/opus | fable 逐次 |
+|---|---:|---:|---:|---|
+| low | $0.1287 | **$0.2857** | 2.22× | 0.2230 / 0.2857 / 0.3370 |
+| medium | $0.1149 | $0.3713 | 3.23× | 0.3698 / 0.3713 / 0.4233 |
+| high | $0.1318 | $0.4124 | 3.13× | 0.3928 / 0.4124 / 0.8983 |
+| xhigh | $0.1846 | $0.4506 | 2.44× | 0.4506(僅 1 次命中)|
+
+- **opus**:low ≈ medium ≈ high,只有 xhigh 跳(4 turn → 5-6 turn)。
+- **fable**:`low` 與 `medium` **完全不重疊**(low 最大 0.3370 < medium 最小 0.3698),
+  low → medium 就漲 30%;turn 數 4 → 6。medium / high / xhigh 之間 n=3 分不開。
+
+**機制一致、門檻不同**:effort 仍然是「透過 turn 花錢」,但 fable 在 `medium` 就開始多跑 turn,
+opus 要到 `xhigh` 才會。所以「effort 該設多少」**必須分 model 回答**,沒有通用答案。
+
 ### 可操作結論
 
-**避開 xhigh;low / medium / high 成本相同,所以挑思考量最大的 `high`。**
-`high` 的 output 是 `low` 的 1.21×,成本反而低 2% —— 這不是折衷,是免費升級。
+| model | 設定 | 理由 |
+|---|---|---|
+| **opus** | `high` | low/medium/high 成本相同,high 的 output 是 low 的 1.21× —— 免費升級,不是折衷 |
+| **fable** | `medium` | low→medium 漲 30% 但買到 2× output(509 → 998);medium 以上分不開,再往上是純花錢 |
+| 一律 | 避開 `xhigh` | 兩個 model 都是最貴的一格 |
 
-已落地:`~/.claude/settings.json` `effortLevel` xhigh → **high**(2026-07-26)。
-待決:§G 那句要不要改寫(user-global 檔,未拍板)。
+已落地:`~/.claude/settings.json` `effortLevel` xhigh → **high**(2026-07-26);
+user-global `CLAUDE.md` §G 已改寫(commit 5cf7f3d)。
+
+> §G 現行寫「一律 high,只避開 xhigh」—— 依 F2b 這句對 fable 不精確(fable 的 medium
+> 比 high 便宜 10%)。**但 user 已拍板 fable → medium**,兩者結論一致,規則文字待下次順手補上
+> model 維度即可,不是錯誤。
 
 ---
 
@@ -98,38 +124,69 @@ E130 xhigh   MISS MISS  hit  hit  hit
 
 ---
 
-## F4 — fable/opus 的比值存疑,4.74× 很可能是同一個 artifact
+## F4 — 「fable 是 opus 的 N 倍」這個問題問錯了(定案)
 
-三個來源互相對照:
+opus 與 fable **同批**跑同一組任務(暖機後,effort=medium),比值從 1.14× 到 3.17×:
 
-| 來源 | fable / opus | 性質 |
-|---|---:|---|
-| round 2 真實語料 $/turn(303 session) | **1.64×** | 真實,非探針 |
-| round 3 命中對命中(E131 vs E127) | **2.05×** | 乾淨但 **n=1** |
-| round 2 E99-E101(SPEC.md 現寫) | 4.74× | n=2,**未排除 warm-up** |
+| 任務 | opus 中位 | fable 中位 | 比值 | 分佈是否分離 |
+|---|---:|---:|---:|---|
+| **寫 change-spec** | $1.7360 | $1.9828 | **1.14×** | **重疊**(opus 上界 2.149 > fable 下界 1.704)→ 分不出差異 |
+| 檢索 | $0.1226 | $0.2580 | 2.10× | 無重疊 |
+| effort 探針(low)| $0.1287 | $0.2857 | 2.22× | 無重疊 |
+| **review design.md** | $1.0291 | $3.2649 | **3.17×** | 無重疊 |
 
-前兩者互相吻合,第三者是離群值。而 cache write 在 fable 的費率是 opus 的 2 倍,
-**warm-up 污染會系統性放大 fable/opus 的比值** —— 機制上說得通。
+**同一組 model,比值差了 2.8 倍,取決於任務。不存在一個「model 比值」。**
 
-**SPEC.md 的 4.74× 應視為待重驗,不要拿它做決策。** 真值大概率在 1.6-2.0×。
+### 機制:fable 貴一倍,但在生成型任務上做得更省
 
-這直接影響 model 分工的論證力道:原先用 4.74× 論證「別把 fable 放在累積窗口上」,
-若真值是 2×,該論證力道約減半。
+| 任務 | opus prompt / out / turn | fable prompt / out / turn |
+|---|---|---|
+| 寫 spec | 920,432 / 26,053 / **19** | **365,602 / 13,799 / 10** |
+| review | 454,807 / 14,480 / 9 | **747,933** / 19,553 / 10 |
+
+寫 spec:fable 用 **0.40× 的 prompt、0.53× 的 output、一半的 turn** 交出同一份東西,
+把牌價的 2× 抵銷掉。
+review:反過來,fable 用 **1.64× 的 prompt** 探索更多 —— 所以貴 3 倍。
+
+**判準不是「fable 貴不貴」,是「這個任務是收斂型還是發散型」。**
+收斂型(產出一份文件)fable 幾乎免費;發散型(掃一份文件找問題)fable 貴 3 倍。
+
+### 對三個既有數字的處置
+
+| 數字 | 出處 | 處置 |
+|---|---|---|
+| 4.74× | round 2 E99-E101,SPEC.md | **作廢**。n=2 未排除 warm-up,且它把單一任務的比值當成 model 屬性 |
+| 1.64× | round 2 真實語料 $/turn | 保留為**語料平均**,不是任一任務的比值 |
+| 2.05× | round 3 E131,n=1 | 併入本節,與檢索 2.10× 一致 |
 
 ---
 
-## F5 — opus 側的任務成本基準(供 fable 回來對照)
+## F5 — 任務成本基準(opus / fable 同批)
 
 全部 effort=medium、暖機後穩態:
 
-| 實驗 | 任務 | prompt | output | 成本 |
-|---|---|---:|---:|---:|
-| E148 | 檢索(找 phase→refs 的落點)| 137,138 | 528 | $0.1226 |
-| E149 | review 一份 67KB design.md | 358,850 | 11,369 | $0.8411 |
-| E147 | 寫一份 change-spec | 1,035,773 | 26,755 | **$1.7360** |
+| 任務 | opus | fable |
+|---|---:|---:|
+| 檢索(找 phase→refs 的落點)| $0.1226 | $0.2580 |
+| review 一份 67KB design.md | $1.0291 | $3.2649 |
+| 寫一份 change-spec | $1.7360 | $1.9828 |
 
-**寫 spec 是檢索題的 14×,review 是 6.9×。** 這是 fable 側對照的分母;若 fable 是 2×,
-一份 fable 寫的 spec 約 $3.5。
+**寫 spec 是檢索題的 14×(opus)/ 7.7×(fable);review 是 8.4×(opus)/ 12.7×(fable)。**
+
+### F5b — 跨 model 委派沒有翻轉 2.16× 懲罰(E137/E138)
+
+round 2 的委派懲罰是 opus→opus 量的,本輪換成 **fable coordinator → opus subagent**
+(把工作從貴窗口搬到便宜窗口),原本預期可能翻轉:
+
+| | prompt | 成本(命中)|
+|---|---:|---:|
+| fable 自己做 | 142,805 | $0.2580 |
+| fable 派 opus subagent | **89,072** | $0.4504 |
+
+**coordinator 自己的 prompt 確實少了 38%,總成本仍是 1.75×。** 與 round 2 的 2.16× 同向。
+
+**「把活丟給便宜的 model 來省錢」不成立** —— 委派的成本是 subagent 要重新建立 context,
+換 model 換不掉這一項。委派買的仍然只有平行與 context 隔離。
 
 ---
 
@@ -152,27 +209,57 @@ E149 讓 opus 對已經過 **12 輪對抗審視**的 `harness-context-slimdown/d
 4. **PHASE_REFS 靜默停注入** —— 兩次抓到。§3 花整段要避免的失效模式被原封搬進新機制,
    且無 SC 驗證注入真的發生。
 
-**這是 review-as-subagent 的有效性證據**,也是 fable vs opus 判斷力對照(H30)的 opus 基準:
-fable 回來時比的是「能不能抓到這四條 + 有沒有 opus 沒抓到的」。
+**這是 review-as-subagent 的有效性證據。**
+
+### F6b — fable review 抓得比 opus 多,而且抓到一條可驗證的實錯(E140)
+
+同一份 design.md、同樣三次獨立 run:
+
+| | findings / run | 三次收斂條數 |
+|---|---:|---:|
+| opus(E139 + E149,6 run)| 5-7 | 4 |
+| **fable**(E140,3 run)| **6-8** | 3 |
+
+fable 抓到 opus 的四條裡的兩條(SC-6 不相交、PHASE_REFS 未定義 profile/scope/condition),
+但另外貢獻了 opus 完全沒有的三類:
+
+1. **反作弊規則字面上禁掉了 spec 自己的最大槓桿**(三次都抓到)——「清單差異只能來自本次
+   實際搬動的檔」,而 SDD 是被 `skillOverrides` **關閉**、不是搬動,照字面它不能從 after
+   側移除。opus 抓到的是同一條規則的另一個漏洞(漏掉第三條作弊路),fable 抓到的是**規則
+   與主線自相矛盾**,更尖銳。
+2. **步驟 1「剪下」與 1d「原始檔未改動」前提直接矛盾**(三次都抓到)。opus 六次只抓到一次。
+3. **SC-5 的量法指令本身跑不起來** —— design.md §1 寫 `Grep -rn ... --glob '*.md'`,
+   混用了 ripgrep 的 `--glob` 與 shell `grep`。**已實地驗證**:
+
+   ```
+   $ grep -rn --glob '*.md' "test" README.md
+   grep: unknown option -- glob
+   ```
+
+   而 `sc-verification.md` 實際執行時用的是 `--include='*.md'` —— 量法在執行時被默默改掉,
+   spec 白紙黑字的指令從來沒被跑過。**12 輪對抗審視 + opus 六次 review 都沒抓到。**
+
+**代價**:fable review $3.2649 vs opus $1.0291 = **3.17×**(F4)。
+
+**判讀**:多 30% findings + 一條可驗證實錯,換 3.17× 價格。這是 user 的取捨,不是我能替你決的;
+但「fable 判斷力較強」這個假設在本例**有了證據**,不再只是假設 —— 雖然 n=3,且只在一份文件上測過。
 
 ---
 
-## 待做(fable 額度恢復後)
+## 定案的可操作結論
 
-| 實驗 | 內容 |
-|---|---|
-| E132-134 | fable 的 effort 曲線(驗 F2 是否跨 model 同向)|
-| E136 | fable 寫 spec(user 拍板)— 對照 E147 的 $1.7360 |
-| E138 | fable 派 opus subagent — 驗 round 2 的 2.16× 委派懲罰在跨 model 下是否翻轉 |
-| E140 | fable review design.md — 對照 F6 的四條 |
-| — | **重驗 fable/opus 比值**(F4),暖機設計,n≥5 |
-
-跑法:`python batch_b_spec.py`。**opus 基準要連同 fable 在同一批重跑**,不跨批相減
-(理由見 F1)。
+1. **寫 spec 用 fable ≈ 免費**(1.14×,分佈重疊)。user 2026-07-26 拍板要 fable 寫 spec,
+   代價實測遠低於決策當時的預期(當時引用的是 4.74×)。
+2. **review 用 fable 貴 3.17×**,但抓得更多更尖。值不值得看你對「漏掉一條 P1 的代價」的評價。
+3. **檢索 / 機械性任務用 opus**(fable 2.1-2.2× 且沒有品質優勢證據)。
+4. **委派不省錢**,跨 model 也不省(1.75×)。要平行或 context 隔離才委派。
+5. **effort 分 model 設**:opus `high`、fable `medium`,兩者都避開 `xhigh`。
 
 ## 其他待處理
 
-- `SPEC.md` 的 `xhigh 是 medium 的 2.10×` → 改 1.4-1.6× 並註明機制是 turn
-- `SPEC.md` 的 `fable 是 opus 的 4.74×` → 標為待重驗(F4)
-- user-global `CLAUDE.md` §G 的 `effort:'low' 省額度` → 待 user 拍板改寫
-- `outputs/E147_*.md` 三份 change-spec 草稿可直接用於 review-protocol 去重那個改動
+- `outputs/E136_*.md` 三份 fable 寫的 change-spec、`E147_*.md` 三份 opus 寫的 —— 同一題六份,
+  可直接讀比品質(本輪只量了成本,**沒有評 spec 品質**)
+- `outputs/E147_*.md` / `E136_*.md` 可直接用於 review-protocol 去重那個改動
+- §G 的規則文字可補上 model 維度(見 F2b 註記,非錯誤)
+- **未測**:fable 在累積窗口(真實 main loop)上的成本。本輪全部是 fresh context,
+  是下界不是實際值
