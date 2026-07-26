@@ -47,7 +47,7 @@ TDD 走 `superpowers:test-driven-development`(紅先行)。沒測試保護的 co
 - Review criteria 結構化(checklist + JSON 回傳),不是「請反思一下」
 - Loop max 3 輪,嚴重度 P0/P1/P2,退出條件「無 P0/P1」(流程 command 檔可**顯式覆寫** P1 門檻 — 覆寫處必標明,以 command 檔為準)
 - 禁止「直到沒問題為止」的無限迴圈
-- 資源:Workflow `agent()` 預設 `effort:'low'` 省額度;Agent tool 無 effort 參數改用最小可勝任 model(如 haiku);難 judge 才升級且說明理由
+- 資源:`effort` **一律 `high`,只避開 `xhigh`**。2026-07-26 實測(n=7-8,兩批獨立):`low`/`medium`/`high` 成本無法區分(都收斂在 4 個 turn),只有 `xhigh` 多跑 turn 而貴 1.4-1.6×;同價下 `high` 的 output 是 `low` 的 1.21× → 壓低 effort 沒有省到,只是少想。**舊規則「`effort:'low'` 省額度」已推翻**,量測見 `neigui/docs/specs/harness-cost-research/round3/findings.md` F2。Agent tool 無 effort 參數,改用最小可勝任 model(如 haiku);難 judge 才升級且說明理由
 
 ## H. Git 推送紀律
 - **2026-07-18 起 push / merge 全自動**:所有 `git push`(含 main / `--force` / 非流程分支)與 `gh pr merge` 屬自動步驟,不需 user 確認(取代 2026-07-07「單一確認點」拍板;push-gate hook 已除役)。
