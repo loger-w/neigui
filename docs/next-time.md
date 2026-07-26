@@ -176,3 +176,9 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 ## From /mod broker-label-search-only-id(2026-07-22)
 
 - **BrokerSearch highlightMatch 對去dash label 的高亮缺口**:query 含 dash(「凱基-台」)時比對經 raw name 命中,但 dropdown label 是去dash字串,indexOf 對不上 → 命中但無高亮著色(功能正常,純視覺)。修法:highlight 前先 normalizeBrokerQuery 雙邊對齊再回推原始 index。
+
+## 2026-07-26 harness /feat 改版的後續(user 指示本輪只動 /feat)
+- [ ] /mod /bug /perf /refactor 同步 2026-07-26 實證改版:round JSON 落檔義務(25 個非 feat run 零結構化 review artifact,review 記錄退化成散文)、/mod Phase 3 輪數覆核(max 2 → 1 + 條件加輪?無 JSON 無法實證,先補落檔再談)、graphify query 接入各流程的現況調查 phase(/mod Phase 1 caller map、/bug Phase 2、/refactor Phase 5 blast radius 最受益)
+- [ ] /auto 表的 /feat 建議行更新(Phase 8.5 完成 → 退出條件不變,但 L 級「Phase 0 對齊價值高」註記依舊)
+- [ ] dispositions.json 過期 rows(見 RATIONALE 2026-07-26 節)— 若還要重跑 harness_load_estimate 的 SC-3 驗證先更新
+- [ ] graphify:docs/ 與 .claude/skills 的語意層(需 LLM)未建;要建再評估 token 成本。graph 目前 code-only(381 檔,3227 nodes),HEALTH 警告 640 dangling edges(AST 對外部 import 的正常樣態,查 caller 不受影響)
