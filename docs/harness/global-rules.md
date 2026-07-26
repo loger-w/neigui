@@ -1,5 +1,10 @@
 # 共通鐵則(所有任務一律遵守)
 
+> **superpowers plugin 停用中(2026-07-26,省常駐層;skill 未複製)**:本檔與各 command / refs
+> 引用的 `superpowers:*` skill 呼叫會失敗 → 一律 fallback 到引用處 command / refs **內建 gate**
+> 照常執行(SC gate / TDD tag / receiving 分級 / Phase 7 表格即其內化版),**不因 skill 缺席跳過
+> 該步驟**。還原:settings.json `enabledPlugins` 該行改回 true。
+
 ## A. 觀察優先(動手前)
 動手前先看:
 - 新功能 → brainstorm + 看 conventions
@@ -80,3 +85,6 @@ TDD 走 `superpowers:test-driven-development`(紅先行)。沒測試保護的 co
 - **始終用 Traditional Chinese 回覆**(不論我發問用什麼語言、不論引用的外部資料是英文)
 - code / 回覆不加 emoji,除非我明確要求
 - 引用 skill 時用明確名稱(`superpowers:brainstorming`),不用「反思一下」這種泛稱
+# graphify
+- **graphify** (`~/.claude/skills/graphify/SKILL.md`) - any input to knowledge graph. Trigger: `/graphify`
+When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.

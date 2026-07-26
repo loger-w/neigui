@@ -190,6 +190,9 @@ squash 會壓掉三類分離 commit 與 TDD tag,`git log --grep` 的機械驗證
 2026-07-25 user 指示:solo 開發下,改 harness 本體每次跳 ask 只是摩擦。hook 檔與其 pytest 保留,僅移除 `settings.json` 註冊。還原片段見 `docs/specs/harness-context-slimdown/design.md` §8.1。
 原始設計目的:防「被 prompt injection 的 agent 靜默弱化強制層」。停用期間這道防線不存在。
 
+**[superpowers plugin 停用(2026-07-26,user 拍板「先不複製」)]**
+`settings.json` `enabledPlugins."superpowers@claude-plugins-official": false`。目的:13 支 skill description + SessionStart 全文注入(using-superpowers ~5KB)退出常駐層。**未複製任何 skill 成專案 skill** — harness 內 10 個 `superpowers:*` 呼叫點(brainstorming×4 / receiving×4 / verification×3 / systematic-debugging×3 / writing-plans×2 / worktrees×2 / finishing×2 / TDD / SDD / executing-plans)自下個 session 起會 Skill-not-found,fallback 規則寫在 user CLAUDE.md 鐵則頁頭引言(依引用處內建 gate 照常執行,不因 skill 缺席跳過步驟)。**風險**:systematic-debugging(/bug /perf)與 brainstorming 對話協定沒有完整內化版,若實際 run 品質下降 → 還原(該行改回 true)或補做複製。
+
 **[harness-push-gate.py 是死檔]**
 未註冊於 settings.json,內文仍寫著已於 2026-07-18 廢止的「PR 收尾單一確認點」政策。任何人(或模型)重讀該檔會得到過期規則。
 
