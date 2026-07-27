@@ -100,11 +100,9 @@
 
 2026-07-19 一次拍板做/緩/砍並落地:**已做** = 自我保護 hook(protect-harness.py,ask 不 deny,Write|Edit + shell 雙面)、pre_push fail-closed 補洞(tracked 缺檔 / 空 verify 需 `allow_empty_verify`)、mod.md Phase 3 刪誤導句、4 agent location schema 統一 `{file, section?}` + cross-round 條款補齊、`scripts/sync-harness-mirror.py`(--check/--fix,首跑即揪出 5 個舊漂移檔)、/chore 輕量入口。**已被先前工作順路做掉** = 鐵則 G 覆寫條款、perf.md Phase 1 auto-verify、feat.md Phase 6 infra_fail。**砍** = 條件式 e2e 進機讀 gate(A 案拍板:e2e 歸屬是語意判斷機器判不了,維持 pre_push 不跑 e2e;殘餘風險由 /chore 檔第 3 步「e2e 判準檢查」補)。剩餘:
 
-- **[待 user 動手] `permissions.deny` 加 `Read(**/.env)`**:classifier 擋 Claude 改 permissions 自身;user 在 `~/.claude/settings.json` 的 permissions 加 `"deny": ["Read(**/.env)", "Read(**/.env.*)"]` 即可(確切 JSON 已於 2026-07-19 session 提供)
-- **[緩] Phase 6 deferred 證據追蹤**(state.json `deferred_evidence` + harness-context 注入)。觸發重評估:再次發生 deferred 證據漏補事故
-- **[緩] `derive_phase_from_artifacts` advisory**(附進 stop-audit block reason,不 auto-patch)。觸發重評估:state.json phase 標記與 artifact 實況錯亂再發
-- **[緩] final_merge_sha 向 git log 驗真**。觸發重評估:state.json 出現對不上 git log 的 final_merge_sha
-- **[緩] SubagentStop spike**(payload 可判 agent 身分?)後才立案 schema 機驗。觸發重評估:出現需要審計 subagent 行為的實際需求
+(剩餘 5 條(1 待 user 動手 + 4 緩)已於 2026-07-27 user 指示清理 — backlog 只留近期工程 /
+review 產生項。4 條 [緩] 各帶「事故再發」觸發條件,再發時依 git 歷史重立案;
+`permissions.deny` 加 `Read(**/.env)` 一併撤列管 — 要做仍是一分鐘,deny JSON 見 git 歷史本節。)
 
 ## From /feat options-page-v2(2026-07-07)
 
@@ -179,7 +177,7 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 
 ## 2026-07-26 harness /feat 改版的後續(user 指示本輪只動 /feat)
 - [ ] /mod /bug /perf /refactor 同步 2026-07-26 實證改版:round JSON 落檔義務(25 個非 feat run 零結構化 review artifact,review 記錄退化成散文)、/mod Phase 3 輪數覆核(max 2 → 1 + 條件加輪?無 JSON 無法實證,先補落檔再談)、graphify query 接入各流程的現況調查 phase(/mod Phase 1 caller map、/bug Phase 2、/refactor Phase 5 blast radius 最受益)
-- [ ] /auto 表的 /feat 建議行更新(Phase 8.5 完成 → 退出條件不變,但 L 級「Phase 0 對齊價值高」註記依舊)
+- (原「/auto 表的 /feat 建議行更新」條目已於 2026-07-27 銷帳 — 實查 auto.md 建議表現況即目標狀態:S 級「Phase 8.5 完成」退出條件在 + 07-27 停等註、L 級「Phase 0 對齊價值高」註記在;07-26/07-27 兩批改版已順路完成)
 - [ ] dispositions.json 過期 rows(見 RATIONALE 2026-07-26 節)— 若還要重跑 harness_load_estimate 的 SC-3 驗證先更新
 - [ ] graphify:docs/ 與 .claude/skills 的語意層(需 LLM)未建;要建再評估 token 成本。graph 目前 code-only(381 檔,3227 nodes),HEALTH 警告 640 dangling edges(AST 對外部 import 的正常樣態,查 caller 不受影響)
 - [ ] /mod 改版時一併修(2026-07-26 一致性掃描 P1):mod.md:44 inline 完工自查 checklist(/feat 側已因靜默死亡刪除)、mod M 級輪數三檔兩說(scope-tiers「1 輪」vs mod.md/review-protocol「max 2 輪」);P2 全清單見當日 scratchpad consistency-scan.md(若已滅失,P2 多為 superpowers 停用引用與 round≥2 措辭殘留)
