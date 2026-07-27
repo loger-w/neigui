@@ -3,7 +3,7 @@ name: auto-verify
 description: 跑「自動化驗證指令(tsc / vitest / pytest / ruff / build)」與「真實環境驗證(dev server + DevTools MCP + 截圖 / curl / CLI)」。在 /feat /bug /mod /refactor /perf 流程的「完成前 gate」階段呼叫,確認改動沒打壞既有測試與 build。先檢查專案形狀再選對應驗證指令來源,不硬跑 `cd frontend/` 撞牆。本 skill 是形狀偵測表與驗證方式表的唯一 source of truth(command 檔不重抄)。
 metadata:
   author: user
-  version: "3.0.0"
+  version: "3.1.0"
 ---
 
 # Auto-Verify
@@ -78,7 +78,9 @@ PowerShell `;` 不看 exit code、Windows PowerShell 5.1 亦無 `&&`,`vitest ...
 確認 regression 沒打壞。
 
 **Subsumed 判定**(web):該情境已有 Playwright e2e 覆蓋(spec 跑過真 backend + 真 browser)
-→ 標 `subsumed by e2e`,不重複 DevTools MCP 截圖。
+→ 標 `subsumed by e2e`,不重複 DevTools MCP 截圖。**限縮:只適用純 regression 情境** —
+本輪新增 / 改動的 UI 第一輪一律真截圖(e2e assertion 是模型轉譯的,轉譯錯照樣綠;
+新畫面首次人眼驗證不可被 e2e 頂替)。
 
 **Infra 失敗 fallback**(token 過期 / browser MCP 斷線 / 外部 503):不硬撞 — 標
 `infra_fail: <reason>` 回報呼叫方流程(/feat 記 `state.json.phase_6_blocked_reason`),

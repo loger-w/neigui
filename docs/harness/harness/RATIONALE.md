@@ -6,9 +6,14 @@
 
 格式:`[規則]` → 事件日期 / 實證內容 / **實際代價**。
 
+**記錄紀律(2026-07-27 拍板)**:本檔與交接檔的計數類敘述(N 處 N 檔 / N passed)必附產生指令(diff / grep -c / pytest 輸出)並以其輸出回填,不憑修完的記憶枚舉 — 事故:ed58255 補記宣稱 7 處、內容只列 6 處,二輪復審靠 upstream diff 實數才抓到(e0a9bef 更正)。
+
 ---
 
 ## /feat
+
+**[UI SC 可指認表述 + subsumed 限縮純 regression + 收尾 UI 驗收點 + Phase 4 (b) 必讀 design.md]**
+2026-07-27 user 直接拍板(沿 07-26 前例不走排程 meta-review)。根因一條:e2e assertion 是模型從討論轉譯的,轉譯錯照樣綠 — user 原話「常常發現 AI 雖然會用測試環境 E2E 但結果根本不是使用者想要的畫面或功能」。四個缺口同根因(spec↔實作↔畫面的對照被成本優化與自動化綠燈架空):subsumed 條款讓轉譯錯的 e2e 頂替唯一人眼驗證;evidence/ 截圖無 user 過目點;UI SC 表述有轉譯歧義空間;Phase 4「diff 先落檔」讓 (b) 焦點的 design.md 對照變自由裁量。落點:feat.md Phase 0 SC gate / Phase 4 步驟 1 例外句 / Phase 6 步驟 2 限縮 + auto-verify v3.1.0 Subsumed 節 + refs/feat-phase8.md 步驟 4 UI 驗收點。還原 = 各處刪 2026-07-27 標記句。
 
 ### 顯式覆寫類(覆寫 superpowers 或共通鐵則,不是漏寫)
 

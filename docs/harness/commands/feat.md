@@ -43,6 +43,10 @@ worktree 路徑寫 state.json。
    `size ≤ 50 KB` 不合格,要寫 `size ≤ 50 KB(gzip 後;量法 curl --compressed | wc -c)`。
    **驗證有外部時效窗口的 SC(僅盤中可驗 / 僅特定交易日可跑)必標「驗證窗口」**
    (anytime / 盤中 / 特定日)**+ 窗口外的降級策略** — Phase 0 就決定,不留給 review 補抓。
+   **UI / 畫面類 SC 必寫成「畫面可指認」表述**(位置 / 文字 / 顏色 / 元素)—
+   `顯示分點排行` 不合格,要寫 `頁面右上出現「分點排行」tab,點入後表格首欄為分點名稱(繁中)`。
+   e2e assertion 與截圖驗收都以此表述為準,轉譯不留歧義空間(2026-07-27 拍板:e2e 綠 ≠
+   user 要的畫面,根因是 assertion 轉譯歧義)。
    寫不出 → 該條不合格(gate 不是建議)。
 3. 寫 `brainstorm.md`;寫入要求與「沿用前輪設計時的跨輪約束掃描」見 `refs/feat-phase0-2.md`。
 4. **S/M/L 分流**(寫 `state.json.scope`):判準見 `refs/scope-tiers.md`。
@@ -102,7 +106,8 @@ worktree 路徑寫 state.json。
      邊界)照常展開。
    - **Diff 先落檔**:main agent 先 `git diff <start_sha>..HEAD > review-diff.txt`,finder
      prompt 指向該檔,需要脈絡才開全檔(subagent 重複讀 design.md / 全源檔實測佔 /feat
-     成本大宗)。
+     成本大宗)。**例外(2026-07-27 拍板):(b) 焦點必讀 design.md 的 SC / 介面節** —
+     spec 對照不受「按需才開檔」裁量,dispatch prompt 直接附該節行號範圍。
 2. 呼叫 `receiving-code-review` 對每條 finding 分類(code review 全紀律,
    見核心原則「Finding 處置分級」)。
 3. accepted 依層級回對應 phase:spec 漏 → Phase 1/2 改文件 / impl 漏 → Phase 3 / test 漏 →
@@ -127,6 +132,8 @@ worktree 路徑寫 state.json。
 1. 呼叫 `auto-verify` skill 的「真實環境驗證」節(feature shape 分流表以 skill 為準)。
 2. **Subsumed 判定**:feature shape = web 且該 SC 已有 Playwright e2e 覆蓋(Phase 5 跑過真
    backend + 真 browser)→ 該 SC 標 `subsumed by Phase 5`,不重複 DevTools MCP 截圖。
+   **限縮(2026-07-27 拍板):只適用純 regression SC** — 本輪新增 / 改動的 UI SC 第一輪
+   一律真截圖(e2e assertion 是模型轉譯的,轉譯錯照樣綠;新畫面首次人眼驗證不可被頂替)。
 3. **Infra_fail 標準 case 與 fallback 路徑以 `auto-verify` 真實環境節為準**。本流程只補記帳
    規則:不算 SC 回退,state.json 記 `phase_6_blocked_reason`;fallback 的 UI SC 註記寫進
    Phase 7 evidence 欄。

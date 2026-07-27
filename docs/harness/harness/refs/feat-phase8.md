@@ -32,6 +32,10 @@
 
 4. **收尾路徑**:預設走 `branch-lifecycle` 收尾節(push → PR → review 補齊 → 自動 merge)。
 
+   **UI 驗收點(2026-07-27 拍板)**:本輪新增 / 改動的 UI SC → 收尾回報訊息**逐條附**
+   關鍵截圖路徑(`evidence/SC-N_*.png`)+ 一句畫面內容描述(位置 / 文字 / 顏色),
+   給 user 固定過目點 — 截圖只存 evidence/ 自查不算,回報裡沒出現 = 未完成收尾。
+
 5. **非預設路徑(user 指定才走)**:保留 branch(state.json 標 `paused: <reason>`,
    不 push 不 merge)。merge 規則在 `branch-lifecycle`,不重抄。
 
