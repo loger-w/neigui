@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.42.0",
+    date: "2026-07-27",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "泡泡圖可同時選取多個分點(最多 6 個):搜尋連續加選,每個分點有專屬顏色標記,成交列表與買賣統計自動合併呈現",
+      },
+    ],
+  },
+  {
     version: "0.41.0",
     date: "2026-07-22",
     changes: [
