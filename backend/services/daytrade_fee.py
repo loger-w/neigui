@@ -249,13 +249,19 @@ async def get_day(date_str: str | None, refresh: bool = False) -> dict:
         key=lambda r: (-r["fee_rate"], -r["lending_shares"], r["stock_id"]),
     )
     month_dates: dict[str, set[str]] = {}
+    # borrow-fee-totals SC-1:該股當月全列 lending_shares 加總(含同日多筆;
+    # month_counts 是日數、month_shares 是股數,同資料源 all_rows → 同 key 集)。
+    # 「本月」= as_of 所在月(回退鏈落前月時為前月),沿用 month_counts 語意。
+    month_shares: dict[str, int] = {}
     for r in all_rows:
         month_dates.setdefault(r["stock_id"], set()).add(r["date"])
+        month_shares[r["stock_id"]] = month_shares.get(r["stock_id"], 0) + r["lending_shares"]
 
     payload: dict[str, Any] = {
         "as_of_date": as_of,
         "rows": day_rows,
         "month_counts": {sid: len(ds) for sid, ds in month_dates.items()},
+        "month_shares": month_shares,
     }
     if as_of != target:
         payload["no_trading_day"] = True
