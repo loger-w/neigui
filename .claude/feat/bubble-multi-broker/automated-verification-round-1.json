@@ -1,0 +1,11 @@
+{
+  "round": 1,
+  "steps": [
+    {"step": "backend pytest", "command": "python -m pytest -q", "exit_code": 0, "result": "687 passed, 1 skipped"},
+    {"step": "backend ruff", "command": "ruff check .", "exit_code": 0, "result": "All checks passed"},
+    {"step": "frontend vitest", "command": "npm test", "exit_code": 0, "result": "980 passed (98 files)"},
+    {"step": "frontend tsc+build", "command": "npm run build", "exit_code": 0, "result": "built in 1.81s"},
+    {"step": "e2e full (cache cleared)", "command": "npm test (playwright)", "exit_code": 0, "result": "60 passed 54.2s(含新 E38;先前 E34 flake 本輪綠)"}
+  ],
+  "all_green": true
+}
