@@ -31,6 +31,7 @@ const DATA: BorrowFeeData = {
     },
   ],
   month_counts: { "8046": 2 },
+  month_shares: { "8046": 17000 },
 };
 
 beforeEach(() => {
@@ -110,6 +111,7 @@ const MULTI: BorrowFeeData = {
     },
   ],
   month_counts: { "8046": 2, "2434": 1 },
+  month_shares: { "8046": 17000, "2434": 21000 },
 };
 
 const pickStock = (query: string) => {
@@ -169,10 +171,7 @@ describe("BorrowFeePage 單檔篩選", () => {
 // 選股加總 summary(feat/borrow-fee-totals SC-2/3/5)— testid textContent 層級
 // 比對(summary 由多個 span 組成,整句 getByText 會 fragmentation 失敗)。
 describe("BorrowFeePage 選股加總 summary", () => {
-  const WITH_SHARES: BorrowFeeData = {
-    ...MULTI,
-    month_shares: { "8046": 17000, "2434": 21000 },
-  };
+  const WITH_SHARES: BorrowFeeData = MULTI;
 
   it("選股 → summary 出現:本日合計 = 同日兩筆相加、本月累計 + 次數(千分位)", () => {
     hookState.data = WITH_SHARES;
@@ -223,7 +222,9 @@ describe("BorrowFeePage 選股加總 summary", () => {
   });
 
   it("month_shares map 整個缺(版本 skew)→ 不 crash、顯「—」", () => {
-    hookState.data = { ...MULTI } as BorrowFeeData; // 無 month_shares 欄
+    const skew = { ...MULTI };
+    delete (skew as Partial<BorrowFeeData>).month_shares; // 模擬舊 backend payload
+    hookState.data = skew;
     render(<BorrowFeePage />);
     pickStock("8046");
     const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
