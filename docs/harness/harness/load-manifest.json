@@ -34,6 +34,8 @@
         { "path": "harness/refs/feat-state.md", "scope": "main", "phase": -1 },
         { "path": "skills/branch-lifecycle/SKILL.md", "scope": "main", "phase": -1 },
         { "path": "skills/brainstorming/SKILL.md", "scope": "main", "phase": 0 },
+        { "path": "skills/grilling/SKILL.md", "scope": "main", "phase": 0,
+          "condition": "已成形方案分流成立(2026-07-27 提問姿態分流)" },
         { "path": "harness/refs/sp-overrides.md", "scope": "main", "phase": 0 },
         { "path": "harness/refs/scope-tiers.md", "scope": "main", "phase": 0 },
         { "path": "harness/refs/feat-phase0-2.md", "scope": "main", "phase": 0 },

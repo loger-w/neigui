@@ -89,6 +89,28 @@ Phase 1-8 / 兩支 skill 本體 / hooks / auto.md 均零改動。
   評估項已含)、dispositions.json 過期 rows、graphify 640 dangling edges、
   writing-plans L158 殘句。
 
+## Review 結果(2026-07-27 對抗式復審,已補修)
+
+無 P0,本批不退回。2 P1 + 4 P2 全數同日補修(細節以 RATIONALE /feat 節該條目補修行為準):
+
+- **P1 auto.md 替代條件段兩檔兩說**:「無文件但無方向性抉擇 → 推進」與 feat.md「拍板必停」
+  在口頭已成形方案 + 純實作級決策 case 正面矛盾(此 case 按 auto.md 方向性判定常不成立,
+  不是 contrived)→ auto.md 補分流例外句。
+- **P1 分流判定無落檔**:brainstorm.md 寫入要求原無「記分流判定」條,Phase 8 機械驗證也不碰
+  brainstorm.md 內容;/auto 下判模糊可續跑、判已成形必停,誘因梯度單向指向靜默不觸發 →
+  feat-phase0-2.md 寫入要求補一條。
+- **P2 ×4**:auto.md 建議表 /feat S 級補停等註;load-manifest.json feat-L Phase 0 補 grilling
+  條件條目(6 支複製時有同步 manifest 前例);next-time.md 補 /mod 側接入項(裁決:mod
+  聚焦 brainstorm 只縮主題不換姿態,2-3 方案 checklist 仍強制,痛點同在,該記);判準節補
+  「條件 1 單獨成立仍縮提案」句(全成形無決策點 case 原落回提案儀式 = 原痛點復發)。
+
+檢定過不立案:brainstorming/grilling 歧義(讀法「框架內換問法」有文本支持 — 步驟 1 首句
+無條件呼叫 brainstorming;拍板 gate 與 brainstorm.md 由分流句自身重申,兩 skill 逐字對讀
+無衝突指示)、延續型互動(兩節正交:帶入什麼約束 vs 怎麼問;前輪掃描屬「事實自查」與
+grilling 分工相容)、grilling description 自動觸發(判準不成立時被 trigger 只多問不傷 gate;
+user 喊 grill 本來就是 user override)、記錄紀律(標記句三處齊、機械驗證數字重跑全吻合、
+mirror 一致、hooks 130 passed)。
+
 ## 還原路徑(review 判定要退回時)
 
 - 本批條文都帶「2026-07-27 拍板」標記句:git revert `8b72906`(鏡像)+ 真實檔

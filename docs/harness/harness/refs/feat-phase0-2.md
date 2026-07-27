@@ -16,6 +16,9 @@
 - 「加一個 heatmap tab,吃現有 market snapshot 資料」→ 已成形(UI 形式 + 資料源指名)。
 
 **拿不準 → 預設模糊 idea 走 brainstorming**(生成式是安全預設;grilling 對模糊輸入會空轉)。
+條件 1 成立、僅條件 2 不成立(方案完整到無開放決策點)時走 brainstorming,但「提 2-3 方案」
+的縮減照樣適用(確認 + 至多一個 counter-proposal,不硬湊)— 對已完全想好的 user 重演提案
+儀式即本分流要消除的痛點(2026-07-27 review 補修)。
 
 分流只換「怎麼問」,其餘零差異:
 
@@ -39,6 +42,8 @@
 - 後續修改必標 `[amendment YYYY-MM-DD: <原因>]`
 - ≥ 3 個 edge cases
 - out of scope 節
+- **分流判定記錄(2026-07-27 review 補修)**:一行記「已成形 / 模糊」判定 + 命中(或未中)
+  哪條判準 — 分流有無被考慮必須事後可稽核,防「一律裝拿不準」靜默不觸發
 - SC 旁**不標**任何 cycle-count 註記(2026-07-26 起回退改記 state.json `rollbacks`,
   讀法 filter by sc;state.json 為唯一資料源)
 

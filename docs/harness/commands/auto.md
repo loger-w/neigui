@@ -20,6 +20,9 @@ $ARGUMENTS 解析不出「可機械判定的退出條件 + 接續指令」→ �
   拍板的文件(prompt 檔 / spec 檔 / 已核准的 design.md)→ 視為預核准,brainstorm.md 記來源;
   沒有文件但也**無**方向性抉擇 → 採 own recommendation 推進並標 `[auto-default]`;
   **沒有這類文件又遇到方向性抉擇 → 仍要停**(這是 blocker 不是 gate)。
+  **例外(2026-07-27):/feat Phase 0 判定「已成形方案」時,「無文件但無方向性抉擇 → 推進」
+  不適用 — grilling 共識拍板必停,以 feat.md Phase 0 步驟 1 分流句為準**(口頭方案的
+  剩餘決策常是實作級,按方向性判定會誤放行)。
 - **方向性抉擇判定**(上一條的判準):把候選選項互換,brainstorm.md 的 SC 集合 / out of scope /
   對外契約(API shape、資料格式、資料源)任一需要改寫 → 方向性抉擇,停;全部不動(純內部
   實作、可逆)→ 實作選擇,標 `[auto-default]` 推進。
@@ -47,7 +50,7 @@ $ARGUMENTS 解析不出「可機械判定的退出條件 + 接續指令」→ �
 | /bug | ✓ `/auto pytest 全綠 且 紅測試轉綠 且 regression 抽樣綠 /bug <desc>` |
 | /refactor | ✓ `/auto 既有測試前後皆全綠 /refactor <why>` |
 | /perf | ✓ `/auto <metric 達標> 且 既有測試全綠 /perf <metric>` |
-| /feat S 級 | ✓ `/auto Phase 8.5 完成 /feat <desc>` |
+| /feat S 級 | ✓ `/auto Phase 8.5 完成 /feat <desc>`(帶已成形方案時 Phase 0 仍停一次 grilling 拍板,2026-07-27) |
 | /feat 中段自動 | `/auto Phase 7 結構化表格全綠 /feat <desc>` |
 | /feat L 級 | ⚠ 不建議全自動:Phase 0 對齊價值高;merge 確認已移除,**想在 merge 前人工試用就不要疊** /auto 跑完收尾 |
 | /mod S/M 級 | ✓ `/auto tests 全綠 且 **Phase 2 白名單行為保留** /mod <desc>` |
