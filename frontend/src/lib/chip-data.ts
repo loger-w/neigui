@@ -202,20 +202,21 @@ export interface BrokerTotals {
 }
 
 /**
- * Sum a single broker's total buy/sell lots + monetary amount across all
- * price levels. Returns zeros when brokerId is null or not found in trades.
+ * Sum the selected brokers' total buy/sell lots + monetary amount across all
+ * price levels (multi-broker merge). Returns zeros when the selection is
+ * empty or none of the ids appear in trades.
  */
 export function computeBrokerTotals(
   trades: BrokerTrade[],
-  brokerId: string | null,
+  brokerIds: ReadonlySet<string>,
 ): BrokerTotals {
-  if (!brokerId) return { buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 };
+  if (brokerIds.size === 0) return { buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 };
   let buyLots = 0;
   let sellLots = 0;
   let buyAmount = 0;
   let sellAmount = 0;
   for (const t of trades) {
-    if (t.broker_id !== brokerId) continue;
+    if (!brokerIds.has(t.broker_id)) continue;
     buyLots += t.buy;
     sellLots += t.sell;
     buyAmount += t.buy * 1000 * t.price;
@@ -331,23 +332,24 @@ function tradeComparator(spec: SortSpec): (a: TradeRow, b: TradeRow) => number {
 /**
  * Build {buyRows, sellRows} for the bubble-view side panel.
  *
- * When `selectedBroker` is null, returns the top `maxRows` overall by the
- * given sort key. When `selectedBroker` is set, the filter is applied FIRST
- * and then sliced — so a small-volume broker's price levels are not lost
- * behind a global top-N cap that they couldn't make.
+ * When `brokerIds` is empty, returns the top `maxRows` overall by the given
+ * sort key. When non-empty, the id filter is applied FIRST and then sliced —
+ * so a small-volume broker's price levels are not lost behind a global top-N
+ * cap that they couldn't make. Filter key = broker_id(同名不同 id 是不同
+ * 分點;合併需把每個 id 都放進集合)。
  *
  * `buySort` / `sellSort` are independent: changing one side does not
  * reshuffle the other.
  */
 export function buildTradeRows(
   trades: BrokerTrade[],
-  selectedBroker: string | null,
+  brokerIds: ReadonlySet<string>,
   maxRows: number,
   buySort: SortSpec = DEFAULT_TRADE_SORT,
   sellSort: SortSpec = DEFAULT_TRADE_SORT,
 ): { buyRows: TradeRow[]; sellRows: TradeRow[] } {
-  const source = selectedBroker
-    ? trades.filter((t) => t.broker === selectedBroker)
+  const source = brokerIds.size > 0
+    ? trades.filter((t) => brokerIds.has(t.broker_id))
     : trades;
   const buys: TradeRow[] = [];
   const sells: TradeRow[] = [];
