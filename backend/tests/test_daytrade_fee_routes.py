@@ -25,12 +25,20 @@ def test_shape_ok(monkeypatch, client):
     async def fake_get_day(date_str, refresh=False):
         assert date_str is None
         assert refresh is False
-        return {"as_of_date": "2026-07-09", "rows": [], "month_counts": {}}
+        # month_shares(borrow-fee-totals SC-1):route 無 response_model,
+        # 此處僅鎖 passthrough;資料語意在 tests_e2e/test_api_daytrade_fee.py。
+        return {
+            "as_of_date": "2026-07-09",
+            "rows": [],
+            "month_counts": {},
+            "month_shares": {"8046": 17000},
+        }
 
     monkeypatch.setattr(df, "get_day", fake_get_day)
     r = client.get("/api/daytrade-fee")
     assert r.status_code == 200
     assert r.json()["as_of_date"] == "2026-07-09"
+    assert r.json()["month_shares"] == {"8046": 17000}
 
 
 def test_params_passthrough(monkeypatch, client):

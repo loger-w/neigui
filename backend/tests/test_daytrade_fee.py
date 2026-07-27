@@ -277,6 +277,37 @@ async def test_month_counts_distinct_dates(monkeypatch, frozen_today):
     assert payload["month_counts"]["2408"] == 1
 
 
+# ---------------------------------------------------- SC-1/SC-3 month_shares(borrow-fee-totals)
+
+async def test_month_shares_sums_all_rows_including_same_day(monkeypatch, frozen_today):
+    """該股當月全列相加(同日兩筆 + 跨日一筆;8046 型)— 次數是日數、股數是全列。"""
+    _fetch_month_stub(monkeypatch, {
+        ("twse", "2026-07"): [
+            _row("2026-07-09", "twse", "8046", 2000, 7.0),
+            _row("2026-07-09", "twse", "8046", 12000, 0.1),
+            _row("2026-07-10", "twse", "8046", 3000, 3.5),
+            _row("2026-07-10", "twse", "2408", 68000, 0.97),
+        ],
+        ("tpex", "2026-07"): [_row("2026-07-10", "tpex", "8069", 25000, 1.0)],
+    })
+    payload = await df.get_day(None)
+    assert payload["month_shares"]["8046"] == 17000
+    assert payload["month_shares"]["2408"] == 68000
+    assert payload["month_shares"]["8069"] == 25000
+
+
+async def test_month_shares_keys_match_month_counts(monkeypatch, frozen_today):
+    """兩 map 同 key 集(同資料源 all_rows)— 前端「缺 key 必同缺」語意的後盾。"""
+    _fetch_month_stub(monkeypatch, {
+        ("twse", "2026-07"): [
+            _row("2026-07-09", "twse", "8150", 1000, 0.6),
+            _row("2026-07-10", "twse", "2408", 68000, 0.97),
+        ],
+    })
+    payload = await df.get_day(None)
+    assert set(payload["month_shares"]) == set(payload["month_counts"])
+
+
 async def test_rows_keep_multiple_entries_per_stock(monkeypatch, frozen_today):
     """逐筆保留,不折疊(FinMind 判死主因)。"""
     _fetch_month_stub(monkeypatch, {
