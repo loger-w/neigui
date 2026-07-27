@@ -426,6 +426,52 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(totals).toContainText("8,800 萬");
   });
 
+  test("E38: 泡泡圖多選分點 — 下拉連續加選 2 個 → chips + 合併明細/統計資料級(bubble-multi-broker SC-1/3/4/7)", async ({ page }) => {
+    // 痛點:多選核心鏈 = BrokerSearch pick(R1:下拉保持開啟靠 mousedown
+    // preventDefault 保 input focus — blur closeTimer race 在 jsdom 量不到,
+    // 唯真瀏覽器可驗)→ toggleBroker → chips + computeBrokerTotals 集合合併。
+    // fixture 手算:分點001/002 各 買100張/賣80張@1100 → 合併 買200/賣160、
+    // 買額 2.20 億、賣額 1.76 億(visibility-only 會被「0 張」蓋住,鎖數值)。
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    await page.getByPlaceholder("搜尋分點...").fill("分點");
+    await page
+      .getByTestId(TESTIDS.brokerSearchItem)
+      .filter({ hasText: "分點001" })
+      .click();
+    // R1 真瀏覽器 assertion:pick 後下拉仍開啟 → 不重新 fill 直接點第 2 個
+    await expect(
+      page.getByTestId(TESTIDS.brokerSearchItem).first(),
+    ).toBeVisible();
+    await page
+      .getByTestId(TESTIDS.brokerSearchItem)
+      .filter({ hasText: "分點002" })
+      .click();
+    await page.keyboard.press("Escape"); // 關下拉,避免遮住 header chips / 圖面
+    // 2 枚 legend chip(SC-3)
+    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(2);
+    await expect(
+      page.getByTestId(TESTIDS.brokerChip).filter({ hasText: "分點001" }),
+    ).toBeVisible();
+    await expect(
+      page.getByTestId(TESTIDS.brokerChip).filter({ hasText: "分點002" }),
+    ).toBeVisible();
+    // 合併統計資料級(SC-4)
+    const totals = page.getByTestId(TESTIDS.bubbleBrokerTotals);
+    await expect(totals).toContainText("買 200 張");
+    await expect(totals).toContainText("賣 160 張");
+    await expect(totals).toContainText("2.20 億");
+    await expect(totals).toContainText("1.76 億");
+    // 明細合併:右側列表同時含兩分點名稱列(SC-4)
+    const detailNames = page.locator("button > span.text-left");
+    await expect(detailNames.filter({ hasText: "分點001" }).first()).toBeVisible();
+    await expect(detailNames.filter({ hasText: "分點002" }).first()).toBeVisible();
+    // 批量跳轉文案(N ≥ 2 分支)
+    await expect(page.getByTestId(TESTIDS.bubbleJumpToOverview)).toContainText(
+      "查看 2 個分點於籌碼總覽",
+    );
+  });
+
   test("E25: 換股載入時泡泡圖 loading badge 出現後消失(A5)", async ({ page }) => {
     // 痛點:loading feedback 鏈 = bubbleHook.loading → App loading prop →
     // badge render。FAKE fixture 回太快窗口極窄 → route gate 扣住 response
