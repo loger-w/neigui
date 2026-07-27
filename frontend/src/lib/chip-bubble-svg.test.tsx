@@ -3,8 +3,15 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { BubbleChartSvg } from "./chip-bubble-svg";
+import { BROKER_PALETTE, BubbleChartSvg } from "./chip-bubble-svg";
+import type { BubbleSelectedBroker } from "./chip-bubble-svg";
 import type { BrokerTrade } from "./chip-data";
+
+const sel = (id: string, name: string, colorIdx: number): BubbleSelectedBroker => ({
+  id,
+  name,
+  colorIdx,
+});
 
 afterEach(() => cleanup());
 
@@ -51,7 +58,7 @@ describe("BubbleChartSvg F1 — no yellow highlight on selected broker", () => {
         trades={trades}
         width={400}
         height={300}
-        selectedBroker="凱基台北"
+        selectedBrokers={[sel("9201A", "凱基台北", 0)]}
       />,
     );
     const circles = Array.from(container.querySelectorAll("circle"));
@@ -82,7 +89,7 @@ describe("BubbleChartSvg F2 — single-broker search bypasses global empty-state
         trades={trades}
         width={400}
         height={300}
-        selectedBroker="凱基台北"
+        selectedBrokers={[sel("9201A", "凱基台北", 0)]}
       />,
     );
     expect(container.textContent).not.toContain("No significant volume");
@@ -98,7 +105,7 @@ describe("BubbleChartSvg F2 — single-broker search bypasses global empty-state
         trades={trades}
         width={400}
         height={300}
-        selectedBroker="找不到的分點"
+        selectedBrokers={[sel("NOPE", "找不到的分點", 0)]}
       />,
     );
     expect(container.textContent).toContain("找不到的分點 今日無顯著成交量");
@@ -150,7 +157,7 @@ describe("BubbleChartSvg F11 — filter hides non-matched bubbles; axes stay inv
         trades={trades}
         width={400}
         height={300}
-        selectedBroker="凱基台北"
+        selectedBrokers={[sel("9201A", "凱基台北", 0)]}
       />,
     );
     const filteredCircles = Array.from(filtered.querySelectorAll("circle"));
@@ -182,7 +189,7 @@ describe("BubbleChartSvg F11 — filter hides non-matched bubbles; axes stay inv
         trades={trades}
         width={400}
         height={300}
-        selectedBroker="不存在的分點"
+        selectedBrokers={[sel("MISSING", "不存在的分點", 0)]}
       />,
     );
     expect(container.querySelectorAll("circle")).toHaveLength(0);
@@ -208,7 +215,7 @@ describe("BubbleChartSvg F11 — filter hides non-matched bubbles; axes stay inv
         trades={trades}
         width={400}
         height={300}
-        selectedBroker="凱基台北"
+        selectedBrokers={[sel("9201A", "凱基台北", 0)]}
       />,
     );
     const circles = Array.from(container.querySelectorAll("circle"));
@@ -245,7 +252,7 @@ describe("BubbleChartSvg F11 — filter hides non-matched bubbles; axes stay inv
         trades={trades}
         width={400}
         height={300}
-        selectedBroker="目標分點"
+        selectedBrokers={[sel("TARGET", "目標分點", 0)]}
       />,
     );
     const circles = Array.from(container.querySelectorAll("circle"));
@@ -316,7 +323,7 @@ describe("BubbleChartSvg intraday line overlay (additive optional prop)", () => 
         trades={quiet}
         width={400}
         height={300}
-        selectedBroker="A"
+        selectedBrokers={[sel("A1", "A", 0)]}
         intradayPoints={[
           { t: "09:00", price: 100.5 },  // broker 軸 [99,101] 內 → 保留
           { t: "11:00", price: 100.8 },  // 內 → 保留
@@ -596,7 +603,7 @@ describe("BubbleChartSvg — C10 priceRange 過濾泡泡 (🔴 Item 3)", () => {
         trades={multi}
         width={400}
         height={300}
-        selectedBroker="X"
+        selectedBrokers={[sel("X1", "X", 0)]}
         brushRange={{ min: 104, max: 106 }}
         priceRange={null}
       />,
@@ -644,5 +651,86 @@ describe("BubbleChartSvg — Y 軸拖曳篩選提示", () => {
       />,
     );
     expect(container.querySelector('[data-testid="bubble-brush-hint"]')).toBeNull();
+  });
+});
+
+// SC-2(bubble-multi-broker):多選分點 union filter + per-broker 專屬色外框。
+// 買賣 fill 維持紅買綠賣;外框只在 N ≥ 2 時切 BROKER_PALETTE(N = 1 維持現行
+// COLOR stroke,SC-5 單選視覺零回歸)。
+describe("BubbleChartSvg — 多選分點外框色 (SC-2)", () => {
+  const trades: BrokerTrade[] = [
+    mkTrade({ broker: "甲", broker_id: "A1", price: 100, buy: 50, sell: 0 }),
+    mkTrade({ broker: "乙", broker_id: "B1", price: 101, buy: 0, sell: 30 }),
+    mkTrade({ broker: "丙", broker_id: "C1", price: 102, buy: 40, sell: 0 }),
+  ];
+
+  it("BROKER_PALETTE 有 6 色且不含買賣紅綠(多空色相保留)", () => {
+    expect(BROKER_PALETTE).toHaveLength(6);
+    expect(BROKER_PALETTE).not.toContain("#e85a4f");
+    expect(BROKER_PALETTE).not.toContain("#7fc99a");
+  });
+
+  it("選 2 個分點 → 兩分點的泡泡都 render,外框分別為 PALETTE[colorIdx]、寬 2", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={trades}
+        width={400}
+        height={300}
+        selectedBrokers={[sel("A1", "甲", 0), sel("C1", "丙", 2)]}
+      />,
+    );
+    const circles = Array.from(container.querySelectorAll("circle"));
+    const byId = (id: string) =>
+      circles.filter((c) => c.getAttribute("data-broker-id") === id);
+    expect(byId("A1")).toHaveLength(1);
+    expect(byId("C1")).toHaveLength(1);
+    expect(byId("B1")).toHaveLength(0); // 未選中不 render(union filter)
+    // 正向 assertion:外框 = 各自 colorIdx 對應的 palette 色
+    expect(byId("A1")[0]!.getAttribute("stroke")).toBe(BROKER_PALETTE[0]);
+    expect(byId("C1")[0]!.getAttribute("stroke")).toBe(BROKER_PALETTE[2]);
+    expect(byId("A1")[0]!.getAttribute("stroke-width")).toBe("2");
+    expect(byId("C1")[0]!.getAttribute("stroke-width")).toBe("2");
+    // fill 維持買賣色(甲是買方紅、丙是買方紅 — 皆非 palette 色)
+    expect(byId("A1")[0]!.getAttribute("fill")).toBe("rgba(232, 90, 79, 0.45)");
+  });
+
+  it("只選 1 個分點 → 外框維持現行買賣 stroke(無 palette 色)", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={trades}
+        width={400}
+        height={300}
+        selectedBrokers={[sel("A1", "甲", 0)]}
+      />,
+    );
+    const circles = Array.from(container.querySelectorAll("circle"));
+    expect(circles).toHaveLength(1);
+    expect(circles[0]!.getAttribute("stroke")).toBe("#e85a4f"); // COLOR.buyStroke
+    expect(circles[0]!.getAttribute("stroke-width")).not.toBe("2");
+  });
+
+  it("選 2 個皆無成交的分點 → 複數空狀態 hint「選中分點今日無顯著成交量」", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={trades}
+        width={400}
+        height={300}
+        selectedBrokers={[sel("NOPE1", "沒有甲", 0), sel("NOPE2", "沒有乙", 1)]}
+      />,
+    );
+    expect(container.querySelectorAll("circle")).toHaveLength(0);
+    expect(container.textContent).toContain("選中分點今日無顯著成交量");
+  });
+
+  it("空陣列 selectedBrokers → 等同未選取(全體 top-100 render)", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={trades}
+        width={400}
+        height={300}
+        selectedBrokers={[]}
+      />,
+    );
+    expect(container.querySelectorAll("circle")).toHaveLength(3);
   });
 });
