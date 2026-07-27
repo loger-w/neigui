@@ -183,3 +183,4 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 - [ ] dispositions.json 過期 rows(見 RATIONALE 2026-07-26 節)— 若還要重跑 harness_load_estimate 的 SC-3 驗證先更新
 - [ ] graphify:docs/ 與 .claude/skills 的語意層(需 LLM)未建;要建再評估 token 成本。graph 目前 code-only(381 檔,3227 nodes),HEALTH 警告 640 dangling edges(AST 對外部 import 的正常樣態,查 caller 不受影響)
 - [ ] /mod 改版時一併修(2026-07-26 一致性掃描 P1):mod.md:44 inline 完工自查 checklist(/feat 側已因靜默死亡刪除)、mod M 級輪數三檔兩說(scope-tiers「1 輪」vs mod.md/review-protocol「max 2 輪」);P2 全清單見當日 scratchpad consistency-scan.md(若已滅失,P2 多為 superpowers 停用引用與 round≥2 措辭殘留)
+- [ ] 評估 `scripts/sync-harness-mirror.py` 是否納入 6 支複製 skill(2026-07-27 二輪復審 P3):目前 7 處內文修正只存在 `~/.claude/skills/` 磁碟上,無任何 VCS;誤重複製或磁碟事故 → 改寫要靠 RATIONALE 文字描述重做。代價是 mirror 多 ~6 目錄且上游更新時 diff 噪音變大,先評估再動
