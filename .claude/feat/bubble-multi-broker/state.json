@@ -4,16 +4,29 @@
   "branch": "feat/bubble-multi-broker",
   "worktree_path": null,
   "current_phase": 8,
-  "completed_phases": [-1, 0, 1, 2, 3, 4, 5, 6, 7],
+  "completed_phases": [
+    -1,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
   "scope": "L",
   "phase_6_blocked_reason": null,
-  "scope_overrides": { "goal_efficiency_mode": false },
-  "last_updated": "2026-07-27T00:00:00",
+  "scope_overrides": {
+    "goal_efficiency_mode": false
+  },
+  "last_updated": "2026-07-28T00:10:00",
   "project_shape": null,
   "last_commit_sha": null,
-  "final_merge_sha": null,
+  "final_merge_sha": "f0b79ae",
   "self_review_head": "8e46aabb51fd5999206e2bfe3150ea5265083aea",
-  "artifact_commit": null,
+  "artifact_commit": "76003d1",
   "rollbacks": [],
   "paused": null
 }
