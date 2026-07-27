@@ -58,6 +58,9 @@ export const TESTIDS = {
   brushApplyFilter: "brush-apply-filter",
   bubbleYaxisBrush: "bubble-yaxis-brush",
   brokerSearchItem: "broker-search-item",
+  // 泡泡圖多選分點(feat/bubble-multi-broker E38)
+  brokerChip: "broker-chip",
+  brokerChipsClear: "broker-chips-clear",
   // 泡泡圖過濾清單(BB-1 mod/batch-ui-update)
   bubbleBlocklistTrigger: "bubble-blocklist-trigger",
   bubbleBlocklistCandidate: "bubble-blocklist-candidate",
