@@ -106,8 +106,9 @@ worktree 路徑寫 state.json。
      邊界)照常展開。
    - **Diff 先落檔**:main agent 先 `git diff <start_sha>..HEAD > review-diff.txt`,finder
      prompt 指向該檔,需要脈絡才開全檔(subagent 重複讀 design.md / 全源檔實測佔 /feat
-     成本大宗)。**例外(2026-07-27 拍板):(b) 焦點必讀 design.md 的 SC / 介面節** —
-     spec 對照不受「按需才開檔」裁量,dispatch prompt 直接附該節行號範圍。
+     成本大宗)。**例外(2026-07-27 拍板):(b) 焦點必讀 design.md 的 SC 對應章節與接點節**
+     (章節名以 design.md 實際結構為準,main agent 圈定行號範圍)— spec 對照不受
+     「按需才開檔」裁量,dispatch prompt 直接附行號範圍。
 2. 呼叫 `receiving-code-review` 對每條 finding 分類(code review 全紀律,
    見核心原則「Finding 處置分級」)。
 3. accepted 依層級回對應 phase:spec 漏 → Phase 1/2 改文件 / impl 漏 → Phase 3 / test 漏 →
@@ -157,7 +158,8 @@ worktree 路徑寫 state.json。
 
    任一欄出現「N/A」「verified ✓」「應該可以」→ 直接視為未完成。**例外**:real-env 欄允許
    `infra_fail: <reason>`(須對應 state.json `phase_6_blocked_reason`)或
-   `subsumed by Phase 5: <e2e spec#>`。
+   `subsumed by Phase 5: <e2e spec#>`(僅純 regression SC 可標,與 Phase 6 限縮同判準;
+   2026-07-27 拍板)。
 4. **失敗類型四分流**(只寫 FAIL 的那條,通過不逐條聲明):(1) goal 沒被 design 涵蓋 →
    Phase 1 /(2) design 有實作沒做 → Phase 2/3 /(3) 實作有做測試漏 → Phase 3 先寫紅 /
    (4) goal 模糊互斥 → Phase 0 改寫 SC(舊 SC 的 rollbacks 記錄移 `docs/next-time.md` 備查,

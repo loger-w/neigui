@@ -14,6 +14,7 @@
 
 **[UI SC 可指認表述 + subsumed 限縮純 regression + 收尾 UI 驗收點 + Phase 4 (b) 必讀 design.md]**
 2026-07-27 user 直接拍板(沿 07-26 前例不走排程 meta-review)。根因一條:e2e assertion 是模型從討論轉譯的,轉譯錯照樣綠 — user 原話「常常發現 AI 雖然會用測試環境 E2E 但結果根本不是使用者想要的畫面或功能」。四個缺口同根因(spec↔實作↔畫面的對照被成本優化與自動化綠燈架空):subsumed 條款讓轉譯錯的 e2e 頂替唯一人眼驗證;evidence/ 截圖無 user 過目點;UI SC 表述有轉譯歧義空間;Phase 4「diff 先落檔」讓 (b) 焦點的 design.md 對照變自由裁量。落點:feat.md Phase 0 SC gate / Phase 4 步驟 1 例外句 / Phase 6 步驟 2 限縮 + auto-verify v3.1.0 Subsumed 節 + refs/feat-phase8.md 步驟 4 UI 驗收點。還原 = 各處刪 2026-07-27 標記句。
+2026-07-27 review 補修三處:auto-verify 限縮句補拍板標記(交接檔宣稱標記 ×1 實測 grep -c = 0,記錄紀律拍板同批即違反 — marker 還原路徑對該處失效,P1);Phase 7 步驟 3 例外欄補「僅純 regression SC 可標」限定(原無限定,Phase 6 錯誤 subsumed 在 Phase 7 機械欄檢查會放行,P2);Phase 4 (b) 例外句「SC / 介面節」改「SC 對應章節與接點節」(原詞彙不在 Phase 1 模板章節清單,行號圈定留有解釋空隙,P2)。/mod 側三槓桿缺口(可指認 SC 表述 / UI 驗收點缺席;subsumed 限縮經 auto-verify 已生效)記 next-time.md /mod 改版節,P2 不本批修。
 
 ### 顯式覆寫類(覆寫 superpowers 或共通鐵則,不是漏寫)
 
@@ -201,6 +202,9 @@ squash 會壓掉三類分離 commit 與 TDD tag,`git log --grep` 的機械驗證
 第二段(同日 user 改口「想繼續沿用」):**複製 6 支高頻 skill 到 `~/.claude/skills/`** — brainstorming / writing-plans / test-driven-development / receiving-code-review / verification-before-completion / systematic-debugging(來源:plugin cache 的 marketplace clone;**上游更新不會自動同步,要更新需手動重複製**)。harness 全部引用已去 `superpowers:` 前綴(commands / refs / branch-lifecycle / auto-verify / user CLAUDE.md / load-manifest 路徑)。**未複製的殘留引用**(using-git-worktrees ×2 / finishing-a-development-branch ×2 / executing-plans ×1 / subagent-driven-development ×1 負向)都是條件式罕用項,呼叫失敗依內建 gate 執行。淨省:SessionStart 注入 + 8 支未複製 description;新增成本:6 支 description(~350 tok)。還原 = enabledPlugins 改回 true + 刪除 6 個複製目錄(避免同名衝突)。
 2026-07-27 review 補修:複製件**內文**殘留的 `superpowers:` 交叉引用已清(7 處 3 檔 — systematic-debugging 2 處去前綴指向複製件;writing-plans 4 處 = REQUIRED SUB-SKILL ×3 改「執行方式由呼叫方流程決定」(消除與 feat.md「不呼叫 SDD」的衝突指示)+ worktree context 文案 1 處改指 branch-lifecycle;writing-good-tests 1 處刪舉例)。(拆帳 2026-07-27 二輪復審以 upstream diff 實數更正:原記「writing-plans 3 處」漏列 worktree 文案處。)**日後從上游重複製會把死指標帶回來,重複製後必重跑 `grep -rn "superpowers:" ~/.claude/skills/<6支>`。**
 複製機制備註:6 個目錄各含 `.orphaned_at`(ms timestamp,與 marketplace clone 目錄 `temp_git_*` 的時間戳僅差 3 秒)— 樣態指向 plugin 停用時 CLI 的 skill orphan 自動機制,非純手動 cp。無害;還原(刪目錄)不受影響,但「重複製」時留意 CLI 可能再產此標記檔。
+
+**[grill-me / grilling 複製為 user skill(2026-07-27)]**
+來源:`mattpocock/skills` repo(MIT),`skills/productivity/grill-me/SKILL.md` + `skills/productivity/grilling/SKILL.md`,原文照抄未改動。grill-me 是薄殼(`disable-model-invocation: true`,只能 `/grill-me` 手動呼叫,轉發 grilling);grilling 是本體(對計畫做對抗式逐題審問,決策樹逐分支收斂,每題附建議答案),description 含 'grill' trigger 可被模型自動觸發。用途:計畫/設計的壓力測試,定位在 brainstorming 提問階段的強化候選(user 預告將納入 /feat)。上游更新不自動同步,重複製 = 重抓 raw 兩檔覆蓋。還原 = 刪 `~/.claude/skills/grill-me/` 與 `~/.claude/skills/grilling/` 兩目錄。
 
 **[harness-push-gate.py 是死檔]**
 未註冊於 settings.json,內文仍寫著已於 2026-07-18 廢止的「PR 收尾單一確認點」政策。任何人(或模型)重讀該檔會得到過期規則。

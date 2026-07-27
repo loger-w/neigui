@@ -78,7 +78,8 @@ PowerShell `;` 不看 exit code、Windows PowerShell 5.1 亦無 `&&`,`vitest ...
 確認 regression 沒打壞。
 
 **Subsumed 判定**(web):該情境已有 Playwright e2e 覆蓋(spec 跑過真 backend + 真 browser)
-→ 標 `subsumed by e2e`,不重複 DevTools MCP 截圖。**限縮:只適用純 regression 情境** —
+→ 標 `subsumed by e2e`,不重複 DevTools MCP 截圖。**限縮(2026-07-27 拍板):只適用純
+regression 情境** —
 本輪新增 / 改動的 UI 第一輪一律真截圖(e2e assertion 是模型轉譯的,轉譯錯照樣綠;
 新畫面首次人眼驗證不可被 e2e 頂替)。
 
