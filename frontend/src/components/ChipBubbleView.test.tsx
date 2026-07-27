@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ChipBubbleView } from "./ChipBubbleView";
+import { BROKER_PALETTE } from "../lib/chip-bubble-svg";
 import type { BrokerTrade, ChipBubbleData } from "../lib/chip-data";
 
 // C7 A1 test 需要 BubbleChartSvg 真正 render(Y-axis brush overlay 從裡面出)。
@@ -14,6 +15,13 @@ import type { BrokerTrade, ChipBubbleData } from "../lib/chip-data";
 // 能 exercise brush 路徑。既有 F2 sort header tests 不依賴 svg render,不受影響。
 vi.mock("../hooks/useContainerSize", () => ({
   useContainerSize: () => ({ width: 400, height: 300 }),
+}));
+
+// bubble-multi-broker:mobile sheet 標題測試需要可控 isMobile(真 hook 在
+// jsdom feature-detect 恆 false)。預設 false = 桌面,既有測試不受影響。
+const mediaState = vi.hoisted(() => ({ isMobile: false }));
+vi.mock("../hooks/useMediaQuery", () => ({
+  useMediaQuery: () => mediaState.isMobile,
 }));
 
 afterEach(() => cleanup());
@@ -24,6 +32,7 @@ afterEach(() => cleanup());
 beforeEach(() => {
   // BB-1 blocklist 走 localStorage 全域持久化 — 測試間必清,避免跨 describe 污染。
   localStorage.clear();
+  mediaState.isMobile = false;
   globalThis.ResizeObserver = class {
     observe() {}
     disconnect() {}
@@ -1004,5 +1013,314 @@ describe("ChipBubbleView — brushRange 同步右側計數 header", () => {
     const text = container.textContent ?? "";
     expect(text.includes("今日共")).toBe(true);
     expect(text.includes("3 個分點")).toBe(true);
+  });
+});
+
+// ===========================================================================
+// bubble-multi-broker(SC-1/3/4/5/6):多選分點 — chips / 合併統計 / 三入口
+// toggle / 上限 / focusRequest 取代 / blocklist 保留其餘。
+// ===========================================================================
+
+function chipEls(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll('[data-testid="broker-chip"]'));
+}
+
+describe("ChipBubbleView — 多選 chips 與合併統計 (SC-1/SC-3/SC-4)", () => {
+  // 痛點:多選是本 feature 核心;chips 是唯一的選取狀態載體(搜尋框不再 echo)。
+  it("搜尋連續加選 2 個分點 → 2 枚 chip + 合併統計 + 「查看 2 個分點」跳轉", async () => {
+    const onJump = vi.fn();
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        onJumpToOverview={onJump}
+      />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await selectBrokerViaSearch("Bravo");
+    await waitFor(() => {
+      expect(chipEls(container)).toHaveLength(2);
+    });
+    const texts = chipEls(container).map((c) => c.textContent ?? "");
+    expect(texts.some((t) => t.includes("Alpha"))).toBe(true);
+    expect(texts.some((t) => t.includes("Bravo"))).toBe(true);
+    // 合併統計:Alpha buy10 sell30 @100、Bravo buy5 sell50 @102
+    // buyLots 15 / sellLots 80;buyAmount 1,510,000 → "151 萬";sell 8,100,000 → "810 萬"
+    const totals = container.querySelector('[data-testid="bubble-broker-totals"]');
+    expect(totals).toBeTruthy();
+    const tt = totals!.textContent ?? "";
+    expect(tt.includes("15")).toBe(true);
+    expect(tt.includes("80")).toBe(true);
+    expect(tt.includes("151 萬")).toBe(true);
+    expect(tt.includes("810 萬")).toBe(true);
+    // 跳轉鈕:N ≥ 2 改批量文案 + 傳 id 陣列
+    const jump = container.querySelector('[data-testid="bubble-jump-to-overview"]') as HTMLButtonElement;
+    expect(jump).toBeTruthy();
+    expect(jump.textContent ?? "").toContain("查看 2 個分點於籌碼總覽");
+    fireEvent.click(jump);
+    expect(onJump).toHaveBeenCalledTimes(1);
+    expect(onJump.mock.calls[0]![0]).toEqual(["AL1", "BR1"]);
+  });
+
+  // 痛點:chip × 是唯一逐一移除入口;清除全部只在 ≥ 2 時出現。
+  it("chip × 移除單一分點;「清除全部」清空選取", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await selectBrokerViaSearch("Bravo");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(2));
+    const clearAll = container.querySelector('[data-testid="broker-chips-clear"]');
+    expect(clearAll).toBeTruthy();
+    // × 移除 Alpha
+    fireEvent.click(screen.getByLabelText("移除〈Alpha〉"));
+    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+    expect(chipEls(container)[0]!.textContent ?? "").toContain("Bravo");
+    // 只剩 1 枚 → 清除全部鈕隱藏
+    expect(container.querySelector('[data-testid="broker-chips-clear"]')).toBeNull();
+    // 再加回一枚後用清除全部
+    await selectBrokerViaSearch("Charlie");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(2));
+    fireEvent.click(
+      container.querySelector('[data-testid="broker-chips-clear"]') as HTMLButtonElement,
+    );
+    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
+    expect(container.querySelector('[data-testid="bubble-broker-totals"]')).toBeNull();
+  });
+
+  // 痛點(R4):配色是 auto-default 拍板理由 — index-based 配色會在移除時整組
+  // 換色,必須鎖「移除不重配、新加選回收最小空 slot」不變式。
+  it("配色不變式:移除中間 chip 其餘顏色不動,新加選回收釋出 slot", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await selectBrokerViaSearch("Bravo");
+    await selectBrokerViaSearch("Charlie");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(3));
+    const dotColor = (chip: HTMLElement) =>
+      chip.querySelector('[data-testid="broker-chip-dot"]')!.getAttribute("data-color");
+    const byName = (name: string) =>
+      chipEls(container).find((c) => (c.textContent ?? "").includes(name))!;
+    expect(dotColor(byName("Alpha"))).toBe(BROKER_PALETTE[0]);
+    expect(dotColor(byName("Bravo"))).toBe(BROKER_PALETTE[1]);
+    expect(dotColor(byName("Charlie"))).toBe(BROKER_PALETTE[2]);
+    // 移除中間的 Bravo → Alpha / Charlie 不變
+    fireEvent.click(screen.getByLabelText("移除〈Bravo〉"));
+    await waitFor(() => expect(chipEls(container)).toHaveLength(2));
+    expect(dotColor(byName("Alpha"))).toBe(BROKER_PALETTE[0]);
+    expect(dotColor(byName("Charlie"))).toBe(BROKER_PALETTE[2]);
+    // 新加選回收最小空 slot(= 1)
+    await selectBrokerViaSearch("Bravo");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(3));
+    expect(dotColor(byName("Bravo"))).toBe(BROKER_PALETTE[1]);
+  });
+
+  // 痛點(R3,鎖 design R5):選中分點自 trades 消失(blocklist / refetch)時
+  // chip 不得失效 — selectedNames 必須自 state 導出,不走 trades join。
+  it("選中分點自 trades 消失 → chip 仍顯示、統計歸零不 crash", async () => {
+    const { container, rerender } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+    // refetch 後 Alpha 消失
+    const without = namedTrades.filter((t) => t.broker_id !== "AL1");
+    rerender(<ChipBubbleView symbol="2330" bubbleData={mkData(without)} />);
+    expect(chipEls(container)).toHaveLength(1);
+    expect(chipEls(container)[0]!.textContent ?? "").toContain("Alpha");
+    const totals = container.querySelector('[data-testid="bubble-broker-totals"]');
+    expect(totals).toBeTruthy();
+  });
+});
+
+describe("ChipBubbleView — 上限 6 + limitNotice (SC-1 edge 1)", () => {
+  const seven: BrokerTrade[] = [
+    "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
+  ].map((name, i) => ({
+    broker: name,
+    broker_id: `ID${i}`,
+    price: 100,
+    buy: 10 + i,
+    sell: 5,
+  }));
+
+  // 痛點:palette 只有 6 色,第 7 個必須被拒且畫面說明原因。
+  it("加選第 7 個 → 不加入 + role=status 提示;再 toggle 提示清除", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(seven)} />,
+    );
+    for (const n of ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]) {
+      await selectBrokerViaSearch(n);
+    }
+    await waitFor(() => expect(chipEls(container)).toHaveLength(6));
+    await selectBrokerViaSearch("Golf");
+    await waitFor(() => {
+      const notice = Array.from(container.querySelectorAll('[role="status"]'))
+        .find((el) => (el.textContent ?? "").includes("最多同時選 6 個分點"));
+      expect(notice).toBeTruthy();
+    });
+    expect(chipEls(container)).toHaveLength(6);
+    // 移除一枚(toggle)→ 提示清除
+    fireEvent.click(screen.getByLabelText("移除〈Alpha〉"));
+    await waitFor(() => {
+      const notice = Array.from(container.querySelectorAll('[role="status"]'))
+        .find((el) => (el.textContent ?? "").includes("最多同時選 6 個分點"));
+      expect(notice).toBeUndefined();
+    });
+    expect(chipEls(container)).toHaveLength(5);
+  });
+});
+
+describe("ChipBubbleView — 泡泡 / 明細列入口 toggle (SC-1)", () => {
+  // 痛點:jsdom 的 svg rect getBoundingClientRect 全零 → hitTest 的 mx=clientX,
+  // 用 circle cx/cy 直接命中泡泡,驗真實 click 路徑(非 handler mock)。
+  it("點泡泡 → 加選(chip 出現);再點同泡泡 → 移除", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    const overlay = container.querySelector('[data-testid="bubble-main-overlay"]')!;
+    const alphaCircle = await waitFor(() => {
+      const c = Array.from(container.querySelectorAll("circle")).find(
+        (el) => el.getAttribute("data-broker-id") === "AL1",
+      );
+      if (!c) throw new Error("Alpha circle not rendered");
+      return c;
+    });
+    const cx = Number(alphaCircle.getAttribute("cx"));
+    const cy = Number(alphaCircle.getAttribute("cy"));
+    fireEvent.click(overlay, { clientX: cx, clientY: cy });
+    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+    expect(chipEls(container)[0]!.textContent ?? "").toContain("Alpha");
+    // 選中後圖面只剩 Alpha,同位置(F11 axes-stable)再點 → toggle 移除
+    fireEvent.click(overlay, { clientX: cx, clientY: cy });
+    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
+  });
+
+  // 痛點:TradeList 列是第三個入口;virtualizer 在 jsdom 走 offsetWidth/Height,
+  // stub prototype getter 才出列(frontend-testing 樣板)。
+  it("點明細列 → 加選;再點 → 移除", async () => {
+    const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true, get: () => 400,
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true, get: () => 400,
+    });
+    try {
+      const { container } = render(
+        <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+      );
+      const rowFor = (name: string) =>
+        Array.from(container.querySelectorAll("button span.text-left"))
+          .find((s) => s.textContent === name)
+          ?.closest("button") ?? null;
+      await waitFor(() => {
+        if (!rowFor("Alpha")) throw new Error("row not rendered");
+      });
+      fireEvent.click(rowFor("Alpha")!);
+      await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+      // 選中後列表過濾為 Alpha;再點同列 toggle 移除
+      await waitFor(() => {
+        if (!rowFor("Alpha")) throw new Error("filtered row not rendered");
+      });
+      fireEvent.click(rowFor("Alpha")!);
+      await waitFor(() => expect(chipEls(container)).toHaveLength(0));
+    } finally {
+      if (origH) Object.defineProperty(HTMLElement.prototype, "offsetHeight", origH);
+      if (origW) Object.defineProperty(HTMLElement.prototype, "offsetWidth", origW);
+    }
+  });
+});
+
+describe("ChipBubbleView — focusRequest 取代 / blocklist 保留其餘 (SC-6)", () => {
+  // 痛點:聚焦語意 =「看這個」,必須取代整組而非 append。
+  it("已多選 2 個後 focusRequest → 選取被取代為聚焦分點單獨一枚", async () => {
+    const { container, rerender } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await selectBrokerViaSearch("Bravo");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(2));
+    rerender(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        focusRequest={{ brokerId: "CH1", name: "Charlie", seq: 1 }}
+      />,
+    );
+    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+    expect(chipEls(container)[0]!.textContent ?? "").toContain("Charlie");
+  });
+
+  // 痛點(R5 impl-spec):badge 條件必須 length===1 嚴格判,多選含聚焦分點不現。
+  it("focusRequest 無成交分點後再加選 → 無成交 badge 消失(嚴格單選判定)", async () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        focusRequest={{ brokerId: "ZZ9", name: "無成交分點", seq: 1 }}
+      />,
+    );
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-testid="bubble-focus-no-trades"]'),
+      ).toBeTruthy();
+    });
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-testid="bubble-focus-no-trades"]'),
+      ).toBeNull();
+    });
+    expect(chipEls(container)).toHaveLength(2);
+  });
+
+  // 痛點:blocklist 加入只影響該分點,其餘選中保留(SC-6 後半)。
+  it("將選中分點之一加入排除清單 → 該枚移除、其餘保留", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await selectBrokerViaSearch("Bravo");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(2));
+    // 開 blocklist popover,把 Alpha 加入排除
+    fireEvent.click(
+      container.querySelector("[data-testid=bubble-blocklist-trigger]") as HTMLButtonElement,
+    );
+    const searchInput = document
+      .querySelector("[data-testid=bubble-blocklist-popover]")!
+      .querySelector("input[type=text]") as HTMLInputElement;
+    fireEvent.change(searchInput, { target: { value: "Alpha" } });
+    fireEvent.click(
+      document.querySelector("[data-testid=bubble-blocklist-candidate]") as HTMLElement,
+    );
+    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+    expect(chipEls(container)[0]!.textContent ?? "").toContain("Bravo");
+  });
+});
+
+describe("ChipBubbleView — mobile sheet 標題三分支 (SC-4 / edge 5)", () => {
+  // 痛點(R7):自動開 sheet effect 的條件從 selectedBrokerId 改 selected.length,
+  // 標題要能承載多選;N 歸 0 sheet 維持開啟(effect 只開不關,與現行一致)。
+  it("mobile 多選 2 個 → sheet 自動開啟,標題「成交明細 — 2 個分點」;歸 0 維持開啟", async () => {
+    mediaState.isMobile = true;
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await selectBrokerViaSearch("Bravo");
+    const sheet = await waitFor(() => {
+      const el = container.querySelector('[data-testid="bubble-detail-sheet"]');
+      if (!el) throw new Error("sheet not opened");
+      return el;
+    });
+    expect(sheet.textContent ?? "").toContain("成交明細 — 2 個分點");
+    // 清空選取 → sheet 維持開啟、標題退回無選取型
+    fireEvent.click(screen.getByLabelText("移除〈Alpha〉"));
+    fireEvent.click(screen.getByLabelText("移除〈Bravo〉"));
+    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
+    expect(container.querySelector('[data-testid="bubble-detail-sheet"]')).toBeTruthy();
   });
 });
