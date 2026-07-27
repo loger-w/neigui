@@ -54,6 +54,7 @@
 - (c) 效能類 claim 要 runtime 證據 —— 2026-07-18:haiku 推算「不痛」而回空,主 agent 實測 280 檔約 10 分鐘。
 - (d) reviewer dispatch 註明「純文字回傳 JSON,勿呼叫 ReportFindings」—— 該工具結果不會到達主 agent,誤用需 SendMessage 追討一輪。
   **2026-07-25 起作廢**:改用 Workflow 的 `agent(prompt, {schema})` 強制結構化回傳(本輪審計實測 12/12 agent 零格式失敗),此條不再需要。
+  **2026-07-27 更正:並未全廢** — schema 強制只覆蓋 Workflow dispatch 路徑,review-protocol.md B 節仍保留 (d) 並限縮到 **ad-hoc Agent dispatch**(typed reviewer 由 tools 白名單天然擋掉)。上一行的「作廢」只適用 Workflow 情境;meta-review 別依本條把 review-protocol 的活規則當死條文刪。
 
 **[test-gap finding 補 lock test:改壞／還原一律用 Edit 成對操作,禁 `git checkout` / `git restore`]**
 2026-07-11:用 git 還原時連同掃掉同檔尚未 commit 的 review fix。
@@ -194,6 +195,7 @@ squash 會壓掉三類分離 commit 與 TDD tag,`git log --grep` 的機械驗證
 第一段(user 拍板「先不複製」):`settings.json` `enabledPlugins."superpowers@claude-plugins-official": false`,13 支 description + SessionStart 全文注入(using-superpowers ~5KB)退出常駐層。
 第二段(同日 user 改口「想繼續沿用」):**複製 6 支高頻 skill 到 `~/.claude/skills/`** — brainstorming / writing-plans / test-driven-development / receiving-code-review / verification-before-completion / systematic-debugging(來源:plugin cache 的 marketplace clone;**上游更新不會自動同步,要更新需手動重複製**)。harness 全部引用已去 `superpowers:` 前綴(commands / refs / branch-lifecycle / auto-verify / user CLAUDE.md / load-manifest 路徑)。**未複製的殘留引用**(using-git-worktrees ×2 / finishing-a-development-branch ×2 / executing-plans ×1 / subagent-driven-development ×1 負向)都是條件式罕用項,呼叫失敗依內建 gate 執行。淨省:SessionStart 注入 + 8 支未複製 description;新增成本:6 支 description(~350 tok)。還原 = enabledPlugins 改回 true + 刪除 6 個複製目錄(避免同名衝突)。
 2026-07-27 review 補修:複製件**內文**殘留的 `superpowers:` 交叉引用已清(7 處 3 檔 — systematic-debugging 2 處去前綴指向複製件;writing-plans 3 處 REQUIRED SUB-SKILL 改「執行方式由呼叫方流程決定」,消除與 feat.md「不呼叫 SDD」的衝突指示;writing-good-tests 1 處刪舉例)。**日後從上游重複製會把死指標帶回來,重複製後必重跑 `grep -rn "superpowers:" ~/.claude/skills/<6支>`。**
+複製機制備註:6 個目錄各含 `.orphaned_at`(ms timestamp,與 marketplace clone 目錄 `temp_git_*` 的時間戳僅差 3 秒)— 樣態指向 plugin 停用時 CLI 的 skill orphan 自動機制,非純手動 cp。無害;還原(刪目錄)不受影響,但「重複製」時留意 CLI 可能再產此標記檔。
 
 **[harness-push-gate.py 是死檔]**
 未註冊於 settings.json,內文仍寫著已於 2026-07-18 廢止的「PR 收尾單一確認點」政策。任何人(或模型)重讀該檔會得到過期規則。
@@ -309,7 +311,7 @@ design-reviewer 286 條 findings accepted 率 **99.6%**(只打回 1 條)、impl-
 **[廢除 per_file / Findings>10 收斂 / inline 完工自查 / sc_cycle_counts]**
 - `per_file`:7/7 有記錄 run 全 condensed(07-25 已知,本輪 0 新增)→ 整個模式刪除,`phase_2_mode` 欄位隨刪。
 - 「Findings > 10 先收斂」:11 個 session 有 >10 findings 的 round,執行 **0/11** → 刪。
-- Phase 4 inline 完工自查 checklist:3/16,07-07 之後 10 個 session 全 0(靜默死亡);其檢查項由 Phase 5 gate / Phase 7 表格 / Phase 8 tag 驗證機械覆蓋 → 刪。
+- Phase 4 inline 完工自查 checklist:3/16,07-07 之後 10 個 session 全 0(靜默死亡);其檢查項由 Phase 5 gate / Phase 7 表格 / Phase 8 tag 驗證機械覆蓋 → 刪。(2026-07-27 review 註:機械覆蓋成立的是四項之三 —「文件同步」無機械承接,殘餘保障只有 Phase 3 標題級步驟與專案 CLAUDE.md §7 的 changelog 義務。實測 3/16 表示該項本來就沒被 checklist 保護,缺口為已知接受,非覆蓋宣稱的反例修正對象。)
 - `sc_cycle_counts`:非零僅 5/16 且全在 07-02 前;之後回退有發生但全沒記帳(9/16 all-zero)→ per-phase counter 實測失守,改 `rollbacks` append log(發生當下記一筆,零回退零維護)。`pending_review_rounds` 14/16 全零、`blockers` 16/16 空,隨刪。
 - 佐證通則(07-25 條的再驗證):「有落地檔或省事的條文活著(scope 16/16、Phase 7 表 15/16、subsumed 7/8),只存在對話中的條文死亡(收斂 0/11、自查 3/16)」。**新條文要嘛產 artifact,要嘛別寫。**
 
