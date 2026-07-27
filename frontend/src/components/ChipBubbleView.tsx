@@ -7,7 +7,12 @@ import {
   DEFAULT_TRADE_SORT, aggregateByPrice, buildTradeRows, computeBrokerTotals,
   fmtAmount, fmtVol, summarizeTradesByPriceRange,
 } from "../lib/chip-data";
-import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg";
+import {
+  BROKER_PALETTE,
+  BubbleChartSvg,
+  type BubbleHoverPayload,
+  type BubbleSelectedBroker,
+} from "../lib/chip-bubble-svg";
 import { formatBrokerName } from "../lib/broker-name";
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
@@ -52,6 +57,10 @@ interface Props {
 // the long tail visible there.
 const MAX_TRADE_ROWS = Number.POSITIVE_INFINITY;
 
+// bubble-multi-broker(SC-1):多選上限 = BROKER_PALETTE 色數(可辨識度上限)。
+const MAX_SELECTED_BROKERS = 6;
+type SelectedBroker = BubbleSelectedBroker;
+
 export function ChipBubbleView({
   bubbleData,
   closePrice,
@@ -61,11 +70,12 @@ export function ChipBubbleView({
   loading,
   focusRequest,
 }: Props) {
-  // C1 🔵: selection state 存 broker_id(FinMind securities_trader_id),
-  // 對齊 App.tsx selectedBrokerIds 契約,方便 A2 一鍵跳籌碼總覽。
-  // 下游元件(BrokerSearch / BubbleChartSvg / buildTradeRows / TradeList)
-  // 仍接 name string,靠 selectedBrokerName derived 回傳。
-  const [selectedBrokerId, setSelectedBrokerId] = useState<string | null>(null);
+  // bubble-multi-broker(SC-1):有序多選(≤6),id = broker_id 對齊 App.tsx
+  // selectedBrokerIds 契約;name 存 state(分點自 trades 消失時 chip 不失效);
+  // colorIdx = 加選當下最小未占用 slot,存續期間不變(移除不重配其他分點)。
+  const [selected, setSelected] = useState<SelectedBroker[]>([]);
+  // 選滿 6 再加選的提示;任何改動選取的路徑一律清除(design v2 R4)。
+  const [limitNotice, setLimitNotice] = useState<boolean>(false);
   const [buySort, setBuySort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
   const [sellSort, setSellSort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
   // C7 A1: Y 軸 brush 選價位 range。null = 無 brush;svg drag end 後 setBrushRange。
@@ -98,13 +108,33 @@ export function ChipBubbleView({
   // Reset selection ONLY on symbol change (NOT on date / bubbleData change).
   // C7 A1: brush 也一起清 —— 避免換股後舊 range 殘留誤導。
   useEffect(() => {
-    setSelectedBrokerId(null);
+    setSelected([]);
+    setLimitNotice(false);
     setBrushRange(null);
     setManualInputOpen(false);
     setSheetOpen(false);
     setFocusedBroker(null);
     setBlockRemovalNotice(null);
   }, [symbol]);
+
+  // SC-1 toggle 核心(三入口共用):已選 → 移除;未選 → 加選(滿員拒絕 + 提示)。
+  const toggleBroker = useCallback((id: string, name: string) => {
+    setSelected((prev) => {
+      if (prev.some((b) => b.id === id)) {
+        setLimitNotice(false);
+        return prev.filter((b) => b.id !== id);
+      }
+      if (prev.length >= MAX_SELECTED_BROKERS) {
+        setLimitNotice(true);
+        return prev;
+      }
+      setLimitNotice(false);
+      const used = new Set(prev.map((b) => b.colorIdx));
+      let colorIdx = 0;
+      while (used.has(colorIdx)) colorIdx++;
+      return [...prev, { id, name, colorIdx }];
+    });
+  }, []);
 
   // CH-1: focusRequest 聚焦。宣告順序必須在 symbol reset effect 之後 —
   // mount 時 effects 依序跑,「帶著 focusRequest 首次 mount」(lazy tab 首開
@@ -121,20 +151,36 @@ export function ChipBubbleView({
     } else {
       setBlockRemovalNotice(null);
     }
-    setSelectedBrokerId(focusRequest.brokerId);
+    // SC-6:聚焦語意 =「看這個」— 取代整組選取,不 append。
+    setSelected([{ id: focusRequest.brokerId, name: focusRequest.name, colorIdx: 0 }]);
+    setLimitNotice(false);
     setFocusedBroker({ id: focusRequest.brokerId, name: focusRequest.name });
   }, [focusRequest, blocked]);
 
   // Mobile:tap 泡泡選中分點 → 自動開明細 sheet(桌面右欄恆顯,不需要)。
+  // R7:effect 只開不關 — 選取歸 0 時 sheet 維持開啟(顯全體明細)。
   useEffect(() => {
-    if (isMobile && selectedBrokerId) setSheetOpen(true);
-  }, [isMobile, selectedBrokerId]);
+    if (isMobile && selected.length > 0) setSheetOpen(true);
+  }, [isMobile, selected.length]);
 
-  const selectedBrokerName = useMemo(
-    () =>
-      visibleTrades.find((t) => t.broker_id === selectedBrokerId)?.broker ??
-      null,
-    [visibleTrades, selectedBrokerId],
+  // Derived(design v2 §1):selectedNames 直接自 state 導出(不走 visibleTrades
+  // join)— 分點自 trades 消失(blocklist / refetch)時 chip / active 態不失效。
+  const selectedIds = useMemo(
+    () => new Set(selected.map((b) => b.id)),
+    [selected],
+  );
+  const selectedNames = useMemo(
+    () => new Set(selected.map((b) => b.name)),
+    [selected],
+  );
+  // N ≥ 2 才配列圓點色(N = 1 圖面無外框,SC-5 單選視覺零回歸)。
+  const colorByName = useMemo(() => {
+    if (selected.length < 2) return new Map<string, string>();
+    return new Map(selected.map((b) => [b.name, BROKER_PALETTE[b.colorIdx]!]));
+  }, [selected]);
+  const colorFor = useCallback(
+    (name: string): string | null => colorByName.get(name) ?? null,
+    [colorByName],
   );
 
   // name→顯示名 lookup(TradeRow 無 broker_id,R14 決策走 lookup 不擴型別);
@@ -147,11 +193,11 @@ export function ChipBubbleView({
     return (name: string): string => m.get(name) ?? name;
   }, [visibleTrades]);
 
-  // BB-1: 排除清單操作。加入時若正是選中分點,一併清選取(選中但已被
-  // 過濾的狀態沒有可視載體)。
+  // BB-1: 排除清單操作。加入時若在選中集合,自組移除(其餘選中保留,SC-6)。
   const handleBlockAdd = useCallback((b: BlockedBroker) => {
     setBlocked((prev) => addBlocked(prev, b));
-    setSelectedBrokerId((prev) => (prev === b.id ? null : prev));
+    setSelected((prev) => prev.filter((s) => s.id !== b.id));
+    setLimitNotice(false);
   }, []);
   const handleBlockRemove = useCallback((id: string) => {
     setBlocked((prev) => removeBlocked(prev, id));
@@ -177,11 +223,11 @@ export function ChipBubbleView({
 
   // C10 (🔴 Item 3 擴充):brushRange 設定後,右側 trade list / price bar /
   // broker totals / 分點計數統一 filter。
-  // C11 (🔴):分點選擇時 range 退為視覺參考 — 若使用者已選 broker,即使有
+  // C11 (🔴,多選泛化):有任何分點選擇時 range 退為視覺參考 — 即使有
   //   brushRange 也不預過濾(範圍框仍畫,但資料回全 broker)。目的是解「先框
-  //   價區、後點分點想看全價位」的 UX,不需要清 range。selectedBrokerId 為 null
-  //   時走原 range 過濾邏輯。brushSummary 仍用原始 trades 算 summary。
-  const rangeActiveForFilter = brushRange !== null && !selectedBrokerId;
+  //   價區、後點分點想看全價位」的 UX,不需要清 range。未選取時走原 range
+  //   過濾邏輯。brushSummary 仍用原始 trades 算 summary。
+  const rangeActiveForFilter = brushRange !== null && selected.length === 0;
   const rangeTrades = useMemo(() => {
     if (!rangeActiveForFilter || !brushRange) return visibleTrades;
     return visibleTrades.filter(
@@ -194,10 +240,11 @@ export function ChipBubbleView({
     [rangeTrades],
   );
 
-  // C6 A3: 選中分點的總買/賣張 + 精確成交金額。brushRange 有效時只算區間內。
+  // C6 A3(SC-4 合併):選中分點集合的總買/賣張 + 精確成交金額加總。
+  // brushRange 有效時只算區間內。
   const brokerTotals = useMemo(
-    () => computeBrokerTotals(rangeTrades, selectedBrokerId),
-    [rangeTrades, selectedBrokerId],
+    () => computeBrokerTotals(rangeTrades, selectedIds),
+    [rangeTrades, selectedIds],
   );
 
   const bubbleRef = useRef<HTMLDivElement | null>(null);
@@ -230,22 +277,22 @@ export function ChipBubbleView({
     [],
   );
 
-  // C1 🔵: svg / TradeList 回傳 broker name;此 handler 轉 id set state。
+  // C1 🔵: svg / TradeList 回傳 broker name;此 handler 轉 id 後 toggle(SC-1)。
   // C7 A1: 點空白處(broker=null)同時清 brush,對齊 SC-A1c。
   const handleBubbleClick = useCallback(
     (broker: string | null) => {
       if (broker === null) {
-        setSelectedBrokerId(null);
+        setSelected([]);
+        setLimitNotice(false);
         setBrushRange(null);
         setManualInputOpen(false);
         return;
       }
-      const id =
-        visibleTrades.find((t) => t.broker === broker)?.broker_id ?? null;
-      if (id === null) return;
-      setSelectedBrokerId((prev) => (prev === id ? null : id));
+      const t = visibleTrades.find((x) => x.broker === broker);
+      if (!t) return;
+      toggleBroker(t.broker_id, t.broker);
     },
-    [visibleTrades],
+    [visibleTrades, toggleBroker],
   );
 
   // C7 A1: brush drag end callback。存 range → 顯示 summary panel。
@@ -284,8 +331,8 @@ export function ChipBubbleView({
   const allPriceAggs = useMemo(() => aggregateByPrice(rangeTrades), [rangeTrades]);
 
   const priceAggs = useMemo(() => {
-    if (!selectedBrokerName) return allPriceAggs;
-    const filtered = rangeTrades.filter((t) => t.broker === selectedBrokerName);
+    if (selected.length === 0) return allPriceAggs;
+    const filtered = rangeTrades.filter((t) => selectedIds.has(t.broker_id));
     if (filtered.length === 0) return allPriceAggs;
     const filteredAggs = aggregateByPrice(filtered);
     const filteredPrices = new Set(filteredAggs.map((a) => a.price));
@@ -294,28 +341,14 @@ export function ChipBubbleView({
         ? filteredAggs.find((f) => f.price === a.price)!
         : { price: a.price, buy: 0, sell: 0 },
     );
-  }, [rangeTrades, selectedBrokerName, allPriceAggs]);
+  }, [rangeTrades, selected.length, selectedIds, allPriceAggs]);
 
   // Bug fix: filter must precede the top-N slice. Building the rows then
   // slicing drops every row that fell behind the global top-200 cap, which
   // was hiding most of a small-volume broker's price levels after filter.
   const { buyRows: filteredBuyRows, sellRows: filteredSellRows } = useMemo(
-    () => buildTradeRows(rangeTrades, selectedBrokerName, MAX_TRADE_ROWS, buySort, sellSort),
-    [rangeTrades, selectedBrokerName, buySort, sellSort],
-  );
-
-  // C1 🔵: BrokerSearch onChange 回傳 name;此 wrapper 轉 id set state。
-  const handleBrokerSearchChange = useCallback(
-    (name: string | null) => {
-      if (name === null) {
-        setSelectedBrokerId(null);
-        return;
-      }
-      const id =
-        visibleTrades.find((t) => t.broker === name)?.broker_id ?? null;
-      setSelectedBrokerId(id);
-    },
-    [visibleTrades],
+    () => buildTradeRows(rangeTrades, selectedIds, MAX_TRADE_ROWS, buySort, sellSort),
+    [rangeTrades, selectedIds, buySort, sellSort],
   );
 
   const detailPanel = (
@@ -323,7 +356,8 @@ export function ChipBubbleView({
       priceAggs={priceAggs}
       buyRows={filteredBuyRows}
       sellRows={filteredSellRows}
-      selectedBrokerName={selectedBrokerName}
+      selectedNames={selectedNames}
+      colorFor={colorFor}
       labelFor={labelFor}
       onSelect={handleBubbleClick}
       buySort={buySort}
@@ -346,22 +380,81 @@ export function ChipBubbleView({
         <div className="shrink-0 min-h-10 px-3 py-1 border-b border-line bg-bg-deep/30 flex flex-wrap items-center gap-x-3 gap-y-1">
           <BrokerSearch
             trades={visibleTrades}
-            value={selectedBrokerName}
-            onChange={handleBrokerSearchChange}
+            selectedIds={selectedIds}
+            onPick={toggleBroker}
           />
-          {selectedBrokerId && selectedBrokerName ? (
+          {/* SC-3 Legend chips:選取狀態唯一載體 — 專屬色圓點 + 顯示名 + ×。 */}
+          {selected.map((b) => {
+            const display = formatBrokerName(b.id, b.name);
+            const color = BROKER_PALETTE[b.colorIdx]!;
+            return (
+              <span
+                key={b.id}
+                data-testid="broker-chip"
+                className="inline-flex items-center gap-1.5 px-1.5 py-0.5 text-xs border border-line-strong bg-bg-deep/60 text-ink"
+              >
+                <span
+                  data-testid="broker-chip-dot"
+                  data-color={color}
+                  aria-hidden="true"
+                  className="size-2 rounded-full shrink-0"
+                  style={{ background: color }}
+                />
+                {display}
+                <button
+                  type="button"
+                  aria-label={`移除〈${display}〉`}
+                  onClick={() => toggleBroker(b.id, b.name)}
+                  className="text-ink-dim hover:text-bear cursor-pointer leading-none pointer-coarse:min-h-11"
+                >
+                  ×
+                </button>
+              </span>
+            );
+          })}
+          {selected.length >= 2 && (
+            <button
+              type="button"
+              data-testid="broker-chips-clear"
+              onClick={() => {
+                setSelected([]);
+                setLimitNotice(false);
+              }}
+              className="text-xs text-ink-dim hover:text-bear underline underline-offset-2 cursor-pointer"
+            >
+              清除全部
+            </button>
+          )}
+          {limitNotice && (
+            <span role="status" className="text-xs text-[#f0b429]">
+              最多同時選 6 個分點
+            </span>
+          )}
+          {selected.length > 0 ? (
             onJumpToOverview ? (
               <button
                 type="button"
                 data-testid="bubble-jump-to-overview"
-                onClick={() => onJumpToOverview(selectedBrokerId)}
+                onClick={() =>
+                  onJumpToOverview(
+                    selected.length === 1
+                      ? selected[0]!.id
+                      : selected.map((b) => b.id),
+                  )
+                }
                 className="text-xs text-accent hover:text-ink underline underline-offset-2 cursor-pointer"
               >
-                查看 <span className="text-[#f0b429] font-medium">{formatBrokerName(selectedBrokerId, selectedBrokerName)}</span> 於籌碼總覽 →
+                {selected.length === 1 ? (
+                  <>
+                    查看 <span className="text-[#f0b429] font-medium">{formatBrokerName(selected[0]!.id, selected[0]!.name)}</span> 於籌碼總覽 →
+                  </>
+                ) : (
+                  <>查看 {selected.length} 個分點於籌碼總覽 →</>
+                )}
               </button>
             ) : (
               <span className="text-xs text-ink-dim">
-                已篩選 <span className="text-[#f0b429] font-medium">1</span> 個分點
+                已篩選 <span className="text-[#f0b429] font-medium">{selected.length}</span> 個分點
               </span>
             )
           ) : (
@@ -369,7 +462,7 @@ export function ChipBubbleView({
               {brushRange ? "此區間" : "今日共"} <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
             </span>
           )}
-          {selectedBrokerId && (
+          {selected.length > 0 && (
             <div
               data-testid="bubble-broker-totals"
               className="flex items-center gap-3 text-xs text-ink-dim"
@@ -440,7 +533,7 @@ export function ChipBubbleView({
               width={bubbleSize.width}
               height={bubbleSize.height}
               closePrice={closePrice}
-              selectedBroker={selectedBrokerName}
+              selectedBrokers={selected}
               onBubbleHover={handleBubbleHover}
               onBubbleClick={handleBubbleClick}
               intradayPoints={intradayPoints}
@@ -450,9 +543,11 @@ export function ChipBubbleView({
             />
           ) : null}
           {/* CH-1 R6 case 2: 聚焦分點當日無成交 — 維持選中,泡泡圖照常
-              (該分點本來就不在圖上),中央 badge 說明而非誤導成資料壞掉。 */}
+              (該分點本來就不在圖上),中央 badge 說明而非誤導成資料壞掉。
+              impl-spec R5:length === 1 嚴格判 — 多選含聚焦分點時不現。 */}
           {focusedBroker !== null &&
-            selectedBrokerId === focusedBroker.id &&
+            selected.length === 1 &&
+            selected[0]!.id === focusedBroker.id &&
             bubbleData !== null &&
             !bubbleData.trades.some((t) => t.broker_id === focusedBroker.id) && (
               <div
@@ -491,7 +586,7 @@ export function ChipBubbleView({
               <div className="text-ink-muted tabular-nums">
                 買 {fmtVol(brushSummary.buyLots)} / 賣 {fmtVol(brushSummary.sellLots)} 張
               </div>
-              {selectedBrokerId && (
+              {selected.length > 0 && (
                 <div
                   data-testid="brush-range-parked"
                   className="mt-1 text-2xs text-ink-dim italic"
@@ -563,7 +658,12 @@ export function ChipBubbleView({
           >
             <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-line">
               <span className="text-sm text-ink-muted">
-                成交明細{selectedBrokerName ? ` — ${selectedBrokerName}` : ""}
+                成交明細
+                {selected.length === 1
+                  ? ` — ${selected[0]!.name}`
+                  : selected.length >= 2
+                    ? ` — ${selected.length} 個分點`
+                    : ""}
               </span>
               <button
                 type="button"
@@ -619,7 +719,8 @@ function DetailPanel({
   priceAggs,
   buyRows,
   sellRows,
-  selectedBrokerName,
+  selectedNames,
+  colorFor,
   labelFor,
   onSelect,
   buySort,
@@ -630,7 +731,10 @@ function DetailPanel({
   priceAggs: ReturnType<typeof aggregateByPrice>;
   buyRows: TradeRow[];
   sellRows: TradeRow[];
-  selectedBrokerName: string | null;
+  /** SC-4:選中分點名集合(多選)— row active 態。 */
+  selectedNames: ReadonlySet<string>;
+  /** SC-4:N ≥ 2 時回該分點專屬色(列首圓點),否則 null。 */
+  colorFor: (name: string) => string | null;
   /** SC-7:broker name → 「id 去dash名」顯示 label。 */
   labelFor: (name: string) => string;
   onSelect: (broker: string | null) => void;
@@ -654,7 +758,8 @@ function DetailPanel({
         <TradeList
           rows={buyRows}
           side="buy"
-          selectedBroker={selectedBrokerName}
+          selectedNames={selectedNames}
+          colorFor={colorFor}
           labelFor={labelFor}
           onSelect={onSelect}
           sortSpec={buySort}
@@ -663,7 +768,8 @@ function DetailPanel({
         <TradeList
           rows={sellRows}
           side="sell"
-          selectedBroker={selectedBrokerName}
+          selectedNames={selectedNames}
+          colorFor={colorFor}
           labelFor={labelFor}
           onSelect={onSelect}
           sortSpec={sellSort}
@@ -805,7 +911,8 @@ function SortHeader({
 const TradeList = memo(function TradeList({
   rows,
   side,
-  selectedBroker,
+  selectedNames,
+  colorFor,
   labelFor,
   onSelect,
   sortSpec,
@@ -813,7 +920,10 @@ const TradeList = memo(function TradeList({
 }: {
   rows: TradeRow[];
   side: "buy" | "sell";
-  selectedBroker: string | null;
+  /** SC-4:選中分點名集合(多選)— row active 態。 */
+  selectedNames: ReadonlySet<string>;
+  /** SC-4:N ≥ 2 時回該分點專屬色(列首圓點),否則 null。 */
+  colorFor: (name: string) => string | null;
   /** SC-7:broker name → 「id 去dash名」顯示 label。 */
   labelFor: (name: string) => string;
   onSelect: (broker: string | null) => void;
@@ -881,12 +991,25 @@ const TradeList = memo(function TradeList({
                   height: vi.size,
                 }}
                 className={`grid grid-cols-[1fr_56px_56px] items-center text-xs px-2 border-b border-line/20 cursor-pointer transition-colors ${
-                  selectedBroker === r.broker
+                  selectedNames.has(r.broker)
                     ? `${activeClass} text-ink`
                     : "hover:bg-bg-deep/50 text-ink-muted"
                 }`}
               >
-                <span className="text-left truncate">{labelFor(r.broker)}</span>
+                <span className="text-left truncate">
+                  {(() => {
+                    const dot = colorFor(r.broker);
+                    return dot ? (
+                      <span
+                        data-testid="row-broker-dot"
+                        aria-hidden="true"
+                        className="inline-block size-2 rounded-full mr-1 align-middle"
+                        style={{ background: dot }}
+                      />
+                    ) : null;
+                  })()}
+                  {labelFor(r.broker)}
+                </span>
                 <span className={`text-right tabular-nums ${colorClass}`}>
                   {fmtVol(r.volume)}
                 </span>
