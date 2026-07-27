@@ -165,3 +165,69 @@ describe("BorrowFeePage 單檔篩選", () => {
     expect(screen.queryByTestId("borrow-fee-stock-filter")).toBeNull();
   });
 });
+
+// 選股加總 summary(feat/borrow-fee-totals SC-2/3/5)— testid textContent 層級
+// 比對(summary 由多個 span 組成,整句 getByText 會 fragmentation 失敗)。
+describe("BorrowFeePage 選股加總 summary", () => {
+  const WITH_SHARES: BorrowFeeData = {
+    ...MULTI,
+    month_shares: { "8046": 17000, "2434": 21000 },
+  };
+
+  it("選股 → summary 出現:本日合計 = 同日兩筆相加、本月累計 + 次數(千分位)", () => {
+    hookState.data = WITH_SHARES;
+    render(<BorrowFeePage />);
+    expect(screen.queryByTestId("borrow-fee-stock-summary")).toBeNull();
+    pickStock("8046");
+    const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
+    expect(t).toContain("本日標借合計 8,000 股"); // 3,000 + 5,000(同日兩筆)
+    expect(t).toContain("本月累計 17,000 股");
+    expect(t).toContain("(2 次)");
+  });
+
+  it("清除選股 → summary 消失", () => {
+    hookState.data = WITH_SHARES;
+    render(<BorrowFeePage />);
+    pickStock("8046");
+    expect(screen.getByTestId("borrow-fee-stock-summary")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("stock-filter-clear"));
+    expect(screen.queryByTestId("borrow-fee-stock-summary")).toBeNull();
+  });
+
+  it("該檔今日無列(refresh 後消失)→ 本日 0 股、本月累計照顯", () => {
+    hookState.data = WITH_SHARES;
+    const { rerender } = render(<BorrowFeePage />);
+    pickStock("8046");
+    hookState.data = {
+      ...WITH_SHARES,
+      rows: WITH_SHARES.rows.filter((r) => r.stock_id !== "8046"),
+    };
+    rerender(<BorrowFeePage />);
+    const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
+    expect(t).toContain("本日標借合計 0 股");
+    expect(t).toContain("本月累計 17,000 股");
+  });
+
+  it("month_shares 缺該股 key → 累計顯「—」且無「(N 次)」段(design R1 鎖)", () => {
+    hookState.data = {
+      ...WITH_SHARES,
+      month_shares: { "2434": 21000 },
+      month_counts: { "2434": 1 },
+    };
+    render(<BorrowFeePage />);
+    pickStock("8046");
+    const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
+    expect(t).toContain("本月累計 —");
+    expect(t).not.toContain("— 股"); // 缺值不接「股」字
+    expect(t).not.toContain("("); // 次數段整段不 render(?? 1 會捏造次數)
+  });
+
+  it("month_shares map 整個缺(版本 skew)→ 不 crash、顯「—」", () => {
+    hookState.data = { ...MULTI } as BorrowFeeData; // 無 month_shares 欄
+    render(<BorrowFeePage />);
+    pickStock("8046");
+    const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
+    expect(t).toContain("本日標借合計 8,000 股");
+    expect(t).toContain("本月累計 —");
+  });
+});
