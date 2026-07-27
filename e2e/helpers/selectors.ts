@@ -39,6 +39,8 @@ export const TESTIDS = {
   feeHigh: "fee-high",
   // 券差單檔篩選(mod/borrow-fee-stock-filter)
   borrowFeeStockFilter: "borrow-fee-stock-filter",
+  // 選股加總 summary(feat/borrow-fee-totals BF4)
+  borrowFeeStockSummary: "borrow-fee-stock-summary",
   stockFilterClear: "stock-filter-clear",
   // equity 權證 tab(feat/warrant-selector)
   warrantRow: "warrant-row",

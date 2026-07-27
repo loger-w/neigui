@@ -54,6 +54,25 @@ test.describe("borrow fee mode", () => {
     await expect(rows).toHaveCount(fullCount);
   });
 
+  test("BF4: 選股加總 summary — 本日合計 + 本月累計資料級(feat/borrow-fee-totals SC-3/4)", async ({ page }) => {
+    // 痛點:同股同日多筆(8046 於 06/24 兩列)是 visibility-only 蓋不住的
+    // 資料級語意 — summary 全鏈 = backend month_shares 全列相加 → payload →
+    // 前端 dayTotal reduce。fixture 手算(scratchpad script 重算,非 design
+    // 預估):8046 as_of 06-26 當日 1 列 3,000;當月 2,000+12,000(06/24)+
+    // 3,000(06/26)= 17,000,distinct dates = 2。
+    const filter = page.getByTestId(TESTIDS.borrowFeeStockFilter);
+    await filter.fill("8046");
+    await page.getByRole("option", { name: /8046/ }).click();
+    const summary = page.getByTestId(TESTIDS.borrowFeeStockSummary);
+    await expect(summary).toBeVisible();
+    await expect(summary).toContainText("本日標借合計 3,000 股");
+    await expect(summary).toContainText("本月累計 17,000 股");
+    await expect(summary).toContainText("(2 次)");
+    // 清除選股 → summary 消失(SC-2 後半)
+    await page.getByTestId(TESTIDS.stockFilterClear).click();
+    await expect(summary).toHaveCount(0);
+  });
+
   test("BF2: reload 後 borrow mode 持久化(SC-1)", async ({ page }) => {
     // 痛點:App.tsx useState init 讀 localStorage('mode');新 mode 值 'borrow'
     // 必須通過同一條持久化路徑(N2 只鎖 options,新枚舉值要自己的鎖)。
