@@ -81,9 +81,36 @@ user 2026-07-27 拍板「B:/mod 對齊新版 /feat,並直接同步修 /bug /refa
 - graphify docs/skills 語意層(C4)另行評估中。
 - 收件匣已歸零(5 條 07-27 全批拍板,見 `15e14f8`);/mod 側列管四條已全銷。
 
+## Review 結果(2026-07-27 fresh-context subagent 對抗式復審,已補修)
+
+無 P0,不退回。3 P1 + 4 P2 全數同日補修(細節以 RATIONALE /mod 節該條目復審補修行為準):
+
+- **P1 限縮輪指向物不存在**:/feat 的限縮輪靠 design.md「檔頭保留 changelog」撐起,同步時
+  只抄了限縮輪、沒帶 changelog 義務 — change-spec.md / refactor-plan.md 無任何 amendment
+  落檔要求,dispatch 指向不存在的段落 → mod.md Phase 3 補 `[amendment]` 義務、refactor 改
+  「修復所觸及步驟」、review-protocol A2 改通則(有標記指標記,無者 main agent 圈行號)。
+- **P1 退出軸不對齊**:加輪觸發軸是 accepted P0、退出軸是「無 P0/P1」— P1-only case 既不
+  加輪也無出口 → 出口句改綁 P0,P1 改「逐條處置(修復或入 Known Risks / 風險註記)」。
+- **P1 dispositions refactor row 漏改**:同批改了 refactor.md 輪數卻只更新 /mod 的 row
+  (commit message 自述 ×2 rows,應為 ×3)→ 補 note + 「限縮加輪」check。
+- **P2 ×4**:feat-phase0-2 分流清單去 feat 專屬語彙(L32 SC gate / L33 只指 feat.md);
+  C 節 round JSON 補續號規則(原樣會覆蓋自評 JSON,毀掉要建立的實證記錄);RATIONALE
+  落點清單補 auto.md ×3 + /auto 節指路行;mod.md Phase 5 補 /mod 版雙焦點定義。
+
+檢定過不立案(復審裁決):graphify 句差異刻意(bug 另有 Phase 5 grep 防線)、auto.md
+例外句三檔鏈對得上(文件預核准分支未觸動)、輪數三檔一說、兩支 reviewer 限縮節與 A2
+一致(refactor 版「變更步驟」是正確改寫)、dispositions checklist row 兩層歷史保住、
+manifest 條目路徑與 condition 全實存、baseline profiles 零改動、check_feat_tags 事實
+查證通過、/mod 輪數無實證裁量已有顯式風險註 + 覆核路徑。
+
+復審後機械驗證(實跑):mirror --fix 後 --check 全部一致;verify-dispositions n=0
+(refactor row 新 check「限縮加輪」命中);hooks 137 passed(未動 hooks)。
+
 ## 還原路徑(復審判定要退回時)
 
-- 鏡像:git revert 本批 commit。真實檔 `~/.claude/`:各處刪 2026-07-27 標記句;
+- 鏡像:git revert 本批 commit。真實檔 `~/.claude/`:各處刪 2026-07-27 標記句
+  (**auto.md 例外:僅退本批三句** — 例外句 /mod 擴充、必停清單第 4 項、建議表 /mod 行;
+  其餘 07-27 標記屬前批 grilling 補修,不動);
   mod.md / refactor.md 輪數句還原為「Max 2 輪」原文(見 git 歷史);mod.md Phase 5 補回
   inline 完工自查 checklist 原句;dispositions ×2 rows / load-manifest 條目還原見 git 歷史;
   兩支 reviewer 刪限縮輪節 + 「限縮輪(round 2)」改回「round ≥ 2」。

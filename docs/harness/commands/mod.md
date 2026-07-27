@@ -43,16 +43,20 @@
    - Review 依 `~/.claude/harness/refs/review-protocol.md` A 節 dispatch `change-spec-reviewer`
      (傳 change-spec.md + Phase 1 `current-state.md` 路徑)
    - **輪數(2026-07-27 對齊 /feat 07-26 制):預設 1 輪;round 1 有 accepted P0 → 修復後
-     限縮加輪 1 次**(只審 changelog / 變更段落,審 fix 是否改出新矛盾)。**退出條件:無 P0/P1**
-     (P2 記入 spec 註記)。限縮輪後仍有 → 停下回報 user 三選一
-     (縮 scope / 換做法 / 接受寫入 Known Risks)
+     限縮加輪 1 次**(只審 `[amendment]` 標記段落,審 fix 是否改出新矛盾)。**finding 修復
+     就地改 spec 並標 `[amendment YYYY-MM-DD: <原因>]`**(限縮輪 dispatch 的指向物,
+     2026-07-27 復審補)。**退出條件:無 P0,且 P1 逐條處置**(修復,或 receiving 裁決後
+     寫入 change-spec.md `## Known Risks`;P2 記入 spec 註記)。限縮輪後仍有 P0 →
+     停下回報 user 三選一(縮 scope / 換做法 / 接受寫入 Known Risks)
 4. **Phase 4|TDD + 分 commit**(順序 **🔵 → 🔴 → 🟢**:先重構讓地基乾淨,再改行為,最後加新東西):
    - 🔵 純重構:測試完全不動,改完該綠的還是綠
    - 🔴 行為改動:**先改測試讓它紅** → 改實作讓它綠(鐵則 E 改 assertion 禁令的唯一合法通道)
    - 🟢 新功能:先寫紅測試 → 實作 → 綠
    - Commit 前 cat `docs/next-time.md`(順手衝動寫進去)
 5. **Phase 5|自評**:依 `~/.claude/harness/refs/review-protocol.md` B 節跑 code review
-   (**預設 medium 檔位**),輸出 `code-review-round-<N>.json` **落檔 `.claude/mod/<slug>/`**
+   (**預設 medium 檔位**),**雙焦點**:(a) implementation bug;(b) **白名單對照** —
+   回看 change-spec.md 白名單節確認既有行為未被靜默改動(2026-07-27 復審補)。
+   輸出 `code-review-round-<N>.json` **落檔 `.claude/mod/<slug>/`**
    (2026-07-27 拍板 round JSON 落檔義務)→ `receiving-code-review` 分類處理 →
    自評收斂後把當下 HEAD sha
    追記到 change-spec.md 末尾一行 `self_review_head: <sha>`(收尾節 review 增量判準)

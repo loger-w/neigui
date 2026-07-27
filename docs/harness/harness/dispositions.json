@@ -250,8 +250,11 @@
       "checks": [{ "kind": "present", "file": "commands/refactor.md", "string": "Blast radius" }] },
     { "note": "§5.4 砍 dead code 前查動態用法", "disposition": "核心",
       "checks": [{ "kind": "present", "file": "commands/refactor.md", "string": "動態用法" }] },
-    { "note": "§5.4 Phase 3 refactor-plan-reviewer dispatch + max 2 輪", "disposition": "核心",
-      "checks": [{ "kind": "present", "file": "commands/refactor.md", "string": "refactor-plan-reviewer" }] },
+    { "note": "§5.4 Phase 3 refactor-plan-reviewer dispatch + 輪數(2026-07-27 更新:max 2 輪 → 預設 1 輪 + 限縮加輪,對齊 /feat;復審補 — 同批原漏此 row)", "disposition": "核心",
+      "checks": [
+        { "kind": "present", "file": "commands/refactor.md", "string": "refactor-plan-reviewer" },
+        { "kind": "present", "file": "commands/refactor.md", "string": "限縮加輪" }
+      ] },
     { "note": "§5.4 第 19 行 auto-verify 抽樣數重述", "disposition": "刪",
       "checks": [{ "kind": "absent", "file": "commands/refactor.md", "string": "(同 auto-verify regression 抽樣數)" }] },
     { "note": "§5.4 收尾括號步驟與日期 / 自主模式建議節 / 鐵則重疊條", "disposition": "刪",

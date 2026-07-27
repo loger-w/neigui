@@ -29,10 +29,11 @@
   自查環境不問 user,**決策**才逐條問、等答覆。
 - 「提 2-3 方案」縮成「確認 user 方案 + 至多一個 counter-proposal」— 有明顯更優解才提,
   沒有不硬湊。
-- 共識落 `brainstorm.md`、SC gate、S/M/L 分流照常。
-- 疊 /auto:拍板不豁免,以 feat.md Phase 0 步驟 1 例外句為準。
-- **/mod Phase 2 亦用本判準**(2026-07-27 接入;分流句與落檔要求在 mod.md Phase 2,
-  共識與判定記錄落 `change-spec.md`)。
+- 共識落各流程 artifact(/feat:`brainstorm.md` / /mod:`change-spec.md`)、成功條件 gate、
+  規模分流照常。
+- 疊 /auto:拍板不豁免,以呼叫端 command 的分流句為準(feat.md Phase 0 步驟 1 /
+  mod.md Phase 2;2026-07-27 復審改 — 原僅指 feat.md)。
+- **/mod Phase 2 亦用本判準**(2026-07-27 接入;分流句與落檔要求在 mod.md Phase 2)。
 
 ## Phase 0:延續型 feature 的前輪指示掃描
 

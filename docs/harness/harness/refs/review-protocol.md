@@ -12,10 +12,10 @@
    `impl-spec-reviewer` / `change-spec-reviewer` / `refactor-plan-reviewer`)。
    傳**檔案路徑**不傳內容 —— reviewer 是 fresh context,對話裡的表傳不進去。
    Criteria / severity / JSON schema 固化在 agent 定義,dispatch prompt 不重抄。
-2. round 2 一律為**限縮輪**(round 1 有 accepted P0 才發生;dispatch prompt 只指
-   changelog / amendment / 變更段落,審 fix 是否改出新矛盾 — 2026-07-26 /feat 實證,
-   2026-07-27 推廣 /mod /refactor),另傳上一輪 review JSON 路徑 + 本輪 changelog 摘要
-   (cross-round 檢查)。
+2. round 2 一律為**限縮輪**(round 1 有 accepted P0 才發生;dispatch prompt 只指**本輪
+   修復所觸及的段落** — 文件有 changelog / `[amendment]` 標記者指標記段落,無者由 main
+   agent 圈定行號範圍;審 fix 是否改出新矛盾 — 2026-07-26 /feat 實證,2026-07-27 推廣
+   /mod /refactor),另傳上一輪 review JSON 路徑 + 本輪修復摘要(cross-round 檢查)。
 3. 回傳 JSON 落檔 `<review-type>-review-round-<N>.json`。
 4. main agent 對 finding **先機械快篩**(grep / Read 可直接查證的 claim 先反證,誤報記
    REFUTED);餘下的處置粒度由各 command 定義 —— /feat:P0/P1 站得住就修,修不動或與 SC
@@ -27,7 +27,7 @@
 
 **退出條件與輪數由各 command 自訂**(/feat Phase 1 為 1 輪 + P0 觸發限縮加輪、Phase 2 固定
 1 輪、無 P0 且 P1 ≤ 2;/mod /refactor Phase 3 為預設 1 輪 + accepted P0 觸發限縮加輪、
-無 P0/P1 — 2026-07-27 對齊)。本協定不覆寫。
+無 P0 且 P1 逐條處置(修復或入 Known Risks / 風險註記)— 2026-07-27 對齊)。本協定不覆寫。
 
 ## B. Code review(/feat Phase 4;/mod Phase 5;收尾補齊)
 
@@ -79,7 +79,9 @@ merge 前對**完整 diff** 的最終 review。原則是「補齊缺口不重跑
   P0/P1 修完才進 push。fix 迴圈 3 輪上限(**review 本身不重跑**),超限依鐵則 F 回報。
 - **round JSON 落檔義務(2026-07-27 拍板)**:C 節 review 的 `code-review-round-<N>.json`
   一律落檔該流程 artifact 目錄(`.claude/<flow>/<slug>/`,無目錄則就地建立)—
-  25 個非 /feat run 零結構化 review 記錄,輪數實證無從做起。
+  25 個非 /feat run 零結構化 review 記錄,輪數實證無從做起。檔名續號:有自評輪者續自評
+  遞增(自評 round-1 → 收尾 round-2,**不覆蓋自評 JSON**);/bug /refactor /perf 無自評
+  則自 round-1 起(2026-07-27 復審補)。
 - /feat /mod:讀自評結束時記錄的 `self_review_head`(/feat 在 state.json;/mod 在
   change-spec.md 末尾)→ `git rev-list <self_review_head>..HEAD` 非空才對**增量 diff**
   補一輪 medium review;為空 → 沿用自評結果不重跑。

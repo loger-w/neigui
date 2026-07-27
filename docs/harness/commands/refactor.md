@@ -23,8 +23,9 @@
    大型 refactor 依 `~/.claude/harness/refs/review-protocol.md` A 節 dispatch
    `refactor-plan-reviewer`(傳 refactor-plan.md + Phase 2 `test-inventory.md` 路徑)。
    **輪數(2026-07-27 對齊 /feat 07-26 制):預設 1 輪;accepted P0 → 修復後限縮加輪 1 次
-   (只審變更段落)。退出條件:無 P0/P1**。限縮輪後仍有 → 停下回報 user
-   (縮範圍 / 換拆法 / 接受風險註記)
+   (只審修復所觸及的步驟,main agent 於 dispatch prompt 圈定)。退出條件:無 P0,且 P1
+   逐條處置(修復,或裁決後寫入 refactor-plan.md 風險註記)**。限縮輪後仍有 P0 →
+   停下回報 user(縮範圍 / 換拆法 / 接受風險註記)
 4. **Phase 4|逐步執行**:每步 = 改 → 跑相關測試 → 全綠 → `git commit`(**純 🔵**)→ 下一步。
    若紅:**預設 refactor 改錯**(鐵則 C),次選才考慮測試在測 **implementation detail**
    (若真是 → 標註,這已變相是 mod,停下切 `/mod`)

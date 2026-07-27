@@ -27,7 +27,7 @@ dispatch prompt 提供:change-spec.md 路徑、Phase 1 現況表(`current-state.
 
 ## 限縮輪(round 2 唯一形態,2026-07-27 起同 /feat)
 
-round 2 只在 round 1 有 accepted P0 時發生,審查範圍**限縮**:只讀 change-spec.md 的
-changelog / 變更段落與其直接交叉引用的章節,判「fix 是否改出新矛盾 / 漏更新交叉引用 /
-與上一輪其他 finding 的 fix 互相衝突」。**不重掃全文、不重跑 criteria 全套**;在限縮範圍內
+round 2 只在 round 1 有 accepted P0 時發生,審查範圍**限縮**:只讀 change-spec.md 中標
+`[amendment]` 的段落與其直接交叉引用的章節(mod.md Phase 3 要求修復就地標記),判「fix
+是否改出新矛盾 / 漏更新交叉引用 / 與上一輪其他 finding 的 fix 互相衝突」。**不重掃全文、不重跑 criteria 全套**;在限縮範圍內
 發現的新問題照常回報。

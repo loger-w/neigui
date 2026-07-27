@@ -95,7 +95,8 @@ reviewer 是 fresh context,只吃檔案路徑 —— 對話裡整理的表傳不
 這是共通鐵則 E「禁止改測試 assertion 讓它通過」的**唯一合法順序**。`test-driven-development` skill 只教「新測試紅先行」,不涵蓋「既有測試該變」的情況;模型的預設行為是先改 implementation 再修壞掉的 assertion —— 正好是被禁的樣態。
 
 **[四 command 同步批:對齊 07-26/07-27 /feat 改版(2026-07-27 user 拍板)]**
-動機:07-26 /feat 實證改版與 07-27 三批(e2e 意圖對齊 / grilling 分流 / 補修復審)只動 /feat,next-time 積四條 /mod 列管項 + 07-26 一致性掃描 P2 未收(scratchpad 實存)。落點:mod.md ×5 — Phase 1 graphify query 起點句(動態用法仍必 grep)、Phase 2 提問姿態分流句(判準複用 refs/feat-phase0-2.md;判定記錄落 change-spec.md;/auto 不豁免)+ 成功條件補「畫面可指認」表述、Phase 3 輪數 max 2 → 預設 1 輪 + accepted P0 限縮加輪(三檔兩說 P1 統一;**無 /mod 側 round JSON 實證,採 /feat 07-26 制為準 — 落檔義務同批補上,日後可實證覆核**)、Phase 5 刪 inline 完工自查 checklist(/feat 側同型靜默死亡)+ round JSON 落檔 + 白名單對照必讀(同 /feat Phase 4 (b) 例外)、Phase 8 補收尾 UI 驗收點。refactor.md:Phase 3 輪數同制、Phase 5 補 graphify 句。bug.md:Phase 2 補 graphify 句。perf.md:Done 補 check_feat_tags(四流程唯獨 perf 漏,掃描 #21)。scope-tiers /mod M/L 輪數統一;review-protocol:A2 限縮輪推廣(掃描 #10)+ A 節退出條件註更新 + C 節「fix 迴圈 3 輪上限(review 不重跑)」消歧(#11)+ round JSON 落檔義務;change-spec-reviewer / refactor-plan-reviewer 補限縮輪節(#23);load-manifest:mod-M 補 grilling + feat-phase0-2 條件條目、feat-L 補 auto-wave 條件條目(#14)+ SDD _note 補句(#13);feat-phase0-2.md 判準節補 /mod 接入行;feat-phase3.md 補 executing-plans 缺席 fallback 註(#17);dispositions ×2 rows 更新。掃描 P2 清點:#18 #19 #20 moot(skill 複製後去前綴引用已有效)、#9 #12 #15 #16 #22 先前批次已修。還原:各處刪 2026-07-27 標記句(輪數句還原為 Max 2 輪原文),manifest / dispositions 見 git 歷史。
+動機:07-26 /feat 實證改版與 07-27 三批(e2e 意圖對齊 / grilling 分流 / 補修復審)只動 /feat,next-time 積四條 /mod 列管項 + 07-26 一致性掃描 P2 未收(scratchpad 實存)。落點:mod.md ×5 — Phase 1 graphify query 起點句(動態用法仍必 grep)、Phase 2 提問姿態分流句(判準複用 refs/feat-phase0-2.md;判定記錄落 change-spec.md;/auto 不豁免)+ 成功條件補「畫面可指認」表述、Phase 3 輪數 max 2 → 預設 1 輪 + accepted P0 限縮加輪(三檔兩說 P1 統一;**無 /mod 側 round JSON 實證,採 /feat 07-26 制為準 — 落檔義務同批補上,日後可實證覆核**)、Phase 5 刪 inline 完工自查 checklist(/feat 側同型靜默死亡)+ round JSON 落檔 + 白名單對照必讀(同 /feat Phase 4 (b) 例外)、Phase 8 補收尾 UI 驗收點。refactor.md:Phase 3 輪數同制、Phase 5 補 graphify 句。bug.md:Phase 2 補 graphify 句。perf.md:Done 補 check_feat_tags(四流程唯獨 perf 漏,掃描 #21)。scope-tiers /mod M/L 輪數統一;review-protocol:A2 限縮輪推廣(掃描 #10)+ A 節退出條件註更新 + C 節「fix 迴圈 3 輪上限(review 不重跑)」消歧(#11)+ round JSON 落檔義務;change-spec-reviewer / refactor-plan-reviewer 補限縮輪節(#23);load-manifest:mod-M 補 grilling + feat-phase0-2 條件條目、feat-L 補 auto-wave 條件條目(#14)+ SDD _note 補句(#13);feat-phase0-2.md 判準節補 /mod 接入行;feat-phase3.md 補 executing-plans 缺席 fallback 註(#17);auto.md ×3 — 替代條件例外句擴及 /mod Phase 2、必停清單第 4 項、建議表 /mod S/M 行(2026-07-27 復審補記 — 原落點清單漏列);dispositions ×2 rows 更新。掃描 P2 清點:#18 #19 #20 moot(skill 複製後去前綴引用已有效)、#9 #12 #15 #16 #22 先前批次已修。還原:各處刪 2026-07-27 標記句(輪數句還原為 Max 2 輪原文;auto.md 僅退本批三句,其餘 07-27 標記屬前批),manifest / dispositions 見 git 歷史。
+2026-07-27 復審補修(3 P1 + 4 P2,fresh-context subagent 對抗式復審,無 P0 不退回):限縮輪指向物補實(P1 — /feat 的 changelog 義務同步時漏帶,mod.md Phase 3 補 `[amendment]` 落檔義務、refactor.md 改「修復所觸及步驟」、review-protocol A2 改「修復所觸及段落」通則、change-spec-reviewer 限縮節同步);退出軸對齊(P1 — 原「無 P0/P1」在 P1-only case 既不加輪也無出口,mod/refactor 出口句改綁 P0、P1 改「逐條處置(修復或入 Known Risks / 風險註記)」,review-protocol 註同步);dispositions refactor row 補改(P1 — 同批只改 /mod row 漏 /refactor,note + 「限縮加輪」check);feat-phase0-2 分流清單去 feat 專屬語彙(P2);review-protocol C 節 round JSON 補續號規則防覆蓋自評 JSON(P2);RATIONALE 落點清單補 auto.md ×3 + /auto 節指路行(P2,即上行);mod.md Phase 5 補 /mod 版雙焦點定義使 (b) 指涉落地(P2)。
 
 ---
 
@@ -139,6 +140,8 @@ reviewer 是 fresh context,只吃檔案路徑 —— 對話裡整理的表傳不
 ---
 
 ## /auto
+
+2026-07-27 四 command 同步批(詳 /mod 節該條):替代條件例外句擴及 /mod Phase 2、必停清單第 4 項、建議表 /mod S/M 行。
 
 **[方向性抉擇判定準則(候選選項互換,SC 集合／out of scope／對外契約任一需改寫 → 停)]**
 這是必停閘門的定義本身。**識別觸發的規則無法延後載入** —— 不知道自己踩到了,就不會去讀那份 reference。
