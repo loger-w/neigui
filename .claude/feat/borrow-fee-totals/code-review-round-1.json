@@ -1,0 +1,12 @@
+{
+  "round": 1,
+  "mode": "medium, 2 lenses (correctness/data-semantics + missing-from-spec/test-coverage)",
+  "diff": "review-diff.txt (138415b..80c0fc8, 347 lines)",
+  "findings": {
+    "P0": 0,
+    "P1": [{"id": "lensB-F1(=lensA-F1)", "claim": "month_shares 整缺(版本 skew)時顯「—(2 次)」矛盾 — 次數段未綁累計非 null;兩 lens 收斂同一 gap,lensB 以 throwaway vitest 實測重現", "receiving": "accepted", "resolution": "fixed — 22205e1 red(skew 反向 assertion)+ green(monthCount 綁 monthTotal !== null)"}],
+    "P2_summary": {"count": 0, "themes": "lensA 同 gap 標 P2,與 lensB P1 合併計一條"}
+  },
+  "exit": "accepted 修完;BorrowFeePage 17/17 綠;不重跑全量",
+  "self_review_head": "e7848c70034908bf658933600e38e7ef289951f7"
+}

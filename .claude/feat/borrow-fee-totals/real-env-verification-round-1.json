@@ -1,0 +1,12 @@
+{
+  "round": 1,
+  "env": "本機 dev(backend :8000 真 TWSE/TPEx 標借資料 as_of 2026-07-27,91 rows + frontend :5173),chrome-devtools MCP",
+  "cases": [
+    {"sc": "SC-2/SC-3", "scenario": "選 2344 華邦電(本日 4 列:7,000+3,000+1,000+1,000)", "result": "PASS — summary「本日標借合計 12,000 股 · 本月累計 1,043,000 股(14 次)」與 API probe 手算完全一致;filter 正下方、ink 階層標色", "evidence": "evidence/SC-2_SC-3_stock-summary-2344.png"},
+    {"sc": "SC-5 edge(清除)", "scenario": "點 × 清除選股", "result": "PASS — summary 消失、全表 91 rows 恢復"},
+    {"sc": "SC-1(API)", "scenario": "curl /api/daytrade-fee probe", "result": "PASS — month_shares 存在,2344=1,043,000 / 3481=83,000 等,含 6182(今日無列)之月累計"},
+    {"sc": "regression 抽樣", "scenario": "(1) NTD badge(資料日 2026-07-27 非交易日註記)照常;(2) 表格排序 / 高費率標色 / 本月次數欄不變;console 0 messages", "result": "PASS"}
+  ],
+  "console": "0 errors 0 warnings",
+  "all_pass": true
+}
