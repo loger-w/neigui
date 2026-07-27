@@ -100,13 +100,35 @@ function HintSvg({
 // Component
 // ---------------------------------------------------------------------------
 
+/** 選中分點(bubble-multi-broker):id = FinMind securities_trader_id,
+ *  colorIdx = 0-5 配色 slot(選取存續期間不變,ChipBubbleView 配發)。 */
+export interface BubbleSelectedBroker {
+  id: string;
+  name: string;
+  colorIdx: number;
+}
+
+/** Per-broker 識別外框色(N ≥ 2 選取時)。6 色 categorical,dataviz validator
+ *  於 dark surface #0e0c08 驗證:前 3 slot all-pairs PASS、全 6 adjacent PASS;
+ *  刻意排除紅綠色相(買賣多空保留)。>3 同時選取的 identity 由 secondary
+ *  encoding(hover tooltip / legend chips / 明細列名)補足。 */
+export const BROKER_PALETTE: readonly string[] = [
+  "#3987e5", // blue
+  "#c98500", // yellow
+  "#d55181", // magenta
+  "#9085e9", // violet
+  "#2aa5b8", // cyan
+  "#8c6d1f", // olive gold
+];
+
 export interface BubbleChartProps {
   trades: BrokerTrade[];
   width: number;
   height: number;
   closePrice?: number;
-  /** When set, only show this broker's bubbles. */
-  selectedBroker?: string | null;
+  /** 選中分點(≤6)。空陣列 / undefined = 未選取(全體 top-100 view);
+   *  非空 = union filter,只 render 選中分點的泡泡。 */
+  selectedBrokers?: readonly BubbleSelectedBroker[];
   /** Hover callback for tooltip (null = mouse left). */
   onBubbleHover?: (payload: BubbleHoverPayload | null, x: number, y: number) => void;
   /** Click callback — broker name when clicking a bubble, null when clicking empty area. */
@@ -135,6 +157,7 @@ interface Bubble {
   r: number;
   fill: string;
   stroke: string;
+  strokeWidth: number;
   brokerId: string;
   key: string;
   payload: BubbleHoverPayload;
@@ -145,7 +168,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   width,
   height,
   closePrice,
-  selectedBroker,
+  selectedBrokers,
   onBubbleHover,
   onBubbleClick,
   intradayPoints,
@@ -414,16 +437,27 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
     if (t.sell > VOLUME_THRESHOLD) layoutVolumes.push(t.sell);
   }
 
-  // Matched broker's trades — computed ONCE and reused by the F2 axis
+  // bubble-multi-broker:選取集合(id → colorIdx)。空 = 未選取。
+  const selected = selectedBrokers ?? [];
+  const hasSelection = selected.length > 0;
+  const selectedIdSet = new Set(selected.map((b) => b.id));
+  const colorIdxById = new Map(selected.map((b) => [b.id, b.colorIdx]));
+  // 空狀態 hint:單選維持現行文案(SC-5 零回歸);多選用複數文案。
+  const emptyHint =
+    selected.length === 1
+      ? `${selected[0]!.name} 今日無顯著成交量`
+      : "選中分點今日無顯著成交量";
+
+  // Matched brokers' trades — computed ONCE and reused by the F2 axis
   // fallback below and the F11 render source further down.
-  const matchedBrokerTrades: BrokerTrade[] | null = selectedBroker
-    ? trades.filter((t) => t.broker === selectedBroker)
+  const matchedBrokerTrades: BrokerTrade[] | null = hasSelection
+    ? trades.filter((t) => selectedIdSet.has(t.broker_id))
     : null;
 
   // F2 fallback: when the global top-100 view would be empty (quiet day),
-  // derive axes from the selected broker's own data so a broker search
+  // derive axes from the selected brokers' own data so a broker search
   // still shows them — even sub-threshold.
-  const useBrokerAxes = layoutVolumes.length === 0 && !!selectedBroker;
+  const useBrokerAxes = layoutVolumes.length === 0 && hasSelection;
 
   let prices: number[];
   let volumes: number[];
@@ -448,11 +482,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
       <HintSvg
         width={width}
         height={height}
-        text={
-          selectedBroker
-            ? `${selectedBroker} 今日無顯著成交量`
-            : "No significant volume"
-        }
+        text={hasSelection ? emptyHint : "No significant volume"}
       />
     );
   }
@@ -463,7 +493,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   // C10 (🔴 Item 3): priceRange 疊加過濾 — 只留 price ∈ [min, max]。軸仍
   // 用 layoutPrices/layoutVolumes,filter 後泡泡位置不變(視覺感受為淡出
   // 而非重排),對齊 F11 axes-stable 原則。
-  const priceFilteredSource: BrokerTrade[] = selectedBroker
+  const priceFilteredSource: BrokerTrade[] = hasSelection
     ? matchedBrokerTrades!
     : layoutTrades;
   const renderTrades: BrokerTrade[] = priceRange
@@ -471,7 +501,14 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         (t) => t.price >= priceRange.min && t.price <= priceRange.max,
       )
     : priceFilteredSource;
-  const threshold = selectedBroker ? 0 : VOLUME_THRESHOLD;
+  const threshold = hasSelection ? 0 : VOLUME_THRESHOLD;
+  // SC-2:N ≥ 2 時每分點掛專屬色外框(寬 2)識別;N ≤ 1 維持現行買賣 stroke
+  // (SC-5 單選視覺零回歸)。fill 一律買紅賣綠不動。
+  const ringStroke = (brokerId: string): string | null => {
+    if (selected.length < 2) return null;
+    const idx = colorIdxById.get(brokerId);
+    return idx === undefined ? null : BROKER_PALETTE[idx]!;
+  };
 
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
@@ -529,13 +566,15 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   const bubbles: Bubble[] = [];
   let idx = 0;
   for (const t of renderTrades) {
+    const ring = ringStroke(t.broker_id);
     if (t.buy > threshold) {
       bubbles.push({
         cx: centerX + (t.buy / volMax) * halfW,
         cy: sY(t.price),
         r: bubbleRadius(t.buy, maxVolume, MIN_R, MAX_R),
         fill: COLOR.buyFill,
-        stroke: COLOR.buyStroke,
+        stroke: ring ?? COLOR.buyStroke,
+        strokeWidth: ring ? 2 : 1,
         brokerId: t.broker_id,
         key: `b-${t.broker_id}-${t.price}-${idx}`,
         payload: { broker: t.broker, brokerId: t.broker_id, volume: t.buy, price: t.price, side: "buy" },
@@ -547,7 +586,8 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         cy: sY(t.price),
         r: bubbleRadius(t.sell, maxVolume, MIN_R, MAX_R),
         fill: COLOR.sellFill,
-        stroke: COLOR.sellStroke,
+        stroke: ring ?? COLOR.sellStroke,
+        strokeWidth: ring ? 2 : 1,
         brokerId: t.broker_id,
         key: `s-${t.broker_id}-${t.price}-${idx}`,
         payload: { broker: t.broker, brokerId: t.broker_id, volume: t.sell, price: t.price, side: "sell" },
@@ -676,7 +716,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           r={b.r}
           fill={b.fill}
           stroke={b.stroke}
-          strokeWidth={1}
+          strokeWidth={b.strokeWidth}
           data-broker-id={b.brokerId}
           pointerEvents="none"
         />
@@ -684,7 +724,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
 
       {/* Empty-state hint — 分點過濾 or price-range filter 打空時顯示。
           C10 (🔴 Item 3): priceRange 疊加後可能 0 bubble,需 fallback 提示。 */}
-      {bubbles.length === 0 && (selectedBroker || priceRange) && (
+      {bubbles.length === 0 && (hasSelection || priceRange) && (
         <text
           x={width / 2}
           y={height / 2}
@@ -694,7 +734,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         >
           {priceRange
             ? `此價位區間 (${priceRange.min.toFixed(2)}–${priceRange.max.toFixed(2)}) 無成交`
-            : `${selectedBroker} 今日無顯著成交量`}
+            : emptyHint}
         </text>
       )}
 
