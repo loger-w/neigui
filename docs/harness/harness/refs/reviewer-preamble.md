@@ -32,5 +32,6 @@ location 用**雙欄**:`file` 填被審檔案(或該節對應的實作檔),`sect
 
 ## Cross-round 檢查
 
-dispatch prompt 在 round ≥ 2 時另附上一輪 review JSON 路徑 + 本輪 changelog 摘要。
+dispatch prompt 在 round ≥ 2 時另附上一輪 review JSON 路徑 + 本輪修復摘要
+(2026-07-27 對齊 review-protocol A2 用詞;/feat 側 design.md 有 changelog,即 changelog 摘要)。
 **必須做 cross-round 檢查:上一輪的 fix 是否引入新問題。**
