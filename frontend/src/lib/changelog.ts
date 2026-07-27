@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.43.0",
+    date: "2026-07-28",
+    changes: [
+      {
+        kind: "feature",
+        scope: "global",
+        text: "券差查詢選定個股後,顯示該檔本日標借合計與本月累計股數(同日多次標借自動加總)",
+      },
+    ],
+  },
+  {
     version: "0.42.0",
     date: "2026-07-27",
     changes: [
