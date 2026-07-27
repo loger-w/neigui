@@ -1,0 +1,15 @@
+{
+  "round": 1,
+  "reviewer": "impl-spec-reviewer",
+  "findings": {
+    "P0": 0,
+    "P1": [
+      {"id": "R1", "claim": "BrokerSearch.test.tsx 存在但未列該變 assertion", "verify": "ls+grep 確認存在", "disposition": "accepted, PLAN §3 修"},
+      {"id": "R2", "claim": "泡泡/明細列入口在 jsdom 點不到,紅測試會撞牆", "disposition": "accepted, PLAN §4 改 handler 級測法"},
+      {"id": "R3", "claim": "edge case 2(消失分點不失效)無紅測試", "disposition": "accepted, PLAN §4 補"},
+      {"id": "R4", "claim": "colorIdx 最小空 slot 不變式無紅測試", "disposition": "accepted, PLAN §4 補"}
+    ],
+    "P2_summary": {"count": 3, "themes": "badge 嚴格單選條件漏轉錄(R5)/aria-selected invalid ARIA(R6)/既有 e2e 遮擋回歸 audit(R7)", "disposition": "全數修入 PLAN"}
+  },
+  "exit": "固定 1 輪,修入即進 Phase 3"
+}

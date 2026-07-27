@@ -1,0 +1,2067 @@
+diff --git a/docs/next-time.md b/docs/next-time.md
+index 5c063bd..67d80fb 100644
+--- a/docs/next-time.md
++++ b/docs/next-time.md
+@@ -12,7 +12,7 @@
+ - **自選歸組選單長清單底部裁切**(Phase 5 review P2-2):watchlist-assign-menu absolute top-full 在 overflow 容器內,底部項目選單被裁;短清單常態不受影響。觸發重評估:user 回報或清單普遍 >15 檔時,改 bottom-full 翻轉或 portal 定位。
+ 
+ - **自選分組 rename**:管理分組面板只有建立/刪除;rename 需資料層新函式(watchlist.ts 無)+ UI。觸發重評估:user 抱怨改名要刪掉重建時。
+-- **BrokerSearch 選取契約改以 broker_id 為 key**:目前 value/onChange 仍以名稱 key(同名不同 id 分點理論上會撞);SC-7 只統一顯示。觸發重評估:真實資料出現同名分點,或 ChipBubbleView selection 域重構時。
++- (原「BrokerSearch 選取契約改以 broker_id 為 key」條目已由 feat/bubble-multi-broker 解決刪除,2026-07-27:selection 域重構為多選時一併改 id key — 聚合 / onPick / 下拉已選標記全走 broker_id,同名不同 id 分列)
+ - **權證分點頁點股票跳 equity**:四頁中唯一沒有跳轉鏈的頁(user 本輪未要求)。觸發重評估:user 提出。
+ 
+ ## From /feat broker-daily-flows(2026-07-21)
+diff --git a/e2e/helpers/selectors.ts b/e2e/helpers/selectors.ts
+index 88586f5..457e0c6 100644
+--- a/e2e/helpers/selectors.ts
++++ b/e2e/helpers/selectors.ts
+@@ -58,6 +58,9 @@ export const TESTIDS = {
+   brushApplyFilter: "brush-apply-filter",
+   bubbleYaxisBrush: "bubble-yaxis-brush",
+   brokerSearchItem: "broker-search-item",
++  // 泡泡圖多選分點(feat/bubble-multi-broker E38)
++  brokerChip: "broker-chip",
++  brokerChipsClear: "broker-chips-clear",
+   // 泡泡圖過濾清單(BB-1 mod/batch-ui-update)
+   bubbleBlocklistTrigger: "bubble-blocklist-trigger",
+   bubbleBlocklistCandidate: "bubble-blocklist-candidate",
+diff --git a/e2e/specs/equity.spec.ts b/e2e/specs/equity.spec.ts
+index 4cc6bd2..810b538 100644
+--- a/e2e/specs/equity.spec.ts
++++ b/e2e/specs/equity.spec.ts
+@@ -426,6 +426,52 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
+     await expect(totals).toContainText("8,800 萬");
+   });
+ 
++  test("E38: 泡泡圖多選分點 — 下拉連續加選 2 個 → chips + 合併明細/統計資料級(bubble-multi-broker SC-1/3/4/7)", async ({ page }) => {
++    // 痛點:多選核心鏈 = BrokerSearch pick(R1:下拉保持開啟靠 mousedown
++    // preventDefault 保 input focus — blur closeTimer race 在 jsdom 量不到,
++    // 唯真瀏覽器可驗)→ toggleBroker → chips + computeBrokerTotals 集合合併。
++    // fixture 手算:分點001/002 各 買100張/賣80張@1100 → 合併 買200/賣160、
++    // 買額 2.20 億、賣額 1.76 億(visibility-only 會被「0 張」蓋住,鎖數值)。
++    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
++    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
++    await page.getByPlaceholder("搜尋分點...").fill("分點");
++    await page
++      .getByTestId(TESTIDS.brokerSearchItem)
++      .filter({ hasText: "分點001" })
++      .click();
++    // R1 真瀏覽器 assertion:pick 後下拉仍開啟 → 不重新 fill 直接點第 2 個
++    await expect(
++      page.getByTestId(TESTIDS.brokerSearchItem).first(),
++    ).toBeVisible();
++    await page
++      .getByTestId(TESTIDS.brokerSearchItem)
++      .filter({ hasText: "分點002" })
++      .click();
++    await page.keyboard.press("Escape"); // 關下拉,避免遮住 header chips / 圖面
++    // 2 枚 legend chip(SC-3)
++    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(2);
++    await expect(
++      page.getByTestId(TESTIDS.brokerChip).filter({ hasText: "分點001" }),
++    ).toBeVisible();
++    await expect(
++      page.getByTestId(TESTIDS.brokerChip).filter({ hasText: "分點002" }),
++    ).toBeVisible();
++    // 合併統計資料級(SC-4)
++    const totals = page.getByTestId(TESTIDS.bubbleBrokerTotals);
++    await expect(totals).toContainText("買 200 張");
++    await expect(totals).toContainText("賣 160 張");
++    await expect(totals).toContainText("2.20 億");
++    await expect(totals).toContainText("1.76 億");
++    // 明細合併:右側列表同時含兩分點名稱列(SC-4)
++    const detailNames = page.locator("button > span.text-left");
++    await expect(detailNames.filter({ hasText: "分點001" }).first()).toBeVisible();
++    await expect(detailNames.filter({ hasText: "分點002" }).first()).toBeVisible();
++    // 批量跳轉文案(N ≥ 2 分支)
++    await expect(page.getByTestId(TESTIDS.bubbleJumpToOverview)).toContainText(
++      "查看 2 個分點於籌碼總覽",
++    );
++  });
++
+   test("E25: 換股載入時泡泡圖 loading badge 出現後消失(A5)", async ({ page }) => {
+     // 痛點:loading feedback 鏈 = bubbleHook.loading → App loading prop →
+     // badge render。FAKE fixture 回太快窗口極窄 → route gate 扣住 response
+diff --git a/frontend/src/components/BrokerSearch.test.tsx b/frontend/src/components/BrokerSearch.test.tsx
+index 38de524..8e31a91 100644
+--- a/frontend/src/components/BrokerSearch.test.tsx
++++ b/frontend/src/components/BrokerSearch.test.tsx
+@@ -15,21 +15,28 @@ const trades: BrokerTrade[] = [
+   { broker: "元大-中和", broker_id: "9101A", price: 100, buy: 30, sell: 10 },
+ ];
+ 
+-describe("BrokerSearch", () => {
+-  it("shows placeholder when value is null", () => {
+-    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
+-    expect(screen.getByPlaceholderText("搜尋分點...")).toBeTruthy();
+-  });
++const noneSelected: ReadonlySet<string> = new Set();
+ 
+-  // SC-7:value echo 回填也走「id 去dash名」formatter(change-spec R15)。
+-  it("shows formatted broker label when value is set", () => {
+-    render(<BrokerSearch trades={trades} value="凱基-台北" onChange={vi.fn()} />);
++// bubble-multi-broker:BrokerSearch 改「搜尋即加選」多選契約 —
++// props = { trades, selectedIds, onPick(id, name) }。原 value echo /
++// input × 清除鈕測試為事前標記之該變 assertion(清除職責移至 chips)。
++describe("BrokerSearch", () => {
++  it("shows placeholder;不 echo 選中分點(純搜尋框)", () => {
++    render(
++      <BrokerSearch
++        trades={trades}
++        selectedIds={new Set(["9201A"])}
++        onPick={vi.fn()}
++      />,
++    );
+     const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
+-    expect(input.value).toBe("9201A 凱基台北");
++    expect(input.value).toBe("");
++    // × 清除鈕已移除(該變:清除職責在 chips)
++    expect(screen.queryByLabelText("清除選擇")).toBeNull();
+   });
+ 
+   it("opens dropdown on focus + typing with matches(顯示統一格式)", async () => {
+-    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
++    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
+     const input = screen.getByPlaceholderText("搜尋分點...");
+     fireEvent.focus(input);
+     fireEvent.change(input, { target: { value: "凱" } });
+@@ -40,7 +47,7 @@ describe("BrokerSearch", () => {
+   });
+ 
+   it("filters case-insensitive (substring),接受原始名與 id", async () => {
+-    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
++    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
+     const input = screen.getByPlaceholderText("搜尋分點...");
+     fireEvent.focus(input);
+     fireEvent.change(input, { target: { value: "台北" } });
+@@ -54,7 +61,7 @@ describe("BrokerSearch", () => {
+   });
+ 
+   it("照顯示字樣(去dash)輸入命中含 dash 分點(regression lock,label 比對覆蓋)", async () => {
+-    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
++    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
+     const input = screen.getByPlaceholderText("搜尋分點...");
+     fireEvent.focus(input);
+     fireEvent.change(input, { target: { value: "凱基台北" } });
+@@ -67,7 +74,7 @@ describe("BrokerSearch", () => {
+   });
+ 
+   it("以 broker_id 搜尋也命中", async () => {
+-    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
++    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
+     const input = screen.getByPlaceholderText("搜尋分點...");
+     fireEvent.focus(input);
+     fireEvent.change(input, { target: { value: "9501" } });
+@@ -80,10 +87,9 @@ describe("BrokerSearch", () => {
+   });
+ 
+   it("default dropdown sort by total volume desc", async () => {
+-    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
++    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
+     const input = screen.getByPlaceholderText("搜尋分點...");
+     fireEvent.focus(input);
+-    // Empty query -> shows all sorted by total desc
+     await waitFor(() => {
+       const items = screen.getAllByTestId("broker-search-item");
+       expect(items.length).toBeGreaterThan(0);
+@@ -93,55 +99,70 @@ describe("BrokerSearch", () => {
+     });
+   });
+ 
++  // 聚合改以 broker_id 為 key(收割 next-time.md deferred 項):同名不同 id
++  // 是兩個分點,各自一列、各自可選。
++  it("同名不同 broker_id → 兩列分開列出,pick 回傳各自 id", async () => {
++    const collide: BrokerTrade[] = [
++      { broker: "凱基-台北", broker_id: "9800", price: 100, buy: 50, sell: 0 },
++      { broker: "凱基-台北", broker_id: "9801", price: 101, buy: 30, sell: 0 },
++    ];
++    const onPick = vi.fn();
++    render(<BrokerSearch trades={collide} selectedIds={noneSelected} onPick={onPick} />);
++    const input = screen.getByPlaceholderText("搜尋分點...");
++    fireEvent.focus(input);
++    await waitFor(() => {
++      expect(screen.getAllByTestId("broker-search-item")).toHaveLength(2);
++    });
++    const items = screen.getAllByTestId("broker-search-item");
++    fireEvent.mouseDown(items[1]!);
++    expect(onPick).toHaveBeenCalledWith("9801", "凱基-台北");
++  });
++
+   // Phase 5 review P2-1:trades identity 變動(blocklist 增減 / refetch)不得
+-  // 洗掉輸入中的搜尋字 — echo 重設只跟 value 變更走。
+-  it("輸入中 trades identity 改變 → query 不被 echo 重設", async () => {
++  // 洗掉輸入中的搜尋字。
++  it("輸入中 trades identity 改變 → query 不被重設", async () => {
+     const { rerender } = render(
+-      <BrokerSearch trades={trades} value={null} onChange={vi.fn()} />,
++      <BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />,
+     );
+     const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
+     fireEvent.focus(input);
+     fireEvent.change(input, { target: { value: "凱" } });
+-    // trades 換新 array identity(內容相同)
+-    rerender(<BrokerSearch trades={[...trades]} value={null} onChange={vi.fn()} />);
++    rerender(
++      <BrokerSearch trades={[...trades]} selectedIds={noneSelected} onPick={vi.fn()} />,
++    );
+     expect(input.value).toBe("凱");
+   });
+ 
+-  it("Enter selects active item", async () => {
+-    const onChange = vi.fn();
+-    render(<BrokerSearch trades={trades} value={null} onChange={onChange} />);
++  it("Enter picks active item(id + name)", async () => {
++    const onPick = vi.fn();
++    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={onPick} />);
+     const input = screen.getByPlaceholderText("搜尋分點...");
+     fireEvent.focus(input);
+     fireEvent.change(input, { target: { value: "凱基-台北" } });
+-    // Wait for debounce to narrow to just the one match
+     await waitFor(() => {
+-      const items = screen.getAllByTestId("broker-search-item");
+-      expect(items).toHaveLength(1);
++      expect(screen.getAllByTestId("broker-search-item")).toHaveLength(1);
+     });
+     fireEvent.keyDown(input, { key: "Enter" });
+-    expect(onChange).toHaveBeenCalledWith("凱基-台北");
++    expect(onPick).toHaveBeenCalledWith("9201A", "凱基-台北");
+   });
+ 
+-  it("Arrow down then Enter selects second item", async () => {
+-    const onChange = vi.fn();
+-    render(<BrokerSearch trades={trades} value={null} onChange={onChange} />);
++  it("Arrow down then Enter picks second item", async () => {
++    const onPick = vi.fn();
++    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={onPick} />);
+     const input = screen.getByPlaceholderText("搜尋分點...");
+     fireEvent.focus(input);
+     fireEvent.change(input, { target: { value: "凱" } });
+-    // Wait until debounce filters down to the 凱基-* matches only
+     await waitFor(() => {
+-      const items = screen.getAllByTestId("broker-search-item");
+-      expect(items).toHaveLength(2);
++      expect(screen.getAllByTestId("broker-search-item")).toHaveLength(2);
+     });
+     fireEvent.keyDown(input, { key: "ArrowDown" });
+     fireEvent.keyDown(input, { key: "Enter" });
+-    // 凱基-台北 total 300 > 凱基-板橋 130 -> index 0 is 台北, index 1 is 板橋
+-    expect(onChange).toHaveBeenCalledWith("凱基-板橋");
++    expect(onPick).toHaveBeenCalledWith("9201B", "凱基-板橋");
+   });
+ 
+-  it("Escape closes dropdown without selecting", async () => {
+-    const onChange = vi.fn();
+-    render(<BrokerSearch trades={trades} value={null} onChange={onChange} />);
++  it("Escape closes dropdown without picking", async () => {
++    const onPick = vi.fn();
++    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={onPick} />);
+     const input = screen.getByPlaceholderText("搜尋分點...");
+     fireEvent.focus(input);
+     fireEvent.change(input, { target: { value: "凱" } });
+@@ -150,16 +171,51 @@ describe("BrokerSearch", () => {
+     await waitFor(() => {
+       expect(screen.queryAllByTestId("broker-search-item")).toHaveLength(0);
+     });
+-    expect(onChange).not.toHaveBeenCalled();
++    expect(onPick).not.toHaveBeenCalled();
+   });
+ 
+-  it("× button clears value", () => {
+-    const onChange = vi.fn();
++  // R1(design v2 §4):pick 後下拉保持開啟、query 不清 — 連續加選 UX 核心。
++  // item onMouseDown 必須 preventDefault 保 input focus(否則 blur closeTimer
++  // 會在真瀏覽器關掉下拉;此處鎖 defaultPrevented 契約)。
++  it("pick 後下拉保持開啟、query 不清,item mousedown 有 preventDefault", async () => {
++    const onPick = vi.fn();
++    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={onPick} />);
++    const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
++    fireEvent.focus(input);
++    fireEvent.change(input, { target: { value: "凱" } });
++    await waitFor(() => {
++      expect(screen.getAllByTestId("broker-search-item")).toHaveLength(2);
++    });
++    const first = screen.getAllByTestId("broker-search-item")[0]!;
++    const prevented = !fireEvent.mouseDown(first); // fireEvent 回傳 !defaultPrevented
++    expect(prevented).toBe(true);
++    expect(onPick).toHaveBeenCalledWith("9201A", "凱基-台北");
++    // 下拉仍開啟、query 保留
++    expect(screen.getAllByTestId("broker-search-item").length).toBeGreaterThan(0);
++    expect(input.value).toBe("凱");
++  });
++
++  // R6(impl spec):下拉 = listbox/option 結構,已選列 aria-selected + ✓。
++  it("已選分點列標 aria-selected 與 ✓ 前綴;再點 = toggle(onPick 照樣回傳)", async () => {
++    const onPick = vi.fn();
+     render(
+-      <BrokerSearch trades={trades} value="凱基-台北" onChange={onChange} />,
++      <BrokerSearch
++        trades={trades}
++        selectedIds={new Set(["9201A"])}
++        onPick={onPick}
++      />,
+     );
+-    const x = screen.getByLabelText("清除選擇");
+-    fireEvent.mouseDown(x);
+-    expect(onChange).toHaveBeenCalledWith(null);
++    const input = screen.getByPlaceholderText("搜尋分點...");
++    fireEvent.focus(input);
++    await waitFor(() => {
++      expect(screen.getAllByTestId("broker-search-item").length).toBeGreaterThan(0);
++    });
++    const options = screen.getAllByRole("option");
++    const selectedOpt = options.find((o) => o.getAttribute("aria-selected") === "true");
++    expect(selectedOpt).toBeTruthy();
++    expect(selectedOpt!.textContent).toContain("凱基台北");
++    expect(selectedOpt!.textContent).toContain("✓");
++    fireEvent.mouseDown(selectedOpt!);
++    expect(onPick).toHaveBeenCalledWith("9201A", "凱基-台北");
+   });
+ });
+diff --git a/frontend/src/components/BrokerSearch.tsx b/frontend/src/components/BrokerSearch.tsx
+index 5aa5e75..66a55f4 100644
+--- a/frontend/src/components/BrokerSearch.tsx
++++ b/frontend/src/components/BrokerSearch.tsx
+@@ -2,9 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
+ import type { BrokerTrade } from "../lib/chip-data";
+ import { formatBrokerLabel } from "../lib/broker-name";
+ 
++// bubble-multi-broker:純「搜尋即加選」多選契約 — 不 echo 選中分點、無清除鈕
++// (清除職責在 ChipBubbleView 的 legend chips)。聚合與選取 key 一律 broker_id
++// (同名不同 id 是不同分點,分列各選;收割 next-time.md deferred 項)。
+ interface AggBroker {
++  id: string;
++  /** 原始分點名(onPick 回傳用;顯示走 label)。 */
+   broker: string;
+-  /** SC-7:顯示用「id 去dash名」label;選取契約(value/onChange)仍以名稱為 key。 */
++  /** 顯示用「id 去dash名」label。 */
+   label: string;
+   total: number;
+   buy: number;
+@@ -13,8 +18,10 @@ interface AggBroker {
+ 
+ interface Props {
+   trades: BrokerTrade[];
+-  value: string | null;
+-  onChange: (broker: string | null) => void;
++  /** 已選分點 id 集合 — 下拉列標記 aria-selected + ✓。 */
++  selectedIds: ReadonlySet<string>;
++  /** toggle 語意由 caller 決定(已選再點 = 移除);本元件只回報點了誰。 */
++  onPick: (id: string, name: string) => void;
+ }
+ 
+ const HIGHLIGHT = "#f0b429";
+@@ -34,21 +41,9 @@ function highlightMatch(name: string, q: string): React.ReactNode {
+   );
+ }
+ 
+-export function BrokerSearch({ trades, value, onChange }: Props) {
+-  // SC-7(R15):value(名稱 key)回填 input 也走 formatter,與 dropdown 顯示
+-  // 格式一致
+-  const labelByName = useMemo(() => {
+-    const m = new Map<string, string>();
+-    for (const t of trades) {
+-      if (!m.has(t.broker)) m.set(t.broker, formatBrokerLabel(t.broker_id, t.broker));
+-    }
+-    return m;
+-  }, [trades]);
+-  const echoOf = (name: string | null): string =>
+-    name === null ? "" : labelByName.get(name) ?? name;
+-
+-  const [query, setQuery] = useState(echoOf(value));
+-  const [debounced, setDebounced] = useState(echoOf(value));
++export function BrokerSearch({ trades, selectedIds, onPick }: Props) {
++  const [query, setQuery] = useState("");
++  const [debounced, setDebounced] = useState("");
+   const [open, setOpen] = useState(false);
+   const [activeIdx, setActiveIdx] = useState(0);
+   const activeIdxRef = useRef(0);
+@@ -60,16 +55,6 @@ export function BrokerSearch({ trades, value, onChange }: Props) {
+     setActiveIdx(next);
+   };
+ 
+-  // Phase 5 review P2-1:echo 重設只跟 value 變更走 — labelByName 隨 trades
+-  // identity 變化(blocklist 增減 / refetch),不得洗掉輸入中的搜尋字。
+-  const labelByNameRef = useRef(labelByName);
+-  labelByNameRef.current = labelByName;
+-  useEffect(() => {
+-    setQuery(
+-      value === null ? "" : labelByNameRef.current.get(value) ?? value,
+-    );
+-  }, [value]);
+-
+   useEffect(
+     () => () => {
+       if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+@@ -88,16 +73,17 @@ export function BrokerSearch({ trades, value, onChange }: Props) {
+   const aggregates: AggBroker[] = useMemo(() => {
+     const m = new Map<string, AggBroker>();
+     for (const t of trades) {
+-      let e = m.get(t.broker);
++      let e = m.get(t.broker_id);
+       if (!e) {
+         e = {
++          id: t.broker_id,
+           broker: t.broker,
+           label: formatBrokerLabel(t.broker_id, t.broker),
+           total: 0,
+           buy: 0,
+           sell: 0,
+         };
+-        m.set(t.broker, e);
++        m.set(t.broker_id, e);
+       }
+       e.buy += t.buy;
+       e.sell += t.sell;
+@@ -124,9 +110,9 @@ export function BrokerSearch({ trades, value, onChange }: Props) {
+     setActiveIdx(0);
+   }, [filtered]);
+ 
+-  const pick = (broker: string) => {
+-    onChange(broker);
+-    setOpen(false);
++  // R1:pick 後不關下拉、不清 query — 連續加選是多選核心操作流。
++  const pick = (b: AggBroker) => {
++    onPick(b.id, b.broker);
+   };
+ 
+   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+@@ -148,7 +134,7 @@ export function BrokerSearch({ trades, value, onChange }: Props) {
+         return;
+       }
+       const target = filtered[activeIdxRef.current];
+-      if (target) pick(target.broker);
++      if (target) pick(target);
+     }
+   };
+ 
+@@ -168,47 +154,55 @@ export function BrokerSearch({ trades, value, onChange }: Props) {
+         }}
+         onKeyDown={handleKeyDown}
+         placeholder="搜尋分點..."
++        role="combobox"
++        aria-expanded={open && filtered.length > 0}
++        aria-controls="broker-search-listbox"
+         className="w-full bg-bg-deep border border-line text-ink px-2.5 py-1 text-xs outline-none focus:border-[#f0b429]"
+       />
+-      {value && (
+-        <button
+-          type="button"
+-          aria-label="清除選擇"
+-          onMouseDown={(e) => {
+-            e.preventDefault();
+-            onChange(null);
+-          }}
+-          className="absolute right-1.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-line-strong text-ink-dim text-xs hover:bg-bear hover:text-bg cursor-pointer flex items-center justify-center"
+-        >×</button>
+-      )}
+       {open && filtered.length > 0 && (
+-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-bg-deep border border-line max-h-[280px] overflow-y-auto">
+-          {filtered.map((b, i) => (
+-            <button
+-              key={b.broker}
+-              type="button"
+-              data-testid="broker-search-item"
+-              onMouseDown={() => pick(b.broker)}
+-              className={`w-full px-2 py-1.5 grid grid-cols-[1fr_50px_44px_44px] gap-1 text-xs text-left ${
+-                i === activeIdx
+-                  ? "bg-line-strong/40 border-l-2 border-[#f0b429]"
+-                  : "hover:bg-line-strong/20"
+-              }`}
+-            >
+-              <span className="text-ink truncate">
+-                {highlightMatch(b.label, debounced)}
+-              </span>
+-              <span className="text-right text-ink-dim tabular-nums">
+-                {b.total.toLocaleString()}
+-              </span>
+-              <span className="text-right text-accent tabular-nums">
+-                {b.buy.toLocaleString()}
+-              </span>
+-              <span className="text-right text-bear tabular-nums">
+-                {b.sell.toLocaleString()}
+-              </span>
+-            </button>
+-          ))}
++        <div
++          id="broker-search-listbox"
++          role="listbox"
++          aria-label="分點搜尋結果"
++          className="absolute z-50 top-full left-0 right-0 mt-1 bg-bg-deep border border-line max-h-[280px] overflow-y-auto"
++        >
++          {filtered.map((b, i) => {
++            const isSelected = selectedIds.has(b.id);
++            return (
++              <button
++                key={b.id}
++                type="button"
++                role="option"
++                aria-selected={isSelected}
++                data-testid="broker-search-item"
++                // R1:preventDefault 保 input focus — 否則點擊奪焦觸發 blur,
++                // 150ms closeTimer 會關下拉,連續加選在真瀏覽器失效。
++                onMouseDown={(e) => {
++                  e.preventDefault();
++                  pick(b);
++                }}
++                className={`w-full px-2 py-1.5 grid grid-cols-[12px_1fr_50px_44px_44px] gap-1 text-xs text-left items-center ${
++                  i === activeIdx
++                    ? "bg-line-strong/40 border-l-2 border-[#f0b429]"
++                    : "hover:bg-line-strong/20"
++                }`}
++              >
++                <span className="text-[#f0b429]">{isSelected ? "✓" : ""}</span>
++                <span className="text-ink truncate">
++                  {highlightMatch(b.label, debounced)}
++                </span>
++                <span className="text-right text-ink-dim tabular-nums">
++                  {b.total.toLocaleString()}
++                </span>
++                <span className="text-right text-accent tabular-nums">
++                  {b.buy.toLocaleString()}
++                </span>
++                <span className="text-right text-bear tabular-nums">
++                  {b.sell.toLocaleString()}
++                </span>
++              </button>
++            );
++          })}
+         </div>
+       )}
+     </div>
+diff --git a/frontend/src/components/ChipBubbleView.test.tsx b/frontend/src/components/ChipBubbleView.test.tsx
+index d4f7dfe..82e847c 100644
+--- a/frontend/src/components/ChipBubbleView.test.tsx
++++ b/frontend/src/components/ChipBubbleView.test.tsx
+@@ -7,6 +7,7 @@
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+ import { ChipBubbleView } from "./ChipBubbleView";
++import { BROKER_PALETTE } from "../lib/chip-bubble-svg";
+ import type { BrokerTrade, ChipBubbleData } from "../lib/chip-data";
+ 
+ // C7 A1 test 需要 BubbleChartSvg 真正 render(Y-axis brush overlay 從裡面出)。
+@@ -16,6 +17,13 @@ vi.mock("../hooks/useContainerSize", () => ({
+   useContainerSize: () => ({ width: 400, height: 300 }),
+ }));
+ 
++// bubble-multi-broker:mobile sheet 標題測試需要可控 isMobile(真 hook 在
++// jsdom feature-detect 恆 false)。預設 false = 桌面,既有測試不受影響。
++const mediaState = vi.hoisted(() => ({ isMobile: false }));
++vi.mock("../hooks/useMediaQuery", () => ({
++  useMediaQuery: () => mediaState.isMobile,
++}));
++
+ afterEach(() => cleanup());
+ 
+ // jsdom lacks ResizeObserver; useContainerSize would otherwise throw on
+@@ -24,6 +32,7 @@ afterEach(() => cleanup());
+ beforeEach(() => {
+   // BB-1 blocklist 走 localStorage 全域持久化 — 測試間必清,避免跨 describe 污染。
+   localStorage.clear();
++  mediaState.isMobile = false;
+   globalThis.ResizeObserver = class {
+     observe() {}
+     disconnect() {}
+@@ -1006,3 +1015,312 @@ describe("ChipBubbleView — brushRange 同步右側計數 header", () => {
+     expect(text.includes("3 個分點")).toBe(true);
+   });
+ });
++
++// ===========================================================================
++// bubble-multi-broker(SC-1/3/4/5/6):多選分點 — chips / 合併統計 / 三入口
++// toggle / 上限 / focusRequest 取代 / blocklist 保留其餘。
++// ===========================================================================
++
++function chipEls(container: HTMLElement): HTMLElement[] {
++  return Array.from(container.querySelectorAll('[data-testid="broker-chip"]'));
++}
++
++describe("ChipBubbleView — 多選 chips 與合併統計 (SC-1/SC-3/SC-4)", () => {
++  // 痛點:多選是本 feature 核心;chips 是唯一的選取狀態載體(搜尋框不再 echo)。
++  it("搜尋連續加選 2 個分點 → 2 枚 chip + 合併統計 + 「查看 2 個分點」跳轉", async () => {
++    const onJump = vi.fn();
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        onJumpToOverview={onJump}
++      />,
++    );
++    await selectBrokerViaSearch("Alpha");
++    await selectBrokerViaSearch("Bravo");
++    await waitFor(() => {
++      expect(chipEls(container)).toHaveLength(2);
++    });
++    const texts = chipEls(container).map((c) => c.textContent ?? "");
++    expect(texts.some((t) => t.includes("Alpha"))).toBe(true);
++    expect(texts.some((t) => t.includes("Bravo"))).toBe(true);
++    // 合併統計:Alpha buy10 sell30 @100、Bravo buy5 sell50 @102
++    // buyLots 15 / sellLots 80;buyAmount 1,510,000 → "151 萬";sell 8,100,000 → "810 萬"
++    const totals = container.querySelector('[data-testid="bubble-broker-totals"]');
++    expect(totals).toBeTruthy();
++    const tt = totals!.textContent ?? "";
++    expect(tt.includes("15")).toBe(true);
++    expect(tt.includes("80")).toBe(true);
++    expect(tt.includes("151 萬")).toBe(true);
++    expect(tt.includes("810 萬")).toBe(true);
++    // 跳轉鈕:N ≥ 2 改批量文案 + 傳 id 陣列
++    const jump = container.querySelector('[data-testid="bubble-jump-to-overview"]') as HTMLButtonElement;
++    expect(jump).toBeTruthy();
++    expect(jump.textContent ?? "").toContain("查看 2 個分點於籌碼總覽");
++    fireEvent.click(jump);
++    expect(onJump).toHaveBeenCalledTimes(1);
++    expect(onJump.mock.calls[0]![0]).toEqual(["AL1", "BR1"]);
++  });
++
++  // 痛點:chip × 是唯一逐一移除入口;清除全部只在 ≥ 2 時出現。
++  it("chip × 移除單一分點;「清除全部」清空選取", async () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    await selectBrokerViaSearch("Alpha");
++    await selectBrokerViaSearch("Bravo");
++    await waitFor(() => expect(chipEls(container)).toHaveLength(2));
++    const clearAll = container.querySelector('[data-testid="broker-chips-clear"]');
++    expect(clearAll).toBeTruthy();
++    // × 移除 Alpha
++    fireEvent.click(screen.getByLabelText("移除〈Alpha〉"));
++    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
++    expect(chipEls(container)[0]!.textContent ?? "").toContain("Bravo");
++    // 只剩 1 枚 → 清除全部鈕隱藏
++    expect(container.querySelector('[data-testid="broker-chips-clear"]')).toBeNull();
++    // 再加回一枚後用清除全部
++    await selectBrokerViaSearch("Charlie");
++    await waitFor(() => expect(chipEls(container)).toHaveLength(2));
++    fireEvent.click(
++      container.querySelector('[data-testid="broker-chips-clear"]') as HTMLButtonElement,
++    );
++    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
++    expect(container.querySelector('[data-testid="bubble-broker-totals"]')).toBeNull();
++  });
++
++  // 痛點(R4):配色是 auto-default 拍板理由 — index-based 配色會在移除時整組
++  // 換色,必須鎖「移除不重配、新加選回收最小空 slot」不變式。
++  it("配色不變式:移除中間 chip 其餘顏色不動,新加選回收釋出 slot", async () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    await selectBrokerViaSearch("Alpha");
++    await selectBrokerViaSearch("Bravo");
++    await selectBrokerViaSearch("Charlie");
++    await waitFor(() => expect(chipEls(container)).toHaveLength(3));
++    const dotColor = (chip: HTMLElement) =>
++      chip.querySelector('[data-testid="broker-chip-dot"]')!.getAttribute("data-color");
++    const byName = (name: string) =>
++      chipEls(container).find((c) => (c.textContent ?? "").includes(name))!;
++    expect(dotColor(byName("Alpha"))).toBe(BROKER_PALETTE[0]);
++    expect(dotColor(byName("Bravo"))).toBe(BROKER_PALETTE[1]);
++    expect(dotColor(byName("Charlie"))).toBe(BROKER_PALETTE[2]);
++    // 移除中間的 Bravo → Alpha / Charlie 不變
++    fireEvent.click(screen.getByLabelText("移除〈Bravo〉"));
++    await waitFor(() => expect(chipEls(container)).toHaveLength(2));
++    expect(dotColor(byName("Alpha"))).toBe(BROKER_PALETTE[0]);
++    expect(dotColor(byName("Charlie"))).toBe(BROKER_PALETTE[2]);
++    // 新加選回收最小空 slot(= 1)
++    await selectBrokerViaSearch("Bravo");
++    await waitFor(() => expect(chipEls(container)).toHaveLength(3));
++    expect(dotColor(byName("Bravo"))).toBe(BROKER_PALETTE[1]);
++  });
++
++  // 痛點(R3,鎖 design R5):選中分點自 trades 消失(blocklist / refetch)時
++  // chip 不得失效 — selectedNames 必須自 state 導出,不走 trades join。
++  it("選中分點自 trades 消失 → chip 仍顯示、統計歸零不 crash", async () => {
++    const { container, rerender } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    await selectBrokerViaSearch("Alpha");
++    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
++    // refetch 後 Alpha 消失
++    const without = namedTrades.filter((t) => t.broker_id !== "AL1");
++    rerender(<ChipBubbleView symbol="2330" bubbleData={mkData(without)} />);
++    expect(chipEls(container)).toHaveLength(1);
++    expect(chipEls(container)[0]!.textContent ?? "").toContain("Alpha");
++    const totals = container.querySelector('[data-testid="bubble-broker-totals"]');
++    expect(totals).toBeTruthy();
++  });
++});
++
++describe("ChipBubbleView — 上限 6 + limitNotice (SC-1 edge 1)", () => {
++  const seven: BrokerTrade[] = [
++    "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
++  ].map((name, i) => ({
++    broker: name,
++    broker_id: `ID${i}`,
++    price: 100,
++    buy: 10 + i,
++    sell: 5,
++  }));
++
++  // 痛點:palette 只有 6 色,第 7 個必須被拒且畫面說明原因。
++  it("加選第 7 個 → 不加入 + role=status 提示;再 toggle 提示清除", async () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(seven)} />,
++    );
++    for (const n of ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"]) {
++      await selectBrokerViaSearch(n);
++    }
++    await waitFor(() => expect(chipEls(container)).toHaveLength(6));
++    await selectBrokerViaSearch("Golf");
++    await waitFor(() => {
++      const notice = Array.from(container.querySelectorAll('[role="status"]'))
++        .find((el) => (el.textContent ?? "").includes("最多同時選 6 個分點"));
++      expect(notice).toBeTruthy();
++    });
++    expect(chipEls(container)).toHaveLength(6);
++    // 移除一枚(toggle)→ 提示清除
++    fireEvent.click(screen.getByLabelText("移除〈Alpha〉"));
++    await waitFor(() => {
++      const notice = Array.from(container.querySelectorAll('[role="status"]'))
++        .find((el) => (el.textContent ?? "").includes("最多同時選 6 個分點"));
++      expect(notice).toBeUndefined();
++    });
++    expect(chipEls(container)).toHaveLength(5);
++  });
++});
++
++describe("ChipBubbleView — 泡泡 / 明細列入口 toggle (SC-1)", () => {
++  // 痛點:jsdom 的 svg rect getBoundingClientRect 全零 → hitTest 的 mx=clientX,
++  // 用 circle cx/cy 直接命中泡泡,驗真實 click 路徑(非 handler mock)。
++  it("點泡泡 → 加選(chip 出現);再點同泡泡 → 移除", async () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    const overlay = container.querySelector('[data-testid="bubble-main-overlay"]')!;
++    const alphaCircle = await waitFor(() => {
++      const c = Array.from(container.querySelectorAll("circle")).find(
++        (el) => el.getAttribute("data-broker-id") === "AL1",
++      );
++      if (!c) throw new Error("Alpha circle not rendered");
++      return c;
++    });
++    const cx = Number(alphaCircle.getAttribute("cx"));
++    const cy = Number(alphaCircle.getAttribute("cy"));
++    fireEvent.click(overlay, { clientX: cx, clientY: cy });
++    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
++    expect(chipEls(container)[0]!.textContent ?? "").toContain("Alpha");
++    // 選中後圖面只剩 Alpha,同位置(F11 axes-stable)再點 → toggle 移除
++    fireEvent.click(overlay, { clientX: cx, clientY: cy });
++    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
++  });
++
++  // 痛點:TradeList 列是第三個入口;virtualizer 在 jsdom 走 offsetWidth/Height,
++  // stub prototype getter 才出列(frontend-testing 樣板)。
++  it("點明細列 → 加選;再點 → 移除", async () => {
++    const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
++    const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
++    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
++      configurable: true, get: () => 400,
++    });
++    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
++      configurable: true, get: () => 400,
++    });
++    try {
++      const { container } = render(
++        <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++      );
++      const rowFor = (name: string) =>
++        Array.from(container.querySelectorAll("button span.text-left"))
++          .find((s) => s.textContent === name)
++          ?.closest("button") ?? null;
++      await waitFor(() => {
++        if (!rowFor("Alpha")) throw new Error("row not rendered");
++      });
++      fireEvent.click(rowFor("Alpha")!);
++      await waitFor(() => expect(chipEls(container)).toHaveLength(1));
++      // 選中後列表過濾為 Alpha;再點同列 toggle 移除
++      await waitFor(() => {
++        if (!rowFor("Alpha")) throw new Error("filtered row not rendered");
++      });
++      fireEvent.click(rowFor("Alpha")!);
++      await waitFor(() => expect(chipEls(container)).toHaveLength(0));
++    } finally {
++      if (origH) Object.defineProperty(HTMLElement.prototype, "offsetHeight", origH);
++      if (origW) Object.defineProperty(HTMLElement.prototype, "offsetWidth", origW);
++    }
++  });
++});
++
++describe("ChipBubbleView — focusRequest 取代 / blocklist 保留其餘 (SC-6)", () => {
++  // 痛點:聚焦語意 =「看這個」,必須取代整組而非 append。
++  it("已多選 2 個後 focusRequest → 選取被取代為聚焦分點單獨一枚", async () => {
++    const { container, rerender } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    await selectBrokerViaSearch("Alpha");
++    await selectBrokerViaSearch("Bravo");
++    await waitFor(() => expect(chipEls(container)).toHaveLength(2));
++    rerender(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        focusRequest={{ brokerId: "CH1", name: "Charlie", seq: 1 }}
++      />,
++    );
++    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
++    expect(chipEls(container)[0]!.textContent ?? "").toContain("Charlie");
++  });
++
++  // 痛點(R5 impl-spec):badge 條件必須 length===1 嚴格判,多選含聚焦分點不現。
++  it("focusRequest 無成交分點後再加選 → 無成交 badge 消失(嚴格單選判定)", async () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        focusRequest={{ brokerId: "ZZ9", name: "無成交分點", seq: 1 }}
++      />,
++    );
++    await waitFor(() => {
++      expect(
++        container.querySelector('[data-testid="bubble-focus-no-trades"]'),
++      ).toBeTruthy();
++    });
++    await selectBrokerViaSearch("Alpha");
++    await waitFor(() => {
++      expect(
++        container.querySelector('[data-testid="bubble-focus-no-trades"]'),
++      ).toBeNull();
++    });
++    expect(chipEls(container)).toHaveLength(2);
++  });
++
++  // 痛點:blocklist 加入只影響該分點,其餘選中保留(SC-6 後半)。
++  it("將選中分點之一加入排除清單 → 該枚移除、其餘保留", async () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    await selectBrokerViaSearch("Alpha");
++    await selectBrokerViaSearch("Bravo");
++    await waitFor(() => expect(chipEls(container)).toHaveLength(2));
++    // 開 blocklist popover,把 Alpha 加入排除
++    fireEvent.click(
++      container.querySelector("[data-testid=bubble-blocklist-trigger]") as HTMLButtonElement,
++    );
++    const searchInput = document
++      .querySelector("[data-testid=bubble-blocklist-popover]")!
++      .querySelector("input[type=text]") as HTMLInputElement;
++    fireEvent.change(searchInput, { target: { value: "Alpha" } });
++    fireEvent.click(
++      document.querySelector("[data-testid=bubble-blocklist-candidate]") as HTMLElement,
++    );
++    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
++    expect(chipEls(container)[0]!.textContent ?? "").toContain("Bravo");
++  });
++});
++
++describe("ChipBubbleView — mobile sheet 標題三分支 (SC-4 / edge 5)", () => {
++  // 痛點(R7):自動開 sheet effect 的條件從 selectedBrokerId 改 selected.length,
++  // 標題要能承載多選;N 歸 0 sheet 維持開啟(effect 只開不關,與現行一致)。
++  it("mobile 多選 2 個 → sheet 自動開啟,標題「成交明細 — 2 個分點」;歸 0 維持開啟", async () => {
++    mediaState.isMobile = true;
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    await selectBrokerViaSearch("Alpha");
++    await selectBrokerViaSearch("Bravo");
++    const sheet = await waitFor(() => {
++      const el = container.querySelector('[data-testid="bubble-detail-sheet"]');
++      if (!el) throw new Error("sheet not opened");
++      return el;
++    });
++    expect(sheet.textContent ?? "").toContain("成交明細 — 2 個分點");
++    // 清空選取 → sheet 維持開啟、標題退回無選取型
++    fireEvent.click(screen.getByLabelText("移除〈Alpha〉"));
++    fireEvent.click(screen.getByLabelText("移除〈Bravo〉"));
++    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
++    expect(container.querySelector('[data-testid="bubble-detail-sheet"]')).toBeTruthy();
++  });
++});
+diff --git a/frontend/src/components/ChipBubbleView.tsx b/frontend/src/components/ChipBubbleView.tsx
+index de00e3e..eacf952 100644
+--- a/frontend/src/components/ChipBubbleView.tsx
++++ b/frontend/src/components/ChipBubbleView.tsx
+@@ -7,7 +7,12 @@ import {
+   DEFAULT_TRADE_SORT, aggregateByPrice, buildTradeRows, computeBrokerTotals,
+   fmtAmount, fmtVol, summarizeTradesByPriceRange,
+ } from "../lib/chip-data";
+-import { BubbleChartSvg, type BubbleHoverPayload } from "../lib/chip-bubble-svg";
++import {
++  BROKER_PALETTE,
++  BubbleChartSvg,
++  type BubbleHoverPayload,
++  type BubbleSelectedBroker,
++} from "../lib/chip-bubble-svg";
+ import { formatBrokerName } from "../lib/broker-name";
+ import { PriceBarSvg } from "../lib/chip-price-bar-svg";
+ import { useContainerSize } from "../hooks/useContainerSize";
+@@ -52,6 +57,10 @@ interface Props {
+ // the long tail visible there.
+ const MAX_TRADE_ROWS = Number.POSITIVE_INFINITY;
+ 
++// bubble-multi-broker(SC-1):多選上限 = BROKER_PALETTE 色數(可辨識度上限)。
++const MAX_SELECTED_BROKERS = 6;
++type SelectedBroker = BubbleSelectedBroker;
++
+ export function ChipBubbleView({
+   bubbleData,
+   closePrice,
+@@ -61,11 +70,12 @@ export function ChipBubbleView({
+   loading,
+   focusRequest,
+ }: Props) {
+-  // C1 🔵: selection state 存 broker_id(FinMind securities_trader_id),
+-  // 對齊 App.tsx selectedBrokerIds 契約,方便 A2 一鍵跳籌碼總覽。
+-  // 下游元件(BrokerSearch / BubbleChartSvg / buildTradeRows / TradeList)
+-  // 仍接 name string,靠 selectedBrokerName derived 回傳。
+-  const [selectedBrokerId, setSelectedBrokerId] = useState<string | null>(null);
++  // bubble-multi-broker(SC-1):有序多選(≤6),id = broker_id 對齊 App.tsx
++  // selectedBrokerIds 契約;name 存 state(分點自 trades 消失時 chip 不失效);
++  // colorIdx = 加選當下最小未占用 slot,存續期間不變(移除不重配其他分點)。
++  const [selected, setSelected] = useState<SelectedBroker[]>([]);
++  // 選滿 6 再加選的提示;任何改動選取的路徑一律清除(design v2 R4)。
++  const [limitNotice, setLimitNotice] = useState<boolean>(false);
+   const [buySort, setBuySort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
+   const [sellSort, setSellSort] = useState<SortSpec>(DEFAULT_TRADE_SORT);
+   // C7 A1: Y 軸 brush 選價位 range。null = 無 brush;svg drag end 後 setBrushRange。
+@@ -98,7 +108,8 @@ export function ChipBubbleView({
+   // Reset selection ONLY on symbol change (NOT on date / bubbleData change).
+   // C7 A1: brush 也一起清 —— 避免換股後舊 range 殘留誤導。
+   useEffect(() => {
+-    setSelectedBrokerId(null);
++    setSelected([]);
++    setLimitNotice(false);
+     setBrushRange(null);
+     setManualInputOpen(false);
+     setSheetOpen(false);
+@@ -106,6 +117,25 @@ export function ChipBubbleView({
+     setBlockRemovalNotice(null);
+   }, [symbol]);
+ 
++  // SC-1 toggle 核心(三入口共用):已選 → 移除;未選 → 加選(滿員拒絕 + 提示)。
++  const toggleBroker = useCallback((id: string, name: string) => {
++    setSelected((prev) => {
++      if (prev.some((b) => b.id === id)) {
++        setLimitNotice(false);
++        return prev.filter((b) => b.id !== id);
++      }
++      if (prev.length >= MAX_SELECTED_BROKERS) {
++        setLimitNotice(true);
++        return prev;
++      }
++      setLimitNotice(false);
++      const used = new Set(prev.map((b) => b.colorIdx));
++      let colorIdx = 0;
++      while (used.has(colorIdx)) colorIdx++;
++      return [...prev, { id, name, colorIdx }];
++    });
++  }, []);
++
+   // CH-1: focusRequest 聚焦。宣告順序必須在 symbol reset effect 之後 —
+   // mount 時 effects 依序跑,「帶著 focusRequest 首次 mount」(lazy tab 首開
+   // 就是點鈕觸發)得讓聚焦蓋過 reset,不能反過來被清掉。
+@@ -121,20 +151,36 @@ export function ChipBubbleView({
+     } else {
+       setBlockRemovalNotice(null);
+     }
+-    setSelectedBrokerId(focusRequest.brokerId);
++    // SC-6:聚焦語意 =「看這個」— 取代整組選取,不 append。
++    setSelected([{ id: focusRequest.brokerId, name: focusRequest.name, colorIdx: 0 }]);
++    setLimitNotice(false);
+     setFocusedBroker({ id: focusRequest.brokerId, name: focusRequest.name });
+   }, [focusRequest, blocked]);
+ 
+   // Mobile:tap 泡泡選中分點 → 自動開明細 sheet(桌面右欄恆顯,不需要)。
++  // R7:effect 只開不關 — 選取歸 0 時 sheet 維持開啟(顯全體明細)。
+   useEffect(() => {
+-    if (isMobile && selectedBrokerId) setSheetOpen(true);
+-  }, [isMobile, selectedBrokerId]);
+-
+-  const selectedBrokerName = useMemo(
+-    () =>
+-      visibleTrades.find((t) => t.broker_id === selectedBrokerId)?.broker ??
+-      null,
+-    [visibleTrades, selectedBrokerId],
++    if (isMobile && selected.length > 0) setSheetOpen(true);
++  }, [isMobile, selected.length]);
++
++  // Derived(design v2 §1):selectedNames 直接自 state 導出(不走 visibleTrades
++  // join)— 分點自 trades 消失(blocklist / refetch)時 chip / active 態不失效。
++  const selectedIds = useMemo(
++    () => new Set(selected.map((b) => b.id)),
++    [selected],
++  );
++  const selectedNames = useMemo(
++    () => new Set(selected.map((b) => b.name)),
++    [selected],
++  );
++  // N ≥ 2 才配列圓點色(N = 1 圖面無外框,SC-5 單選視覺零回歸)。
++  const colorByName = useMemo(() => {
++    if (selected.length < 2) return new Map<string, string>();
++    return new Map(selected.map((b) => [b.name, BROKER_PALETTE[b.colorIdx]!]));
++  }, [selected]);
++  const colorFor = useCallback(
++    (name: string): string | null => colorByName.get(name) ?? null,
++    [colorByName],
+   );
+ 
+   // name→顯示名 lookup(TradeRow 無 broker_id,R14 決策走 lookup 不擴型別);
+@@ -147,11 +193,11 @@ export function ChipBubbleView({
+     return (name: string): string => m.get(name) ?? name;
+   }, [visibleTrades]);
+ 
+-  // BB-1: 排除清單操作。加入時若正是選中分點,一併清選取(選中但已被
+-  // 過濾的狀態沒有可視載體)。
++  // BB-1: 排除清單操作。加入時若在選中集合,自組移除(其餘選中保留,SC-6)。
+   const handleBlockAdd = useCallback((b: BlockedBroker) => {
+     setBlocked((prev) => addBlocked(prev, b));
+-    setSelectedBrokerId((prev) => (prev === b.id ? null : prev));
++    setSelected((prev) => prev.filter((s) => s.id !== b.id));
++    setLimitNotice(false);
+   }, []);
+   const handleBlockRemove = useCallback((id: string) => {
+     setBlocked((prev) => removeBlocked(prev, id));
+@@ -177,11 +223,11 @@ export function ChipBubbleView({
+ 
+   // C10 (🔴 Item 3 擴充):brushRange 設定後,右側 trade list / price bar /
+   // broker totals / 分點計數統一 filter。
+-  // C11 (🔴):分點選擇時 range 退為視覺參考 — 若使用者已選 broker,即使有
++  // C11 (🔴,多選泛化):有任何分點選擇時 range 退為視覺參考 — 即使有
+   //   brushRange 也不預過濾(範圍框仍畫,但資料回全 broker)。目的是解「先框
+-  //   價區、後點分點想看全價位」的 UX,不需要清 range。selectedBrokerId 為 null
+-  //   時走原 range 過濾邏輯。brushSummary 仍用原始 trades 算 summary。
+-  const rangeActiveForFilter = brushRange !== null && !selectedBrokerId;
++  //   價區、後點分點想看全價位」的 UX,不需要清 range。未選取時走原 range
++  //   過濾邏輯。brushSummary 仍用原始 trades 算 summary。
++  const rangeActiveForFilter = brushRange !== null && selected.length === 0;
+   const rangeTrades = useMemo(() => {
+     if (!rangeActiveForFilter || !brushRange) return visibleTrades;
+     return visibleTrades.filter(
+@@ -194,10 +240,11 @@ export function ChipBubbleView({
+     [rangeTrades],
+   );
+ 
+-  // C6 A3: 選中分點的總買/賣張 + 精確成交金額。brushRange 有效時只算區間內。
++  // C6 A3(SC-4 合併):選中分點集合的總買/賣張 + 精確成交金額加總。
++  // brushRange 有效時只算區間內。
+   const brokerTotals = useMemo(
+-    () => computeBrokerTotals(rangeTrades, selectedBrokerId),
+-    [rangeTrades, selectedBrokerId],
++    () => computeBrokerTotals(rangeTrades, selectedIds),
++    [rangeTrades, selectedIds],
+   );
+ 
+   const bubbleRef = useRef<HTMLDivElement | null>(null);
+@@ -230,22 +277,22 @@ export function ChipBubbleView({
+     [],
+   );
+ 
+-  // C1 🔵: svg / TradeList 回傳 broker name;此 handler 轉 id set state。
++  // C1 🔵: svg / TradeList 回傳 broker name;此 handler 轉 id 後 toggle(SC-1)。
+   // C7 A1: 點空白處(broker=null)同時清 brush,對齊 SC-A1c。
+   const handleBubbleClick = useCallback(
+     (broker: string | null) => {
+       if (broker === null) {
+-        setSelectedBrokerId(null);
++        setSelected([]);
++        setLimitNotice(false);
+         setBrushRange(null);
+         setManualInputOpen(false);
+         return;
+       }
+-      const id =
+-        visibleTrades.find((t) => t.broker === broker)?.broker_id ?? null;
+-      if (id === null) return;
+-      setSelectedBrokerId((prev) => (prev === id ? null : id));
++      const t = visibleTrades.find((x) => x.broker === broker);
++      if (!t) return;
++      toggleBroker(t.broker_id, t.broker);
+     },
+-    [visibleTrades],
++    [visibleTrades, toggleBroker],
+   );
+ 
+   // C7 A1: brush drag end callback。存 range → 顯示 summary panel。
+@@ -284,8 +331,8 @@ export function ChipBubbleView({
+   const allPriceAggs = useMemo(() => aggregateByPrice(rangeTrades), [rangeTrades]);
+ 
+   const priceAggs = useMemo(() => {
+-    if (!selectedBrokerName) return allPriceAggs;
+-    const filtered = rangeTrades.filter((t) => t.broker === selectedBrokerName);
++    if (selected.length === 0) return allPriceAggs;
++    const filtered = rangeTrades.filter((t) => selectedIds.has(t.broker_id));
+     if (filtered.length === 0) return allPriceAggs;
+     const filteredAggs = aggregateByPrice(filtered);
+     const filteredPrices = new Set(filteredAggs.map((a) => a.price));
+@@ -294,28 +341,14 @@ export function ChipBubbleView({
+         ? filteredAggs.find((f) => f.price === a.price)!
+         : { price: a.price, buy: 0, sell: 0 },
+     );
+-  }, [rangeTrades, selectedBrokerName, allPriceAggs]);
++  }, [rangeTrades, selected.length, selectedIds, allPriceAggs]);
+ 
+   // Bug fix: filter must precede the top-N slice. Building the rows then
+   // slicing drops every row that fell behind the global top-200 cap, which
+   // was hiding most of a small-volume broker's price levels after filter.
+   const { buyRows: filteredBuyRows, sellRows: filteredSellRows } = useMemo(
+-    () => buildTradeRows(rangeTrades, selectedBrokerName, MAX_TRADE_ROWS, buySort, sellSort),
+-    [rangeTrades, selectedBrokerName, buySort, sellSort],
+-  );
+-
+-  // C1 🔵: BrokerSearch onChange 回傳 name;此 wrapper 轉 id set state。
+-  const handleBrokerSearchChange = useCallback(
+-    (name: string | null) => {
+-      if (name === null) {
+-        setSelectedBrokerId(null);
+-        return;
+-      }
+-      const id =
+-        visibleTrades.find((t) => t.broker === name)?.broker_id ?? null;
+-      setSelectedBrokerId(id);
+-    },
+-    [visibleTrades],
++    () => buildTradeRows(rangeTrades, selectedIds, MAX_TRADE_ROWS, buySort, sellSort),
++    [rangeTrades, selectedIds, buySort, sellSort],
+   );
+ 
+   const detailPanel = (
+@@ -323,7 +356,8 @@ export function ChipBubbleView({
+       priceAggs={priceAggs}
+       buyRows={filteredBuyRows}
+       sellRows={filteredSellRows}
+-      selectedBrokerName={selectedBrokerName}
++      selectedNames={selectedNames}
++      colorFor={colorFor}
+       labelFor={labelFor}
+       onSelect={handleBubbleClick}
+       buySort={buySort}
+@@ -346,22 +380,81 @@ export function ChipBubbleView({
+         <div className="shrink-0 min-h-10 px-3 py-1 border-b border-line bg-bg-deep/30 flex flex-wrap items-center gap-x-3 gap-y-1">
+           <BrokerSearch
+             trades={visibleTrades}
+-            value={selectedBrokerName}
+-            onChange={handleBrokerSearchChange}
++            selectedIds={selectedIds}
++            onPick={toggleBroker}
+           />
+-          {selectedBrokerId && selectedBrokerName ? (
++          {/* SC-3 Legend chips:選取狀態唯一載體 — 專屬色圓點 + 顯示名 + ×。 */}
++          {selected.map((b) => {
++            const display = formatBrokerName(b.id, b.name);
++            const color = BROKER_PALETTE[b.colorIdx]!;
++            return (
++              <span
++                key={b.id}
++                data-testid="broker-chip"
++                className="inline-flex items-center gap-1.5 px-1.5 py-0.5 text-xs border border-line-strong bg-bg-deep/60 text-ink"
++              >
++                <span
++                  data-testid="broker-chip-dot"
++                  data-color={color}
++                  aria-hidden="true"
++                  className="size-2 rounded-full shrink-0"
++                  style={{ background: color }}
++                />
++                {display}
++                <button
++                  type="button"
++                  aria-label={`移除〈${display}〉`}
++                  onClick={() => toggleBroker(b.id, b.name)}
++                  className="text-ink-dim hover:text-bear cursor-pointer leading-none pointer-coarse:min-h-11"
++                >
++                  ×
++                </button>
++              </span>
++            );
++          })}
++          {selected.length >= 2 && (
++            <button
++              type="button"
++              data-testid="broker-chips-clear"
++              onClick={() => {
++                setSelected([]);
++                setLimitNotice(false);
++              }}
++              className="text-xs text-ink-dim hover:text-bear underline underline-offset-2 cursor-pointer"
++            >
++              清除全部
++            </button>
++          )}
++          {limitNotice && (
++            <span role="status" className="text-xs text-[#f0b429]">
++              最多同時選 6 個分點
++            </span>
++          )}
++          {selected.length > 0 ? (
+             onJumpToOverview ? (
+               <button
+                 type="button"
+                 data-testid="bubble-jump-to-overview"
+-                onClick={() => onJumpToOverview(selectedBrokerId)}
++                onClick={() =>
++                  onJumpToOverview(
++                    selected.length === 1
++                      ? selected[0]!.id
++                      : selected.map((b) => b.id),
++                  )
++                }
+                 className="text-xs text-accent hover:text-ink underline underline-offset-2 cursor-pointer"
+               >
+-                查看 <span className="text-[#f0b429] font-medium">{formatBrokerName(selectedBrokerId, selectedBrokerName)}</span> 於籌碼總覽 →
++                {selected.length === 1 ? (
++                  <>
++                    查看 <span className="text-[#f0b429] font-medium">{formatBrokerName(selected[0]!.id, selected[0]!.name)}</span> 於籌碼總覽 →
++                  </>
++                ) : (
++                  <>查看 {selected.length} 個分點於籌碼總覽 →</>
++                )}
+               </button>
+             ) : (
+               <span className="text-xs text-ink-dim">
+-                已篩選 <span className="text-[#f0b429] font-medium">1</span> 個分點
++                已篩選 <span className="text-[#f0b429] font-medium">{selected.length}</span> 個分點
+               </span>
+             )
+           ) : (
+@@ -369,7 +462,7 @@ export function ChipBubbleView({
+               {brushRange ? "此區間" : "今日共"} <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
+             </span>
+           )}
+-          {selectedBrokerId && (
++          {selected.length > 0 && (
+             <div
+               data-testid="bubble-broker-totals"
+               className="flex items-center gap-3 text-xs text-ink-dim"
+@@ -440,7 +533,7 @@ export function ChipBubbleView({
+               width={bubbleSize.width}
+               height={bubbleSize.height}
+               closePrice={closePrice}
+-              selectedBroker={selectedBrokerName}
++              selectedBrokers={selected}
+               onBubbleHover={handleBubbleHover}
+               onBubbleClick={handleBubbleClick}
+               intradayPoints={intradayPoints}
+@@ -450,9 +543,11 @@ export function ChipBubbleView({
+             />
+           ) : null}
+           {/* CH-1 R6 case 2: 聚焦分點當日無成交 — 維持選中,泡泡圖照常
+-              (該分點本來就不在圖上),中央 badge 說明而非誤導成資料壞掉。 */}
++              (該分點本來就不在圖上),中央 badge 說明而非誤導成資料壞掉。
++              impl-spec R5:length === 1 嚴格判 — 多選含聚焦分點時不現。 */}
+           {focusedBroker !== null &&
+-            selectedBrokerId === focusedBroker.id &&
++            selected.length === 1 &&
++            selected[0]!.id === focusedBroker.id &&
+             bubbleData !== null &&
+             !bubbleData.trades.some((t) => t.broker_id === focusedBroker.id) && (
+               <div
+@@ -491,7 +586,7 @@ export function ChipBubbleView({
+               <div className="text-ink-muted tabular-nums">
+                 買 {fmtVol(brushSummary.buyLots)} / 賣 {fmtVol(brushSummary.sellLots)} 張
+               </div>
+-              {selectedBrokerId && (
++              {selected.length > 0 && (
+                 <div
+                   data-testid="brush-range-parked"
+                   className="mt-1 text-2xs text-ink-dim italic"
+@@ -563,7 +658,12 @@ export function ChipBubbleView({
+           >
+             <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-line">
+               <span className="text-sm text-ink-muted">
+-                成交明細{selectedBrokerName ? ` — ${selectedBrokerName}` : ""}
++                成交明細
++                {selected.length === 1
++                  ? ` — ${selected[0]!.name}`
++                  : selected.length >= 2
++                    ? ` — ${selected.length} 個分點`
++                    : ""}
+               </span>
+               <button
+                 type="button"
+@@ -619,7 +719,8 @@ function DetailPanel({
+   priceAggs,
+   buyRows,
+   sellRows,
+-  selectedBrokerName,
++  selectedNames,
++  colorFor,
+   labelFor,
+   onSelect,
+   buySort,
+@@ -630,7 +731,10 @@ function DetailPanel({
+   priceAggs: ReturnType<typeof aggregateByPrice>;
+   buyRows: TradeRow[];
+   sellRows: TradeRow[];
+-  selectedBrokerName: string | null;
++  /** SC-4:選中分點名集合(多選)— row active 態。 */
++  selectedNames: ReadonlySet<string>;
++  /** SC-4:N ≥ 2 時回該分點專屬色(列首圓點),否則 null。 */
++  colorFor: (name: string) => string | null;
+   /** SC-7:broker name → 「id 去dash名」顯示 label。 */
+   labelFor: (name: string) => string;
+   onSelect: (broker: string | null) => void;
+@@ -654,7 +758,8 @@ function DetailPanel({
+         <TradeList
+           rows={buyRows}
+           side="buy"
+-          selectedBroker={selectedBrokerName}
++          selectedNames={selectedNames}
++          colorFor={colorFor}
+           labelFor={labelFor}
+           onSelect={onSelect}
+           sortSpec={buySort}
+@@ -663,7 +768,8 @@ function DetailPanel({
+         <TradeList
+           rows={sellRows}
+           side="sell"
+-          selectedBroker={selectedBrokerName}
++          selectedNames={selectedNames}
++          colorFor={colorFor}
+           labelFor={labelFor}
+           onSelect={onSelect}
+           sortSpec={sellSort}
+@@ -805,7 +911,8 @@ function SortHeader({
+ const TradeList = memo(function TradeList({
+   rows,
+   side,
+-  selectedBroker,
++  selectedNames,
++  colorFor,
+   labelFor,
+   onSelect,
+   sortSpec,
+@@ -813,7 +920,10 @@ const TradeList = memo(function TradeList({
+ }: {
+   rows: TradeRow[];
+   side: "buy" | "sell";
+-  selectedBroker: string | null;
++  /** SC-4:選中分點名集合(多選)— row active 態。 */
++  selectedNames: ReadonlySet<string>;
++  /** SC-4:N ≥ 2 時回該分點專屬色(列首圓點),否則 null。 */
++  colorFor: (name: string) => string | null;
+   /** SC-7:broker name → 「id 去dash名」顯示 label。 */
+   labelFor: (name: string) => string;
+   onSelect: (broker: string | null) => void;
+@@ -881,12 +991,25 @@ const TradeList = memo(function TradeList({
+                   height: vi.size,
+                 }}
+                 className={`grid grid-cols-[1fr_56px_56px] items-center text-xs px-2 border-b border-line/20 cursor-pointer transition-colors ${
+-                  selectedBroker === r.broker
++                  selectedNames.has(r.broker)
+                     ? `${activeClass} text-ink`
+                     : "hover:bg-bg-deep/50 text-ink-muted"
+                 }`}
+               >
+-                <span className="text-left truncate">{labelFor(r.broker)}</span>
++                <span className="text-left truncate">
++                  {(() => {
++                    const dot = colorFor(r.broker);
++                    return dot ? (
++                      <span
++                        data-testid="row-broker-dot"
++                        aria-hidden="true"
++                        className="inline-block size-2 rounded-full mr-1 align-middle"
++                        style={{ background: dot }}
++                      />
++                    ) : null;
++                  })()}
++                  {labelFor(r.broker)}
++                </span>
+                 <span className={`text-right tabular-nums ${colorClass}`}>
+                   {fmtVol(r.volume)}
+                 </span>
+diff --git a/frontend/src/lib/changelog.test.ts b/frontend/src/lib/changelog.test.ts
+index 902c2d9..afa2de6 100644
+--- a/frontend/src/lib/changelog.test.ts
++++ b/frontend/src/lib/changelog.test.ts
+@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
+     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
+   });
+ 
+-  it("最新版本是 v0.41.0(分點名稱只在搜尋框帶編號 + dash-insensitive 搜尋)", () => {
+-    expect(CHANGELOG[0]?.version).toBe("0.41.0");
++  it("最新版本是 v0.42.0(泡泡圖多選分點)", () => {
++    expect(CHANGELOG[0]?.version).toBe("0.42.0");
+   });
+ 
+   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
+diff --git a/frontend/src/lib/changelog.ts b/frontend/src/lib/changelog.ts
+index 346d0ed..1202512 100644
+--- a/frontend/src/lib/changelog.ts
++++ b/frontend/src/lib/changelog.ts
+@@ -39,6 +39,17 @@ export function semverGt(a: string, b: string): boolean {
+ // 版本字串遵循 SemVer 2.0.0 三段式 MAJOR.MINOR.PATCH;pre-1.0 階段 breaking change 也只 bump MINOR
+ // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
+ export const CHANGELOG: VersionEntry[] = [
++  {
++    version: "0.42.0",
++    date: "2026-07-27",
++    changes: [
++      {
++        kind: "feature",
++        scope: "equity",
++        text: "泡泡圖可同時選取多個分點(最多 6 個):搜尋連續加選,每個分點有專屬顏色標記,成交列表與買賣統計自動合併呈現",
++      },
++    ],
++  },
+   {
+     version: "0.41.0",
+     date: "2026-07-22",
+diff --git a/frontend/src/lib/chip-bubble-svg.test.tsx b/frontend/src/lib/chip-bubble-svg.test.tsx
+index d9f1fc5..5482e55 100644
+--- a/frontend/src/lib/chip-bubble-svg.test.tsx
++++ b/frontend/src/lib/chip-bubble-svg.test.tsx
+@@ -3,9 +3,16 @@
+  */
+ import { afterEach, describe, expect, it, vi } from "vitest";
+ import { cleanup, fireEvent, render } from "@testing-library/react";
+-import { BubbleChartSvg } from "./chip-bubble-svg";
++import { BROKER_PALETTE, BubbleChartSvg } from "./chip-bubble-svg";
++import type { BubbleSelectedBroker } from "./chip-bubble-svg";
+ import type { BrokerTrade } from "./chip-data";
+ 
++const sel = (id: string, name: string, colorIdx: number): BubbleSelectedBroker => ({
++  id,
++  name,
++  colorIdx,
++});
++
+ afterEach(() => cleanup());
+ 
+ const mkTrade = (overrides: Partial<BrokerTrade> = {}): BrokerTrade => ({
+@@ -51,7 +58,7 @@ describe("BubbleChartSvg F1 — no yellow highlight on selected broker", () => {
+         trades={trades}
+         width={400}
+         height={300}
+-        selectedBroker="凱基台北"
++        selectedBrokers={[sel("9201A", "凱基台北", 0)]}
+       />,
+     );
+     const circles = Array.from(container.querySelectorAll("circle"));
+@@ -82,7 +89,7 @@ describe("BubbleChartSvg F2 — single-broker search bypasses global empty-state
+         trades={trades}
+         width={400}
+         height={300}
+-        selectedBroker="凱基台北"
++        selectedBrokers={[sel("9201A", "凱基台北", 0)]}
+       />,
+     );
+     expect(container.textContent).not.toContain("No significant volume");
+@@ -98,7 +105,7 @@ describe("BubbleChartSvg F2 — single-broker search bypasses global empty-state
+         trades={trades}
+         width={400}
+         height={300}
+-        selectedBroker="找不到的分點"
++        selectedBrokers={[sel("NOPE", "找不到的分點", 0)]}
+       />,
+     );
+     expect(container.textContent).toContain("找不到的分點 今日無顯著成交量");
+@@ -150,7 +157,7 @@ describe("BubbleChartSvg F11 — filter hides non-matched bubbles; axes stay inv
+         trades={trades}
+         width={400}
+         height={300}
+-        selectedBroker="凱基台北"
++        selectedBrokers={[sel("9201A", "凱基台北", 0)]}
+       />,
+     );
+     const filteredCircles = Array.from(filtered.querySelectorAll("circle"));
+@@ -182,7 +189,7 @@ describe("BubbleChartSvg F11 — filter hides non-matched bubbles; axes stay inv
+         trades={trades}
+         width={400}
+         height={300}
+-        selectedBroker="不存在的分點"
++        selectedBrokers={[sel("MISSING", "不存在的分點", 0)]}
+       />,
+     );
+     expect(container.querySelectorAll("circle")).toHaveLength(0);
+@@ -208,7 +215,7 @@ describe("BubbleChartSvg F11 — filter hides non-matched bubbles; axes stay inv
+         trades={trades}
+         width={400}
+         height={300}
+-        selectedBroker="凱基台北"
++        selectedBrokers={[sel("9201A", "凱基台北", 0)]}
+       />,
+     );
+     const circles = Array.from(container.querySelectorAll("circle"));
+@@ -245,7 +252,7 @@ describe("BubbleChartSvg F11 — filter hides non-matched bubbles; axes stay inv
+         trades={trades}
+         width={400}
+         height={300}
+-        selectedBroker="目標分點"
++        selectedBrokers={[sel("TARGET", "目標分點", 0)]}
+       />,
+     );
+     const circles = Array.from(container.querySelectorAll("circle"));
+@@ -316,7 +323,7 @@ describe("BubbleChartSvg intraday line overlay (additive optional prop)", () =>
+         trades={quiet}
+         width={400}
+         height={300}
+-        selectedBroker="A"
++        selectedBrokers={[sel("A1", "A", 0)]}
+         intradayPoints={[
+           { t: "09:00", price: 100.5 },  // broker 軸 [99,101] 內 → 保留
+           { t: "11:00", price: 100.8 },  // 內 → 保留
+@@ -596,7 +603,7 @@ describe("BubbleChartSvg — C10 priceRange 過濾泡泡 (🔴 Item 3)", () => {
+         trades={multi}
+         width={400}
+         height={300}
+-        selectedBroker="X"
++        selectedBrokers={[sel("X1", "X", 0)]}
+         brushRange={{ min: 104, max: 106 }}
+         priceRange={null}
+       />,
+@@ -645,4 +652,85 @@ describe("BubbleChartSvg — Y 軸拖曳篩選提示", () => {
+     );
+     expect(container.querySelector('[data-testid="bubble-brush-hint"]')).toBeNull();
+   });
++});
++
++// SC-2(bubble-multi-broker):多選分點 union filter + per-broker 專屬色外框。
++// 買賣 fill 維持紅買綠賣;外框只在 N ≥ 2 時切 BROKER_PALETTE(N = 1 維持現行
++// COLOR stroke,SC-5 單選視覺零回歸)。
++describe("BubbleChartSvg — 多選分點外框色 (SC-2)", () => {
++  const trades: BrokerTrade[] = [
++    mkTrade({ broker: "甲", broker_id: "A1", price: 100, buy: 50, sell: 0 }),
++    mkTrade({ broker: "乙", broker_id: "B1", price: 101, buy: 0, sell: 30 }),
++    mkTrade({ broker: "丙", broker_id: "C1", price: 102, buy: 40, sell: 0 }),
++  ];
++
++  it("BROKER_PALETTE 有 6 色且不含買賣紅綠(多空色相保留)", () => {
++    expect(BROKER_PALETTE).toHaveLength(6);
++    expect(BROKER_PALETTE).not.toContain("#e85a4f");
++    expect(BROKER_PALETTE).not.toContain("#7fc99a");
++  });
++
++  it("選 2 個分點 → 兩分點的泡泡都 render,外框分別為 PALETTE[colorIdx]、寬 2", () => {
++    const { container } = render(
++      <BubbleChartSvg
++        trades={trades}
++        width={400}
++        height={300}
++        selectedBrokers={[sel("A1", "甲", 0), sel("C1", "丙", 2)]}
++      />,
++    );
++    const circles = Array.from(container.querySelectorAll("circle"));
++    const byId = (id: string) =>
++      circles.filter((c) => c.getAttribute("data-broker-id") === id);
++    expect(byId("A1")).toHaveLength(1);
++    expect(byId("C1")).toHaveLength(1);
++    expect(byId("B1")).toHaveLength(0); // 未選中不 render(union filter)
++    // 正向 assertion:外框 = 各自 colorIdx 對應的 palette 色
++    expect(byId("A1")[0]!.getAttribute("stroke")).toBe(BROKER_PALETTE[0]);
++    expect(byId("C1")[0]!.getAttribute("stroke")).toBe(BROKER_PALETTE[2]);
++    expect(byId("A1")[0]!.getAttribute("stroke-width")).toBe("2");
++    expect(byId("C1")[0]!.getAttribute("stroke-width")).toBe("2");
++    // fill 維持買賣色(甲是買方紅、丙是買方紅 — 皆非 palette 色)
++    expect(byId("A1")[0]!.getAttribute("fill")).toBe("rgba(232, 90, 79, 0.45)");
++  });
++
++  it("只選 1 個分點 → 外框維持現行買賣 stroke(無 palette 色)", () => {
++    const { container } = render(
++      <BubbleChartSvg
++        trades={trades}
++        width={400}
++        height={300}
++        selectedBrokers={[sel("A1", "甲", 0)]}
++      />,
++    );
++    const circles = Array.from(container.querySelectorAll("circle"));
++    expect(circles).toHaveLength(1);
++    expect(circles[0]!.getAttribute("stroke")).toBe("#e85a4f"); // COLOR.buyStroke
++    expect(circles[0]!.getAttribute("stroke-width")).not.toBe("2");
++  });
++
++  it("選 2 個皆無成交的分點 → 複數空狀態 hint「選中分點今日無顯著成交量」", () => {
++    const { container } = render(
++      <BubbleChartSvg
++        trades={trades}
++        width={400}
++        height={300}
++        selectedBrokers={[sel("NOPE1", "沒有甲", 0), sel("NOPE2", "沒有乙", 1)]}
++      />,
++    );
++    expect(container.querySelectorAll("circle")).toHaveLength(0);
++    expect(container.textContent).toContain("選中分點今日無顯著成交量");
++  });
++
++  it("空陣列 selectedBrokers → 等同未選取(全體 top-100 render)", () => {
++    const { container } = render(
++      <BubbleChartSvg
++        trades={trades}
++        width={400}
++        height={300}
++        selectedBrokers={[]}
++      />,
++    );
++    expect(container.querySelectorAll("circle")).toHaveLength(3);
++  });
+ });
+\ No newline at end of file
+diff --git a/frontend/src/lib/chip-bubble-svg.tsx b/frontend/src/lib/chip-bubble-svg.tsx
+index 09e2b90..2760abc 100644
+--- a/frontend/src/lib/chip-bubble-svg.tsx
++++ b/frontend/src/lib/chip-bubble-svg.tsx
+@@ -100,13 +100,35 @@ function HintSvg({
+ // Component
+ // ---------------------------------------------------------------------------
+ 
++/** 選中分點(bubble-multi-broker):id = FinMind securities_trader_id,
++ *  colorIdx = 0-5 配色 slot(選取存續期間不變,ChipBubbleView 配發)。 */
++export interface BubbleSelectedBroker {
++  id: string;
++  name: string;
++  colorIdx: number;
++}
++
++/** Per-broker 識別外框色(N ≥ 2 選取時)。6 色 categorical,dataviz validator
++ *  於 dark surface #0e0c08 驗證:前 3 slot all-pairs PASS、全 6 adjacent PASS;
++ *  刻意排除紅綠色相(買賣多空保留)。>3 同時選取的 identity 由 secondary
++ *  encoding(hover tooltip / legend chips / 明細列名)補足。 */
++export const BROKER_PALETTE: readonly string[] = [
++  "#3987e5", // blue
++  "#c98500", // yellow
++  "#d55181", // magenta
++  "#9085e9", // violet
++  "#2aa5b8", // cyan
++  "#8c6d1f", // olive gold
++];
++
+ export interface BubbleChartProps {
+   trades: BrokerTrade[];
+   width: number;
+   height: number;
+   closePrice?: number;
+-  /** When set, only show this broker's bubbles. */
+-  selectedBroker?: string | null;
++  /** 選中分點(≤6)。空陣列 / undefined = 未選取(全體 top-100 view);
++   *  非空 = union filter,只 render 選中分點的泡泡。 */
++  selectedBrokers?: readonly BubbleSelectedBroker[];
+   /** Hover callback for tooltip (null = mouse left). */
+   onBubbleHover?: (payload: BubbleHoverPayload | null, x: number, y: number) => void;
+   /** Click callback — broker name when clicking a bubble, null when clicking empty area. */
+@@ -135,6 +157,7 @@ interface Bubble {
+   r: number;
+   fill: string;
+   stroke: string;
++  strokeWidth: number;
+   brokerId: string;
+   key: string;
+   payload: BubbleHoverPayload;
+@@ -145,7 +168,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+   width,
+   height,
+   closePrice,
+-  selectedBroker,
++  selectedBrokers,
+   onBubbleHover,
+   onBubbleClick,
+   intradayPoints,
+@@ -414,16 +437,27 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+     if (t.sell > VOLUME_THRESHOLD) layoutVolumes.push(t.sell);
+   }
+ 
+-  // Matched broker's trades — computed ONCE and reused by the F2 axis
++  // bubble-multi-broker:選取集合(id → colorIdx)。空 = 未選取。
++  const selected = selectedBrokers ?? [];
++  const hasSelection = selected.length > 0;
++  const selectedIdSet = new Set(selected.map((b) => b.id));
++  const colorIdxById = new Map(selected.map((b) => [b.id, b.colorIdx]));
++  // 空狀態 hint:單選維持現行文案(SC-5 零回歸);多選用複數文案。
++  const emptyHint =
++    selected.length === 1
++      ? `${selected[0]!.name} 今日無顯著成交量`
++      : "選中分點今日無顯著成交量";
++
++  // Matched brokers' trades — computed ONCE and reused by the F2 axis
+   // fallback below and the F11 render source further down.
+-  const matchedBrokerTrades: BrokerTrade[] | null = selectedBroker
+-    ? trades.filter((t) => t.broker === selectedBroker)
++  const matchedBrokerTrades: BrokerTrade[] | null = hasSelection
++    ? trades.filter((t) => selectedIdSet.has(t.broker_id))
+     : null;
+ 
+   // F2 fallback: when the global top-100 view would be empty (quiet day),
+-  // derive axes from the selected broker's own data so a broker search
++  // derive axes from the selected brokers' own data so a broker search
+   // still shows them — even sub-threshold.
+-  const useBrokerAxes = layoutVolumes.length === 0 && !!selectedBroker;
++  const useBrokerAxes = layoutVolumes.length === 0 && hasSelection;
+ 
+   let prices: number[];
+   let volumes: number[];
+@@ -448,11 +482,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+       <HintSvg
+         width={width}
+         height={height}
+-        text={
+-          selectedBroker
+-            ? `${selectedBroker} 今日無顯著成交量`
+-            : "No significant volume"
+-        }
++        text={hasSelection ? emptyHint : "No significant volume"}
+       />
+     );
+   }
+@@ -463,7 +493,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+   // C10 (🔴 Item 3): priceRange 疊加過濾 — 只留 price ∈ [min, max]。軸仍
+   // 用 layoutPrices/layoutVolumes,filter 後泡泡位置不變(視覺感受為淡出
+   // 而非重排),對齊 F11 axes-stable 原則。
+-  const priceFilteredSource: BrokerTrade[] = selectedBroker
++  const priceFilteredSource: BrokerTrade[] = hasSelection
+     ? matchedBrokerTrades!
+     : layoutTrades;
+   const renderTrades: BrokerTrade[] = priceRange
+@@ -471,7 +501,14 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+         (t) => t.price >= priceRange.min && t.price <= priceRange.max,
+       )
+     : priceFilteredSource;
+-  const threshold = selectedBroker ? 0 : VOLUME_THRESHOLD;
++  const threshold = hasSelection ? 0 : VOLUME_THRESHOLD;
++  // SC-2:N ≥ 2 時每分點掛專屬色外框(寬 2)識別;N ≤ 1 維持現行買賣 stroke
++  // (SC-5 單選視覺零回歸)。fill 一律買紅賣綠不動。
++  const ringStroke = (brokerId: string): string | null => {
++    if (selected.length < 2) return null;
++    const idx = colorIdxById.get(brokerId);
++    return idx === undefined ? null : BROKER_PALETTE[idx]!;
++  };
+ 
+   const minPrice = Math.min(...prices);
+   const maxPrice = Math.max(...prices);
+@@ -529,13 +566,15 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+   const bubbles: Bubble[] = [];
+   let idx = 0;
+   for (const t of renderTrades) {
++    const ring = ringStroke(t.broker_id);
+     if (t.buy > threshold) {
+       bubbles.push({
+         cx: centerX + (t.buy / volMax) * halfW,
+         cy: sY(t.price),
+         r: bubbleRadius(t.buy, maxVolume, MIN_R, MAX_R),
+         fill: COLOR.buyFill,
+-        stroke: COLOR.buyStroke,
++        stroke: ring ?? COLOR.buyStroke,
++        strokeWidth: ring ? 2 : 1,
+         brokerId: t.broker_id,
+         key: `b-${t.broker_id}-${t.price}-${idx}`,
+         payload: { broker: t.broker, brokerId: t.broker_id, volume: t.buy, price: t.price, side: "buy" },
+@@ -547,7 +586,8 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+         cy: sY(t.price),
+         r: bubbleRadius(t.sell, maxVolume, MIN_R, MAX_R),
+         fill: COLOR.sellFill,
+-        stroke: COLOR.sellStroke,
++        stroke: ring ?? COLOR.sellStroke,
++        strokeWidth: ring ? 2 : 1,
+         brokerId: t.broker_id,
+         key: `s-${t.broker_id}-${t.price}-${idx}`,
+         payload: { broker: t.broker, brokerId: t.broker_id, volume: t.sell, price: t.price, side: "sell" },
+@@ -676,7 +716,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+           r={b.r}
+           fill={b.fill}
+           stroke={b.stroke}
+-          strokeWidth={1}
++          strokeWidth={b.strokeWidth}
+           data-broker-id={b.brokerId}
+           pointerEvents="none"
+         />
+@@ -684,7 +724,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+ 
+       {/* Empty-state hint — 分點過濾 or price-range filter 打空時顯示。
+           C10 (🔴 Item 3): priceRange 疊加後可能 0 bubble,需 fallback 提示。 */}
+-      {bubbles.length === 0 && (selectedBroker || priceRange) && (
++      {bubbles.length === 0 && (hasSelection || priceRange) && (
+         <text
+           x={width / 2}
+           y={height / 2}
+@@ -694,7 +734,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+         >
+           {priceRange
+             ? `此價位區間 (${priceRange.min.toFixed(2)}–${priceRange.max.toFixed(2)}) 無成交`
+-            : `${selectedBroker} 今日無顯著成交量`}
++            : emptyHint}
+         </text>
+       )}
+ 
+diff --git a/frontend/src/lib/chip-data.test.ts b/frontend/src/lib/chip-data.test.ts
+index 044b942..23aee3c 100644
+--- a/frontend/src/lib/chip-data.test.ts
++++ b/frontend/src/lib/chip-data.test.ts
+@@ -138,7 +138,7 @@ describe("buildTradeRows", () => {
+       mkTrade("B", 101, 200, 0),
+       mkTrade("C", 102, 10, 0),
+     ];
+-    const { buyRows } = buildTradeRows(trades, null, 2);
++    const { buyRows } = buildTradeRows(trades, new Set<string>(), 2);
+     expect(buyRows).toEqual([
+       { broker: "A", volume: 500, price: 100 },
+       { broker: "B", volume: 200, price: 101 },
+@@ -161,7 +161,7 @@ describe("buildTradeRows", () => {
+     trades.push(mkTrade("康和新竹", 2505, 154, 1));
+     trades.push(mkTrade("康和新竹", 2510, 2, 2));
+ 
+-    const { buyRows, sellRows } = buildTradeRows(trades, "康和新竹", 200);
++    const { buyRows, sellRows } = buildTradeRows(trades, new Set(["康和新竹"]), 200);
+     const buyVols = buyRows.map((r) => r.volume).sort((a, b) => a - b);
+     const sellVols = sellRows.map((r) => r.volume).sort((a, b) => a - b);
+     // All non-zero rows for the broker survive: buys at 2500/2505/2510 (1/154/2),
+@@ -178,7 +178,7 @@ describe("buildTradeRows", () => {
+       mkTrade("X", 11, 100, 0),
+       mkTrade("X", 12, 50, 0),
+     ];
+-    const { buyRows } = buildTradeRows(trades, "X", 10);
++    const { buyRows } = buildTradeRows(trades, new Set(["X"]), 10);
+     expect(buyRows.map((r) => r.volume)).toEqual([100, 50, 5]);
+   });
+ 
+@@ -199,7 +199,7 @@ describe("buildTradeRows", () => {
+ 
+     const { buyRows, sellRows } = buildTradeRows(
+       trades,
+-      null,
++      new Set<string>(),
+       Number.POSITIVE_INFINITY,
+     );
+ 
+@@ -225,7 +225,7 @@ describe("buildTradeRows", () => {
+         mkTrade("C", 101, 20, 10),
+       ];
+       const { buyRows, sellRows } = buildTradeRows(
+-        trades, null, 10,
++        trades, new Set<string>(), 10,
+         { key: "price", dir: "desc" },
+       );
+       expect(buyRows.map((r) => r.price)).toEqual([102, 101, 100]);
+@@ -240,7 +240,7 @@ describe("buildTradeRows", () => {
+         mkTrade("C", 101, 20, 0),
+       ];
+       const { buyRows } = buildTradeRows(
+-        trades, null, 10,
++        trades, new Set<string>(), 10,
+         { key: "price", dir: "asc" },
+       );
+       expect(buyRows.map((r) => r.price)).toEqual([100, 101, 102]);
+@@ -253,7 +253,7 @@ describe("buildTradeRows", () => {
+         mkTrade("C", 101, 20, 0),
+       ];
+       const { buyRows } = buildTradeRows(
+-        trades, null, 10,
++        trades, new Set<string>(), 10,
+         { key: "volume", dir: "asc" },
+       );
+       expect(buyRows.map((r) => r.volume)).toEqual([5, 10, 20]);
+@@ -266,7 +266,7 @@ describe("buildTradeRows", () => {
+         mkTrade("C", 101, 20, 10),
+       ];
+       const { buyRows, sellRows } = buildTradeRows(
+-        trades, null, 10,
++        trades, new Set<string>(), 10,
+         { key: "volume", dir: "desc" },   // buyRows: by vol desc
+         { key: "price", dir: "asc" },     // sellRows: by price asc
+       );
+@@ -281,7 +281,7 @@ describe("buildTradeRows", () => {
+         mkTrade("B", 100, 10, 0),
+       ];
+       const { buyRows } = buildTradeRows(
+-        trades, null, 10,
++        trades, new Set<string>(), 10,
+         { key: "volume", dir: "desc" },
+       );
+       expect(buyRows.map((r) => r.broker)).toEqual(["A", "B", "C"]);
+@@ -295,18 +295,18 @@ describe("computeBrokerTotals (C6 🟢)", () => {
+   const mk = (broker_id: string, price: number, buy: number, sell: number): BrokerTrade =>
+     ({ broker: broker_id, broker_id, price, buy, sell });
+ 
+-  it("brokerId=null: returns all zeros", () => {
+-    const r = computeBrokerTotals([mk("A", 100, 10, 0)], null);
++  it("empty selection: returns all zeros", () => {
++    const r = computeBrokerTotals([mk("A", 100, 10, 0)], new Set<string>());
+     expect(r).toEqual({ buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 });
+   });
+ 
+   it("brokerId not in trades: returns all zeros", () => {
+-    const r = computeBrokerTotals([mk("A", 100, 10, 0)], "Z");
++    const r = computeBrokerTotals([mk("A", 100, 10, 0)], new Set(["Z"]));
+     expect(r).toEqual({ buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 });
+   });
+ 
+   it("single-price single broker: exact amount = buy × 1000 × price", () => {
+-    const r = computeBrokerTotals([mk("A", 100, 5, 0)], "A");
++    const r = computeBrokerTotals([mk("A", 100, 5, 0)], new Set(["A"]));
+     expect(r.buyLots).toBe(5);
+     expect(r.sellLots).toBe(0);
+     expect(r.buyAmount).toBe(500_000); // 5 × 1000 × 100
+@@ -319,7 +319,7 @@ describe("computeBrokerTotals (C6 🟢)", () => {
+       mk("A", 102, 3, 0),   // 306,000
+       mk("A", 101, 0, 4),   // 404,000 (sell)
+     ];
+-    const r = computeBrokerTotals(trades, "A");
++    const r = computeBrokerTotals(trades, new Set(["A"]));
+     expect(r.buyLots).toBe(8);
+     expect(r.sellLots).toBe(4);
+     expect(r.buyAmount).toBe(806_000);
+@@ -331,17 +331,38 @@ describe("computeBrokerTotals (C6 🟢)", () => {
+       mk("A", 100, 10, 0),
+       mk("B", 100, 999, 999),
+     ];
+-    const r = computeBrokerTotals(trades, "A");
++    const r = computeBrokerTotals(trades, new Set(["A"]));
+     expect(r.buyLots).toBe(10);
+     expect(r.buyAmount).toBe(1_000_000);
+     expect(r.sellLots).toBe(0);
+   });
+ 
+   it("empty trades: returns all zeros", () => {
+-    expect(computeBrokerTotals([], "A")).toEqual({
++    expect(computeBrokerTotals([], new Set(["A"]))).toEqual({
+       buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0,
+     });
+   });
++
++  // SC-4(bubble-multi-broker):多選分點的合併統計 — header 買賣張/額為
++  // 所有選中分點加總;未知 id 混入只計已知(選中分點可能已自 trades 消失)。
++  it("multi-id selection: sums lots and amounts across every selected broker", () => {
++    const trades: BrokerTrade[] = [
++      mk("A", 100, 5, 0),   // buy 500,000
++      mk("B", 200, 3, 2),   // buy 600,000 / sell 400,000
++      mk("C", 100, 999, 999), // 未選中,不計
++    ];
++    const r = computeBrokerTotals(trades, new Set(["A", "B"]));
++    expect(r.buyLots).toBe(8);
++    expect(r.sellLots).toBe(2);
++    expect(r.buyAmount).toBe(1_100_000);
++    expect(r.sellAmount).toBe(400_000);
++  });
++
++  it("multi-id selection with an unknown id: counts only the known ones", () => {
++    const r = computeBrokerTotals([mk("A", 100, 5, 0)], new Set(["A", "GONE"]));
++    expect(r.buyLots).toBe(5);
++    expect(r.buyAmount).toBe(500_000);
++  });
+ });
+ 
+ describe("fmtAmount (C6 🟢)", () => {
+@@ -413,21 +434,50 @@ describe("summarizeTradesByPriceRange (C7 🟢)", () => {
+   });
+ });
+ 
+-describe("buildTradeRows — legacy tests continue", () => {
+-  // C1 R3: locks name-based filter behavior when the same broker_name appears
+-  // across multiple broker_id (edge case: FinMind securities_trader_id is
+-  // typically 1:1 with securities_trader, but this test ensures ChipBubbleView
+-  // A4 refactor didn't accidentally shift filter semantics).
+-  describe("R3 — same broker_name across different broker_id", () => {
+-    it("filter is name-based: includes all rows matching the name regardless of broker_id", () => {
+-      const trades: BrokerTrade[] = [
+-        { broker: "凱基-台北", broker_id: "9800", price: 100, buy: 50, sell: 0 },
+-        { broker: "凱基-台北", broker_id: "9801", price: 101, buy: 30, sell: 0 },
+-        { broker: "永豐-台北", broker_id: "9200", price: 100, buy: 20, sell: 0 },
+-      ];
+-      const { buyRows } = buildTradeRows(trades, "凱基-台北", 10);
+-      expect(buyRows).toHaveLength(2);
++describe("buildTradeRows — id-based filter(bubble-multi-broker)", () => {
++  // 該變 assertion(原 C1 R3 name-based 已翻案):選取契約改以 broker_id 為
++  // key(收割 next-time.md deferred 項)— 同名不同 id 是不同分點,單選一個 id
++  // 不再吸入同名它行;要合併就把兩個 id 都放進集合。
++  describe("same broker_name across different broker_id", () => {
++    const trades: BrokerTrade[] = [
++      { broker: "凱基-台北", broker_id: "9800", price: 100, buy: 50, sell: 0 },
++      { broker: "凱基-台北", broker_id: "9801", price: 101, buy: 30, sell: 0 },
++      { broker: "永豐-台北", broker_id: "9200", price: 100, buy: 20, sell: 0 },
++    ];
++
++    it("filter is id-based: one id selects only that id's rows despite name collision", () => {
++      const { buyRows } = buildTradeRows(trades, new Set(["9800"]), 10);
++      expect(buyRows).toHaveLength(1);
++      expect(buyRows[0]).toEqual({ broker: "凱基-台北", volume: 50, price: 100 });
++    });
++
++    it("selecting both colliding ids merges their rows", () => {
++      const { buyRows } = buildTradeRows(trades, new Set(["9800", "9801"]), 10);
+       expect(buyRows.map((r) => r.volume).sort((a, b) => b - a)).toEqual([50, 30]);
+     });
+   });
++
++  // SC-4:多選集合過濾 — 明細合併涵蓋所有選中分點、排除未選;filter 先於
++  // top-N cap(沿用單選時代的 bug fix 語意)。
++  it("multi-id selection merges rows from every selected broker and excludes others", () => {
++    const trades: BrokerTrade[] = [
++      { broker: "甲", broker_id: "A", price: 100, buy: 5, sell: 1 },
++      { broker: "乙", broker_id: "B", price: 101, buy: 0, sell: 7 },
++      { broker: "丙", broker_id: "C", price: 102, buy: 999, sell: 999 },
++    ];
++    const { buyRows, sellRows } = buildTradeRows(trades, new Set(["A", "B"]), 10);
++    expect(buyRows).toEqual([{ broker: "甲", volume: 5, price: 100 }]);
++    expect(sellRows.map((r) => r.broker).sort()).toEqual(["乙", "甲"]);
++  });
++
++  it("multi-id filter applies before the top-N cap (small rows survive)", () => {
++    const trades: BrokerTrade[] = [];
++    for (let i = 0; i < 250; i++) {
++      trades.push({ broker: `n${i}`, broker_id: `n${i}`, price: 200 + i, buy: 999, sell: 0 });
++    }
++    trades.push({ broker: "小甲", broker_id: "SA", price: 100, buy: 1, sell: 0 });
++    trades.push({ broker: "小乙", broker_id: "SB", price: 101, buy: 2, sell: 0 });
++    const { buyRows } = buildTradeRows(trades, new Set(["SA", "SB"]), 200);
++    expect(buyRows.map((r) => r.volume).sort((a, b) => a - b)).toEqual([1, 2]);
++  });
+ });
+diff --git a/frontend/src/lib/chip-data.ts b/frontend/src/lib/chip-data.ts
+index b3bc234..6ee5b22 100644
+--- a/frontend/src/lib/chip-data.ts
++++ b/frontend/src/lib/chip-data.ts
+@@ -202,20 +202,21 @@ export interface BrokerTotals {
+ }
+ 
+ /**
+- * Sum a single broker's total buy/sell lots + monetary amount across all
+- * price levels. Returns zeros when brokerId is null or not found in trades.
++ * Sum the selected brokers' total buy/sell lots + monetary amount across all
++ * price levels (multi-broker merge). Returns zeros when the selection is
++ * empty or none of the ids appear in trades.
+  */
+ export function computeBrokerTotals(
+   trades: BrokerTrade[],
+-  brokerId: string | null,
++  brokerIds: ReadonlySet<string>,
+ ): BrokerTotals {
+-  if (!brokerId) return { buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 };
++  if (brokerIds.size === 0) return { buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 };
+   let buyLots = 0;
+   let sellLots = 0;
+   let buyAmount = 0;
+   let sellAmount = 0;
+   for (const t of trades) {
+-    if (t.broker_id !== brokerId) continue;
++    if (!brokerIds.has(t.broker_id)) continue;
+     buyLots += t.buy;
+     sellLots += t.sell;
+     buyAmount += t.buy * 1000 * t.price;
+@@ -331,23 +332,24 @@ function tradeComparator(spec: SortSpec): (a: TradeRow, b: TradeRow) => number {
+ /**
+  * Build {buyRows, sellRows} for the bubble-view side panel.
+  *
+- * When `selectedBroker` is null, returns the top `maxRows` overall by the
+- * given sort key. When `selectedBroker` is set, the filter is applied FIRST
+- * and then sliced — so a small-volume broker's price levels are not lost
+- * behind a global top-N cap that they couldn't make.
++ * When `brokerIds` is empty, returns the top `maxRows` overall by the given
++ * sort key. When non-empty, the id filter is applied FIRST and then sliced —
++ * so a small-volume broker's price levels are not lost behind a global top-N
++ * cap that they couldn't make. Filter key = broker_id(同名不同 id 是不同
++ * 分點;合併需把每個 id 都放進集合)。
+  *
+  * `buySort` / `sellSort` are independent: changing one side does not
+  * reshuffle the other.
+  */
+ export function buildTradeRows(
+   trades: BrokerTrade[],
+-  selectedBroker: string | null,
++  brokerIds: ReadonlySet<string>,
+   maxRows: number,
+   buySort: SortSpec = DEFAULT_TRADE_SORT,
+   sellSort: SortSpec = DEFAULT_TRADE_SORT,
+ ): { buyRows: TradeRow[]; sellRows: TradeRow[] } {
+-  const source = selectedBroker
+-    ? trades.filter((t) => t.broker === selectedBroker)
++  const source = brokerIds.size > 0
++    ? trades.filter((t) => brokerIds.has(t.broker_id))
+     : trades;
+   const buys: TradeRow[] = [];
+   const sells: TradeRow[] = [];

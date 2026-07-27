@@ -1,0 +1,13 @@
+{
+  "round": 1,
+  "reviewer": "design-reviewer",
+  "findings": {
+    "P0": 0,
+    "P1": [
+      {"id": "R1", "claim": "pick 後保持下拉開啟與 blur closeTimer 衝突(onMouseDown 未 preventDefault)", "disposition": "accepted, fixed in design v2 §4"},
+      {"id": "R2", "claim": "filter 模式下 N>=1 後泡泡/明細入口無法加選,SC-1 三入口語意矛盾", "disposition": "accepted, fixed in design v2 §1 + brainstorm SC-1 amendment"}
+    ],
+    "P2_summary": {"count": 5, "themes": "文案與現行不符(R3)/limitNotice 清除路徑不完備(R4)/selectedNames 來源矛盾(R5)/跨節型別矛盾(R6)/mobile sheet effect 漏 caller(R7)", "disposition": "全數順手修入 design v2(皆為文件級修正)"}
+  },
+  "exit": "無 P0、P1 全修 → 進 Phase 2"
+}

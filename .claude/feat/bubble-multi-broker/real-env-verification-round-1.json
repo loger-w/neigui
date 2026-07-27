@@ -1,0 +1,14 @@
+{
+  "round": 1,
+  "env": "本機 dev(backend :8000 真 FinMind + frontend :5173),2330 台積電 2026-07-27 真實資料(814 分點),chrome-devtools MCP",
+  "cases": [
+    {"sc": "SC-1/SC-2/SC-3/SC-4", "scenario": "搜尋「摩根」連續加選台灣摩根+摩根大通(下拉保持開啟含 ✓)", "result": "PASS — 2 chips(藍/黃點)、泡泡雙色外框、明細合併含兩分點列+色點、統計 買5,824=3,348+2,476 ✓ 賣4,750 ✓", "evidence": "evidence/SC-1_SC-2_SC-3_SC-4_multi-select-2330.png"},
+    {"sc": "SC-1(array 契約)", "scenario": "點「查看 2 個分點於籌碼總覽 →」", "result": "PASS — 切回總覽,chip bar 帶入 2 分點、K 線 overlay 分點(2)", "evidence": "evidence/SC-1_jump-to-overview-2brokers.png"},
+    {"sc": "SC-5/SC-6", "scenario": "總覽「看泡泡圖」聚焦元大(focusRequest)", "result": "PASS — 取代 2 分點選取為單一元大;單選視覺=現行(無 ring、現行文案/統計/過濾)", "evidence": "evidence/SC-5_SC-6_focus-replaces-single-select.png"},
+    {"sc": "SC-1 edge 1", "scenario": "加選至 6 滿後點第 7 個(美林)", "result": "PASS — 不加入、role=status「最多同時選 6 個分點」、6 色 chips+rings 全上", "evidence": "evidence/SC-1_edge_limit-6-notice.png"},
+    {"sc": "SC-3 edge(清除路徑)", "scenario": "清除全部", "result": "PASS — 回「今日共 814 個分點」全體檢視,notice 一併清除(R4)", "evidence": "snapshot(記錄於本檔)"},
+    {"sc": "regression 抽樣", "scenario": "(1) 籌碼總覽 chip bar / K 線 overlay 未受波及;(2) brush 提示 / 輸入區間 / 過濾清單 trigger 仍在,console 僅 favicon.ico 404(既有)、API 全 200", "result": "PASS"}
+  ],
+  "console": "0 app errors(僅既有 favicon.ico 404)",
+  "all_pass": true
+}

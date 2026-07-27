@@ -1,0 +1,18 @@
+{
+  "round": 1,
+  "mode": "medium, 2 differentiated lenses (correctness/state + missing-from-spec/test-coverage), verify inline",
+  "diff": "review-diff.txt (d4fa7f8..44db705, 2067 lines)",
+  "findings": {
+    "P0": 0,
+    "P1": [
+      {"id": "lensB-F1", "claim": "泡泡/明細列入口 name 反查丟棄 payload.brokerId,同名不同 id 選錯實體;與 id-key 收割宣稱矛盾", "receiving": "accepted(機械查證:svg handleClick 僅傳 payload.broker;TradeRow 無 broker_id)", "resolution": "fixed — f14bdba red + 8e46aab green(TradeRow.broker_id / onBubbleClick 帶 id / 直接 id toggle);design v3 記契約收回"}
+    ],
+    "P2": [
+      {"id": "lensB-F2", "claim": "colorByName 同名撞 key,列圓點與 chip 色不一致", "receiving": "accepted(行為級,隨 F1 展開)", "resolution": "fixed — colorById id-key,測試鎖兩色不互蓋"},
+      {"id": "lensA-F1", "claim": "MAX_SELECTED_BROKERS 三處硬編 6,palette drift 風險", "receiving": "accepted", "resolution": "fixed — = BROKER_PALETTE.length + 文案內插"}
+    ],
+    "p2_summary": {"count": 2, "themes": "皆展開處理(行為級/單行修),無彙總丟棄項"}
+  },
+  "exit": "accepted 全修 + 全前端 980 tests 綠;不重跑全量 review",
+  "self_review_head": "8e46aabb51fd5999206e2bfe3150ea5265083aea"
+}
