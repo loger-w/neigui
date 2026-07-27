@@ -12,7 +12,7 @@
 - **自選歸組選單長清單底部裁切**(Phase 5 review P2-2):watchlist-assign-menu absolute top-full 在 overflow 容器內,底部項目選單被裁;短清單常態不受影響。觸發重評估:user 回報或清單普遍 >15 檔時,改 bottom-full 翻轉或 portal 定位。
 
 - **自選分組 rename**:管理分組面板只有建立/刪除;rename 需資料層新函式(watchlist.ts 無)+ UI。觸發重評估:user 抱怨改名要刪掉重建時。
-- **BrokerSearch 選取契約改以 broker_id 為 key**:目前 value/onChange 仍以名稱 key(同名不同 id 分點理論上會撞);SC-7 只統一顯示。觸發重評估:真實資料出現同名分點,或 ChipBubbleView selection 域重構時。
+- (原「BrokerSearch 選取契約改以 broker_id 為 key」條目已由 feat/bubble-multi-broker 解決刪除,2026-07-27:selection 域重構為多選時一併改 id key — 聚合 / onPick / 下拉已選標記全走 broker_id,同名不同 id 分列)
 - **權證分點頁點股票跳 equity**:四頁中唯一沒有跳轉鏈的頁(user 本輪未要求)。觸發重評估:user 提出。
 
 ## From /feat broker-daily-flows(2026-07-21)
