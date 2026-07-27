@@ -13,19 +13,20 @@
     4,
     5,
     6,
-    7
+    7,
+    8
   ],
   "scope": "L",
   "phase_6_blocked_reason": null,
   "scope_overrides": {
     "goal_efficiency_mode": false
   },
-  "last_updated": "2026-07-28T00:15:00",
+  "last_updated": "2026-07-28T01:00:00",
   "project_shape": null,
   "last_commit_sha": null,
-  "final_merge_sha": null,
+  "final_merge_sha": "d9f8ba7",
   "self_review_head": "e7848c70034908bf658933600e38e7ef289951f7",
-  "artifact_commit": null,
+  "artifact_commit": "d9f8ba7",
   "rollbacks": [],
   "paused": null
 }
