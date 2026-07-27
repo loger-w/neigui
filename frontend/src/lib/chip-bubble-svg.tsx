@@ -131,8 +131,10 @@ export interface BubbleChartProps {
   selectedBrokers?: readonly BubbleSelectedBroker[];
   /** Hover callback for tooltip (null = mouse left). */
   onBubbleHover?: (payload: BubbleHoverPayload | null, x: number, y: number) => void;
-  /** Click callback — broker name when clicking a bubble, null when clicking empty area. */
-  onBubbleClick?: (broker: string | null) => void;
+  /** Click callback — broker name + broker_id when clicking a bubble,
+   *  (null, null) when clicking empty area. Phase 4 F1:payload 本就帶
+   *  brokerId,一併上傳讓 caller 按 id 精準 toggle(同名不同 id 不反查)。 */
+  onBubbleClick?: (broker: string | null, brokerId?: string | null) => void;
   /** Optional 1-min KBar close-price series (背景分時走勢線).
    *  Y 軸 reuse 此圖 price scale,X 軸獨立為時間 09:00→13:30。
    *  缺則不畫,既有行為不變(向下相容)。 */
@@ -341,7 +343,10 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
       const svgRect = svg?.getBoundingClientRect();
       if (!svgRect) return;
       const hit = hitTest(e.clientX, e.clientY, svgRect);
-      onBubbleClick?.(hit ? hit.payload.broker : null);
+      onBubbleClick?.(
+        hit ? hit.payload.broker : null,
+        hit ? hit.payload.brokerId : null,
+      );
     },
     [hitTest, onBubbleClick],
   );

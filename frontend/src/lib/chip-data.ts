@@ -302,6 +302,8 @@ export function aggregateByPrice(trades: BrokerTrade[]): PriceAgg[] {
 
 export interface TradeRow {
   broker: string;
+  /** Phase 4 F1:列點擊入口按 id 精準 toggle(同名不同 id 不靠 name 反查)。 */
+  broker_id: string;
   volume: number;
   price: number;
 }
@@ -354,8 +356,8 @@ export function buildTradeRows(
   const buys: TradeRow[] = [];
   const sells: TradeRow[] = [];
   for (const t of source) {
-    if (t.buy > 0) buys.push({ broker: t.broker, volume: t.buy, price: t.price });
-    if (t.sell > 0) sells.push({ broker: t.broker, volume: t.sell, price: t.price });
+    if (t.buy > 0) buys.push({ broker: t.broker, broker_id: t.broker_id, volume: t.buy, price: t.price });
+    if (t.sell > 0) sells.push({ broker: t.broker, broker_id: t.broker_id, volume: t.sell, price: t.price });
   }
   buys.sort(tradeComparator(buySort));
   sells.sort(tradeComparator(sellSort));
