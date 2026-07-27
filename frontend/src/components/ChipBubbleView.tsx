@@ -57,8 +57,9 @@ interface Props {
 // the long tail visible there.
 const MAX_TRADE_ROWS = Number.POSITIVE_INFINITY;
 
-// bubble-multi-broker(SC-1):多選上限 = BROKER_PALETTE 色數(可辨識度上限)。
-const MAX_SELECTED_BROKERS = 6;
+// bubble-multi-broker(SC-1):多選上限 = BROKER_PALETTE 色數(可辨識度上限;
+// Phase 4 review:單一 source of truth,palette 增減自動同步 gate 與文案)。
+const MAX_SELECTED_BROKERS = BROKER_PALETTE.length;
 type SelectedBroker = BubbleSelectedBroker;
 
 export function ChipBubbleView({
@@ -169,18 +170,15 @@ export function ChipBubbleView({
     () => new Set(selected.map((b) => b.id)),
     [selected],
   );
-  const selectedNames = useMemo(
-    () => new Set(selected.map((b) => b.name)),
-    [selected],
-  );
   // N ≥ 2 才配列圓點色(N = 1 圖面無外框,SC-5 單選視覺零回歸)。
-  const colorByName = useMemo(() => {
+  // Phase 4 F2:key 一律 broker_id — 同名不同 id 兩分點的顏色不得互蓋。
+  const colorById = useMemo(() => {
     if (selected.length < 2) return new Map<string, string>();
-    return new Map(selected.map((b) => [b.name, BROKER_PALETTE[b.colorIdx]!]));
+    return new Map(selected.map((b) => [b.id, BROKER_PALETTE[b.colorIdx]!]));
   }, [selected]);
   const colorFor = useCallback(
-    (name: string): string | null => colorByName.get(name) ?? null,
-    [colorByName],
+    (brokerId: string): string | null => colorById.get(brokerId) ?? null,
+    [colorById],
   );
 
   // name→顯示名 lookup(TradeRow 無 broker_id,R14 決策走 lookup 不擴型別);
@@ -277,15 +275,20 @@ export function ChipBubbleView({
     [],
   );
 
-  // C1 🔵: svg / TradeList 回傳 broker name;此 handler 轉 id 後 toggle(SC-1)。
+  // Phase 4 F1:svg / TradeList 沿路帶 broker_id,直接按 id toggle(SC-1)—
+  // 同名不同 id 不再 name 反查猜第一筆。無 id 的舊路徑保留 name lookup fallback。
   // C7 A1: 點空白處(broker=null)同時清 brush,對齊 SC-A1c。
   const handleBubbleClick = useCallback(
-    (broker: string | null) => {
+    (broker: string | null, brokerId?: string | null) => {
       if (broker === null) {
         setSelected([]);
         setLimitNotice(false);
         setBrushRange(null);
         setManualInputOpen(false);
+        return;
+      }
+      if (brokerId) {
+        toggleBroker(brokerId, broker);
         return;
       }
       const t = visibleTrades.find((x) => x.broker === broker);
@@ -356,7 +359,7 @@ export function ChipBubbleView({
       priceAggs={priceAggs}
       buyRows={filteredBuyRows}
       sellRows={filteredSellRows}
-      selectedNames={selectedNames}
+      selectedIds={selectedIds}
       colorFor={colorFor}
       labelFor={labelFor}
       onSelect={handleBubbleClick}
@@ -427,7 +430,7 @@ export function ChipBubbleView({
           )}
           {limitNotice && (
             <span role="status" className="text-xs text-[#f0b429]">
-              最多同時選 6 個分點
+              {`最多同時選 ${MAX_SELECTED_BROKERS} 個分點`}
             </span>
           )}
           {selected.length > 0 ? (
@@ -719,7 +722,7 @@ function DetailPanel({
   priceAggs,
   buyRows,
   sellRows,
-  selectedNames,
+  selectedIds,
   colorFor,
   labelFor,
   onSelect,
@@ -731,13 +734,13 @@ function DetailPanel({
   priceAggs: ReturnType<typeof aggregateByPrice>;
   buyRows: TradeRow[];
   sellRows: TradeRow[];
-  /** SC-4:選中分點名集合(多選)— row active 態。 */
-  selectedNames: ReadonlySet<string>;
-  /** SC-4:N ≥ 2 時回該分點專屬色(列首圓點),否則 null。 */
-  colorFor: (name: string) => string | null;
+  /** SC-4:選中分點 id 集合(多選)— row active 態(Phase 4 F1/F2 id-key)。 */
+  selectedIds: ReadonlySet<string>;
+  /** SC-4:N ≥ 2 時回該分點專屬色(列首圓點,id-key),否則 null。 */
+  colorFor: (brokerId: string) => string | null;
   /** SC-7:broker name → 「id 去dash名」顯示 label。 */
   labelFor: (name: string) => string;
-  onSelect: (broker: string | null) => void;
+  onSelect: (broker: string | null, brokerId?: string | null) => void;
   buySort: SortSpec;
   sellSort: SortSpec;
   onBuySortChange: (key: TradeSortKey) => void;
@@ -758,7 +761,7 @@ function DetailPanel({
         <TradeList
           rows={buyRows}
           side="buy"
-          selectedNames={selectedNames}
+          selectedIds={selectedIds}
           colorFor={colorFor}
           labelFor={labelFor}
           onSelect={onSelect}
@@ -768,7 +771,7 @@ function DetailPanel({
         <TradeList
           rows={sellRows}
           side="sell"
-          selectedNames={selectedNames}
+          selectedIds={selectedIds}
           colorFor={colorFor}
           labelFor={labelFor}
           onSelect={onSelect}
@@ -911,7 +914,7 @@ function SortHeader({
 const TradeList = memo(function TradeList({
   rows,
   side,
-  selectedNames,
+  selectedIds,
   colorFor,
   labelFor,
   onSelect,
@@ -920,13 +923,13 @@ const TradeList = memo(function TradeList({
 }: {
   rows: TradeRow[];
   side: "buy" | "sell";
-  /** SC-4:選中分點名集合(多選)— row active 態。 */
-  selectedNames: ReadonlySet<string>;
-  /** SC-4:N ≥ 2 時回該分點專屬色(列首圓點),否則 null。 */
-  colorFor: (name: string) => string | null;
+  /** SC-4:選中分點 id 集合(多選)— row active 態(Phase 4 F1/F2 id-key)。 */
+  selectedIds: ReadonlySet<string>;
+  /** SC-4:N ≥ 2 時回該分點專屬色(列首圓點,id-key),否則 null。 */
+  colorFor: (brokerId: string) => string | null;
   /** SC-7:broker name → 「id 去dash名」顯示 label。 */
   labelFor: (name: string) => string;
-  onSelect: (broker: string | null) => void;
+  onSelect: (broker: string | null, brokerId?: string | null) => void;
   sortSpec: SortSpec;
   onSortChange: (key: TradeSortKey) => void;
 }) {
@@ -981,7 +984,7 @@ const TradeList = memo(function TradeList({
               <button
                 key={vi.key}
                 type="button"
-                onClick={() => onSelect(r.broker)}
+                onClick={() => onSelect(r.broker, r.broker_id)}
                 style={{
                   position: "absolute",
                   top: 0,
@@ -991,17 +994,18 @@ const TradeList = memo(function TradeList({
                   height: vi.size,
                 }}
                 className={`grid grid-cols-[1fr_56px_56px] items-center text-xs px-2 border-b border-line/20 cursor-pointer transition-colors ${
-                  selectedNames.has(r.broker)
+                  selectedIds.has(r.broker_id)
                     ? `${activeClass} text-ink`
                     : "hover:bg-bg-deep/50 text-ink-muted"
                 }`}
               >
                 <span className="text-left truncate">
                   {(() => {
-                    const dot = colorFor(r.broker);
+                    const dot = colorFor(r.broker_id);
                     return dot ? (
                       <span
                         data-testid="row-broker-dot"
+                        data-color={dot}
                         aria-hidden="true"
                         className="inline-block size-2 rounded-full mr-1 align-middle"
                         style={{ background: dot }}

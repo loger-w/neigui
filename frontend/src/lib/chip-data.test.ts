@@ -140,8 +140,8 @@ describe("buildTradeRows", () => {
     ];
     const { buyRows } = buildTradeRows(trades, new Set<string>(), 2);
     expect(buyRows).toEqual([
-      { broker: "A", volume: 500, price: 100 },
-      { broker: "B", volume: 200, price: 101 },
+      { broker: "A", broker_id: "A", volume: 500, price: 100 },
+      { broker: "B", broker_id: "B", volume: 200, price: 101 },
     ]);
   });
 
@@ -448,7 +448,9 @@ describe("buildTradeRows — id-based filter(bubble-multi-broker)", () => {
     it("filter is id-based: one id selects only that id's rows despite name collision", () => {
       const { buyRows } = buildTradeRows(trades, new Set(["9800"]), 10);
       expect(buyRows).toHaveLength(1);
-      expect(buyRows[0]).toEqual({ broker: "凱基-台北", volume: 50, price: 100 });
+      expect(buyRows[0]).toEqual({
+        broker: "凱基-台北", broker_id: "9800", volume: 50, price: 100,
+      });
     });
 
     it("selecting both colliding ids merges their rows", () => {
@@ -466,7 +468,7 @@ describe("buildTradeRows — id-based filter(bubble-multi-broker)", () => {
       { broker: "丙", broker_id: "C", price: 102, buy: 999, sell: 999 },
     ];
     const { buyRows, sellRows } = buildTradeRows(trades, new Set(["A", "B"]), 10);
-    expect(buyRows).toEqual([{ broker: "甲", volume: 5, price: 100 }]);
+    expect(buyRows).toEqual([{ broker: "甲", broker_id: "A", volume: 5, price: 100 }]);
     expect(sellRows.map((r) => r.broker).sort()).toEqual(["乙", "甲"]);
   });
 
