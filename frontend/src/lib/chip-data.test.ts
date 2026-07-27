@@ -138,7 +138,7 @@ describe("buildTradeRows", () => {
       mkTrade("B", 101, 200, 0),
       mkTrade("C", 102, 10, 0),
     ];
-    const { buyRows } = buildTradeRows(trades, null, 2);
+    const { buyRows } = buildTradeRows(trades, new Set<string>(), 2);
     expect(buyRows).toEqual([
       { broker: "A", volume: 500, price: 100 },
       { broker: "B", volume: 200, price: 101 },
@@ -161,7 +161,7 @@ describe("buildTradeRows", () => {
     trades.push(mkTrade("康和新竹", 2505, 154, 1));
     trades.push(mkTrade("康和新竹", 2510, 2, 2));
 
-    const { buyRows, sellRows } = buildTradeRows(trades, "康和新竹", 200);
+    const { buyRows, sellRows } = buildTradeRows(trades, new Set(["康和新竹"]), 200);
     const buyVols = buyRows.map((r) => r.volume).sort((a, b) => a - b);
     const sellVols = sellRows.map((r) => r.volume).sort((a, b) => a - b);
     // All non-zero rows for the broker survive: buys at 2500/2505/2510 (1/154/2),
@@ -178,7 +178,7 @@ describe("buildTradeRows", () => {
       mkTrade("X", 11, 100, 0),
       mkTrade("X", 12, 50, 0),
     ];
-    const { buyRows } = buildTradeRows(trades, "X", 10);
+    const { buyRows } = buildTradeRows(trades, new Set(["X"]), 10);
     expect(buyRows.map((r) => r.volume)).toEqual([100, 50, 5]);
   });
 
@@ -199,7 +199,7 @@ describe("buildTradeRows", () => {
 
     const { buyRows, sellRows } = buildTradeRows(
       trades,
-      null,
+      new Set<string>(),
       Number.POSITIVE_INFINITY,
     );
 
@@ -225,7 +225,7 @@ describe("buildTradeRows", () => {
         mkTrade("C", 101, 20, 10),
       ];
       const { buyRows, sellRows } = buildTradeRows(
-        trades, null, 10,
+        trades, new Set<string>(), 10,
         { key: "price", dir: "desc" },
       );
       expect(buyRows.map((r) => r.price)).toEqual([102, 101, 100]);
@@ -240,7 +240,7 @@ describe("buildTradeRows", () => {
         mkTrade("C", 101, 20, 0),
       ];
       const { buyRows } = buildTradeRows(
-        trades, null, 10,
+        trades, new Set<string>(), 10,
         { key: "price", dir: "asc" },
       );
       expect(buyRows.map((r) => r.price)).toEqual([100, 101, 102]);
@@ -253,7 +253,7 @@ describe("buildTradeRows", () => {
         mkTrade("C", 101, 20, 0),
       ];
       const { buyRows } = buildTradeRows(
-        trades, null, 10,
+        trades, new Set<string>(), 10,
         { key: "volume", dir: "asc" },
       );
       expect(buyRows.map((r) => r.volume)).toEqual([5, 10, 20]);
@@ -266,7 +266,7 @@ describe("buildTradeRows", () => {
         mkTrade("C", 101, 20, 10),
       ];
       const { buyRows, sellRows } = buildTradeRows(
-        trades, null, 10,
+        trades, new Set<string>(), 10,
         { key: "volume", dir: "desc" },   // buyRows: by vol desc
         { key: "price", dir: "asc" },     // sellRows: by price asc
       );
@@ -281,7 +281,7 @@ describe("buildTradeRows", () => {
         mkTrade("B", 100, 10, 0),
       ];
       const { buyRows } = buildTradeRows(
-        trades, null, 10,
+        trades, new Set<string>(), 10,
         { key: "volume", dir: "desc" },
       );
       expect(buyRows.map((r) => r.broker)).toEqual(["A", "B", "C"]);
@@ -295,18 +295,18 @@ describe("computeBrokerTotals (C6 🟢)", () => {
   const mk = (broker_id: string, price: number, buy: number, sell: number): BrokerTrade =>
     ({ broker: broker_id, broker_id, price, buy, sell });
 
-  it("brokerId=null: returns all zeros", () => {
-    const r = computeBrokerTotals([mk("A", 100, 10, 0)], null);
+  it("empty selection: returns all zeros", () => {
+    const r = computeBrokerTotals([mk("A", 100, 10, 0)], new Set<string>());
     expect(r).toEqual({ buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 });
   });
 
   it("brokerId not in trades: returns all zeros", () => {
-    const r = computeBrokerTotals([mk("A", 100, 10, 0)], "Z");
+    const r = computeBrokerTotals([mk("A", 100, 10, 0)], new Set(["Z"]));
     expect(r).toEqual({ buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0 });
   });
 
   it("single-price single broker: exact amount = buy × 1000 × price", () => {
-    const r = computeBrokerTotals([mk("A", 100, 5, 0)], "A");
+    const r = computeBrokerTotals([mk("A", 100, 5, 0)], new Set(["A"]));
     expect(r.buyLots).toBe(5);
     expect(r.sellLots).toBe(0);
     expect(r.buyAmount).toBe(500_000); // 5 × 1000 × 100
@@ -319,7 +319,7 @@ describe("computeBrokerTotals (C6 🟢)", () => {
       mk("A", 102, 3, 0),   // 306,000
       mk("A", 101, 0, 4),   // 404,000 (sell)
     ];
-    const r = computeBrokerTotals(trades, "A");
+    const r = computeBrokerTotals(trades, new Set(["A"]));
     expect(r.buyLots).toBe(8);
     expect(r.sellLots).toBe(4);
     expect(r.buyAmount).toBe(806_000);
@@ -331,16 +331,37 @@ describe("computeBrokerTotals (C6 🟢)", () => {
       mk("A", 100, 10, 0),
       mk("B", 100, 999, 999),
     ];
-    const r = computeBrokerTotals(trades, "A");
+    const r = computeBrokerTotals(trades, new Set(["A"]));
     expect(r.buyLots).toBe(10);
     expect(r.buyAmount).toBe(1_000_000);
     expect(r.sellLots).toBe(0);
   });
 
   it("empty trades: returns all zeros", () => {
-    expect(computeBrokerTotals([], "A")).toEqual({
+    expect(computeBrokerTotals([], new Set(["A"]))).toEqual({
       buyLots: 0, sellLots: 0, buyAmount: 0, sellAmount: 0,
     });
+  });
+
+  // SC-4(bubble-multi-broker):多選分點的合併統計 — header 買賣張/額為
+  // 所有選中分點加總;未知 id 混入只計已知(選中分點可能已自 trades 消失)。
+  it("multi-id selection: sums lots and amounts across every selected broker", () => {
+    const trades: BrokerTrade[] = [
+      mk("A", 100, 5, 0),   // buy 500,000
+      mk("B", 200, 3, 2),   // buy 600,000 / sell 400,000
+      mk("C", 100, 999, 999), // 未選中,不計
+    ];
+    const r = computeBrokerTotals(trades, new Set(["A", "B"]));
+    expect(r.buyLots).toBe(8);
+    expect(r.sellLots).toBe(2);
+    expect(r.buyAmount).toBe(1_100_000);
+    expect(r.sellAmount).toBe(400_000);
+  });
+
+  it("multi-id selection with an unknown id: counts only the known ones", () => {
+    const r = computeBrokerTotals([mk("A", 100, 5, 0)], new Set(["A", "GONE"]));
+    expect(r.buyLots).toBe(5);
+    expect(r.buyAmount).toBe(500_000);
   });
 });
 
@@ -413,21 +434,50 @@ describe("summarizeTradesByPriceRange (C7 🟢)", () => {
   });
 });
 
-describe("buildTradeRows — legacy tests continue", () => {
-  // C1 R3: locks name-based filter behavior when the same broker_name appears
-  // across multiple broker_id (edge case: FinMind securities_trader_id is
-  // typically 1:1 with securities_trader, but this test ensures ChipBubbleView
-  // A4 refactor didn't accidentally shift filter semantics).
-  describe("R3 — same broker_name across different broker_id", () => {
-    it("filter is name-based: includes all rows matching the name regardless of broker_id", () => {
-      const trades: BrokerTrade[] = [
-        { broker: "凱基-台北", broker_id: "9800", price: 100, buy: 50, sell: 0 },
-        { broker: "凱基-台北", broker_id: "9801", price: 101, buy: 30, sell: 0 },
-        { broker: "永豐-台北", broker_id: "9200", price: 100, buy: 20, sell: 0 },
-      ];
-      const { buyRows } = buildTradeRows(trades, "凱基-台北", 10);
-      expect(buyRows).toHaveLength(2);
+describe("buildTradeRows — id-based filter(bubble-multi-broker)", () => {
+  // 該變 assertion(原 C1 R3 name-based 已翻案):選取契約改以 broker_id 為
+  // key(收割 next-time.md deferred 項)— 同名不同 id 是不同分點,單選一個 id
+  // 不再吸入同名它行;要合併就把兩個 id 都放進集合。
+  describe("same broker_name across different broker_id", () => {
+    const trades: BrokerTrade[] = [
+      { broker: "凱基-台北", broker_id: "9800", price: 100, buy: 50, sell: 0 },
+      { broker: "凱基-台北", broker_id: "9801", price: 101, buy: 30, sell: 0 },
+      { broker: "永豐-台北", broker_id: "9200", price: 100, buy: 20, sell: 0 },
+    ];
+
+    it("filter is id-based: one id selects only that id's rows despite name collision", () => {
+      const { buyRows } = buildTradeRows(trades, new Set(["9800"]), 10);
+      expect(buyRows).toHaveLength(1);
+      expect(buyRows[0]).toEqual({ broker: "凱基-台北", volume: 50, price: 100 });
+    });
+
+    it("selecting both colliding ids merges their rows", () => {
+      const { buyRows } = buildTradeRows(trades, new Set(["9800", "9801"]), 10);
       expect(buyRows.map((r) => r.volume).sort((a, b) => b - a)).toEqual([50, 30]);
     });
+  });
+
+  // SC-4:多選集合過濾 — 明細合併涵蓋所有選中分點、排除未選;filter 先於
+  // top-N cap(沿用單選時代的 bug fix 語意)。
+  it("multi-id selection merges rows from every selected broker and excludes others", () => {
+    const trades: BrokerTrade[] = [
+      { broker: "甲", broker_id: "A", price: 100, buy: 5, sell: 1 },
+      { broker: "乙", broker_id: "B", price: 101, buy: 0, sell: 7 },
+      { broker: "丙", broker_id: "C", price: 102, buy: 999, sell: 999 },
+    ];
+    const { buyRows, sellRows } = buildTradeRows(trades, new Set(["A", "B"]), 10);
+    expect(buyRows).toEqual([{ broker: "甲", volume: 5, price: 100 }]);
+    expect(sellRows.map((r) => r.broker).sort()).toEqual(["乙", "甲"]);
+  });
+
+  it("multi-id filter applies before the top-N cap (small rows survive)", () => {
+    const trades: BrokerTrade[] = [];
+    for (let i = 0; i < 250; i++) {
+      trades.push({ broker: `n${i}`, broker_id: `n${i}`, price: 200 + i, buy: 999, sell: 0 });
+    }
+    trades.push({ broker: "小甲", broker_id: "SA", price: 100, buy: 1, sell: 0 });
+    trades.push({ broker: "小乙", broker_id: "SB", price: 101, buy: 2, sell: 0 });
+    const { buyRows } = buildTradeRows(trades, new Set(["SA", "SB"]), 200);
+    expect(buyRows.map((r) => r.volume).sort((a, b) => a - b)).toEqual([1, 2]);
   });
 });
