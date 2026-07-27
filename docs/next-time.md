@@ -184,4 +184,4 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 - (原「評估 sync-harness-mirror 是否納入 6 支複製 skill」條目已於 2026-07-27 user 拍板 C2 解決刪除:6 支改寫件納入 mirror(各目錄 *.md,19 檔入鏡);grilling / grill-me 原文照抄件刻意不納 — 災難還原重抓 raw 即可)
 - (原「/mod 一併補 e2e 意圖對齊三槓桿」條目已由 2026-07-27 四 command 同步批解決刪除:mod.md Phase 2 補「畫面可指認」表述、Phase 8 補收尾 UI 驗收點、Phase 5 補白名單對照必讀;subsumed 限縮本就免補)
 - (原「/mod 一併議 grilling 分流接入」條目已由 2026-07-27 四 command 同步批解決刪除:mod.md Phase 2 補分流句(判準複用 feat-phase0-2 判準節、/auto 不豁免、判定記錄落 change-spec.md);auto.md 例外句 / 必停清單 / 建議表同步擴 /mod;load-manifest mod-M 補條件條目)
-- [ ] 四 command 同步批(上列 /mod 各項 + round JSON 落檔)完成後 → **提醒 user 開 CLAUDE.md 瘦身輪**(2026-07-27 拍板收件匣 A2):專案 CLAUDE.md ~5.8k token 每 turn 重付,45 實驗實測第 2 名槓桿;判準「只留每 session 都用的內容」,動到特定 code 才需要的下放 §8 主題 skill;SC 用 harness_load_estimate `--peak` 峰值降幅(A3 已落地)
+- (原「四 command 同步批完成後提醒 user 開 CLAUDE.md 瘦身輪」條目已於 2026-07-27 同日執行刪除:§2 → 新 skill backend-conventions、§3 + 分點名稱細節 → frontend-conventions、§1 壓縮;14,015 → 10,354 bytes(−26.1%),量法 `Path('CLAUDE.md').stat().st_size` 前後對照)

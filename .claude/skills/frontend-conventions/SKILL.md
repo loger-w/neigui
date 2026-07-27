@@ -1,9 +1,29 @@
 ---
 name: frontend-conventions
-description: 前端版面與響應式慣例。新增含文字的元件 / SVG renderer、寫 container query、加新 mode 頁、用 useContainerSize、改 chart overlay 事件模型、拍 devtools 驗證截圖前先讀。
+description: 前端 stack / 元件 / 版面與響應式慣例。寫改任何 frontend 元件或 hook、新增含文字的元件 / SVG renderer、寫 container query、加新 mode 頁、用 useContainerSize、改 chart overlay 事件模型、動分點名稱顯示、拍 devtools 驗證截圖前先讀。
 ---
 
-# 前端版面 / 響應式慣例
+# 前端 stack / 版面 / 響應式慣例
+
+## Stack / 元件慣例(2026-07-27 自專案 CLAUDE.md §3 移入)
+
+- **Custom hook 統一回傳 shape**:`{ data, loading, error, refresh, ...extras }`。新 hook 照這個介面開,UI 元件依賴它。
+- **資料 fetching 一律 TanStack Query `useQuery`**:`queryFn: ({ signal }) => api.xxx(..., { signal })` 直傳內建 AbortSignal(cancel 鏈細節見 skill `cancel-chain`);對外回傳 shape 維持上一條。**useMutation 沒內建 signal** — `useBrokerHistory.ts` 的 AbortController pattern 是樣板。**不要**再寫手動 `seqRef` stale-drop(已全面淘汰)。
+- **Function component + hooks only**。沒有 class 元件。
+- **Tailwind 用 semantic token,不用原色**(`text-ink` / `text-ink-muted` / `text-ink-dim` / `text-accent` / `border-line` / `border-line-strong` / `bg-bg` / `bg-bg-deep`)。token 在 `frontend/src/index.css` 的 `@theme`。Bull = 紅 / Bear = 綠(台股慣例,**不要套美股 green-up 配色**)。
+- **重元件 lazy**:跨 tab 切換的大元件(`ChipBubbleView` / `OptionsPage`)走 `React.lazy()` + `<Suspense fallback={...}>`。
+- **純渲染抽到 `lib/*-svg.tsx`**:SVG 計算函式無 React 依賴,獨立單元測試(看 `chip-svg.test.ts`)。元件只負責掛 DOM。
+- **`cn(...classes)`** 走 `lib/utils.ts`(`clsx` + `tailwind-merge`),不直接拼字串。
+- **UI 文字一律繁體中文**(`重新整理` / `載入中` / `無交易日` …)。錯誤訊息也用繁中。Aria-label 同樣繁中。
+- **Vitest 測試 colocated** `*.test.tsx` / `*.test.ts`,跑 RTL 的檔要在頂端寫 `/** @vitest-environment jsdom */` pragma(不用 global config)。`afterEach(cleanup)`。測試慣例細節見 skill `frontend-testing`。
+- **Path alias** `@/` → `src/`(`vite.config.ts` + `tsconfig.app.json`),但既有 code 多用相對 import,維持就好。
+- **Date 用 `YYYY-MM-DD` 字串** 在 API + state 流動;`new Date()` 只在 `App.tsx` 的 `todayStr()` 等邊界。
+- **`hidden` attribute > 條件 render(tab 層級)**:tab 切換用 `<div hidden={tab !== "x"}>` 保留 DOM 避免重渲染(看 `App.tsx` overview / bubble)。**mode 層級例外**:App.tsx 的 mode 切換是 ternary(避免多頁同時 mount 抓資料,e2e N4 鎖死),加新 mode 見 skill `market-pipeline`。**需要跨 mode 切換保留的 UI 狀態不改 ternary,改掛 `hooks/useSessionState`**(sessionStorage-backed,2026-07-21 SC-8;樣板 BrokerFlowsPanel selected / MarketSectorRotation expanded)。
+
+## 分點名稱顯示(2026-07-27 自專案 CLAUDE.md §4 移入)
+
+- **一律走 `lib/broker-name.ts`**(兩個 FinMind dataset 名稱格式不同,前端統一;2026-07-22 mod/broker-label-search-only-id 分工):搜尋框情境(input echo + combobox dropdown)用 `formatBrokerLabel`(「id 去dash名」,例 `9801 元大松江`);其他顯示點用 `formatBrokerName`(只顯去dash名,名稱缺 fallback id)— **只動顯示字串**,selection / API / callback 契約仍以 `broker_id`(或原始 name,如 BrokerSearch)為 key。新分點顯示點不准直接印 raw name。
+- 搜尋比對一律 dash-insensitive(前端 `normalizeBrokerQuery` 雙邊去 dash;backend `search_traders` 同義)。
 
 ## 字級縮放(2026-07-03 responsive 沉澱)
 
