@@ -193,6 +193,7 @@ squash 會壓掉三類分離 commit 與 TDD tag,`git log --grep` 的機械驗證
 **[superpowers plugin 停用 + 6 支複製為 user skill(2026-07-26,同日兩段決策)]**
 第一段(user 拍板「先不複製」):`settings.json` `enabledPlugins."superpowers@claude-plugins-official": false`,13 支 description + SessionStart 全文注入(using-superpowers ~5KB)退出常駐層。
 第二段(同日 user 改口「想繼續沿用」):**複製 6 支高頻 skill 到 `~/.claude/skills/`** — brainstorming / writing-plans / test-driven-development / receiving-code-review / verification-before-completion / systematic-debugging(來源:plugin cache 的 marketplace clone;**上游更新不會自動同步,要更新需手動重複製**)。harness 全部引用已去 `superpowers:` 前綴(commands / refs / branch-lifecycle / auto-verify / user CLAUDE.md / load-manifest 路徑)。**未複製的殘留引用**(using-git-worktrees ×2 / finishing-a-development-branch ×2 / executing-plans ×1 / subagent-driven-development ×1 負向)都是條件式罕用項,呼叫失敗依內建 gate 執行。淨省:SessionStart 注入 + 8 支未複製 description;新增成本:6 支 description(~350 tok)。還原 = enabledPlugins 改回 true + 刪除 6 個複製目錄(避免同名衝突)。
+2026-07-27 review 補修:複製件**內文**殘留的 `superpowers:` 交叉引用已清(7 處 3 檔 — systematic-debugging 2 處去前綴指向複製件;writing-plans 3 處 REQUIRED SUB-SKILL 改「執行方式由呼叫方流程決定」,消除與 feat.md「不呼叫 SDD」的衝突指示;writing-good-tests 1 處刪舉例)。**日後從上游重複製會把死指標帶回來,重複製後必重跑 `grep -rn "superpowers:" ~/.claude/skills/<6支>`。**
 
 **[harness-push-gate.py 是死檔]**
 未註冊於 settings.json,內文仍寫著已於 2026-07-18 廢止的「PR 收尾單一確認點」政策。任何人(或模型)重讀該檔會得到過期規則。
