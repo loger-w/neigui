@@ -179,7 +179,7 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 - (原「/mod /bug /perf /refactor 同步 2026-07-26 實證改版」條目已由 2026-07-27 四 command 同步批解決刪除:round JSON 落檔義務落 review-protocol C 節 + mod.md Phase 5;/mod Phase 3 輪數採 /feat 07-26 制(預設 1 輪 + P0 限縮加輪 — 無 /mod 側 JSON 實證,落檔義務同批補上、日後可實證覆核);graphify query 接入 mod Phase 1 / bug Phase 2 / refactor Phase 5。詳 RATIONALE /mod 節)
 - (原「/auto 表的 /feat 建議行更新」條目已於 2026-07-27 銷帳 — 實查 auto.md 建議表現況即目標狀態:S 級「Phase 8.5 完成」退出條件在 + 07-27 停等註、L 級「Phase 0 對齊價值高」註記在;07-26/07-27 兩批改版已順路完成)
 - [ ] dispositions.json 過期 rows(見 RATIONALE 2026-07-26 節)— 若還要重跑 harness_load_estimate 的 SC-3 驗證先更新
-- [ ] graphify:docs/ 與 .claude/skills 的語意層(需 LLM)未建;要建再評估 token 成本。graph 目前 code-only(381 檔,3227 nodes),HEALTH 警告 640 dangling edges(AST 對外部 import 的正常樣態,查 caller 不受影響)
+- graphify docs 語意層:**2026-07-27 評估後結案不建**。量測:docs/ 140 檔 ~631k tok(其中 docs/specs 歷史文件占 ~328k、docs/harness ~99k)+ .claude/skills ~16k — LLM 抽取一次性成本高,且 harness docs 本週 5 commit 的改動頻率會讓語意層立即過期(--update 重抽成本每批復發);harness 文件已有 RATIONALE / 交接檔 / next-time 密集交叉引用,grep 導航實測夠用,歷史 specs 語意圖化價值低。graph 維持 code-only(381 檔,3227 nodes;640 dangling edges 為 AST 對外部 import 正常樣態)。觸發重評估:grep 導航實際答不了跨文件關係問題、或 docs 進入低頻改動期時
 - (原「/mod 改版時一併修 07-26 掃描 P1×2 + P2 清單」條目已由 2026-07-27 四 command 同步批解決刪除:inline 完工自查 checklist 已刪、輪數三檔兩說已統一;scratchpad P2 清單實存並清點 — #10 #11 #13 #14 #17 #21 #23 本批修,#18 #19 #20 moot(skill 複製後引用有效),餘均已由先前批次修)
 - (原「評估 sync-harness-mirror 是否納入 6 支複製 skill」條目已於 2026-07-27 user 拍板 C2 解決刪除:6 支改寫件納入 mirror(各目錄 *.md,19 檔入鏡);grilling / grill-me 原文照抄件刻意不納 — 災難還原重抓 raw 即可)
 - (原「/mod 一併補 e2e 意圖對齊三槓桿」條目已由 2026-07-27 四 command 同步批解決刪除:mod.md Phase 2 補「畫面可指認」表述、Phase 8 補收尾 UI 驗收點、Phase 5 補白名單對照必讀;subsumed 限縮本就免補)
