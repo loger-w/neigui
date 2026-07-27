@@ -31,3 +31,6 @@ async def test_daytrade_fee_sorted_desc_and_month_counts(client):
     assert fees == sorted(fees, reverse=True), f"預設費率降序破功: {fees}"
     # 8046 在 fixture 中出現於 06/24(兩筆)與 06/26 → distinct date = 2
     assert body["month_counts"]["8046"] == 2
+    # month_shares(borrow-fee-totals SC-1/SC-3):全列相加含同日兩筆 —
+    # 2,000 + 12,000(06/24)+ 3,000(06/26)= 17,000(fixture 手算)
+    assert body["month_shares"]["8046"] == 17000
