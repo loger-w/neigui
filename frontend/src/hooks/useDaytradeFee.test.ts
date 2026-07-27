@@ -15,6 +15,7 @@ const mk = (over?: Partial<BorrowFeeData>): BorrowFeeData => ({
   as_of_date: "2026-06-26",
   rows: [],
   month_counts: {},
+  month_shares: {},
   ...over,
 });
 

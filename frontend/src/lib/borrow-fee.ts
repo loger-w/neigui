@@ -15,6 +15,9 @@ export interface BorrowFeeData {
   partial?: string[];
   rows: BorrowFeeRow[];
   month_counts: Record<string, number>;
+  /** 該股當月 lending_shares 加總(含同日多筆)。key 集 = month_counts;
+   *  取值仍走 optional chain(前後端版本 skew 時 map 可能整個缺)。 */
+  month_shares: Record<string, number>;
 }
 
 // 高費率標色門檻(%)— backend services/daytrade_fee.py 同名常數,
