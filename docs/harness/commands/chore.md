@@ -13,6 +13,10 @@ dependency 升級 / 補測試(不改實作)/ docs 更新 / 研究腳本(probe、
 ## 步驟
 
 1. **定界**:一句話確認做什麼 + 明確不做什麼。順手衝動照鐵則 B 寫進 `docs/next-time.md`,不擴 scope。
+   **Harness 攢批(2026-07-27 拍板)**:動 `~/.claude/`(commands / harness / hooks / skills)的
+   改動**集中在一個時間窗攢批完成,不逐日零星改** — 每次 harness 改動都讓下個 session 的
+   prompt cache prefix 失效(實測 input 成本 9.5×);非緊急 harness 修補先記
+   `docs/next-time.md` 湊批再動。
 2. **動 code 就驗證**:呼叫 `auto-verify` 自動化節(依 `.claude/harness.json`)。只動 docs / 研究腳本可豁免,commit message 註明。
 3. **e2e 判準檢查**(殘餘風險補丁,2026-07-19 拍板):改動若碰 UI 或行為相鄰(即使自認 chore),查 skill `e2e-conventions` 判準表定 e2e 歸屬;豁免要在 commit 註明類型。
 4. **dependency 升級特別條款**:一次一個(或一組同源)、升完跑全套 `auto-verify`、breaking changes 讀 release notes 不猜。lockfile 巨 diff 單獨 commit。

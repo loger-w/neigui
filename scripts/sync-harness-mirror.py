@@ -11,6 +11,7 @@
 - ~/.claude/hooks/tests/test_*.py → docs/harness/hooks/tests/
 - ~/.claude/agents/*.md        → docs/harness/agents/
 - ~/.claude/skills/{auto-verify,branch-lifecycle}/SKILL.md → docs/harness/skills/*.md
+- ~/.claude/skills/<6 支改寫複製 skill>/*.md → docs/harness/skills/<name>/(2026-07-27 納入)
 - ~/.claude/CLAUDE.md          → docs/harness/global-rules.md
 
 目錄對映走 glob:原檔側新增檔案自動入列(消滅「清單漏列」雙源);
@@ -42,6 +43,15 @@ DIR_MAPS: list[tuple[str, str, str]] = [
     # 那會把個人 skill(neoapi-python 等)的 references 一起掃進來。
     ("skills/auto-verify/references", "*.md", "skills/auto-verify/references"),
     ("skills/branch-lifecycle/references", "*.md", "skills/branch-lifecycle/references"),
+    # 6 支改寫複製 skill(2026-07-27 拍板納入 VCS 保護;內文修正只存在磁碟,誤覆蓋 /
+    # 磁碟事故原本只能靠 RATIONALE 文字重做)。grilling / grill-me 原文照抄零改動,
+    # 還原重抓 raw 即可,刻意不納。附件只收 *.md(改寫全在 md;.ts/.sh 為 upstream 原件)。
+    ("skills/brainstorming", "*.md", "skills/brainstorming"),
+    ("skills/writing-plans", "*.md", "skills/writing-plans"),
+    ("skills/test-driven-development", "*.md", "skills/test-driven-development"),
+    ("skills/receiving-code-review", "*.md", "skills/receiving-code-review"),
+    ("skills/verification-before-completion", "*.md", "skills/verification-before-completion"),
+    ("skills/systematic-debugging", "*.md", "skills/systematic-debugging"),
 ]
 
 # (原檔相對 ~/.claude、鏡像相對 docs/harness)
@@ -63,6 +73,12 @@ ORPHAN_SCOPES: list[tuple[str, str]] = [
     ("harness/refs", "*.md"),
     ("skills/auto-verify/references", "*.md"),
     ("skills/branch-lifecycle/references", "*.md"),
+    ("skills/brainstorming", "*.md"),
+    ("skills/writing-plans", "*.md"),
+    ("skills/test-driven-development", "*.md"),
+    ("skills/receiving-code-review", "*.md"),
+    ("skills/verification-before-completion", "*.md"),
+    ("skills/systematic-debugging", "*.md"),
 ]
 
 

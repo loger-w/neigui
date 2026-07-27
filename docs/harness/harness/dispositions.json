@@ -3,22 +3,22 @@
   "rows": [
     { "note": "§5.1 檔頭骨架 + 共通鐵則與 auto.md 契約指標", "disposition": "核心",
       "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "自主模式契約見" }] },
-    { "note": "§5.1 核心原則:receiving 分類", "disposition": "核心",
-      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "rejected_with_reason" }] },
-    { "note": "§5.1 核心原則:review 3 輪上限", "disposition": "核心",
-      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "Review 輪數上限 3" }] },
+    { "note": "§5.1 核心原則:receiving 分類(2026-07-27 更新:07-26 改版改為 Finding 處置分級)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "Finding 處置分級" }] },
+    { "note": "§5.1 核心原則:review 輪數(2026-07-27 更新:07-26 實證改版 3 輪上限 → 1 輪 + 條件加輪)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "Review 輪數" }] },
     { "note": "§5.1 核心原則:P1 帶額度退場", "disposition": "核心",
       "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "P1 帶額度退場" }] },
     { "note": "§5.1 核心原則:失敗類型分流", "disposition": "核心",
       "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "失敗類型分流" }] },
-    { "note": "§5.1 核心原則:跨 phase meta-cycle", "disposition": "核心",
-      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "sc_cycle_counts" }] },
-    { "note": "§5.1 核心原則:findings 量大先收斂", "disposition": "核心",
-      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "group-by-file dedup" }] },
-    { "note": "§5.1 核心原則第 10 行的 review CLI 字樣 → 改指 review 協定", "disposition": "改寫",
+    { "note": "§5.1 核心原則:跨 phase meta-cycle(2026-07-27 更新:07-26 起 sc_cycle_counts 改 state.json rollbacks)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "rollbacks" }] },
+    { "note": "§5.1 核心原則:findings 量大先收斂(2026-07-27 更新:07-26 改版由 P2 彙總計數承接)", "disposition": "核心",
+      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "P2 彙總計數" }] },
+    { "note": "§5.1 核心原則第 10 行的 review CLI 字樣 → 改指 review 協定(2026-07-27 更新:指涉詞改 refs/review-protocol.md)", "disposition": "改寫",
       "checks": [
         { "kind": "absent", "file": "commands/feat.md", "string": "/code-review` finding" },
-        { "kind": "present", "file": "commands/feat.md", "string": "review 協定" }
+        { "kind": "present", "file": "commands/feat.md", "string": "review-protocol.md" }
       ] },
     { "note": "§5.1 SC gate 完整版(含驗證窗口 + 降級策略)", "disposition": "核心",
       "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "驗證窗口" }] },
@@ -85,8 +85,11 @@
         { "kind": "absent", "file": "commands/feat.md", "string": "Dispatch / 快篩紀律" },
         { "kind": "present", "file": "harness/refs/review-protocol.md", "string": "Dispatch / 快篩紀律" }
       ] },
-    { "note": "§5.1 Phase 2 步驟 2 的 per_file fan-out 指涉(§4.1 判該 skill 不動的前提)", "disposition": "核心",
-      "checks": [{ "kind": "present", "file": "commands/feat.md", "string": "dispatching-parallel-agents" }] },
+    { "note": "§5.1 Phase 2 步驟 2 的 per_file fan-out 指涉(2026-07-27 更新:07-26 廢除 per_file,指涉句改為廢除宣告)", "disposition": "改寫",
+      "checks": [
+        { "kind": "absent", "file": "commands/feat.md", "string": "dispatching-parallel-agents" },
+        { "kind": "present", "file": "commands/feat.md", "string": "模式已廢除" }
+      ] },
     { "note": "§5.1 Phase 4 修 finding 操作 → refs/feat-phase4-fix.md(條件式)", "disposition": "ref",
       "checks": [
         { "kind": "absent", "file": "commands/feat.md", "string": "手動改壞 → lock test 紅" },

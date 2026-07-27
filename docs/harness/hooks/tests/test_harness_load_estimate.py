@@ -290,7 +290,9 @@ def test_before_after_reports_reduction_pct(tmp_path):
     claude = make_claude_dir(
         tmp_path,
         {
-            "p-before": profile([{"path": "commands/big.md", "scope": "main"}]),
+            "p-before": profile(
+                [{"path": "commands/big.md", "scope": "main", "baseline_bytes": 1000}]
+            ),
             "p": profile([{"path": "commands/small.md", "scope": "main"}]),
         },
         files={"commands/big.md": 1000, "commands/small.md": 750},
@@ -308,7 +310,7 @@ def test_before_after_different_superpowers_version_exits_nonzero(tmp_path):
         tmp_path,
         {
             "p-before": profile(
-                [{"path": "<superpowers>/sdd/SKILL.md", "scope": "main"}],
+                [{"path": "<superpowers>/sdd/SKILL.md", "scope": "main", "baseline_bytes": 33}],
                 project_root="C:/Users/USER/work",
             ),
             "p": profile(
@@ -322,6 +324,152 @@ def test_before_after_different_superpowers_version_exits_nonzero(tmp_path):
     res = run(claude, "--before", "p-before", "--after", "p", "--scope", "main")
     assert res.returncode != 0
     assert "SUPERPOWERS" in (res.stdout + res.stderr)
+
+
+# --------------------------------------------------------------------------
+# baseline 防呆(2026-07-27 收件匣 A1)
+# --------------------------------------------------------------------------
+
+
+def test_before_without_baseline_bytes_exits_nonzero(tmp_path):
+    """改版後跑 --before 量到的是改寫後大小 —— 缺 baseline_bytes 就拒絕輸出降幅。"""
+    claude = make_claude_dir(
+        tmp_path,
+        {
+            "p-before": profile([{"path": "commands/big.md", "scope": "main"}]),
+            "p": profile([{"path": "commands/small.md", "scope": "main"}]),
+        },
+        files={"commands/big.md": 1000, "commands/small.md": 750},
+    )
+    res = run(claude, "--before", "p-before", "--after", "p", "--scope", "main")
+    assert res.returncode != 0
+    assert "baseline" in (res.stdout + res.stderr)
+
+
+def test_before_with_stale_baseline_bytes_exits_nonzero(tmp_path):
+    """baseline_bytes 與實體檔不符 = 分母已失效,必須 exit 非 0 而非輸出錯的比值。"""
+    claude = make_claude_dir(
+        tmp_path,
+        {
+            "p-before": profile(
+                [{"path": "commands/big.md", "scope": "main", "baseline_bytes": 2000}]
+            ),
+            "p": profile([{"path": "commands/small.md", "scope": "main"}]),
+        },
+        files={"commands/big.md": 1000, "commands/small.md": 750},
+    )
+    res = run(claude, "--before", "p-before", "--after", "p", "--scope", "main")
+    assert res.returncode != 0
+    assert "分母失效" in (res.stdout + res.stderr)
+
+
+def test_before_with_matching_baseline_bytes_reports_reduction(tmp_path):
+    claude = make_claude_dir(
+        tmp_path,
+        {
+            "p-before": profile(
+                [{"path": "commands/big.md", "scope": "main", "baseline_bytes": 1000}]
+            ),
+            "p": profile([{"path": "commands/small.md", "scope": "main"}]),
+        },
+        files={"commands/big.md": 1000, "commands/small.md": 750},
+    )
+    res = run(claude, "--before", "p-before", "--after", "p", "--scope", "main")
+    assert res.returncode == 0, res.stderr
+    assert "REDUCTION pct=25.0" in res.stdout
+
+
+def test_write_baseline_stamps_sizes_then_before_after_passes(tmp_path):
+    claude = make_claude_dir(
+        tmp_path,
+        {
+            "p-before": profile([{"path": "commands/big.md", "scope": "main"}]),
+            "p": profile([{"path": "commands/small.md", "scope": "main"}]),
+        },
+        files={"commands/big.md": 1000, "commands/small.md": 750},
+    )
+    res = run(claude, "--write-baseline", "p-before")
+    assert res.returncode == 0, res.stderr
+    assert "BASELINE written" in res.stdout
+    stamped = json.loads(
+        (claude / "harness" / "load-manifest.json").read_text(encoding="utf-8")
+    )
+    assert stamped["profiles"]["p-before"]["files"][0]["baseline_bytes"] == 1000
+    res2 = run(claude, "--before", "p-before", "--after", "p", "--scope", "main")
+    assert res2.returncode == 0, res2.stderr
+    assert "REDUCTION pct=25.0" in res2.stdout
+
+
+# --------------------------------------------------------------------------
+# --peak 峰值(2026-07-27 收件匣 A3)
+# --------------------------------------------------------------------------
+
+
+def test_peak_is_resident_plus_max_phase(tmp_path):
+    """peak = 常駐(無 phase 欄)+ 最重 phase 的載入,不是全檔總和。"""
+    claude = make_claude_dir(
+        tmp_path,
+        {
+            "p": profile(
+                [
+                    {"path": "commands/a.md", "scope": "main"},
+                    {"path": "harness/refs/r0.md", "scope": "main", "phase": 0},
+                    {"path": "harness/refs/r3.md", "scope": "main", "phase": 3},
+                ]
+            )
+        },
+        files={"commands/a.md": 100, "harness/refs/r0.md": 50, "harness/refs/r3.md": 200},
+    )
+    res = run(claude, "--profile", "p", "--scope", "main", "--peak")
+    assert res.returncode == 0, res.stderr
+    assert "PEAK bytes=300  phase=3" in res.stdout
+    assert "PHASE 0: bytes=150" in res.stdout
+
+
+def test_peak_counts_same_path_per_phase_not_summed_across(tmp_path):
+    """同 ref 掛兩個 phase:各 phase 各算一次,峰值不是兩份相加。"""
+    claude = make_claude_dir(
+        tmp_path,
+        {
+            "p": profile(
+                [
+                    {"path": "skills/s.md", "scope": "main", "phase": 5},
+                    {"path": "skills/s.md", "scope": "main", "phase": 6},
+                ]
+            )
+        },
+        files={"skills/s.md": 40},
+    )
+    res = run(claude, "--profile", "p", "--scope", "main", "--peak")
+    assert res.returncode == 0, res.stderr
+    assert "PEAK bytes=40" in res.stdout
+
+
+def test_peak_before_after_reduction_uses_peaks(tmp_path):
+    claude = make_claude_dir(
+        tmp_path,
+        {
+            "p-before": profile(
+                [
+                    {"path": "commands/a.md", "scope": "main", "baseline_bytes": 100},
+                    {"path": "harness/refs/big.md", "scope": "main", "phase": 3,
+                     "baseline_bytes": 300},
+                ]
+            ),
+            "p": profile(
+                [
+                    {"path": "commands/a.md", "scope": "main"},
+                    {"path": "harness/refs/small.md", "scope": "main", "phase": 3},
+                ]
+            ),
+        },
+        files={"commands/a.md": 100, "harness/refs/big.md": 300, "harness/refs/small.md": 100},
+    )
+    res = run(claude, "--before", "p-before", "--after", "p", "--scope", "main", "--peak")
+    assert res.returncode == 0, res.stderr
+    assert "BEFORE peak_bytes=400" in res.stdout
+    assert "AFTER peak_bytes=200" in res.stdout
+    assert "REDUCTION pct=50.0" in res.stdout
 
 
 # --------------------------------------------------------------------------

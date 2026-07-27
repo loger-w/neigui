@@ -211,6 +211,9 @@ squash 會壓掉三類分離 commit 與 TDD tag,`git log --grep` 的機械驗證
 **[grill-me / grilling 複製為 user skill(2026-07-27)]**
 來源:`mattpocock/skills` repo(MIT),`skills/productivity/grill-me/SKILL.md` + `skills/productivity/grilling/SKILL.md`,原文照抄未改動。grill-me 是薄殼(`disable-model-invocation: true`,只能 `/grill-me` 手動呼叫,轉發 grilling);grilling 是本體(對計畫做對抗式逐題審問,決策樹逐分支收斂,每題附建議答案),description 含 'grill' trigger 可被模型自動觸發。用途:計畫/設計的壓力測試,定位在 brainstorming 提問階段的強化候選(user 預告將納入 /feat)。上游更新不自動同步,重複製 = 重抓 raw 兩檔覆蓋。還原 = 刪 `~/.claude/skills/grill-me/` 與 `~/.claude/skills/grilling/` 兩目錄。
 
+**[收件匣 2026-07-27 全批拍板:量測防呆 + 峰值指標 + 攢批強制 + mirror 擴 6 支]**
+2026-07-27 user 逐條拍板收件匣 5 條 + 小尾巴全修。(A1)`harness_load_estimate.py` 加 baseline 防呆:`--before` profile 每筆記錄須帶 `baseline_bytes`(`--write-baseline` 在改版前凍結),缺欄或與實體檔不符 → exit 2 拒絕輸出降幅(事故:改版後跑 baseline 得 -23.17%,真值 +4.4%);既有 `*-before` profile 不補凍(其檔案已被改寫,凍現值 = 凍謊言,要重建回 git 歷史取改版前檔案)。(A3)加 `--peak`:peak = 常駐(無 phase 欄)+ 最重 phase,降幅模式對兩側峰值取比 — 下輪瘦身 SC 用峰值降幅。hooks 測試 130 → 137。(A4)chore.md 步驟 1 加「Harness 攢批」強制句(cache 失效 9.5× 實測,原僅本檔知識)。(A5)refs 分層合併 rejected 結案 — 可無痛合併僅 feat 專屬幾支,收益不足。(A2)CLAUDE.md 瘦身輪 scheduled:排四 command 同步批之後,列管 next-time.md。(C1)dispositions.json 6 條過期 rows 更新為 07-26 改版後繼詞彙(Finding 處置分級 / Review 輪數 / rollbacks / P2 彙總計數 / review-protocol.md / per_file 廢除宣告)。(C2)mirror 納 6 支改寫複製 skill(各目錄 *.md,19 檔;grilling / grill-me 原文照抄件刻意不納)。(C3)writing-plans L158 殘句補回 `superpowers:` 前綴(未複製之條件式罕用項慣例)。還原:腳本 revert 該 commit;chore.md 刪攢批句;mirror DIR_MAPS / ORPHAN_SCOPES 刪 6 條目 + 刪鏡像 skills/<6支>/ 目錄;dispositions rows 見 git 歷史。
+
 **[harness-push-gate.py 是死檔]**
 未註冊於 settings.json,內文仍寫著已於 2026-07-18 廢止的「PR 收尾單一確認點」政策。任何人(或模型)重讀該檔會得到過期規則。
 
