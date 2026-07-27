@@ -1301,6 +1301,108 @@ describe("ChipBubbleView — focusRequest 取代 / blocklist 保留其餘 (SC-6)
   });
 });
 
+// Phase 4 review F1/F2:同名不同 broker_id 的入口精準性 — 泡泡 / 明細列點擊
+// 必須按實際點擊的 id toggle(svg payload 本就帶 brokerId,不得 name 反查
+// 猜第一筆);列首圓點配色以 id 為 key,同名兩分點顏色不得互蓋。
+describe("ChipBubbleView — 同名不同 id 入口精準性 (Phase 4 F1/F2)", () => {
+  const collideTrades: BrokerTrade[] = [
+    { broker: "凱基-台北", broker_id: "9800", price: 100, buy: 50, sell: 0 },
+    { broker: "凱基-台北", broker_id: "9801", price: 102, buy: 30, sell: 0 },
+    { broker: "別家", broker_id: "X1", price: 101, buy: 20, sell: 0 },
+  ];
+
+  it("點 9801 的泡泡 → 選中的是 9801(非同名第一筆 9800)", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(collideTrades)} />,
+    );
+    const overlay = container.querySelector('[data-testid="bubble-main-overlay"]')!;
+    const c9801 = await waitFor(() => {
+      const c = Array.from(container.querySelectorAll("circle")).find(
+        (el) => el.getAttribute("data-broker-id") === "9801",
+      );
+      if (!c) throw new Error("9801 circle not rendered");
+      return c;
+    });
+    fireEvent.click(overlay, {
+      clientX: Number(c9801.getAttribute("cx")),
+      clientY: Number(c9801.getAttribute("cy")),
+    });
+    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+    // filter 模式下圖面只剩選中分點 → 全部 circle 必須是 9801
+    const shown = Array.from(container.querySelectorAll("circle")).map((c) =>
+      c.getAttribute("data-broker-id"),
+    );
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.every((id) => id === "9801")).toBe(true);
+  });
+
+  it("點 9801 的明細列 → 選中的是 9801", async () => {
+    const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true, get: () => 400,
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true, get: () => 400,
+    });
+    try {
+      const { container } = render(
+        <ChipBubbleView symbol="2330" bubbleData={mkData(collideTrades)} />,
+      );
+      // 9801 那列的張數是 30(9800 是 50)— 以 volume cell 區分同名列
+      const row9801 = await waitFor(() => {
+        const rows = Array.from(container.querySelectorAll("button"))
+          .filter((b) => (b.textContent ?? "").includes("凱基台北"));
+        const target = rows.find((b) => (b.textContent ?? "").includes("30"));
+        if (!target) throw new Error("9801 row not rendered");
+        return target;
+      });
+      fireEvent.click(row9801);
+      await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+      const shown = Array.from(container.querySelectorAll("circle")).map((c) =>
+        c.getAttribute("data-broker-id"),
+      );
+      expect(shown.every((id) => id === "9801")).toBe(true);
+    } finally {
+      if (origH) Object.defineProperty(HTMLElement.prototype, "offsetHeight", origH);
+      if (origW) Object.defineProperty(HTMLElement.prototype, "offsetWidth", origW);
+    }
+  });
+
+  it("同名兩分點同時選中 → 明細列首圓點兩色不互蓋(id-key 配色)", async () => {
+    const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true, get: () => 400,
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true, get: () => 400,
+    });
+    try {
+      const { container } = render(
+        <ChipBubbleView symbol="2330" bubbleData={mkData(collideTrades)} />,
+      );
+      // 以 id 搜尋分別加選兩個同名分點
+      await selectBrokerViaSearch("9800");
+      await selectBrokerViaSearch("9801");
+      await waitFor(() => expect(chipEls(container)).toHaveLength(2));
+      const dotColors = await waitFor(() => {
+        const dots = Array.from(
+          container.querySelectorAll('[data-testid="row-broker-dot"]'),
+        ).map((d) => d.getAttribute("data-color"));
+        if (dots.length < 2) throw new Error("row dots not rendered");
+        return new Set(dots);
+      });
+      expect(dotColors.size).toBe(2);
+      expect(dotColors.has(BROKER_PALETTE[0]!)).toBe(true);
+      expect(dotColors.has(BROKER_PALETTE[1]!)).toBe(true);
+    } finally {
+      if (origH) Object.defineProperty(HTMLElement.prototype, "offsetHeight", origH);
+      if (origW) Object.defineProperty(HTMLElement.prototype, "offsetWidth", origW);
+    }
+  });
+});
+
 describe("ChipBubbleView — mobile sheet 標題三分支 (SC-4 / edge 5)", () => {
   // 痛點(R7):自動開 sheet effect 的條件從 selectedBrokerId 改 selected.length,
   // 標題要能承載多選;N 歸 0 sheet 維持開啟(effect 只開不關,與現行一致)。

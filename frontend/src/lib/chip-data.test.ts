@@ -470,6 +470,17 @@ describe("buildTradeRows — id-based filter(bubble-multi-broker)", () => {
     expect(sellRows.map((r) => r.broker).sort()).toEqual(["乙", "甲"]);
   });
 
+  // Phase 4 review F1:TradeRow 帶 broker_id — 明細列點擊入口才能按 id 精準
+  // toggle(同名不同 id 不再靠 name 反查猜第一筆)。
+  it("rows carry broker_id(同名不同 id 可區分)", () => {
+    const trades: BrokerTrade[] = [
+      { broker: "凱基-台北", broker_id: "9800", price: 100, buy: 50, sell: 0 },
+      { broker: "凱基-台北", broker_id: "9801", price: 101, buy: 30, sell: 0 },
+    ];
+    const { buyRows } = buildTradeRows(trades, new Set<string>(), 10);
+    expect(buyRows.map((r) => r.broker_id).sort()).toEqual(["9800", "9801"]);
+  });
+
   it("multi-id filter applies before the top-N cap (small rows survive)", () => {
     const trades: BrokerTrade[] = [];
     for (let i = 0; i < 250; i++) {
