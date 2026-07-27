@@ -38,6 +38,14 @@ worktree 路徑寫 state.json。
 
 1. 呼叫 `brainstorming`,**遵循 skill 的對話流程**(一次一問、2-3 方案、分節確認)。
    以下是疊在 skill 之上的**加值 gate**,不取代其流程。
+   **提問姿態分流(2026-07-27 拍板)**:user 帶**已成形方案**(判準見 `refs/feat-phase0-2.md`,
+   拿不準預設模糊 idea)→ 提問階段改用 `grilling` 姿態(逐分支決策樹、一次一題、每題附
+   建議答案;事實自查環境,決策問 user),「提 2-3 方案」縮成「確認 user 方案 + 至多一個
+   counter-proposal」,拷問至共識、**user 拍板後**直進 SC gate。模糊 idea → 照現行
+   brainstorming 不變。兩路共識同樣落 `brainstorm.md`,SC gate / S/M/L 分流照常。
+   **疊 /auto 不豁免拍板**:已成形方案的 grilling 共識拍板視同 auto.md「仍必停」清單
+   (blocker 不是 gate),不因自主模式自問自答續跑;規格來自 user 撰寫 / 已拍板**文件**者
+   不觸發本分流,照 auto.md 預核准替代條件走。
 2. **SC gate**:每條成功條件編號 `SC-1, SC-2…`,強制附「驗證方式」一行(指令 / 測試名 /
    截圖步驟)。**量化 SC(size / time / count)必附 measurement unit + 量法指令** —
    `size ≤ 50 KB` 不合格,要寫 `size ≤ 50 KB(gzip 後;量法 curl --compressed | wc -c)`。

@@ -16,6 +16,9 @@
 2026-07-27 user 直接拍板(沿 07-26 前例不走排程 meta-review)。根因一條:e2e assertion 是模型從討論轉譯的,轉譯錯照樣綠 — user 原話「常常發現 AI 雖然會用測試環境 E2E 但結果根本不是使用者想要的畫面或功能」。四個缺口同根因(spec↔實作↔畫面的對照被成本優化與自動化綠燈架空):subsumed 條款讓轉譯錯的 e2e 頂替唯一人眼驗證;evidence/ 截圖無 user 過目點;UI SC 表述有轉譯歧義空間;Phase 4「diff 先落檔」讓 (b) 焦點的 design.md 對照變自由裁量。落點:feat.md Phase 0 SC gate / Phase 4 步驟 1 例外句 / Phase 6 步驟 2 限縮 + auto-verify v3.1.0 Subsumed 節 + refs/feat-phase8.md 步驟 4 UI 驗收點。還原 = 各處刪 2026-07-27 標記句。
 2026-07-27 review 補修三處:auto-verify 限縮句補拍板標記(交接檔宣稱標記 ×1 實測 grep -c = 0,記錄紀律拍板同批即違反 — marker 還原路徑對該處失效,P1);Phase 7 步驟 3 例外欄補「僅純 regression SC 可標」限定(原無限定,Phase 6 錯誤 subsumed 在 Phase 7 機械欄檢查會放行,P2);Phase 4 (b) 例外句「SC / 介面節」改「SC 對應章節與接點節」(原詞彙不在 Phase 1 模板章節清單,行號圈定留有解釋空隙,P2)。/mod 側三槓桿缺口(可指認 SC 表述 / UI 驗收點缺席;subsumed 限縮經 auto-verify 已生效)記 next-time.md /mod 改版節,P2 不本批修。
 
+**[Phase 0 提問姿態分流:已成形方案改 grilling 姿態 + /auto 不豁免拍板]**
+2026-07-27 user 拍板。動機:brainstorming 是生成式(Claude 提 2-3 方案、寫 design doc),user 已帶成形方案(「我想用 X 做法加 Y」)時提案環節是儀式,真正需要的是對抗式拷問 — grilling 的逐分支決策樹、一次一題、每題附建議答案(skill 複製來歷見共通層 grill-me / grilling 條目;command 層指名本體 `grilling`,`grill-me` 薄殼是給人手打的)。兩者定位不衝突:brainstorming 生成式(提方案、產 design doc、接流程)、grilling 對抗式(拷問 user 既有方案,無產出無 gate),分流只換提問姿態,SC gate / brainstorm.md / S/M/L 全保留。原設計「/auto 跳過 grilling 照 brainstorming 走」(理由:每題等 user、自主模式永久停等)被 user 修正**反轉**:/auto 疊加也不豁免共識拍板,視同 auto.md「仍必停」— 寧可停等 user,不准模型自問自答無腦開發;規格來自 user 撰寫 / 已拍板文件者本就不觸發分流(該文件即拍板產物),照 auto.md 預核准替代條件。落點:feat.md Phase 0 步驟 1 分流句 + refs/feat-phase0-2.md 判準節。還原 = 兩處刪 2026-07-27 標記句(段落整段刪)。
+
 ### 顯式覆寫類(覆寫 superpowers 或共通鐵則,不是漏寫)
 
 **[artifact 落點 `.claude/<type>/<slug>/`]**
