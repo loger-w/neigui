@@ -15,21 +15,28 @@ const trades: BrokerTrade[] = [
   { broker: "元大-中和", broker_id: "9101A", price: 100, buy: 30, sell: 10 },
 ];
 
-describe("BrokerSearch", () => {
-  it("shows placeholder when value is null", () => {
-    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
-    expect(screen.getByPlaceholderText("搜尋分點...")).toBeTruthy();
-  });
+const noneSelected: ReadonlySet<string> = new Set();
 
-  // SC-7:value echo 回填也走「id 去dash名」formatter(change-spec R15)。
-  it("shows formatted broker label when value is set", () => {
-    render(<BrokerSearch trades={trades} value="凱基-台北" onChange={vi.fn()} />);
+// bubble-multi-broker:BrokerSearch 改「搜尋即加選」多選契約 —
+// props = { trades, selectedIds, onPick(id, name) }。原 value echo /
+// input × 清除鈕測試為事前標記之該變 assertion(清除職責移至 chips)。
+describe("BrokerSearch", () => {
+  it("shows placeholder;不 echo 選中分點(純搜尋框)", () => {
+    render(
+      <BrokerSearch
+        trades={trades}
+        selectedIds={new Set(["9201A"])}
+        onPick={vi.fn()}
+      />,
+    );
     const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
-    expect(input.value).toBe("9201A 凱基台北");
+    expect(input.value).toBe("");
+    // × 清除鈕已移除(該變:清除職責在 chips)
+    expect(screen.queryByLabelText("清除選擇")).toBeNull();
   });
 
   it("opens dropdown on focus + typing with matches(顯示統一格式)", async () => {
-    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
+    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
     const input = screen.getByPlaceholderText("搜尋分點...");
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "凱" } });
@@ -40,7 +47,7 @@ describe("BrokerSearch", () => {
   });
 
   it("filters case-insensitive (substring),接受原始名與 id", async () => {
-    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
+    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
     const input = screen.getByPlaceholderText("搜尋分點...");
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "台北" } });
@@ -54,7 +61,7 @@ describe("BrokerSearch", () => {
   });
 
   it("照顯示字樣(去dash)輸入命中含 dash 分點(regression lock,label 比對覆蓋)", async () => {
-    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
+    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
     const input = screen.getByPlaceholderText("搜尋分點...");
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "凱基台北" } });
@@ -67,7 +74,7 @@ describe("BrokerSearch", () => {
   });
 
   it("以 broker_id 搜尋也命中", async () => {
-    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
+    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
     const input = screen.getByPlaceholderText("搜尋分點...");
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "9501" } });
@@ -80,10 +87,9 @@ describe("BrokerSearch", () => {
   });
 
   it("default dropdown sort by total volume desc", async () => {
-    render(<BrokerSearch trades={trades} value={null} onChange={vi.fn()} />);
+    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
     const input = screen.getByPlaceholderText("搜尋分點...");
     fireEvent.focus(input);
-    // Empty query -> shows all sorted by total desc
     await waitFor(() => {
       const items = screen.getAllByTestId("broker-search-item");
       expect(items.length).toBeGreaterThan(0);
@@ -93,55 +99,70 @@ describe("BrokerSearch", () => {
     });
   });
 
+  // 聚合改以 broker_id 為 key(收割 next-time.md deferred 項):同名不同 id
+  // 是兩個分點,各自一列、各自可選。
+  it("同名不同 broker_id → 兩列分開列出,pick 回傳各自 id", async () => {
+    const collide: BrokerTrade[] = [
+      { broker: "凱基-台北", broker_id: "9800", price: 100, buy: 50, sell: 0 },
+      { broker: "凱基-台北", broker_id: "9801", price: 101, buy: 30, sell: 0 },
+    ];
+    const onPick = vi.fn();
+    render(<BrokerSearch trades={collide} selectedIds={noneSelected} onPick={onPick} />);
+    const input = screen.getByPlaceholderText("搜尋分點...");
+    fireEvent.focus(input);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("broker-search-item")).toHaveLength(2);
+    });
+    const items = screen.getAllByTestId("broker-search-item");
+    fireEvent.mouseDown(items[1]!);
+    expect(onPick).toHaveBeenCalledWith("9801", "凱基-台北");
+  });
+
   // Phase 5 review P2-1:trades identity 變動(blocklist 增減 / refetch)不得
-  // 洗掉輸入中的搜尋字 — echo 重設只跟 value 變更走。
-  it("輸入中 trades identity 改變 → query 不被 echo 重設", async () => {
+  // 洗掉輸入中的搜尋字。
+  it("輸入中 trades identity 改變 → query 不被重設", async () => {
     const { rerender } = render(
-      <BrokerSearch trades={trades} value={null} onChange={vi.fn()} />,
+      <BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />,
     );
     const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "凱" } });
-    // trades 換新 array identity(內容相同)
-    rerender(<BrokerSearch trades={[...trades]} value={null} onChange={vi.fn()} />);
+    rerender(
+      <BrokerSearch trades={[...trades]} selectedIds={noneSelected} onPick={vi.fn()} />,
+    );
     expect(input.value).toBe("凱");
   });
 
-  it("Enter selects active item", async () => {
-    const onChange = vi.fn();
-    render(<BrokerSearch trades={trades} value={null} onChange={onChange} />);
+  it("Enter picks active item(id + name)", async () => {
+    const onPick = vi.fn();
+    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={onPick} />);
     const input = screen.getByPlaceholderText("搜尋分點...");
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "凱基-台北" } });
-    // Wait for debounce to narrow to just the one match
     await waitFor(() => {
-      const items = screen.getAllByTestId("broker-search-item");
-      expect(items).toHaveLength(1);
+      expect(screen.getAllByTestId("broker-search-item")).toHaveLength(1);
     });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(onChange).toHaveBeenCalledWith("凱基-台北");
+    expect(onPick).toHaveBeenCalledWith("9201A", "凱基-台北");
   });
 
-  it("Arrow down then Enter selects second item", async () => {
-    const onChange = vi.fn();
-    render(<BrokerSearch trades={trades} value={null} onChange={onChange} />);
+  it("Arrow down then Enter picks second item", async () => {
+    const onPick = vi.fn();
+    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={onPick} />);
     const input = screen.getByPlaceholderText("搜尋分點...");
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "凱" } });
-    // Wait until debounce filters down to the 凱基-* matches only
     await waitFor(() => {
-      const items = screen.getAllByTestId("broker-search-item");
-      expect(items).toHaveLength(2);
+      expect(screen.getAllByTestId("broker-search-item")).toHaveLength(2);
     });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
-    // 凱基-台北 total 300 > 凱基-板橋 130 -> index 0 is 台北, index 1 is 板橋
-    expect(onChange).toHaveBeenCalledWith("凱基-板橋");
+    expect(onPick).toHaveBeenCalledWith("9201B", "凱基-板橋");
   });
 
-  it("Escape closes dropdown without selecting", async () => {
-    const onChange = vi.fn();
-    render(<BrokerSearch trades={trades} value={null} onChange={onChange} />);
+  it("Escape closes dropdown without picking", async () => {
+    const onPick = vi.fn();
+    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={onPick} />);
     const input = screen.getByPlaceholderText("搜尋分點...");
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "凱" } });
@@ -150,16 +171,51 @@ describe("BrokerSearch", () => {
     await waitFor(() => {
       expect(screen.queryAllByTestId("broker-search-item")).toHaveLength(0);
     });
-    expect(onChange).not.toHaveBeenCalled();
+    expect(onPick).not.toHaveBeenCalled();
   });
 
-  it("× button clears value", () => {
-    const onChange = vi.fn();
+  // R1(design v2 §4):pick 後下拉保持開啟、query 不清 — 連續加選 UX 核心。
+  // item onMouseDown 必須 preventDefault 保 input focus(否則 blur closeTimer
+  // 會在真瀏覽器關掉下拉;此處鎖 defaultPrevented 契約)。
+  it("pick 後下拉保持開啟、query 不清,item mousedown 有 preventDefault", async () => {
+    const onPick = vi.fn();
+    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={onPick} />);
+    const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "凱" } });
+    await waitFor(() => {
+      expect(screen.getAllByTestId("broker-search-item")).toHaveLength(2);
+    });
+    const first = screen.getAllByTestId("broker-search-item")[0]!;
+    const prevented = !fireEvent.mouseDown(first); // fireEvent 回傳 !defaultPrevented
+    expect(prevented).toBe(true);
+    expect(onPick).toHaveBeenCalledWith("9201A", "凱基-台北");
+    // 下拉仍開啟、query 保留
+    expect(screen.getAllByTestId("broker-search-item").length).toBeGreaterThan(0);
+    expect(input.value).toBe("凱");
+  });
+
+  // R6(impl spec):下拉 = listbox/option 結構,已選列 aria-selected + ✓。
+  it("已選分點列標 aria-selected 與 ✓ 前綴;再點 = toggle(onPick 照樣回傳)", async () => {
+    const onPick = vi.fn();
     render(
-      <BrokerSearch trades={trades} value="凱基-台北" onChange={onChange} />,
+      <BrokerSearch
+        trades={trades}
+        selectedIds={new Set(["9201A"])}
+        onPick={onPick}
+      />,
     );
-    const x = screen.getByLabelText("清除選擇");
-    fireEvent.mouseDown(x);
-    expect(onChange).toHaveBeenCalledWith(null);
+    const input = screen.getByPlaceholderText("搜尋分點...");
+    fireEvent.focus(input);
+    await waitFor(() => {
+      expect(screen.getAllByTestId("broker-search-item").length).toBeGreaterThan(0);
+    });
+    const options = screen.getAllByRole("option");
+    const selectedOpt = options.find((o) => o.getAttribute("aria-selected") === "true");
+    expect(selectedOpt).toBeTruthy();
+    expect(selectedOpt!.textContent).toContain("凱基台北");
+    expect(selectedOpt!.textContent).toContain("✓");
+    fireEvent.mouseDown(selectedOpt!);
+    expect(onPick).toHaveBeenCalledWith("9201A", "凱基-台北");
   });
 });
