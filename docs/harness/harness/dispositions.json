@@ -149,10 +149,10 @@
       "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "current-state.md" }] },
     { "note": "§5.2 Phase 2 不能破壞的既有行為白名單", "disposition": "核心",
       "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "不能破壞的既有行為白名單" }] },
-    { "note": "§5.2 Phase 3 change-spec-reviewer dispatch + max 2 輪(v2 兩張表都漏)", "disposition": "核心",
+    { "note": "§5.2 Phase 3 change-spec-reviewer dispatch + 輪數(2026-07-27 更新:max 2 輪 → 預設 1 輪 + 限縮加輪,對齊 /feat)", "disposition": "核心",
       "checks": [
         { "kind": "present", "file": "commands/mod.md", "string": "change-spec-reviewer" },
-        { "kind": "present", "file": "commands/mod.md", "string": "Max 2 輪" }
+        { "kind": "present", "file": "commands/mod.md", "string": "限縮加輪" }
       ] },
     { "note": "§5.2 Phase 3 diff 級 spec 三類標記", "disposition": "核心",
       "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "三類動作分開標記" }] },
@@ -163,8 +163,8 @@
         { "kind": "absent", "file": "commands/mod.md", "string": "`/code-review`(**預設 medium 檔位**" },
         { "kind": "present", "file": "commands/mod.md", "string": "refs/review-protocol.md" }
       ] },
-    { "note": "§5.2 Phase 5 inline 完工自查 checklist(實測模型做不到)", "disposition": "核心",
-      "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "完工自查 checklist" }] },
+    { "note": "§5.2 Phase 5 inline 完工自查 checklist(2026-07-27 更新:/mod 同步刪 — /feat 側同類 checklist 已因靜默死亡刪除,07-26 掃描 P1)", "disposition": "刪",
+      "checks": [{ "kind": "absent", "file": "commands/mod.md", "string": "完工自查 checklist" }] },
     { "note": "§5.2 Phase 6「不該紅 → 不改 assertion」", "disposition": "核心",
       "checks": [{ "kind": "present", "file": "commands/mod.md", "string": "不該紅 → 不改 assertion" }] },
     { "note": "§5.2 Phase 7 白名單逐一檢查 + migration 真實環境", "disposition": "核心",

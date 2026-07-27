@@ -31,6 +31,8 @@
   沒有不硬湊。
 - 共識落 `brainstorm.md`、SC gate、S/M/L 分流照常。
 - 疊 /auto:拍板不豁免,以 feat.md Phase 0 步驟 1 例外句為準。
+- **/mod Phase 2 亦用本判準**(2026-07-27 接入;分流句與落檔要求在 mod.md Phase 2,
+  共識與判定記錄落 `change-spec.md`)。
 
 ## Phase 0:延續型 feature 的前輪指示掃描
 

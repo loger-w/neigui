@@ -22,12 +22,16 @@
    **每步單獨保持綠**。每步預估 diff > **100 行**再拆。大爆炸(一次改 20+ 檔)禁止。
    大型 refactor 依 `~/.claude/harness/refs/review-protocol.md` A 節 dispatch
    `refactor-plan-reviewer`(傳 refactor-plan.md + Phase 2 `test-inventory.md` 路徑)。
-   **Max 2 輪;退出條件:無 P0/P1**。2 輪後仍有 → 停下回報 user(縮範圍 / 換拆法 / 接受風險註記)
+   **輪數(2026-07-27 對齊 /feat 07-26 制):預設 1 輪;accepted P0 → 修復後限縮加輪 1 次
+   (只審變更段落)。退出條件:無 P0/P1**。限縮輪後仍有 → 停下回報 user
+   (縮範圍 / 換拆法 / 接受風險註記)
 4. **Phase 4|逐步執行**:每步 = 改 → 跑相關測試 → 全綠 → `git commit`(**純 🔵**)→ 下一步。
    若紅:**預設 refactor 改錯**(鐵則 C),次選才考慮測試在測 **implementation detail**
    (若真是 → 標註,這已變相是 mod,停下切 `/mod`)
 5. **Phase 5|Blast radius**:grep 動到的命名 / signature 所有 caller(含**動態用法** /
-   template string / reflection / 外部 caller),跑完整 test suite(不只動到那塊)
+   template string / reflection / 外部 caller),跑完整 test suite(不只動到那塊);
+   `graphify-out/` 存在時可先 `graphify query` 當起點(直接跑 CLI 不載 skill,2026-07-27
+   同 /feat 讀檔紀律),**動態用法仍必 grep**
 6. **Phase 6|自動化驗證**:呼叫 `auto-verify` skill 全綠
 7. **Phase 7|真實環境驗證**:呼叫 `auto-verify` 真實環境節 — dev server 跑改動範圍功能,
    **行為跟 refactor 前完全一樣**

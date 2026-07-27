@@ -21,4 +21,10 @@ finding。`location.file` 填 `refactor-plan.md`,`section` 填步驟編號(如 "
 ## 輸入
 
 dispatch prompt 提供:refactor-plan.md 路徑、Phase 2 測試盤點結果(`test-inventory.md`)路徑;
-round ≥ 2 時另有上一輪 review JSON 路徑 + 本輪 changelog 摘要。
+**限縮輪**(round 2)時另有上一輪 review JSON 路徑 + 本輪 changelog 摘要。
+
+## 限縮輪(round 2 唯一形態,2026-07-27 起同 /feat)
+
+round 2 只在 round 1 有 accepted P0 時發生,審查範圍**限縮**:只讀 refactor-plan.md 的
+變更步驟與其直接依賴的相鄰步驟,判「fix 是否改出新矛盾 / 步驟依賴順序被 fix 打亂」。
+**不重掃全文、不重跑 criteria 全套**;在限縮範圍內發現的新問題照常回報。

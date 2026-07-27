@@ -15,6 +15,7 @@
 
 - **S**(單檔 / 無對外 API / 無 migration):Phase 3 可簡化為 spec 內嵌 commit message,
   0 輪 review
-- **M**(2-4 檔):完整流程,Phase 3 1 輪 review
-- **L**(≥ 5 檔 / 對外 API / migration / 多 caller):完整流程,Phase 3 max 2 輪;
-  **慎用自主模式**(caller map + backward compat 對齊價值高)
+- **M**(2-4 檔):完整流程,Phase 3 預設 1 輪 + accepted P0 觸發限縮加輪 1 次
+- **L**(≥ 5 檔 / 對外 API / migration / 多 caller):完整流程,輪數同 M
+  (2026-07-27 起 M/L 輪數統一,對齊 /feat 07-26 制);**慎用自主模式**
+  (caller map + backward compat 對齊價值高)

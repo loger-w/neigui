@@ -15,7 +15,9 @@
    重現步驟落檔 `.claude/bug/<slug>/repro.md`
 2. **Phase 2|Root cause**:呼叫 `systematic-debugging` 並**遵循其方法論**:
    調查階段可先列候選假說清單(廣度),但**驗證嚴格一次一個假說、一次改一個變數**。
-   用實驗證明 root cause(不是「看起來像」)。實驗記錄追加寫進 `repro.md`
+   用實驗證明 root cause(不是「看起來像」)。實驗記錄追加寫進 `repro.md`。
+   架構 / 呼叫鏈 / 檔案關係類調查,`graphify-out/` 存在時先 `graphify query "<問題>"`
+   (直接跑 CLI 不載 skill),query 答不了再 Grep / Read(2026-07-27 同 /feat 讀檔紀律)
 3. **Phase 3|紅測試先行**(鐵則 C):用 Phase 1 重現條件寫測試 → 現在紅且訊息符合 →
    以後防 regression。「寫不出測試」九成是測試設計問題,寫不出來說明原因
 4. **Phase 4|最小修改**:只動 root cause 對應那幾行。不順手 refactor / rename / lint

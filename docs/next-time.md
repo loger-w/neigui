@@ -176,12 +176,12 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 - **BrokerSearch highlightMatch 對去dash label 的高亮缺口**:query 含 dash(「凱基-台」)時比對經 raw name 命中,但 dropdown label 是去dash字串,indexOf 對不上 → 命中但無高亮著色(功能正常,純視覺)。修法:highlight 前先 normalizeBrokerQuery 雙邊對齊再回推原始 index。
 
 ## 2026-07-26 harness /feat 改版的後續(user 指示本輪只動 /feat)
-- [ ] /mod /bug /perf /refactor 同步 2026-07-26 實證改版:round JSON 落檔義務(25 個非 feat run 零結構化 review artifact,review 記錄退化成散文)、/mod Phase 3 輪數覆核(max 2 → 1 + 條件加輪?無 JSON 無法實證,先補落檔再談)、graphify query 接入各流程的現況調查 phase(/mod Phase 1 caller map、/bug Phase 2、/refactor Phase 5 blast radius 最受益)
+- (原「/mod /bug /perf /refactor 同步 2026-07-26 實證改版」條目已由 2026-07-27 四 command 同步批解決刪除:round JSON 落檔義務落 review-protocol C 節 + mod.md Phase 5;/mod Phase 3 輪數採 /feat 07-26 制(預設 1 輪 + P0 限縮加輪 — 無 /mod 側 JSON 實證,落檔義務同批補上、日後可實證覆核);graphify query 接入 mod Phase 1 / bug Phase 2 / refactor Phase 5。詳 RATIONALE /mod 節)
 - (原「/auto 表的 /feat 建議行更新」條目已於 2026-07-27 銷帳 — 實查 auto.md 建議表現況即目標狀態:S 級「Phase 8.5 完成」退出條件在 + 07-27 停等註、L 級「Phase 0 對齊價值高」註記在;07-26/07-27 兩批改版已順路完成)
 - [ ] dispositions.json 過期 rows(見 RATIONALE 2026-07-26 節)— 若還要重跑 harness_load_estimate 的 SC-3 驗證先更新
 - [ ] graphify:docs/ 與 .claude/skills 的語意層(需 LLM)未建;要建再評估 token 成本。graph 目前 code-only(381 檔,3227 nodes),HEALTH 警告 640 dangling edges(AST 對外部 import 的正常樣態,查 caller 不受影響)
-- [ ] /mod 改版時一併修(2026-07-26 一致性掃描 P1):mod.md:44 inline 完工自查 checklist(/feat 側已因靜默死亡刪除)、mod M 級輪數三檔兩說(scope-tiers「1 輪」vs mod.md/review-protocol「max 2 輪」);P2 全清單見當日 scratchpad consistency-scan.md(若已滅失,P2 多為 superpowers 停用引用與 round≥2 措辭殘留)
+- (原「/mod 改版時一併修 07-26 掃描 P1×2 + P2 清單」條目已由 2026-07-27 四 command 同步批解決刪除:inline 完工自查 checklist 已刪、輪數三檔兩說已統一;scratchpad P2 清單實存並清點 — #10 #11 #13 #14 #17 #21 #23 本批修,#18 #19 #20 moot(skill 複製後引用有效),餘均已由先前批次修)
 - (原「評估 sync-harness-mirror 是否納入 6 支複製 skill」條目已於 2026-07-27 user 拍板 C2 解決刪除:6 支改寫件納入 mirror(各目錄 *.md,19 檔入鏡);grilling / grill-me 原文照抄件刻意不納 — 災難還原重抓 raw 即可)
-- [ ] /mod 改版時一併補 2026-07-27 e2e 意圖對齊三槓桿的 /mod 側缺口(2026-07-27 review P2):「畫面可指認」SC 表述(mod.md Phase 2 成功條件 gate 只有量化條款)與收尾 UI 驗收點(Phase 8 / Done 均無)缺席;subsumed 限縮**免補**(經 auto-verify 真實環境節已自動生效於 /mod Phase 7);Phase 4 (b) 例外句不適用(/mod 本無雙焦點),但「finder 對 change-spec.md 白名單的對照是自由裁量」屬同型問題,可一併議
-- [ ] /mod 改版時一併議 grilling 提問姿態分流的 /mod 側接入(2026-07-27 grilling 批 review P2):mod.md Phase 2「聚焦 brainstorm」只縮主題不換姿態,brainstorming「Propose 2-3 approaches」checklist 仍強制,user 帶已成形改法的提案儀式痛點同在;判準與操作細節可直接複用 refs/feat-phase0-2.md 判準節(/auto 不豁免拍板句一併帶)
+- (原「/mod 一併補 e2e 意圖對齊三槓桿」條目已由 2026-07-27 四 command 同步批解決刪除:mod.md Phase 2 補「畫面可指認」表述、Phase 8 補收尾 UI 驗收點、Phase 5 補白名單對照必讀;subsumed 限縮本就免補)
+- (原「/mod 一併議 grilling 分流接入」條目已由 2026-07-27 四 command 同步批解決刪除:mod.md Phase 2 補分流句(判準複用 feat-phase0-2 判準節、/auto 不豁免、判定記錄落 change-spec.md);auto.md 例外句 / 必停清單 / 建議表同步擴 /mod;load-manifest mod-M 補條件條目)
 - [ ] 四 command 同步批(上列 /mod 各項 + round JSON 落檔)完成後 → **提醒 user 開 CLAUDE.md 瘦身輪**(2026-07-27 拍板收件匣 A2):專案 CLAUDE.md ~5.8k token 每 turn 重付,45 實驗實測第 2 名槓桿;判準「只留每 session 都用的內容」,動到特定 code 才需要的下放 §8 主題 skill;SC 用 harness_load_estimate `--peak` 峰值降幅(A3 已落地)

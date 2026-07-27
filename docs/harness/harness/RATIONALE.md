@@ -94,6 +94,9 @@ reviewer 是 fresh context,只吃檔案路徑 —— 對話裡整理的表傳不
 **[🔴 行為改動:先改既有測試讓它紅 → 再改實作讓它綠]**
 這是共通鐵則 E「禁止改測試 assertion 讓它通過」的**唯一合法順序**。`test-driven-development` skill 只教「新測試紅先行」,不涵蓋「既有測試該變」的情況;模型的預設行為是先改 implementation 再修壞掉的 assertion —— 正好是被禁的樣態。
 
+**[四 command 同步批:對齊 07-26/07-27 /feat 改版(2026-07-27 user 拍板)]**
+動機:07-26 /feat 實證改版與 07-27 三批(e2e 意圖對齊 / grilling 分流 / 補修復審)只動 /feat,next-time 積四條 /mod 列管項 + 07-26 一致性掃描 P2 未收(scratchpad 實存)。落點:mod.md ×5 — Phase 1 graphify query 起點句(動態用法仍必 grep)、Phase 2 提問姿態分流句(判準複用 refs/feat-phase0-2.md;判定記錄落 change-spec.md;/auto 不豁免)+ 成功條件補「畫面可指認」表述、Phase 3 輪數 max 2 → 預設 1 輪 + accepted P0 限縮加輪(三檔兩說 P1 統一;**無 /mod 側 round JSON 實證,採 /feat 07-26 制為準 — 落檔義務同批補上,日後可實證覆核**)、Phase 5 刪 inline 完工自查 checklist(/feat 側同型靜默死亡)+ round JSON 落檔 + 白名單對照必讀(同 /feat Phase 4 (b) 例外)、Phase 8 補收尾 UI 驗收點。refactor.md:Phase 3 輪數同制、Phase 5 補 graphify 句。bug.md:Phase 2 補 graphify 句。perf.md:Done 補 check_feat_tags(四流程唯獨 perf 漏,掃描 #21)。scope-tiers /mod M/L 輪數統一;review-protocol:A2 限縮輪推廣(掃描 #10)+ A 節退出條件註更新 + C 節「fix 迴圈 3 輪上限(review 不重跑)」消歧(#11)+ round JSON 落檔義務;change-spec-reviewer / refactor-plan-reviewer 補限縮輪節(#23);load-manifest:mod-M 補 grilling + feat-phase0-2 條件條目、feat-L 補 auto-wave 條件條目(#14)+ SDD _note 補句(#13);feat-phase0-2.md 判準節補 /mod 接入行;feat-phase3.md 補 executing-plans 缺席 fallback 註(#17);dispositions ×2 rows 更新。掃描 P2 清點:#18 #19 #20 moot(skill 複製後去前綴引用已有效)、#9 #12 #15 #16 #22 先前批次已修。還原:各處刪 2026-07-27 標記句(輪數句還原為 Max 2 輪原文),manifest / dispositions 見 git 歷史。
+
 ---
 
 ## /refactor
@@ -103,6 +106,8 @@ reviewer 是 fresh context,只吃檔案路徑 —— 對話裡整理的表傳不
 
 **[Phase 5 blast radius:grep 動到的命名／signature 所有 caller]**
 共通鐵則 A 的 caller grep 只掛在 Mod 那一行,Refactor 那行寫的是「測試覆蓋盤點」。而改名／改 signature 正是 refactor 主業。
+
+2026-07-27 四 command 同步批(詳 /mod 節該條):Phase 3 輪數改預設 1 輪 + P0 限縮加輪、Phase 5 補 graphify query 起點句、收尾 round JSON 落檔義務(review-protocol C 節)。
 
 ---
 
@@ -117,6 +122,8 @@ reviewer 是 fresh context,只吃檔案路徑 —— 對話裡整理的表傳不
 **[Phase 6「結果跟優化前完全一樣」+ 大量輸入 edge case]**
 `auto-verify` 只寫 happy + 2 edge(空／錯誤／邊界)+ 抽 2 個未改功能,沒有「與優化前一致」也沒有大量輸入。刪掉則 Phase 3 的行為白名單無驗收點,靜默改輸出會過關。
 
+2026-07-27 四 command 同步批(詳 /mod 節該條):Done 補 check_feat_tags 行、收尾 round JSON 落檔義務。
+
 ---
 
 ## /bug
@@ -126,6 +133,8 @@ reviewer 是 fresh context,只吃檔案路徑 —— 對話裡整理的表傳不
 
 **[Phase 4 commit 標 🔴]**
 共通鐵則 B 明文把「emoji 前綴的強制範圍」委派給流程 command 檔,未定義處不強制。刪掉這條,非 neigui 專案就完全失去強制。
+
+2026-07-27 四 command 同步批(詳 /mod 節該條):Phase 2 補 graphify query 句、收尾 round JSON 落檔義務。
 
 ---
 

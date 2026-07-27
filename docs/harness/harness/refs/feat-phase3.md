@@ -5,7 +5,7 @@
 | 條件 | 模式 |
 |---|---|
 | ≥ 3 檔且彼此獨立 | Workflow fan-out / 逐 task dispatch implementer(紀律見下節) |
-| 單檔但長時間 / 跨 session | `superpowers:executing-plans` + checkpoint |
+| 單檔但長時間 / 跨 session | `superpowers:executing-plans` + checkpoint(skill 缺席 → `progress.md` ledger + checkpoint,見下節紀律 2;2026-07-27 補註)|
 | ≤ 2 檔且函式清單明確 | main agent 自己 TDD |
 
 非自主模式向 user 確認一次;自主模式直接採用並在 state.json 標 `[auto-default]`。
