@@ -81,7 +81,12 @@ export function BorrowFeePage(): ReactElement {
         {data && selectedStock && (() => {
           const dayTotal = rows.reduce((s, r) => s + r.lending_shares, 0);
           const monthTotal = data.month_shares?.[selectedStock.stock_id] ?? null;
-          const monthCount = data.month_counts?.[selectedStock.stock_id] ?? null;
+          // 次數綁定累計非 null(Phase 4 F1):month_shares 整缺(版本 skew)時
+          // month_counts 是舊欄位仍在,「—(N 次)」是數字與次數矛盾的畫面。
+          const monthCount =
+            monthTotal !== null
+              ? data.month_counts?.[selectedStock.stock_id] ?? null
+              : null;
           return (
             <p
               data-testid="borrow-fee-stock-summary"
