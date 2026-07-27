@@ -18,7 +18,10 @@
 **拿不準 → 預設模糊 idea 走 brainstorming**(生成式是安全預設;grilling 對模糊輸入會空轉)。
 條件 1 成立、僅條件 2 不成立(方案完整到無開放決策點)時走 brainstorming,但「提 2-3 方案」
 的縮減照樣適用(確認 + 至多一個 counter-proposal,不硬湊)— 對已完全想好的 user 重演提案
-儀式即本分流要消除的痛點(2026-07-27 review 補修)。
+儀式即本分流要消除的痛點(2026-07-27 review 補修)。此類分流判定記錄寫「條件 1 中、
+條件 2 未中」;疊 /auto:方案完整且無 counter-proposal → 不停,照 auto.md 替代條件推進並標
+`[auto-default]`;有 counter-proposal 或任何待討論點 → 停等拍板,確認步不得自問自答
+(2026-07-27 user 拍板)。
 
 分流只換「怎麼問」,其餘零差異:
 

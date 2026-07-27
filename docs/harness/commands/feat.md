@@ -42,7 +42,9 @@ worktree 路徑寫 state.json。
    拿不準預設模糊 idea)→ 提問階段改用 `grilling` 姿態(逐分支決策樹、一次一題、每題附
    建議答案;事實自查環境,決策問 user),「提 2-3 方案」縮成「確認 user 方案 + 至多一個
    counter-proposal」,拷問至共識、**user 拍板後**直進 SC gate。模糊 idea → 照現行
-   brainstorming 不變。兩路共識同樣落 `brainstorm.md`,SC gate / S/M/L 分流照常。
+   brainstorming 不變(例外:僅條件 1 成立 — 指名做法但無開放決策點 — 提案縮減照樣適用,
+   細節見同 ref;2026-07-27 review 補修)。兩路共識同樣落 `brainstorm.md`,
+   SC gate / S/M/L 分流照常。
    **疊 /auto 不豁免拍板**:已成形方案的 grilling 共識拍板視同 auto.md「仍必停」清單
    (blocker 不是 gate),不因自主模式自問自答續跑;規格來自 user 撰寫 / 已拍板**文件**者
    不觸發本分流,照 auto.md 預核准替代條件走。

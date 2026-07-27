@@ -22,7 +22,9 @@ $ARGUMENTS 解析不出「可機械判定的退出條件 + 接續指令」→ �
   **沒有這類文件又遇到方向性抉擇 → 仍要停**(這是 blocker 不是 gate)。
   **例外(2026-07-27):/feat Phase 0 判定「已成形方案」時,「無文件但無方向性抉擇 → 推進」
   不適用 — grilling 共識拍板必停,以 feat.md Phase 0 步驟 1 分流句為準**(口頭方案的
-  剩餘決策常是實作級,按方向性判定會誤放行)。
+  剩餘決策常是實作級,按方向性判定會誤放行)。僅條件 1 成立(方案完整無開放決策點)時:
+  無 counter-proposal → 照本替代條件推進標 `[auto-default]`;有 counter-proposal 或待討論點
+  → 同停,確認步不得自問自答(2026-07-27 user 拍板)。
 - **方向性抉擇判定**(上一條的判準):把候選選項互換,brainstorm.md 的 SC 集合 / out of scope /
   對外契約(API shape、資料格式、資料源)任一需要改寫 → 方向性抉擇,停;全部不動(純內部
   實作、可逆)→ 實作選擇,標 `[auto-default]` 推進。
@@ -33,6 +35,8 @@ $ARGUMENTS 解析不出「可機械判定的退出條件 + 接續指令」→ �
 - Scope 變更(退出條件做不到、要縮 / 換方向)
 - 花錢或對外發布的動作(`git push` / `gh pr merge` **除外** — 鐵則 H 全自動;推 main /
   `--force` 附 commit 清單告知即可)
+- /feat Phase 0 grilling 共識拍板 + 縮減路確認步的停等(2026-07-27;判定與例外細節見
+  上方替代條件段例外句)
 
 ### TDD commit 節奏
 預設維持 `red` → `green` 兩 commit,`[refactor]` 有重構才加。大量檔數要改 wave batch 時,
