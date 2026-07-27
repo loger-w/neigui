@@ -230,5 +230,8 @@ describe("BorrowFeePage 選股加總 summary", () => {
     const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
     expect(t).toContain("本日標借合計 8,000 股");
     expect(t).toContain("本月累計 —");
+    // Phase 4 review F1:map 整缺但 month_counts(舊欄位)仍在 →「—(2 次)」
+    // 是數字與次數矛盾的畫面;累計缺值時次數段必須一併不 render。
+    expect(t).not.toContain("(");
   });
 });
