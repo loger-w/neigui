@@ -1,0 +1,347 @@
+diff --git a/backend/services/daytrade_fee.py b/backend/services/daytrade_fee.py
+index 86b105e..17380a7 100644
+--- a/backend/services/daytrade_fee.py
++++ b/backend/services/daytrade_fee.py
+@@ -249,13 +249,19 @@ async def get_day(date_str: str | None, refresh: bool = False) -> dict:
+         key=lambda r: (-r["fee_rate"], -r["lending_shares"], r["stock_id"]),
+     )
+     month_dates: dict[str, set[str]] = {}
++    # borrow-fee-totals SC-1:該股當月全列 lending_shares 加總(含同日多筆;
++    # month_counts 是日數、month_shares 是股數,同資料源 all_rows → 同 key 集)。
++    # 「本月」= as_of 所在月(回退鏈落前月時為前月),沿用 month_counts 語意。
++    month_shares: dict[str, int] = {}
+     for r in all_rows:
+         month_dates.setdefault(r["stock_id"], set()).add(r["date"])
++        month_shares[r["stock_id"]] = month_shares.get(r["stock_id"], 0) + r["lending_shares"]
+ 
+     payload: dict[str, Any] = {
+         "as_of_date": as_of,
+         "rows": day_rows,
+         "month_counts": {sid: len(ds) for sid, ds in month_dates.items()},
++        "month_shares": month_shares,
+     }
+     if as_of != target:
+         payload["no_trading_day"] = True
+diff --git a/backend/tests/test_daytrade_fee.py b/backend/tests/test_daytrade_fee.py
+index 9015325..e19a051 100644
+--- a/backend/tests/test_daytrade_fee.py
++++ b/backend/tests/test_daytrade_fee.py
+@@ -277,6 +277,37 @@ async def test_month_counts_distinct_dates(monkeypatch, frozen_today):
+     assert payload["month_counts"]["2408"] == 1
+ 
+ 
++# ---------------------------------------------------- SC-1/SC-3 month_shares(borrow-fee-totals)
++
++async def test_month_shares_sums_all_rows_including_same_day(monkeypatch, frozen_today):
++    """該股當月全列相加(同日兩筆 + 跨日一筆;8046 型)— 次數是日數、股數是全列。"""
++    _fetch_month_stub(monkeypatch, {
++        ("twse", "2026-07"): [
++            _row("2026-07-09", "twse", "8046", 2000, 7.0),
++            _row("2026-07-09", "twse", "8046", 12000, 0.1),
++            _row("2026-07-10", "twse", "8046", 3000, 3.5),
++            _row("2026-07-10", "twse", "2408", 68000, 0.97),
++        ],
++        ("tpex", "2026-07"): [_row("2026-07-10", "tpex", "8069", 25000, 1.0)],
++    })
++    payload = await df.get_day(None)
++    assert payload["month_shares"]["8046"] == 17000
++    assert payload["month_shares"]["2408"] == 68000
++    assert payload["month_shares"]["8069"] == 25000
++
++
++async def test_month_shares_keys_match_month_counts(monkeypatch, frozen_today):
++    """兩 map 同 key 集(同資料源 all_rows)— 前端「缺 key 必同缺」語意的後盾。"""
++    _fetch_month_stub(monkeypatch, {
++        ("twse", "2026-07"): [
++            _row("2026-07-09", "twse", "8150", 1000, 0.6),
++            _row("2026-07-10", "twse", "2408", 68000, 0.97),
++        ],
++    })
++    payload = await df.get_day(None)
++    assert set(payload["month_shares"]) == set(payload["month_counts"])
++
++
+ async def test_rows_keep_multiple_entries_per_stock(monkeypatch, frozen_today):
+     """逐筆保留,不折疊(FinMind 判死主因)。"""
+     _fetch_month_stub(monkeypatch, {
+diff --git a/backend/tests/test_daytrade_fee_routes.py b/backend/tests/test_daytrade_fee_routes.py
+index 6bacf0d..2afb03e 100644
+--- a/backend/tests/test_daytrade_fee_routes.py
++++ b/backend/tests/test_daytrade_fee_routes.py
+@@ -25,12 +25,20 @@ def test_shape_ok(monkeypatch, client):
+     async def fake_get_day(date_str, refresh=False):
+         assert date_str is None
+         assert refresh is False
+-        return {"as_of_date": "2026-07-09", "rows": [], "month_counts": {}}
++        # month_shares(borrow-fee-totals SC-1):route 無 response_model,
++        # 此處僅鎖 passthrough;資料語意在 tests_e2e/test_api_daytrade_fee.py。
++        return {
++            "as_of_date": "2026-07-09",
++            "rows": [],
++            "month_counts": {},
++            "month_shares": {"8046": 17000},
++        }
+ 
+     monkeypatch.setattr(df, "get_day", fake_get_day)
+     r = client.get("/api/daytrade-fee")
+     assert r.status_code == 200
+     assert r.json()["as_of_date"] == "2026-07-09"
++    assert r.json()["month_shares"] == {"8046": 17000}
+ 
+ 
+ def test_params_passthrough(monkeypatch, client):
+diff --git a/backend/tests_e2e/test_api_daytrade_fee.py b/backend/tests_e2e/test_api_daytrade_fee.py
+index 27c4287..e37b158 100644
+--- a/backend/tests_e2e/test_api_daytrade_fee.py
++++ b/backend/tests_e2e/test_api_daytrade_fee.py
+@@ -31,3 +31,6 @@ async def test_daytrade_fee_sorted_desc_and_month_counts(client):
+     assert fees == sorted(fees, reverse=True), f"預設費率降序破功: {fees}"
+     # 8046 在 fixture 中出現於 06/24(兩筆)與 06/26 → distinct date = 2
+     assert body["month_counts"]["8046"] == 2
++    # month_shares(borrow-fee-totals SC-1/SC-3):全列相加含同日兩筆 —
++    # 2,000 + 12,000(06/24)+ 3,000(06/26)= 17,000(fixture 手算)
++    assert body["month_shares"]["8046"] == 17000
+diff --git a/e2e/helpers/selectors.ts b/e2e/helpers/selectors.ts
+index 457e0c6..91901e9 100644
+--- a/e2e/helpers/selectors.ts
++++ b/e2e/helpers/selectors.ts
+@@ -39,6 +39,8 @@ export const TESTIDS = {
+   feeHigh: "fee-high",
+   // 券差單檔篩選(mod/borrow-fee-stock-filter)
+   borrowFeeStockFilter: "borrow-fee-stock-filter",
++  // 選股加總 summary(feat/borrow-fee-totals BF4)
++  borrowFeeStockSummary: "borrow-fee-stock-summary",
+   stockFilterClear: "stock-filter-clear",
+   // equity 權證 tab(feat/warrant-selector)
+   warrantRow: "warrant-row",
+diff --git a/e2e/specs/borrow-fee.spec.ts b/e2e/specs/borrow-fee.spec.ts
+index b8a6e88..1d6eb4c 100644
+--- a/e2e/specs/borrow-fee.spec.ts
++++ b/e2e/specs/borrow-fee.spec.ts
+@@ -54,6 +54,25 @@ test.describe("borrow fee mode", () => {
+     await expect(rows).toHaveCount(fullCount);
+   });
+ 
++  test("BF4: 選股加總 summary — 本日合計 + 本月累計資料級(feat/borrow-fee-totals SC-3/4)", async ({ page }) => {
++    // 痛點:同股同日多筆(8046 於 06/24 兩列)是 visibility-only 蓋不住的
++    // 資料級語意 — summary 全鏈 = backend month_shares 全列相加 → payload →
++    // 前端 dayTotal reduce。fixture 手算(scratchpad script 重算,非 design
++    // 預估):8046 as_of 06-26 當日 1 列 3,000;當月 2,000+12,000(06/24)+
++    // 3,000(06/26)= 17,000,distinct dates = 2。
++    const filter = page.getByTestId(TESTIDS.borrowFeeStockFilter);
++    await filter.fill("8046");
++    await page.getByRole("option", { name: /8046/ }).click();
++    const summary = page.getByTestId(TESTIDS.borrowFeeStockSummary);
++    await expect(summary).toBeVisible();
++    await expect(summary).toContainText("本日標借合計 3,000 股");
++    await expect(summary).toContainText("本月累計 17,000 股");
++    await expect(summary).toContainText("(2 次)");
++    // 清除選股 → summary 消失(SC-2 後半)
++    await page.getByTestId(TESTIDS.stockFilterClear).click();
++    await expect(summary).toHaveCount(0);
++  });
++
+   test("BF2: reload 後 borrow mode 持久化(SC-1)", async ({ page }) => {
+     // 痛點:App.tsx useState init 讀 localStorage('mode');新 mode 值 'borrow'
+     // 必須通過同一條持久化路徑(N2 只鎖 options,新枚舉值要自己的鎖)。
+diff --git a/frontend/src/components/BorrowFeePage.test.tsx b/frontend/src/components/BorrowFeePage.test.tsx
+index 6a6421b..738900c 100644
+--- a/frontend/src/components/BorrowFeePage.test.tsx
++++ b/frontend/src/components/BorrowFeePage.test.tsx
+@@ -31,6 +31,7 @@ const DATA: BorrowFeeData = {
+     },
+   ],
+   month_counts: { "8046": 2 },
++  month_shares: { "8046": 17000 },
+ };
+ 
+ beforeEach(() => {
+@@ -110,6 +111,7 @@ const MULTI: BorrowFeeData = {
+     },
+   ],
+   month_counts: { "8046": 2, "2434": 1 },
++  month_shares: { "8046": 17000, "2434": 21000 },
+ };
+ 
+ const pickStock = (query: string) => {
+@@ -165,3 +167,68 @@ describe("BorrowFeePage 單檔篩選", () => {
+     expect(screen.queryByTestId("borrow-fee-stock-filter")).toBeNull();
+   });
+ });
++
++// 選股加總 summary(feat/borrow-fee-totals SC-2/3/5)— testid textContent 層級
++// 比對(summary 由多個 span 組成,整句 getByText 會 fragmentation 失敗)。
++describe("BorrowFeePage 選股加總 summary", () => {
++  const WITH_SHARES: BorrowFeeData = MULTI;
++
++  it("選股 → summary 出現:本日合計 = 同日兩筆相加、本月累計 + 次數(千分位)", () => {
++    hookState.data = WITH_SHARES;
++    render(<BorrowFeePage />);
++    expect(screen.queryByTestId("borrow-fee-stock-summary")).toBeNull();
++    pickStock("8046");
++    const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
++    expect(t).toContain("本日標借合計 8,000 股"); // 3,000 + 5,000(同日兩筆)
++    expect(t).toContain("本月累計 17,000 股");
++    expect(t).toContain("(2 次)");
++  });
++
++  it("清除選股 → summary 消失", () => {
++    hookState.data = WITH_SHARES;
++    render(<BorrowFeePage />);
++    pickStock("8046");
++    expect(screen.getByTestId("borrow-fee-stock-summary")).toBeTruthy();
++    fireEvent.click(screen.getByTestId("stock-filter-clear"));
++    expect(screen.queryByTestId("borrow-fee-stock-summary")).toBeNull();
++  });
++
++  it("該檔今日無列(refresh 後消失)→ 本日 0 股、本月累計照顯", () => {
++    hookState.data = WITH_SHARES;
++    const { rerender } = render(<BorrowFeePage />);
++    pickStock("8046");
++    hookState.data = {
++      ...WITH_SHARES,
++      rows: WITH_SHARES.rows.filter((r) => r.stock_id !== "8046"),
++    };
++    rerender(<BorrowFeePage />);
++    const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
++    expect(t).toContain("本日標借合計 0 股");
++    expect(t).toContain("本月累計 17,000 股");
++  });
++
++  it("month_shares 缺該股 key → 累計顯「—」且無「(N 次)」段(design R1 鎖)", () => {
++    hookState.data = {
++      ...WITH_SHARES,
++      month_shares: { "2434": 21000 },
++      month_counts: { "2434": 1 },
++    };
++    render(<BorrowFeePage />);
++    pickStock("8046");
++    const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
++    expect(t).toContain("本月累計 —");
++    expect(t).not.toContain("— 股"); // 缺值不接「股」字
++    expect(t).not.toContain("("); // 次數段整段不 render(?? 1 會捏造次數)
++  });
++
++  it("month_shares map 整個缺(版本 skew)→ 不 crash、顯「—」", () => {
++    const skew = { ...MULTI };
++    delete (skew as Partial<BorrowFeeData>).month_shares; // 模擬舊 backend payload
++    hookState.data = skew;
++    render(<BorrowFeePage />);
++    pickStock("8046");
++    const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
++    expect(t).toContain("本日標借合計 8,000 股");
++    expect(t).toContain("本月累計 —");
++  });
++});
+diff --git a/frontend/src/components/BorrowFeePage.tsx b/frontend/src/components/BorrowFeePage.tsx
+index 04ace53..cadb73a 100644
+--- a/frontend/src/components/BorrowFeePage.tsx
++++ b/frontend/src/components/BorrowFeePage.tsx
+@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactElement } from "react";
+ import { useDaytradeFee } from "../hooks/useDaytradeFee";
+ import { BorrowFeeStockFilter } from "./BorrowFeeStockFilter";
+ import { DaytradeFeeTable } from "./DaytradeFeeTable";
+-import { distinctStocks, type StockOption } from "../lib/borrow-fee-utils";
++import { distinctStocks, formatShares, type StockOption } from "../lib/borrow-fee-utils";
+ 
+ // 券差查詢 — 最上層「券差」mode 頁(App.tsx 4-way ternary + lazy)。
+ // root 用 flex-1 min-h-0(App root 是 flex col;h-full 會下溢 nav 高度被裁切)。
+@@ -73,6 +73,35 @@ export function BorrowFeePage(): ReactElement {
+             />
+           </div>
+         )}
++        {/* 選股加總 summary(borrow-fee-totals SC-2/3):本日 = 該股 as_of 列前端
++            相加(同日多筆合計);本月 = payload month_shares(缺 key 顯「—」,
++            次數段一併不 render — ?? 1 fallback 會捏造次數,design R1)。
++            edge(partial tpex 低估):沿用既有 partial badge,此處刻意不加註。
++            數字用 ink 階層 — 資料非互動態,禁 accent(色彩語意鐵則)。 */}
++        {data && selectedStock && (() => {
++          const dayTotal = rows.reduce((s, r) => s + r.lending_shares, 0);
++          const monthTotal = data.month_shares?.[selectedStock.stock_id] ?? null;
++          const monthCount = data.month_counts?.[selectedStock.stock_id] ?? null;
++          return (
++            <p
++              data-testid="borrow-fee-stock-summary"
++              className="mt-2 text-sm text-ink-muted"
++            >
++              本日標借合計{" "}
++              <span className="text-ink font-medium tabular-nums">
++                {formatShares(dayTotal)}
++              </span>{" "}
++              股<span className="mx-1.5 text-ink-dim">·</span>本月累計{" "}
++              <span className="text-ink font-medium tabular-nums">
++                {monthTotal !== null ? formatShares(monthTotal) : "—"}
++              </span>
++              {monthTotal !== null && " 股"}
++              {monthCount !== null && (
++                <span className="ml-1 text-ink-dim">({monthCount} 次)</span>
++              )}
++            </p>
++          );
++        })()}
+       </header>
+ 
+       {error && (
+diff --git a/frontend/src/hooks/useDaytradeFee.test.ts b/frontend/src/hooks/useDaytradeFee.test.ts
+index cf4b797..6ad7883 100644
+--- a/frontend/src/hooks/useDaytradeFee.test.ts
++++ b/frontend/src/hooks/useDaytradeFee.test.ts
+@@ -15,6 +15,7 @@ const mk = (over?: Partial<BorrowFeeData>): BorrowFeeData => ({
+   as_of_date: "2026-06-26",
+   rows: [],
+   month_counts: {},
++  month_shares: {},
+   ...over,
+ });
+ 
+diff --git a/frontend/src/lib/borrow-fee.ts b/frontend/src/lib/borrow-fee.ts
+index 38a90ce..f6474fa 100644
+--- a/frontend/src/lib/borrow-fee.ts
++++ b/frontend/src/lib/borrow-fee.ts
+@@ -15,6 +15,9 @@ export interface BorrowFeeData {
+   partial?: string[];
+   rows: BorrowFeeRow[];
+   month_counts: Record<string, number>;
++  /** 該股當月 lending_shares 加總(含同日多筆)。key 集 = month_counts;
++   *  取值仍走 optional chain(前後端版本 skew 時 map 可能整個缺)。 */
++  month_shares: Record<string, number>;
+ }
+ 
+ // 高費率標色門檻(%)— backend services/daytrade_fee.py 同名常數,
+diff --git a/frontend/src/lib/changelog.test.ts b/frontend/src/lib/changelog.test.ts
+index afa2de6..b711898 100644
+--- a/frontend/src/lib/changelog.test.ts
++++ b/frontend/src/lib/changelog.test.ts
+@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
+     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
+   });
+ 
+-  it("最新版本是 v0.42.0(泡泡圖多選分點)", () => {
+-    expect(CHANGELOG[0]?.version).toBe("0.42.0");
++  it("最新版本是 v0.43.0(券差選股加總)", () => {
++    expect(CHANGELOG[0]?.version).toBe("0.43.0");
+   });
+ 
+   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
+diff --git a/frontend/src/lib/changelog.ts b/frontend/src/lib/changelog.ts
+index 1202512..b4caf6b 100644
+--- a/frontend/src/lib/changelog.ts
++++ b/frontend/src/lib/changelog.ts
+@@ -39,6 +39,17 @@ export function semverGt(a: string, b: string): boolean {
+ // 版本字串遵循 SemVer 2.0.0 三段式 MAJOR.MINOR.PATCH;pre-1.0 階段 breaking change 也只 bump MINOR
+ // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
+ export const CHANGELOG: VersionEntry[] = [
++  {
++    version: "0.43.0",
++    date: "2026-07-28",
++    changes: [
++      {
++        kind: "feature",
++        scope: "global",
++        text: "券差查詢選定個股後,顯示該檔本日標借合計與本月累計股數(同日多次標借自動加總)",
++      },
++    ],
++  },
+   {
+     version: "0.42.0",
+     date: "2026-07-27",

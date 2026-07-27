@@ -1,0 +1,9 @@
+{
+  "round": 1, "reviewer": "design-reviewer",
+  "findings": {
+    "P0": 0,
+    "P1": [{"id": "R1", "claim": "monthCount ?? 1 在缺 key 時捏造次數,與「—」語意矛盾", "disposition": "accepted, fixed in v2(null → 次數段不 render + 測試鎖)"}],
+    "P2_summary": {"count": 4, "themes": "標點不一致+測試 selector(R2)/edge4 no-op 未留痕(R3)/monthTotalText 未定義(R4)/本月語意未註(R5)", "disposition": "全數修入 v2"}
+  },
+  "exit": "無 P0、P1 已修 → Phase 2"
+}

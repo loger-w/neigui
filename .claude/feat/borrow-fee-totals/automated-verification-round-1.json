@@ -1,0 +1,11 @@
+{
+  "round": 1,
+  "steps": [
+    {"step": "backend pytest", "command": "python -m pytest -q", "exit_code": 0, "result": "689 passed, 1 skipped"},
+    {"step": "backend ruff", "command": "ruff check .", "exit_code": 0, "result": "All checks passed"},
+    {"step": "frontend vitest", "command": "npx vitest run", "exit_code": 0, "result": "985 passed"},
+    {"step": "frontend build", "command": "npm run build", "exit_code": 0, "result": "success"},
+    {"step": "e2e full (cache cleared)", "command": "npm test (playwright)", "exit_code": 0, "result": "61 passed 51.7s(含新 BF4)"}
+  ],
+  "all_green": true
+}

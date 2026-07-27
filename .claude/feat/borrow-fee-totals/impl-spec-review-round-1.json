@@ -1,0 +1,9 @@
+{
+  "round": 1, "reviewer": "impl-spec-reviewer",
+  "findings": {
+    "P0": 0,
+    "P1": [{"id": "R1", "claim": "route 測試是 get_day mock passthrough,真正整合層 tests_e2e/test_api_daytrade_fee.py 未列", "disposition": "accepted, PLAN §1 補(8046==17000 fixture 手算 assertion)"}],
+    "P2_summary": {"count": 4, "themes": "route mock 需同步補欄(R2)/selectors.ts 路徑與必入 TESTIDS(R3)/手算 script 去留(R4)/map 整缺 optional chain(R5)", "disposition": "全數修入 PLAN"}
+  },
+  "exit": "固定 1 輪,修入即進 Phase 3"
+}
