@@ -66,6 +66,19 @@
   正確的失效狀態**(該 baseline 已不可信,腳本拒絕它是 A1 的本意),不是 bug。
 - next-time 剩餘條目全為產品側,非 harness。
 
+## Review 結果(2026-07-27 封批復審,fresh session 對抗式)
+
+**無 P0/P1,3 P2 同日修復,封批通過。** 逐字搬移核(§2 9 條 / §3 12 條 / 分點名稱 2 條)
+零滅失;dispositions 6 rows 新 check 字串逐條驗實(含「rollbacks」↔ feat.md:177 meta-cycle
+條款);`[amendment]` 格式 mod.md ↔ feat-phase0-2 一致;退出軸 mod / refactor /
+review-protocol 三處自洽;A2 通則與 design-reviewer 無兩檔兩說(design.md changelog 義務
+在 feat.md:67,推定成立);機械驗證三項重現。常駐層 smoke test 三問全過(瘦身後自足、
+兩支 conventions skill 在清單、指路行除下列 P2-1 外全指得到)。P2:(1) `.env` 指路行對
+`FRONTEND_ORIGIN` 空指 → 改指 `backend/.env.example`;(2) market-pipeline SKILL.md 懸空
+§3 引用 → 改指 frontend-conventions;(3) 兩支 reviewer agent 輸入段「changelog 摘要」→
+「修復摘要」。裁量:本日 8 commit 算一個攢批時間窗(同意);攢批句能見度候選補強記
+next-time 帶觸發條件,不急改。
+
 ## 還原路徑(復審判定要退回時)
 
 - `357301a`(瘦身):git revert 即完整還原(CLAUDE.md 與兩支 skill 都在 repo 版控內,

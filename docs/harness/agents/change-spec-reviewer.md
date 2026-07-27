@@ -23,7 +23,8 @@ effort: high
 ## 輸入
 
 dispatch prompt 提供:change-spec.md 路徑、Phase 1 現況表(`current-state.md`)路徑;
-**限縮輪**(round 2)時另有上一輪 review JSON 路徑 + 本輪 changelog 摘要。
+**限縮輪**(round 2)時另有上一輪 review JSON 路徑 + 本輪修復摘要(2026-07-27 復審改:
+change-spec.md 無 changelog,對齊 review-protocol A2 用詞)。
 
 ## 限縮輪(round 2 唯一形態,2026-07-27 起同 /feat)
 

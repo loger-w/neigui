@@ -178,7 +178,8 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 ## 2026-07-26 harness /feat 改版的後續(user 指示本輪只動 /feat)
 - (原「/mod /bug /perf /refactor 同步 2026-07-26 實證改版」條目已由 2026-07-27 四 command 同步批解決刪除:round JSON 落檔義務落 review-protocol C 節 + mod.md Phase 5;/mod Phase 3 輪數採 /feat 07-26 制(預設 1 輪 + P0 限縮加輪 — 無 /mod 側 JSON 實證,落檔義務同批補上、日後可實證覆核);graphify query 接入 mod Phase 1 / bug Phase 2 / refactor Phase 5。詳 RATIONALE /mod 節)
 - (原「/auto 表的 /feat 建議行更新」條目已於 2026-07-27 銷帳 — 實查 auto.md 建議表現況即目標狀態:S 級「Phase 8.5 完成」退出條件在 + 07-27 停等註、L 級「Phase 0 對齊價值高」註記在;07-26/07-27 兩批改版已順路完成)
-- [ ] dispositions.json 過期 rows(見 RATIONALE 2026-07-26 節)— 若還要重跑 harness_load_estimate 的 SC-3 驗證先更新
+- (原「dispositions.json 過期 rows」條目已由 2026-07-27 收件匣 C1(15e14f8)解決刪除:6 條 rows 更新為 07-26 後繼詞彙,verify-dispositions n=0;封批復審逐條驗過新 check 字串鎖住原機制)
+- **Harness 攢批句能見度**(2026-07-27 封批復審裁量):攢批強制句落點 chore.md 步驟 1 + REVIEW-close 檔頭 + RATIONALE 三處,不走 /chore 的 harness session 可能看不到;候選 = user CLAUDE.md 檔頭 note block 補半行(代價:常駐 bytes vs 9.5× cache 失效)。觸發重評估:出現一次「非緊急 harness 修補未攢批、逐日零星 commit」的實例時。
 - graphify docs 語意層:**2026-07-27 評估後結案不建**。量測:docs/ 140 檔 ~631k tok(其中 docs/specs 歷史文件占 ~328k、docs/harness ~99k)+ .claude/skills ~16k — LLM 抽取一次性成本高,且 harness docs 本週 5 commit 的改動頻率會讓語意層立即過期(--update 重抽成本每批復發);harness 文件已有 RATIONALE / 交接檔 / next-time 密集交叉引用,grep 導航實測夠用,歷史 specs 語意圖化價值低。graph 維持 code-only(381 檔,3227 nodes;640 dangling edges 為 AST 對外部 import 正常樣態)。觸發重評估:grep 導航實際答不了跨文件關係問題、或 docs 進入低頻改動期時
 - (原「/mod 改版時一併修 07-26 掃描 P1×2 + P2 清單」條目已由 2026-07-27 四 command 同步批解決刪除:inline 完工自查 checklist 已刪、輪數三檔兩說已統一;scratchpad P2 清單實存並清點 — #10 #11 #13 #14 #17 #21 #23 本批修,#18 #19 #20 moot(skill 複製後引用有效),餘均已由先前批次修)
 - (原「評估 sync-harness-mirror 是否納入 6 支複製 skill」條目已於 2026-07-27 user 拍板 C2 解決刪除:6 支改寫件納入 mirror(各目錄 *.md,19 檔入鏡);grilling / grill-me 原文照抄件刻意不納 — 災難還原重抓 raw 即可)

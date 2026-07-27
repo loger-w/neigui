@@ -31,7 +31,7 @@ User-global `~/.claude/CLAUDE.md` 的鐵則(觀察優先 / Scope / 測試 / 證�
 
 E2E 歸屬判準(動哪個 spec / 豁免類型 / `@live` 規則)在 skill `e2e-conventions`(2026-07-06 自本檔移入)— `/feat` Phase 0 / `/mod` Phase 2 **決定 e2e 歸屬前必讀**,結論寫進 brainstorm.md / change-spec.md,TDD 階段同步動 spec。
 
-`.env` 需要 `FINMIND_TOKEN`(必填,否則 `FinMindClient.__init__` raise);optional 變數與配額真相見 skill `finmind-conventions`。
+`.env` 需要 `FINMIND_TOKEN`(必填,否則 `FinMindClient.__init__` raise);optional 變數見 `backend/.env.example`,配額真相見 skill `finmind-conventions`。
 
 ---
 
