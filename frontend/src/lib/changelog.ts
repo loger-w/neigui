@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.44.0",
+    date: "2026-07-28",
+    changes: [
+      {
+        kind: "feature",
+        scope: "global",
+        text: "券差查詢改為左右分欄:右側新增本日借券統計表,不必搜尋即可看到每檔當日借券張數,並由多到少排列",
+      },
+    ],
+  },
+  {
     version: "0.43.0",
     date: "2026-07-28",
     changes: [
