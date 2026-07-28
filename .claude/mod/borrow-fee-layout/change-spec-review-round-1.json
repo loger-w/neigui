@@ -1,0 +1,14 @@
+{
+  "round": 1,
+  "reviewer": "change-spec-reviewer (a337d71ed954ea7c2)",
+  "date": "2026-07-28",
+  "findings": [
+    {"id": "R1", "severity": "P1", "summary": "diff spec 漏列 e2e/helpers/selectors.ts(TESTIDS registry no-magic-string 契約)", "triage": "accepted", "resolution": "diff spec 增列 selectors.ts 🟢 節(borrowDayStats / dayStatRow 常數)"},
+    {"id": "R2", "severity": "P1", "summary": "「全部 🟢」與 SC-4 捲動結構改動矛盾 — 既有頁 layout 改動應標 🔴 獨立 commit", "triage": "accepted", "resolution": "BorrowFeePage 分欄/捲動容器整合改標 🔴 獨立 commit;utils / 新元件 / selectors 維持 🟢"},
+    {"id": "R3", "severity": "P2", "summary": "SC-5 的 rows 指涉不明(篩選後變數同名)", "triage": "accepted", "resolution": "SC-5 改寫為 data.rows 全集語意 + 兩態明分"},
+    {"id": "R4", "severity": "P2", "summary": "mobile 堆疊時空態 h-full 置中失去高度基準", "triage": "accepted", "resolution": "diff spec 註明統計表並存時空態容器 min-h-40、全集空維持 h-full 置中"},
+    {"id": "R5", "severity": "P2", "summary": "formatLots 捨入/千分位規則欠鎖", "triage": "accepted", "resolution": "鎖 toLocaleString('en-US', {maximumFractionDigits: 1}) + 測試帶具體輸入輸出對"},
+    {"id": "R6", "severity": "P2", "summary": "右欄寬 / gap 是 placeholder 未回填", "triage": "accepted", "resolution": "回填 lg:w-72 + lg:gap-x-6 並標 [auto-default],附 1280 viewport 寬度驗算"}
+  ],
+  "exit": "無 P0;P1 兩條均 accepted 並就地修 spec(標 [amendment 2026-07-28])→ 不觸發限縮加輪"
+}

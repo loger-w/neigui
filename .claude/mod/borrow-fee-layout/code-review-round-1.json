@@ -1,0 +1,14 @@
+{
+  "round": 1,
+  "tier": "medium",
+  "date": "2026-07-28",
+  "lenses": ["correctness+whitelist(sonnet)", "test-coverage(sonnet)"],
+  "diff": "review-diff.txt(main...HEAD @5412669 時點)",
+  "findings": [
+    {"id": "F1", "severity": "P1", "lens": "correctness", "summary": "min-h-40 無 breakpoint 前綴,桌面篩選 0 列態失去整欄垂直置中(R4 理由為 mobile 限定)", "triage": "accepted", "resolution": "hasDayRows 分支改 min-h-40 lg:min-h-0 lg:h-full(commit ed52289)"},
+    {"id": "TC-1", "severity": "P1", "lens": "test-coverage", "summary": "aggregateDayStats「name 取首見」未被真鎖(同股測資同名,覆蓋式實作也綠)", "triage": "accepted", "resolution": "同股第二筆改不同 name,assertion 鎖首見(commit eb60847)"},
+    {"id": "TC-2", "severity": "P2", "lens": "test-coverage", "summary": "formatLots 缺 千分位+小數並存 / <1 張 / 捨入 tie 邊界", "triage": "accepted", "resolution": "補 1234567→1,234.6 / 500→0.5 / 1250→1.3 三案例(commit eb60847)"}
+  ],
+  "whitelist_check": "correctness lens 對照 change-spec.md 46-61 行逐條;僅 F1 命中(空態置中屬白名單第 5 條視覺語意),其餘 8 條無破壞發現",
+  "exit": "P0=0;P1 兩條均 accepted 修復;P2 一條修復。收斂。"
+}
