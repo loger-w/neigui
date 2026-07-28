@@ -1,0 +1,12 @@
+{
+  "round": 1,
+  "date": "2026-07-28",
+  "lenses": ["dual-focus: correctness + whitelist(單 finder,S 級)"],
+  "findings": [
+    {"id": "P2-1", "severity": "P2", "problem": "殘留 flag 可吞一次鍵盤啟動(pointerdown 無配對 click 後,Tab+Enter 的 click 無 pointerdown 前置)", "resolution": "accepted-as-is — 窄路徑、下個 pointer 手勢自癒"},
+    {"id": "P2-2", "severity": "P2", "problem": "closeTimer 150ms 窗內快速連兩擊皆被吞", "resolution": "accepted-as-is — 該窗內下拉視覺仍開,dismiss 語意可辯護"},
+    {"id": "P2-3", "severity": "P2", "problem": "150ms 窗內 activeElement 若是 manual-range input 會被誤 blur", "resolution": "accepted-as-is — 競態窗極窄且無資料損失"},
+    {"id": "P2-4", "severity": "P2", "problem": "spec Diff 級節殘留 amendment 前的「handleBubbleClick 開頭 guard」描述", "resolution": "accepted — spec 一行修正"}
+  ],
+  "summary": "P0=0 P1=0 P2=4(1 doc fixed / 3 accepted-as-is);白名單 R1 連續加選 / 單看 / brush / mobile / E39 / E40 逐項確認未破壞"
+}

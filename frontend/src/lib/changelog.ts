@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.46.1",
+    date: "2026-07-28",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "泡泡圖:分點搜尋下拉開啟時,點圖表第一下只會關閉下拉,不再誤觸清空或變更已選分點(再點一下才生效)",
+      },
+    ],
+  },
+  {
     version: "0.46.0",
     date: "2026-07-28",
     changes: [
