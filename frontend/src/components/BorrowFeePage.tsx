@@ -6,9 +6,14 @@ import { DaytradeFeeTable } from "./DaytradeFeeTable";
 import { distinctStocks, formatShares, type StockOption } from "../lib/borrow-fee-utils";
 import { cn } from "../lib/utils";
 
+interface Props {
+  /** 看籌碼跳轉(App handleSymbolPick):切 equity mode + 帶入該股。 */
+  onSymbolPick?: (stockId: string) => void;
+}
+
 // 券差查詢 — 最上層「券差」mode 頁(App.tsx 4-way ternary + lazy)。
 // root 用 flex-1 min-h-0(App root 是 flex col;h-full 會下溢 nav 高度被裁切)。
-export function BorrowFeePage(): ReactElement {
+export function BorrowFeePage({ onSymbolPick }: Props = {}): ReactElement {
   const { data, loading, error, refresh, noTradingDay } = useDaytradeFee();
   const [selectedStock, setSelectedStock] = useState<StockOption | null>(null);
 
@@ -77,38 +82,69 @@ export function BorrowFeePage(): ReactElement {
             />
           </div>
         )}
-        {/* 選股加總 summary(borrow-fee-totals SC-2/3):本日 = 該股 as_of 列前端
-            相加(同日多筆合計);本月 = payload month_shares(缺 key 顯「—」,
-            次數段一併不 render — ?? 1 fallback 會捏造次數,design R1)。
-            edge(partial tpex 低估):沿用既有 partial badge,此處刻意不加註。
+        {/* 選股加總 summary(borrow-fee-totals SC-2/3;polish SC-2 改 data 載入後
+            常駐):本日 = 該股 as_of 列前端相加(同日多筆合計);本月 = payload
+            month_shares(缺 key 顯「—」,次數段一併不 render — ?? 1 fallback 會
+            捏造次數,design R1)。未選股顯占位「—」— 區塊不增刪,header 高度
+            零跳動;「看籌碼」鈕常駐,未選股 disabled(少一種跳動)。
             數字用 ink 階層 — 資料非互動態,禁 accent(色彩語意鐵則)。 */}
-        {data && selectedStock && (() => {
-          const dayTotal = rows.reduce((s, r) => s + r.lending_shares, 0);
-          const monthTotal = data.month_shares?.[selectedStock.stock_id] ?? null;
+        {data && (() => {
+          const dayTotal = selectedStock
+            ? rows.reduce((s, r) => s + r.lending_shares, 0)
+            : null;
+          const monthTotal = selectedStock
+            ? data.month_shares?.[selectedStock.stock_id] ?? null
+            : null;
           // 次數綁定累計非 null(Phase 4 F1):month_shares 整缺(版本 skew)時
           // month_counts 是舊欄位仍在,「—(N 次)」是數字與次數矛盾的畫面。
           const monthCount =
-            monthTotal !== null
+            selectedStock && monthTotal !== null
               ? data.month_counts?.[selectedStock.stock_id] ?? null
               : null;
           return (
-            <p
-              data-testid="borrow-fee-stock-summary"
-              className="mt-2 text-sm text-ink-muted"
-            >
-              本日標借合計{" "}
-              <span className="text-ink font-medium tabular-nums">
-                {formatShares(dayTotal)}
-              </span>{" "}
-              股<span className="mx-1.5 text-ink-dim">·</span>本月累計{" "}
-              <span className="text-ink font-medium tabular-nums">
-                {monthTotal !== null ? formatShares(monthTotal) : "—"}
-              </span>
-              {monthTotal !== null && " 股"}
-              {monthCount !== null && (
-                <span className="ml-1 text-ink-dim">({monthCount} 次)</span>
-              )}
-            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p
+                data-testid="borrow-fee-stock-summary"
+                className="text-sm text-ink-muted"
+              >
+                本日標借合計{" "}
+                {dayTotal !== null ? (
+                  <>
+                    <span className="text-ink font-medium tabular-nums">
+                      {formatShares(dayTotal)}
+                    </span>{" "}
+                    股
+                  </>
+                ) : (
+                  <span className="text-ink-dim">—</span>
+                )}
+                <span className="mx-1.5 text-ink-dim">·</span>本月累計{" "}
+                {monthTotal !== null ? (
+                  <>
+                    <span className="text-ink font-medium tabular-nums">
+                      {formatShares(monthTotal)}
+                    </span>{" "}
+                    股
+                  </>
+                ) : (
+                  <span className="text-ink-dim">—</span>
+                )}
+                {monthCount !== null && (
+                  <span className="ml-1 text-ink-dim">({monthCount} 次)</span>
+                )}
+              </p>
+              <button
+                type="button"
+                data-testid="jump-to-equity"
+                disabled={!selectedStock}
+                onClick={() => {
+                  if (selectedStock) onSymbolPick?.(selectedStock.stock_id);
+                }}
+                className="px-2 py-0.5 pointer-coarse:min-h-11 text-xs border border-line text-ink-muted hover:text-ink hover:border-accent disabled:opacity-50 disabled:cursor-default transition-colors cursor-pointer"
+              >
+                看籌碼
+              </button>
+            </div>
           );
         })()}
       </header>
@@ -123,7 +159,9 @@ export function BorrowFeePage(): ReactElement {
           單一捲動(明細先)。統計表吃全集 data.rows — 不受單檔篩選影響(SC-3),
           全集空才整個不 render(SC-5)。 */}
       <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden lg:flex lg:gap-x-6 px-4 sm:px-6 py-3">
-        <div className={cn("lg:flex-1 lg:min-w-0 lg:overflow-y-auto", !hasDayRows && "h-full")}>
+        {/* lg:max-w-4xl:欄寬 = 表寬上限,scrollbar 貼表格右緣(polish SC-1);
+            剩餘空白移統計欄右側,兩表相鄰 */}
+        <div className={cn("lg:flex-1 lg:min-w-0 lg:max-w-4xl lg:overflow-y-auto", !hasDayRows && "h-full")}>
           {data && rows.length > 0 ? (
             <div className="max-w-4xl">
               <DaytradeFeeTable rows={rows} monthCounts={data.month_counts} />
