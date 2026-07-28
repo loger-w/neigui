@@ -193,3 +193,9 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 - (原「/mod 一併補 e2e 意圖對齊三槓桿」條目已由 2026-07-27 四 command 同步批解決刪除:mod.md Phase 2 補「畫面可指認」表述、Phase 8 補收尾 UI 驗收點、Phase 5 補白名單對照必讀;subsumed 限縮本就免補)
 - (原「/mod 一併議 grilling 分流接入」條目已由 2026-07-27 四 command 同步批解決刪除:mod.md Phase 2 補分流句(判準複用 feat-phase0-2 判準節、/auto 不豁免、判定記錄落 change-spec.md);auto.md 例外句 / 必停清單 / 建議表同步擴 /mod;load-manifest mod-M 補條件條目)
 - (原「四 command 同步批完成後提醒 user 開 CLAUDE.md 瘦身輪」條目已於 2026-07-27 同日執行刪除:§2 → 新 skill backend-conventions、§3 + 分點名稱細節 → frontend-conventions、§1 壓縮;14,015 → 10,354 bytes(−26.1%),量法 `Path('CLAUDE.md').stat().st_size` 前後對照)
+
+## From /mod bubble-chart-ux-polish(2026-07-28)
+
+- **BrokerSearch 下拉 買/賣欄固定 44px 大數字溢位**:grid-cols-[12px_1fr_50px_44px_44px],≥6 位數(含千分位)會擠壓相鄰欄。user 未點名,獨立小修。觸發:下拉數字視覺被反映時
+- **單看時「查看於籌碼總覽」鈕暫隱** — 若要補「單看單跳」(查看該分點於籌碼總覽),入口與 payload(activeSolo.id)已就緒,只差 UI 決策。觸發:user 在單看中找跳轉鈕時
+- **hover tooltip 補該分點當日總買賣超**(brainstorm 拍板未採選項 B,單看模式已覆蓋主需求)。觸發:user 反映 hover 就想看總量、不想點擊時
