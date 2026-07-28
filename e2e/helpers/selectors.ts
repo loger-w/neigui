@@ -68,6 +68,11 @@ export const TESTIDS = {
   // 泡泡圖多選分點(feat/bubble-multi-broker E38)
   brokerChip: "broker-chip",
   brokerChipsClear: "broker-chips-clear",
+  // 泡泡圖單看 + header 空間預留(mod/bubble-chart-ux-polish E39/E40)
+  bubbleSoloBadge: "bubble-solo-badge",
+  bubbleSoloClear: "bubble-solo-clear",
+  bubbleStatsRow: "bubble-stats-row",
+  bubbleMainOverlay: "bubble-main-overlay",
   // 泡泡圖過濾清單(BB-1 mod/batch-ui-update)
   bubbleBlocklistTrigger: "bubble-blocklist-trigger",
   bubbleBlocklistCandidate: "bubble-blocklist-candidate",

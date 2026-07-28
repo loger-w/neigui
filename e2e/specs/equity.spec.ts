@@ -472,6 +472,83 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     );
   });
 
+  test("E39: 泡泡圖單看模式 — 點已選泡泡切單分點統計、組合不動;點空白兩段式(mod/bubble-chart-ux-polish SC-3/5)", async ({ page }) => {
+    // 痛點:多選建好的篩選組合一點就壞(舊 toggle 移除)。單看鏈 =
+    // hitTest → handleBubbleClick 已選分支 → solo → effectiveIds 統計/明細切換。
+    // fixture 陷阱(spec review R2/R2-1 寫死):三分點同價同量泡泡完全重合,
+    // hitTest 平手取 trades 序位第一 → solo 目標只能斷言分點001;circle
+    // pointerEvents=none → 必須 boundingBox + page.mouse.click 打 overlay。
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    await page.getByPlaceholder("搜尋分點...").fill("分點");
+    await page
+      .getByTestId(TESTIDS.brokerSearchItem)
+      .filter({ hasText: "分點001" })
+      .click();
+    await page
+      .getByTestId(TESTIDS.brokerSearchItem)
+      .filter({ hasText: "分點002" })
+      .click();
+    await page.keyboard.press("Escape"); // 關下拉(R2-1:避免座標點擊被 listbox 截走)
+    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(2);
+    const totals = page.getByTestId(TESTIDS.bubbleBrokerTotals);
+    await expect(totals).toContainText("買 200 張");
+    // buy 側 circle(圖表右半,遠離下拉覆蓋區)中心點擊 → 單看分點001
+    const buyCircle = page.locator('circle[data-broker-id="BROKER001"]').first();
+    const box = (await buyCircle.boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.getByTestId(TESTIDS.bubbleSoloBadge)).toContainText("分點001");
+    await expect(totals).toContainText("買 100 張");
+    await expect(totals).toContainText("1.10 億");
+    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(2); // 組合不動
+    await expect(page.getByTestId(TESTIDS.bubbleJumpToOverview)).toHaveCount(0); // 單看暫隱
+    // 再點同泡泡 → 回整組
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.getByTestId(TESTIDS.bubbleSoloBadge)).toHaveCount(0);
+    await expect(totals).toContainText("買 200 張");
+    // 點空白兩段式:單看中點空白只解單看;無單看點空白才全清
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2); // 進單看
+    await expect(page.getByTestId(TESTIDS.bubbleSoloBadge)).toBeVisible();
+    const overlay = page.getByTestId(TESTIDS.bubbleMainOverlay);
+    const oBox = (await overlay.boundingBox())!;
+    const blankX = oBox.x + oBox.width - 8;
+    const blankY = oBox.y + 8; // 右上角無泡泡區(單一價位帶在中段)
+    await page.mouse.click(blankX, blankY);
+    await expect(page.getByTestId(TESTIDS.bubbleSoloBadge)).toHaveCount(0);
+    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(2); // 組合仍在
+    await page.mouse.click(blankX, blankY);
+    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(0); // 第二段全清
+  });
+
+  test("E40: header 空間預留 — 搜尋下拉開啟時買賣統計完整可見不被遮擋(SC-1/2)", async ({ page }) => {
+    // 痛點:舊版單一 flex-wrap header,下拉開啟直接蓋住統計列
+    // (repro-six-selected-1536.png)。鎖 bounding box 不相交(功能級,免 visual baseline)。
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    await page.getByPlaceholder("搜尋分點...").fill("分點");
+    await page
+      .getByTestId(TESTIDS.brokerSearchItem)
+      .filter({ hasText: "分點001" })
+      .click();
+    await page
+      .getByTestId(TESTIDS.brokerSearchItem)
+      .filter({ hasText: "分點002" })
+      .click();
+    // R1:pick 後下拉維持開啟 — 此時統計必須仍完整可見
+    const listbox = page.locator("#broker-search-listbox");
+    await expect(listbox).toBeVisible();
+    const totals = page.getByTestId(TESTIDS.bubbleBrokerTotals);
+    await expect(totals).toContainText("買 200 張");
+    const lBox = (await listbox.boundingBox())!;
+    const tBox = (await totals.boundingBox())!;
+    const intersects =
+      lBox.x < tBox.x + tBox.width &&
+      lBox.x + lBox.width > tBox.x &&
+      lBox.y < tBox.y + tBox.height &&
+      lBox.y + lBox.height > tBox.y;
+    expect(intersects).toBe(false);
+  });
+
   test("E25: 換股載入時泡泡圖 loading badge 出現後消失(A5)", async ({ page }) => {
     // 痛點:loading feedback 鏈 = bubbleHook.loading → App loading prop →
     // badge render。FAKE fixture 回太快窗口極窄 → route gate 扣住 response

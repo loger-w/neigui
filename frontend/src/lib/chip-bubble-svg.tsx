@@ -148,6 +148,10 @@ export interface BubbleChartProps {
    *  軸(prices / volumes)仍用全 trades 計算,filter 後泡泡位置不變,
    *  UX 感受為「淡出」而非「重排」。 */
   priceRange?: { min: number; max: number } | null;
+  /** SC-3(mod/bubble-chart-ux-polish):單看分點 — 該分點泡泡改 ink 聚焦外框
+   *  並 reorder 至最後 render(重合時不被其他選中框遮蓋)。hitTest 用的
+   *  bubblesRef 維持原序(平手判定不變)。不傳 / null = 現行為。 */
+  soloBrokerId?: string | null;
 }
 
 // C7 A1 (🟢): Y 軸 brush drag min threshold(px)。防手誤與單擊誤觸。
@@ -163,7 +167,14 @@ interface Bubble {
   brokerId: string;
   key: string;
   payload: BubbleHoverPayload;
+  /** SC-3 單看聚焦(render 排序 + data-solo 錨點用)。 */
+  solo: boolean;
 }
+
+// SC-3 單看聚焦外框:ink 色(對齊 --color-ink token 值),取代 palette /
+// 買賣 stroke(identity 由 header badge + chips 圓點補足,review R6 拍板)。
+const SOLO_STROKE = "#ede4d3";
+const SOLO_STROKE_WIDTH = 2.5;
 
 export const BubbleChartSvg = memo(function BubbleChartSvg({
   trades,
@@ -177,6 +188,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   onYBrush,
   brushRange,
   priceRange,
+  soloBrokerId,
 }: BubbleChartProps) {
   // --- All hooks MUST be called before any conditional return ---
 
@@ -572,17 +584,22 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   let idx = 0;
   for (const t of renderTrades) {
     const ring = ringStroke(t.broker_id);
+    const isSolo = soloBrokerId != null && t.broker_id === soloBrokerId;
+    const stroke = (side: "buy" | "sell"): string =>
+      isSolo ? SOLO_STROKE : ring ?? (side === "buy" ? COLOR.buyStroke : COLOR.sellStroke);
+    const strokeWidth = isSolo ? SOLO_STROKE_WIDTH : ring ? 2 : 1;
     if (t.buy > threshold) {
       bubbles.push({
         cx: centerX + (t.buy / volMax) * halfW,
         cy: sY(t.price),
         r: bubbleRadius(t.buy, maxVolume, MIN_R, MAX_R),
         fill: COLOR.buyFill,
-        stroke: ring ?? COLOR.buyStroke,
-        strokeWidth: ring ? 2 : 1,
+        stroke: stroke("buy"),
+        strokeWidth,
         brokerId: t.broker_id,
         key: `b-${t.broker_id}-${t.price}-${idx}`,
         payload: { broker: t.broker, brokerId: t.broker_id, volume: t.buy, price: t.price, side: "buy" },
+        solo: isSolo,
       });
     }
     if (t.sell > threshold) {
@@ -591,17 +608,24 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         cy: sY(t.price),
         r: bubbleRadius(t.sell, maxVolume, MIN_R, MAX_R),
         fill: COLOR.sellFill,
-        stroke: ring ?? COLOR.sellStroke,
-        strokeWidth: ring ? 2 : 1,
+        stroke: stroke("sell"),
+        strokeWidth,
         brokerId: t.broker_id,
         key: `s-${t.broker_id}-${t.price}-${idx}`,
         payload: { broker: t.broker, brokerId: t.broker_id, volume: t.sell, price: t.price, side: "sell" },
+        solo: isSolo,
       });
     }
     idx++;
   }
 
+  // hitTest 吃原序(平手判定不變 —「再點同泡泡解除單看」不被 reorder 翻轉);
+  // render 才把 solo 泡泡排最後(review R6-1 painter's order)。
   bubblesRef.current = bubbles;
+  const renderBubbles: Bubble[] =
+    soloBrokerId != null
+      ? [...bubbles.filter((b) => !b.solo), ...bubbles.filter((b) => b.solo)]
+      : bubbles;
 
   // Layout snapshot for crosshair reverse-mapping (pixel → price / volume)
   layoutRef.current = {
@@ -713,7 +737,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
       )}
 
       {/* Bubbles — no per-element event handlers; overlay rect does hit testing */}
-      {bubbles.map((b) => (
+      {renderBubbles.map((b) => (
         <circle
           key={b.key}
           cx={b.cx}
@@ -723,6 +747,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           stroke={b.stroke}
           strokeWidth={b.strokeWidth}
           data-broker-id={b.brokerId}
+          data-solo={b.solo ? "true" : undefined}
           pointerEvents="none"
         />
       ))}

@@ -623,6 +623,7 @@ export function ChipBubbleView({
               onYBrush={isMobile ? undefined : handleYBrush}
               brushRange={brushRange}
               priceRange={rangeActiveForFilter ? brushRange : null}
+              soloBrokerId={activeSolo?.id ?? null}
             />
           ) : null}
           {/* CH-1 R6 case 2: 聚焦分點當日無成交 — 維持選中,泡泡圖照常
