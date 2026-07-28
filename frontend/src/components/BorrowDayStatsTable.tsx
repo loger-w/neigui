@@ -1,6 +1,7 @@
 import { useMemo, type ReactElement } from "react";
 import type { BorrowFeeRow } from "../lib/borrow-fee";
 import { aggregateDayStats, formatLots } from "../lib/borrow-fee-utils";
+import { cn } from "../lib/utils";
 
 interface Props {
   rows: BorrowFeeRow[];
@@ -34,18 +35,28 @@ export function BorrowDayStatsTable({ rows, onPickStock }: Props): ReactElement 
               key={s.stock_id}
               data-testid="day-stat-row"
               data-stock-id={s.stock_id}
-              tabIndex={0}
-              aria-label={`篩選 ${s.stock_id} ${s.name}`}
-              onClick={() => onPickStock?.(s.stock_id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  // Space 預設捲動頁面 — 統計欄本身 overflow-y-auto,不擋會
-                  // 選股同時跳捲(spec R2)
-                  e.preventDefault();
-                  onPickStock?.(s.stock_id);
-                }
-              }}
-              className="border-b border-line cursor-pointer hover:bg-line-strong/30 focus-visible:bg-line-strong/30 transition-colors"
+              // 互動 affordance 綁 handler 存在(review BF-P2-1):唯讀 caller
+              // 不該看到可點樣式 / 吃掉 Space
+              tabIndex={onPickStock ? 0 : undefined}
+              aria-label={onPickStock ? `篩選 ${s.stock_id} ${s.name}` : undefined}
+              onClick={onPickStock ? () => onPickStock(s.stock_id) : undefined}
+              onKeyDown={
+                onPickStock
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        // Space 預設捲動頁面 — 統計欄本身 overflow-y-auto,
+                        // 不擋會選股同時跳捲(spec R2)
+                        e.preventDefault();
+                        onPickStock(s.stock_id);
+                      }
+                    }
+                  : undefined
+              }
+              className={cn(
+                "border-b border-line transition-colors",
+                onPickStock &&
+                  "cursor-pointer hover:bg-line-strong/30 focus-visible:bg-line-strong/30",
+              )}
             >
               <td className="py-1.5 pr-2 text-ink font-medium">{s.stock_id}</td>
               <td className="py-1.5 px-2 text-ink-muted">{s.name}</td>
