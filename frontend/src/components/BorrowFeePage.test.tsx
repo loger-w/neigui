@@ -235,3 +235,48 @@ describe("BorrowFeePage 選股加總 summary", () => {
     expect(t).not.toContain("(");
   });
 });
+
+// 本日借券統計常駐右表(mod/borrow-fee-layout SC-1/3/5)— 免搜尋即見全集
+// 統計;單檔篩選只動左明細;空態兩分(全集空 vs 篩選 0 列)。
+describe("BorrowFeePage 本日借券統計", () => {
+  it("未選股即渲染統計表,列數 = distinct stocks、張數 desc(SC-1)", () => {
+    hookState.data = MULTI;
+    render(<BorrowFeePage />);
+    expect(screen.getByTestId("borrow-day-stats")).toBeTruthy();
+    const statRows = screen.getAllByTestId("day-stat-row");
+    // 2434 = 21,000 股 > 8046 = 3,000+5,000 = 8,000 股
+    expect(statRows.map((r) => r.getAttribute("data-stock-id"))).toEqual([
+      "2434",
+      "8046",
+    ]);
+  });
+
+  it("選股後統計表仍為全集列數(SC-3:篩選只動左明細)", () => {
+    hookState.data = MULTI;
+    render(<BorrowFeePage />);
+    pickStock("8046");
+    expect(screen.getAllByTestId("fee-row").length).toBe(2);
+    expect(screen.getAllByTestId("day-stat-row").length).toBe(2);
+  });
+
+  it("data.rows 全集空 → 統計表不 render + 本月無券差資料(SC-5)", () => {
+    hookState.data = { ...MULTI, rows: [], month_counts: {}, month_shares: {} };
+    render(<BorrowFeePage />);
+    expect(screen.queryByTestId("borrow-day-stats")).toBeNull();
+    expect(screen.getByText("本月無券差資料")).toBeTruthy();
+  });
+
+  it("篩選 0 列但全集非空 → 統計表仍在 + 該檔今日無券差資料(SC-5)", () => {
+    hookState.data = MULTI;
+    const { rerender } = render(<BorrowFeePage />);
+    pickStock("8046");
+    hookState.data = {
+      ...MULTI,
+      rows: MULTI.rows.filter((r) => r.stock_id !== "8046"),
+    };
+    rerender(<BorrowFeePage />);
+    expect(screen.getByText("該檔今日無券差資料")).toBeTruthy();
+    expect(screen.getByTestId("borrow-day-stats")).toBeTruthy();
+    expect(screen.getAllByTestId("day-stat-row").length).toBe(1);
+  });
+});
