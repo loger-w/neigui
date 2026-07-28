@@ -42,6 +42,9 @@ export const TESTIDS = {
   // 選股加總 summary(feat/borrow-fee-totals BF4)
   borrowFeeStockSummary: "borrow-fee-stock-summary",
   stockFilterClear: "stock-filter-clear",
+  // 本日借券統計常駐右表(mod/borrow-fee-layout BF5)
+  borrowDayStats: "borrow-day-stats",
+  dayStatRow: "day-stat-row",
   // equity 權證 tab(feat/warrant-selector)
   warrantRow: "warrant-row",
   warrantKindBadge: "warrant-kind-badge",
