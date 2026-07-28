@@ -230,3 +230,5 @@ circle cx/cy 直擊 + offsetHeight stub,見 frontend-testing)
 2. 🔴 fix(frontend): 泡泡/明細列點已選分點改單看模式 + 點空白兩段式(SC-3/4/5)[red→green]
 3. 🟢 feat(frontend): 單看泡泡聚焦外框 + E39/E40 e2e(SC-3 視覺)
 4. chore: changelog 0.46.0 + next-time 收割
+
+self_review_head: c8d765e4c89bb6e527c5afd7b08c2511d1bc0e7d
