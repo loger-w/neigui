@@ -88,3 +88,14 @@ describe("BorrowDayStatsTable 列點擊", () => {
     fireEvent.click(screen.getAllByTestId("day-stat-row")[0] as HTMLElement);
   });
 });
+
+// review TC-4:affordance class 正向鎖(與色彩負向鎖對稱)— 重構誤刪可抓。
+describe("BorrowDayStatsTable 列 affordance", () => {
+  it("row className 含 cursor-pointer 與 hover/focus 背景階", () => {
+    render(<BorrowDayStatsTable rows={ROWS} onPickStock={() => {}} />);
+    const cls = (screen.getAllByTestId("day-stat-row")[0] as HTMLElement).className;
+    expect(cls).toContain("cursor-pointer");
+    expect(cls).toContain("hover:bg-line-strong/30");
+    expect(cls).toContain("focus-visible:bg-line-strong/30");
+  });
+});

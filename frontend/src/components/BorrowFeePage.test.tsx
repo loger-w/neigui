@@ -65,10 +65,17 @@ describe("BorrowFeePage", () => {
     expect(screen.getByText(/上櫃資料缺/)).toBeTruthy();
   });
 
-  it("rows 空顯示空狀態", () => {
+  it("rows 空顯示空狀態;summary 仍常駐占位、看籌碼 disabled(review TC-3)", () => {
     hookState.data = { ...DATA, rows: [], month_counts: {} };
     render(<BorrowFeePage />);
     expect(screen.getByText("本月無券差資料")).toBeTruthy();
+    // SC-2「data 載入後常駐」唯一的全集空分支:區塊照樣在
+    expect(
+      screen.getByTestId("borrow-fee-stock-summary").textContent,
+    ).toContain("本日標借合計 —");
+    expect(
+      (screen.getByTestId("jump-to-equity") as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it("error 顯示錯誤列", () => {
@@ -197,6 +204,10 @@ describe("BorrowFeePage 選股加總 summary", () => {
     const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
     expect(t).toContain("本日標借合計 —");
     expect(t).not.toContain("8,000");
+    // 月段兩分支一併回占位(review TC-1:day/month/count 是三獨立分支)
+    expect(t).toContain("本月累計 —");
+    expect(t).not.toContain("17,000");
+    expect(t).not.toContain("(");
   });
 
   it("該檔今日無列(refresh 後消失)→ 本日 0 股、本月累計照顯", () => {
@@ -316,5 +327,15 @@ describe("BorrowFeePage 統計列連動與看籌碼", () => {
     expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
     expect(jump).toHaveBeenCalledWith("8046");
+  });
+});
+
+// review TC-2:與 BorrowDayStatsTable「無 handler 不炸」對稱的覆蓋。
+describe("BorrowFeePage 看籌碼無 handler", () => {
+  it("未傳 onSymbolPick、選股後點擊不拋錯", () => {
+    hookState.data = MULTI;
+    render(<BorrowFeePage />);
+    pickStock("8046");
+    fireEvent.click(screen.getByTestId("jump-to-equity"));
   });
 });
