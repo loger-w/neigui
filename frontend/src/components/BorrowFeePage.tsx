@@ -132,8 +132,9 @@ export function BorrowFeePage(): ReactElement {
             <div
               className={cn(
                 "flex items-center justify-center text-sm text-ink-dim",
-                // 統計表並存時堆疊流高度為 auto,h-full 失去基準 → 改 min-h 置中
-                hasDayRows ? "min-h-40" : "h-full",
+                // 統計表並存時 <lg 堆疊流高度為 auto,h-full 失去基準 → min-h 置中;
+                // ≥lg 左欄 flex stretch 高度明確,恢復 h-full 整欄置中(review F1)
+                hasDayRows ? "min-h-40 lg:min-h-0 lg:h-full" : "h-full",
               )}
             >
               {loading
