@@ -1,0 +1,459 @@
+diff --git a/docs/next-time.md b/docs/next-time.md
+index 8f50239..511bcd3 100644
+--- a/docs/next-time.md
++++ b/docs/next-time.md
+@@ -6,6 +6,12 @@
+ 
+ ---
+ 
++## From /mod borrow-fee-layout(2026-07-28)
++
++- **券差統計表 row 點擊帶入單檔篩選(click-to-filter)**:右表點列 → setSelectedStock 連動左明細。觸發重評估:user 覺得「看到統計還要手動搜尋該檔」麻煩時。
++- **券差統計表加市場 badge / 費率 / 次數欄或欄頭排序**:本次依原句只做 代號/名稱/張數 固定排序。觸發重評估:user 要求更多維度時。
++- **本月維度全市場統計表**(month_shares 全集):目前只有當日;payload 已有資料。觸發重評估:user 要月累計 overview 時。
++
+ ## From /mod batch-ui-polish(2026-07-21)
+ 
+ - **E25/E10 型負載 flake — 殘餘面收斂到 SymbolSearch option 步**(2026-07-21 收割更新):badge 時序 race 已由 chore/next-time-harvest-0721 根治(route 固定 1500ms delay 改事件同步 gate,badge 可見窗不再受機器負載影響;無負載 repeat×5 綠)。今日兩紅實際失敗點都在 `getByRole("option")` 15s 0 筆 — 發生於並行跑全套 gate 的高負載窗,無負載即綠,與 E10 既有「SymbolSearch dropdown 高負載」記錄同根。觸發重評估:非自造負載情境下再紅時,查 `/api/symbols/all` query 在 vite dev proxy 高負載下的 resolve 時序(app 層 prefetch 或 spec 層等 dropdown loading 態收斂)。
+diff --git a/e2e/helpers/selectors.ts b/e2e/helpers/selectors.ts
+index 91901e9..08e9aa0 100644
+--- a/e2e/helpers/selectors.ts
++++ b/e2e/helpers/selectors.ts
+@@ -42,6 +42,9 @@ export const TESTIDS = {
+   // 選股加總 summary(feat/borrow-fee-totals BF4)
+   borrowFeeStockSummary: "borrow-fee-stock-summary",
+   stockFilterClear: "stock-filter-clear",
++  // 本日借券統計常駐右表(mod/borrow-fee-layout BF5)
++  borrowDayStats: "borrow-day-stats",
++  dayStatRow: "day-stat-row",
+   // equity 權證 tab(feat/warrant-selector)
+   warrantRow: "warrant-row",
+   warrantKindBadge: "warrant-kind-badge",
+diff --git a/e2e/specs/borrow-fee.spec.ts b/e2e/specs/borrow-fee.spec.ts
+index 1d6eb4c..71a2a2f 100644
+--- a/e2e/specs/borrow-fee.spec.ts
++++ b/e2e/specs/borrow-fee.spec.ts
+@@ -73,6 +73,29 @@ test.describe("borrow fee mode", () => {
+     await expect(summary).toHaveCount(0);
+   });
+ 
++  test("BF5: 本日借券統計常駐右表 — 免搜尋可見、張數 desc、不受篩選連動(mod/borrow-fee-layout SC-1/2/3)", async ({ page }) => {
++    // 痛點:本日合計原先要搜尋選股才可見(summary gate);統計表必須零互動
++    // 即有資料級內容。fixture 手算(06-26 當日):8069=25,000 / 2434=21,000 /
++    // 1513=14,000 / 5483=3,000 / 8046=3,000 → 張數 desc + 同值代號升冪。
++    const stats = page.getByTestId(TESTIDS.borrowDayStats);
++    await expect(stats).toBeVisible();
++    const statRows = page.getByTestId(TESTIDS.dayStatRow);
++    await expect(statRows).toHaveCount(5);
++    const order: string[] = [];
++    for (let i = 0; i < 5; i++) {
++      order.push((await statRows.nth(i).getAttribute("data-stock-id")) ?? "");
++    }
++    expect(order).toEqual(["8069", "2434", "1513", "5483", "8046"]);
++    // 張數換算資料級鎖:首列 8069 = 25,000 股 → 25 張
++    await expect(statRows.first()).toContainText("25");
++    // SC-3:單檔篩選只動左明細,統計表列數不變
++    const filter = page.getByTestId(TESTIDS.borrowFeeStockFilter);
++    await filter.fill("8046");
++    await page.getByRole("option", { name: /8046/ }).click();
++    await expect(page.getByTestId(TESTIDS.feeRow)).toHaveCount(1);
++    await expect(statRows).toHaveCount(5);
++  });
++
+   test("BF2: reload 後 borrow mode 持久化(SC-1)", async ({ page }) => {
+     // 痛點:App.tsx useState init 讀 localStorage('mode');新 mode 值 'borrow'
+     // 必須通過同一條持久化路徑(N2 只鎖 options,新枚舉值要自己的鎖)。
+diff --git a/frontend/src/components/BorrowDayStatsTable.test.tsx b/frontend/src/components/BorrowDayStatsTable.test.tsx
+new file mode 100644
+index 0000000..51ed9aa
+--- /dev/null
++++ b/frontend/src/components/BorrowDayStatsTable.test.tsx
+@@ -0,0 +1,62 @@
++/**
++ * @vitest-environment jsdom
++ *
++ * 本日借券統計表(mod/borrow-fee-layout SC-1/2)— 免搜尋常駐右表:
++ * per-stock 加總、張數換算、固定 desc 排序、testid 契約。
++ */
++import { afterEach, describe, expect, it } from "vitest";
++import { cleanup, render, screen } from "@testing-library/react";
++import type { BorrowFeeRow } from "../lib/borrow-fee";
++import { BorrowDayStatsTable } from "./BorrowDayStatsTable";
++
++afterEach(() => cleanup());
++
++const row = (
++  sid: string,
++  name: string,
++  shares: number,
++  market: BorrowFeeRow["market"] = "twse",
++): BorrowFeeRow => ({
++  market,
++  stock_id: sid,
++  name,
++  lending_shares: shares,
++  fee_rate: 1.0,
++  date: "2026-06-26",
++});
++
++const ROWS: BorrowFeeRow[] = [
++  row("8046", "南電", 3000),
++  row("2434", "統懋", 21000),
++  row("8046", "南電", 5000),
++  row("8069", "元太", 25000, "tpex"),
++];
++
++describe("BorrowDayStatsTable", () => {
++  it("root testid + 標題 + 單位註記可指認(SC-1)", () => {
++    render(<BorrowDayStatsTable rows={ROWS} />);
++    expect(screen.getByTestId("borrow-day-stats")).toBeTruthy();
++    expect(screen.getByText("本日借券統計")).toBeTruthy();
++    expect(screen.getByText(/單位:張/)).toBeTruthy();
++  });
++
++  it("列數 = distinct stocks、同股多筆加總、張數 desc 排序(SC-1/2)", () => {
++    render(<BorrowDayStatsTable rows={ROWS} />);
++    const rows = screen.getAllByTestId("day-stat-row");
++    expect(rows.length).toBe(3);
++    expect(rows.map((r) => r.getAttribute("data-stock-id"))).toEqual([
++      "8069",
++      "2434",
++      "8046",
++    ]);
++    // 張數換算:8069 = 25,000 股 → 25 張;8046 = 3,000+5,000 → 8 張
++    expect(rows[0].textContent).toContain("25");
++    expect(rows[2].textContent).toContain("8");
++  });
++
++  it("數值標色不用 accent/bull/bear(色彩語意鐵則 — 非互動態)", () => {
++    render(<BorrowDayStatsTable rows={ROWS} />);
++    const root = screen.getByTestId("borrow-day-stats");
++    expect(root.innerHTML).not.toMatch(/accent|bull|bear/);
++  });
++});
+diff --git a/frontend/src/components/BorrowDayStatsTable.tsx b/frontend/src/components/BorrowDayStatsTable.tsx
+new file mode 100644
+index 0000000..90fd931
+--- /dev/null
++++ b/frontend/src/components/BorrowDayStatsTable.tsx
+@@ -0,0 +1,48 @@
++import { useMemo, type ReactElement } from "react";
++import type { BorrowFeeRow } from "../lib/borrow-fee";
++import { aggregateDayStats, formatLots } from "../lib/borrow-fee-utils";
++
++interface Props {
++  rows: BorrowFeeRow[];
++}
++
++// 本日借券統計(mod/borrow-fee-layout):當日全集 per-stock 加總,張數 desc
++// 固定排序;免搜尋常駐 overview,不受單檔篩選影響(rows 一律傳全集)。
++// 數字用 ink 階層 — 資料非互動態,禁 accent(色彩語意鐵則)。
++export function BorrowDayStatsTable({ rows }: Props): ReactElement {
++  const stats = useMemo(() => aggregateDayStats(rows), [rows]);
++
++  return (
++    <section data-testid="borrow-day-stats">
++      <div className="flex items-baseline justify-between gap-2 pb-2 border-b border-line-strong">
++        <h2 className="text-sm text-ink font-medium">本日借券統計</h2>
++        <span className="text-xs text-ink-dim">單位:張</span>
++      </div>
++      <table className="w-full text-sm tabular-nums border-collapse">
++        <thead>
++          <tr className="border-b border-line text-ink-dim">
++            <th scope="col" className="py-1.5 pr-2 font-normal text-left">代號</th>
++            <th scope="col" className="py-1.5 px-2 font-normal text-left">名稱</th>
++            <th scope="col" className="py-1.5 pl-2 font-normal text-right">張數</th>
++          </tr>
++        </thead>
++        <tbody>
++          {stats.map((s) => (
++            <tr
++              key={s.stock_id}
++              data-testid="day-stat-row"
++              data-stock-id={s.stock_id}
++              className="border-b border-line"
++            >
++              <td className="py-1.5 pr-2 text-ink font-medium">{s.stock_id}</td>
++              <td className="py-1.5 px-2 text-ink-muted">{s.name}</td>
++              <td className="py-1.5 pl-2 text-right text-ink">
++                {formatLots(s.total_shares)}
++              </td>
++            </tr>
++          ))}
++        </tbody>
++      </table>
++    </section>
++  );
++}
+diff --git a/frontend/src/components/BorrowFeePage.test.tsx b/frontend/src/components/BorrowFeePage.test.tsx
+index 1ce4484..2fb4507 100644
+--- a/frontend/src/components/BorrowFeePage.test.tsx
++++ b/frontend/src/components/BorrowFeePage.test.tsx
+@@ -235,3 +235,48 @@ describe("BorrowFeePage 選股加總 summary", () => {
+     expect(t).not.toContain("(");
+   });
+ });
++
++// 本日借券統計常駐右表(mod/borrow-fee-layout SC-1/3/5)— 免搜尋即見全集
++// 統計;單檔篩選只動左明細;空態兩分(全集空 vs 篩選 0 列)。
++describe("BorrowFeePage 本日借券統計", () => {
++  it("未選股即渲染統計表,列數 = distinct stocks、張數 desc(SC-1)", () => {
++    hookState.data = MULTI;
++    render(<BorrowFeePage />);
++    expect(screen.getByTestId("borrow-day-stats")).toBeTruthy();
++    const statRows = screen.getAllByTestId("day-stat-row");
++    // 2434 = 21,000 股 > 8046 = 3,000+5,000 = 8,000 股
++    expect(statRows.map((r) => r.getAttribute("data-stock-id"))).toEqual([
++      "2434",
++      "8046",
++    ]);
++  });
++
++  it("選股後統計表仍為全集列數(SC-3:篩選只動左明細)", () => {
++    hookState.data = MULTI;
++    render(<BorrowFeePage />);
++    pickStock("8046");
++    expect(screen.getAllByTestId("fee-row").length).toBe(2);
++    expect(screen.getAllByTestId("day-stat-row").length).toBe(2);
++  });
++
++  it("data.rows 全集空 → 統計表不 render + 本月無券差資料(SC-5)", () => {
++    hookState.data = { ...MULTI, rows: [], month_counts: {}, month_shares: {} };
++    render(<BorrowFeePage />);
++    expect(screen.queryByTestId("borrow-day-stats")).toBeNull();
++    expect(screen.getByText("本月無券差資料")).toBeTruthy();
++  });
++
++  it("篩選 0 列但全集非空 → 統計表仍在 + 該檔今日無券差資料(SC-5)", () => {
++    hookState.data = MULTI;
++    const { rerender } = render(<BorrowFeePage />);
++    pickStock("8046");
++    hookState.data = {
++      ...MULTI,
++      rows: MULTI.rows.filter((r) => r.stock_id !== "8046"),
++    };
++    rerender(<BorrowFeePage />);
++    expect(screen.getByText("該檔今日無券差資料")).toBeTruthy();
++    expect(screen.getByTestId("borrow-day-stats")).toBeTruthy();
++    expect(screen.getAllByTestId("day-stat-row").length).toBe(1);
++  });
++});
+diff --git a/frontend/src/components/BorrowFeePage.tsx b/frontend/src/components/BorrowFeePage.tsx
+index 946aeac..11d0a3c 100644
+--- a/frontend/src/components/BorrowFeePage.tsx
++++ b/frontend/src/components/BorrowFeePage.tsx
+@@ -1,8 +1,10 @@
+ import { useMemo, useState, type ReactElement } from "react";
+ import { useDaytradeFee } from "../hooks/useDaytradeFee";
++import { BorrowDayStatsTable } from "./BorrowDayStatsTable";
+ import { BorrowFeeStockFilter } from "./BorrowFeeStockFilter";
+ import { DaytradeFeeTable } from "./DaytradeFeeTable";
+ import { distinctStocks, formatShares, type StockOption } from "../lib/borrow-fee-utils";
++import { cn } from "../lib/utils";
+ 
+ // 券差查詢 — 最上層「券差」mode 頁(App.tsx 4-way ternary + lazy)。
+ // root 用 flex-1 min-h-0(App root 是 flex col;h-full 會下溢 nav 高度被裁切)。
+@@ -16,6 +18,8 @@ export function BorrowFeePage(): ReactElement {
+       ? data.rows.filter((r) => r.stock_id === selectedStock.stock_id)
+       : data.rows
+     : [];
++  // 全集有無當日列(非篩選後)— 統計表 render 與空態高度基準的判準(SC-5)
++  const hasDayRows = !!data && data.rows.length > 0;
+ 
+   return (
+     <div data-testid="borrow-fee-page" className="flex-1 min-h-0 flex flex-col overflow-hidden">
+@@ -115,21 +119,37 @@ export function BorrowFeePage(): ReactElement {
+         </div>
+       )}
+ 
+-      <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-3">
+-        {data && rows.length > 0 ? (
+-          <div className="max-w-4xl">
+-            <DaytradeFeeTable rows={rows} monthCounts={data.month_counts} />
+-          </div>
+-        ) : (
+-          <div className="h-full flex items-center justify-center text-sm text-ink-dim">
+-            {loading
+-              ? "載入中..."
+-              : error
+-                ? ""
+-                : data && selectedStock
+-                  ? "該檔今日無券差資料"
+-                  : "本月無券差資料"}
+-          </div>
++      {/* 分欄(mod/borrow-fee-layout):≥lg 左明細 / 右統計各自獨立捲動,<lg 堆疊
++          單一捲動(明細先)。統計表吃全集 data.rows — 不受單檔篩選影響(SC-3),
++          全集空才整個不 render(SC-5)。 */}
++      <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden lg:flex lg:gap-x-6 px-4 sm:px-6 py-3">
++        <div className={cn("lg:flex-1 lg:min-w-0 lg:overflow-y-auto", !hasDayRows && "h-full")}>
++          {data && rows.length > 0 ? (
++            <div className="max-w-4xl">
++              <DaytradeFeeTable rows={rows} monthCounts={data.month_counts} />
++            </div>
++          ) : (
++            <div
++              className={cn(
++                "flex items-center justify-center text-sm text-ink-dim",
++                // 統計表並存時堆疊流高度為 auto,h-full 失去基準 → 改 min-h 置中
++                hasDayRows ? "min-h-40" : "h-full",
++              )}
++            >
++              {loading
++                ? "載入中..."
++                : error
++                  ? ""
++                  : data && selectedStock
++                    ? "該檔今日無券差資料"
++                    : "本月無券差資料"}
++            </div>
++          )}
++        </div>
++        {hasDayRows && data && (
++          <aside className="mt-6 lg:mt-0 lg:w-72 lg:shrink-0 lg:overflow-y-auto">
++            <BorrowDayStatsTable rows={data.rows} />
++          </aside>
+         )}
+       </div>
+     </div>
+diff --git a/frontend/src/lib/borrow-fee-utils.test.ts b/frontend/src/lib/borrow-fee-utils.test.ts
+index 70a478d..b4f2c93 100644
+--- a/frontend/src/lib/borrow-fee-utils.test.ts
++++ b/frontend/src/lib/borrow-fee-utils.test.ts
+@@ -1,8 +1,10 @@
+ import { describe, expect, it } from "vitest";
+ import { FEE_HIGHLIGHT_THRESHOLD, type BorrowFeeRow } from "./borrow-fee";
+ import {
++  aggregateDayStats,
+   distinctStocks,
+   formatFee,
++  formatLots,
+   formatShares,
+   matchStockOptions,
+   sortRows,
+@@ -117,3 +119,41 @@ describe("FEE_HIGHLIGHT_THRESHOLD", () => {
+     expect(FEE_HIGHLIGHT_THRESHOLD).toBe(3.5);
+   });
+ });
++
++// mod/borrow-fee-layout SC-1/2:當日 per-stock 統計(免搜尋常駐右表的資料層)。
++describe("aggregateDayStats", () => {
++  it("同股多筆加總、name 取首見、total desc 排序", () => {
++    const rows = [
++      row("8046", 3000, 3.5),
++      row("2434", 21000, 2.619),
++      row("8046", 5000, 2.0),
++    ];
++    expect(aggregateDayStats(rows)).toEqual([
++      { stock_id: "2434", name: "n2434", total_shares: 21000 },
++      { stock_id: "8046", name: "n8046", total_shares: 8000 },
++    ]);
++  });
++
++  it("同 total tie-break 代號升冪(SC-2)", () => {
++    const rows = [row("8046", 3000, 3.5), row("5483", 3000, 3.5), row("8069", 25000, 1.0)];
++    expect(aggregateDayStats(rows).map((s) => s.stock_id)).toEqual([
++      "8069",
++      "5483",
++      "8046",
++    ]);
++  });
++
++  it("空陣列回空", () => {
++    expect(aggregateDayStats([])).toEqual([]);
++  });
++});
++
++describe("formatLots", () => {
++  it("整千顯整數、非整千四捨五入 1 位小數、千分位(change-spec R5 測試對)", () => {
++    expect(formatLots(3000)).toBe("3");
++    expect(formatLots(25000)).toBe("25");
++    expect(formatLots(1234)).toBe("1.2");
++    expect(formatLots(1900)).toBe("1.9");
++    expect(formatLots(2500000)).toBe("2,500");
++  });
++});
+diff --git a/frontend/src/lib/borrow-fee-utils.ts b/frontend/src/lib/borrow-fee-utils.ts
+index 13cbdca..b246f46 100644
+--- a/frontend/src/lib/borrow-fee-utils.ts
++++ b/frontend/src/lib/borrow-fee-utils.ts
+@@ -56,10 +56,43 @@ export function matchStockOptions(options: StockOption[], query: string): StockO
+   );
+ }
+ 
++// 當日 per-stock 統計(免搜尋常駐右表):同股多筆加總,name 取首見;
++// 排序 total desc → stock_id 升冪(tie-break 與 sortRows 同理,保持可預測)。
++export interface DayStat {
++  stock_id: string;
++  name: string;
++  total_shares: number;
++}
++
++export function aggregateDayStats(rows: BorrowFeeRow[]): DayStat[] {
++  const byStock = new Map<string, DayStat>();
++  for (const r of rows) {
++    const s = byStock.get(r.stock_id);
++    if (s) {
++      s.total_shares += r.lending_shares;
++    } else {
++      byStock.set(r.stock_id, {
++        stock_id: r.stock_id,
++        name: r.name,
++        total_shares: r.lending_shares,
++      });
++    }
++  }
++  return [...byStock.values()].sort((a, b) => {
++    if (a.total_shares !== b.total_shares) return b.total_shares - a.total_shares;
++    return a.stock_id < b.stock_id ? -1 : a.stock_id > b.stock_id ? 1 : 0;
++  });
++}
++
+ export function formatShares(n: number): string {
+   return n.toLocaleString("en-US");
+ }
+ 
++// 股 → 張(1 張 = 1,000 股);上游慣例整千,非整千四捨五入 1 位小數防靜默錯值。
++export function formatLots(shares: number): string {
++  return (shares / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 });
++}
++
+ export function formatFee(n: number): string {
+   return `${n.toFixed(2)}%`;
+ }
+diff --git a/frontend/src/lib/changelog.test.ts b/frontend/src/lib/changelog.test.ts
+index b711898..72d1392 100644
+--- a/frontend/src/lib/changelog.test.ts
++++ b/frontend/src/lib/changelog.test.ts
+@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
+     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
+   });
+ 
+-  it("最新版本是 v0.43.0(券差選股加總)", () => {
+-    expect(CHANGELOG[0]?.version).toBe("0.43.0");
++  it("最新版本是 v0.44.0(券差左右分欄統計)", () => {
++    expect(CHANGELOG[0]?.version).toBe("0.44.0");
+   });
+ 
+   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
+diff --git a/frontend/src/lib/changelog.ts b/frontend/src/lib/changelog.ts
+index b4caf6b..57212b6 100644
+--- a/frontend/src/lib/changelog.ts
++++ b/frontend/src/lib/changelog.ts
+@@ -39,6 +39,17 @@ export function semverGt(a: string, b: string): boolean {
+ // 版本字串遵循 SemVer 2.0.0 三段式 MAJOR.MINOR.PATCH;pre-1.0 階段 breaking change 也只 bump MINOR
+ // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
+ export const CHANGELOG: VersionEntry[] = [
++  {
++    version: "0.44.0",
++    date: "2026-07-28",
++    changes: [
++      {
++        kind: "feature",
++        scope: "global",
++        text: "券差查詢改為左右分欄:右側新增本日借券統計表,不必搜尋即可看到每檔當日借券張數,並由多到少排列",
++      },
++    ],
++  },
+   {
+     version: "0.43.0",
+     date: "2026-07-28",
