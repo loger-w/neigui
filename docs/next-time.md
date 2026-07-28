@@ -173,7 +173,8 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 
 ## From /mod broker-label-search-only-id(2026-07-22)
 
-- **BrokerSearch highlightMatch 對去dash label 的高亮缺口**:query 含 dash(「凱基-台」)時比對經 raw name 命中,但 dropdown label 是去dash字串,indexOf 對不上 → 命中但無高亮著色(功能正常,純視覺)。修法:highlight 前先 normalizeBrokerQuery 雙邊對齊再回推原始 index。
+- (原「BrokerSearch highlightMatch 對去dash label 的高亮缺口」條目已由 fix/broker-search-highlight-dash 解決刪除,2026-07-28:normalizeBrokerQuery 雙邊對齊 + char-level index map 回推原始區間,vitest 紅先行 ×2 鎖住;real-env 驗證時發現 prod 該路徑實不可達,見下條)
+- **BrokerSearch filter 對 query 不去 dash → dash query 在 prod 全空**(2026-07-28 收割上條時實測發現):bubble 的 trades 來自 daily report,raw name 全數無 dash(2330 實測 814/814),filter 是 plain `includes`(SC-7 比對 raw + label 但 query 不 normalize)→ 輸入「凱基-台」什麼都查不到(fixture 名含 dash 所以測試看不出來)。broker-name.ts 的 normalizeBrokerQuery 契約寫明「query 與名稱雙邊過此函式再比對」,filter 未跟上。修法 = filter 雙邊 normalizeBrokerQuery(行為改動,需紅測試 + fixture 名對齊真實 shape 檢討)。觸發重評估:user 反映分點搜尋照 directory 格式(含 dash)輸入查不到時
 
 ## 2026-07-26 harness /feat 改版的後續(user 指示本輪只動 /feat)
 - (原「/mod /bug /perf /refactor 同步 2026-07-26 實證改版」條目已由 2026-07-27 四 command 同步批解決刪除:round JSON 落檔義務落 review-protocol C 節 + mod.md Phase 5;/mod Phase 3 輪數採 /feat 07-26 制(預設 1 輪 + P0 限縮加輪 — 無 /mod 側 JSON 實證,落檔義務同批補上、日後可實證覆核);graphify query 接入 mod Phase 1 / bug Phase 2 / refactor Phase 5。詳 RATIONALE /mod 節)

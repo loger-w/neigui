@@ -195,6 +195,41 @@ describe("BrokerSearch", () => {
     expect(input.value).toBe("凱");
   });
 
+  // next-time 收割(mod/broker-label-search-only-id 遺留):query 含 dash 經
+  // raw name 命中,但 dropdown label 是去dash字串 → 高亮 indexOf 對不上。
+  // highlight 須 normalizeBrokerQuery 雙邊對齊再回推原始 index。
+  it("dash query 命中時 label 高亮著色去dash區段", async () => {
+    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
+    const input = screen.getByPlaceholderText("搜尋分點...");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "凱基-台" } });
+    await waitFor(() => {
+      const items = screen.getAllByTestId("broker-search-item");
+      expect(items).toHaveLength(1);
+      const marks = items[0]!.querySelectorAll<HTMLElement>(
+        "[data-testid=broker-search-highlight]",
+      );
+      expect(marks).toHaveLength(1);
+      expect(marks[0]!.textContent).toBe("凱基台");
+    });
+  });
+
+  it("純 dash query 不高亮也不 crash", async () => {
+    render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
+    const input = screen.getByPlaceholderText("搜尋分點...");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "-" } });
+    await waitFor(() => {
+      const items = screen.getAllByTestId("broker-search-item");
+      expect(items.length).toBeGreaterThan(0);
+      for (const it of items) {
+        expect(
+          it.querySelector("[data-testid=broker-search-highlight]"),
+        ).toBeNull();
+      }
+    });
+  });
+
   // R6(impl spec):下拉 = listbox/option 結構,已選列 aria-selected + ✓。
   it("已選分點列標 aria-selected 與 ✓ 前綴;再點 = toggle(onPick 照樣回傳)", async () => {
     const onPick = vi.fn();

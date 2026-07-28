@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BrokerTrade } from "../lib/chip-data";
-import { formatBrokerLabel } from "../lib/broker-name";
+import { formatBrokerLabel, normalizeBrokerQuery } from "../lib/broker-name";
 
 // bubble-multi-broker:純「搜尋即加選」多選契約 — 不 echo 選中分點、無清除鈕
 // (清除職責在 ChipBubbleView 的 legend chips)。聚合與選取 key 一律 broker_id
@@ -26,17 +26,33 @@ interface Props {
 
 const HIGHLIGHT = "#f0b429";
 
+// 比對是 dash-insensitive(normalizeBrokerQuery 雙邊去 dash),name 這裡是
+// formatted label(已去 dash)但 query 可能照原始名帶 dash — 兩邊 normalize
+// 後找命中,再用 index map 回推原始字串區間著色。
 function highlightMatch(name: string, q: string): React.ReactNode {
-  if (!q) return name;
-  const i = name.toLowerCase().indexOf(q.toLowerCase());
-  if (i < 0) return name;
+  const nq = normalizeBrokerQuery(q);
+  if (!nq) return name;
+  const idxMap: number[] = [];
+  let normalized = "";
+  for (let i = 0; i < name.length; i++) {
+    if (name[i] === "-") continue;
+    idxMap.push(i);
+    normalized += name[i]!.toLowerCase();
+  }
+  const hit = normalized.indexOf(nq);
+  if (hit < 0) return name;
+  const start = idxMap[hit]!;
+  const end = idxMap[hit + nq.length - 1]! + 1;
   return (
     <>
-      {name.slice(0, i)}
-      <span style={{ color: HIGHLIGHT, fontWeight: 500 }}>
-        {name.slice(i, i + q.length)}
+      {name.slice(0, start)}
+      <span
+        data-testid="broker-search-highlight"
+        style={{ color: HIGHLIGHT, fontWeight: 500 }}
+      >
+        {name.slice(start, end)}
       </span>
-      {name.slice(i + q.length)}
+      {name.slice(end)}
     </>
   );
 }
