@@ -217,6 +217,13 @@ circle cx/cy 直擊 + offsetHeight stub,見 frontend-testing)
 - 其餘 ChipBubbleView / BrokerSearch / chip-bubble-svg / App 測試 → 不該紅
 - e2e E3/E7/E23/E24/E25/E32/E33/E38 → 不該紅
 
+## P2 註記(自評 round 1)
+
+- priceAggs 的 solo 切換(price bar 只顯單分點)無獨立 vitest 鎖 — jsdom 對 SVG bar
+  值 assert 成本高;退化由 T9(明細列表同一 effectiveIds 源)+ real-env 截圖
+  (02-solo-mode-1536.png price bar 已切單分點分佈)間接覆蓋。觸發補鎖:priceAggs
+  與 buildTradeRows 的資料源分岔時。
+
 ## Commit 計畫(🔵→🔴→🟢 順序;本案無 🔵)
 
 1. 🟢 feat(frontend): 泡泡圖 header 空間預留 — 固定搜尋欄 + chips/統計常駐雙行(SC-1/2/6)

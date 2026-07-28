@@ -1,0 +1,13 @@
+{
+  "round": 1,
+  "date": "2026-07-28",
+  "lenses": ["correctness/state-machine", "whitelist-regression/test-coverage"],
+  "findings": [
+    {"id": "F1", "severity": "P1", "lens": "whitelist", "problem": "「清除全部」鈕漏 setSolo(null)(spec R1 amendment 三路徑只落地兩條);可觀察 bug 被 toggleBroker 同 id 清除巧合擋住,測試未鎖重加選復活", "resolution": "accepted — 補 setSolo(null) + 測試補重加選不復活 assert(commit 5)"},
+    {"id": "F2", "severity": "P2", "lens": "whitelist/coverage", "problem": "覆蓋缺口×3:T3 空白段1未鋪 brush;priceAggs solo 切換無獨立鎖;換股 solo 顯式 reset 未鎖", "resolution": "accepted — T3 補 brush assert、換股復活測試補上(commit 5);priceAggs 入 change-spec P2 註記(jsdom 對 SVG bar assert 成本高,T9 + real-env 截圖間接覆蓋)"},
+    {"id": "BF-1", "severity": "P2", "lens": "correctness", "problem": "review-diff.txt 過時(F1 修復後未重生成),程序性", "resolution": "accepted — 收尾增量 review 前重生成;code 無動作"},
+    {"id": "BF-2", "severity": "P2", "lens": "correctness", "problem": "port 半套覆寫時 frontend webServer reuse 到別 session 的 dev server(proxy 指真後端)靜默錯接", "resolution": "accepted — 任一 NEIGUI_* 設定時 reuseExistingServer=false(commit 6)"},
+    {"id": "BF-3", "severity": "P2", "lens": "correctness", "problem": "solo 分點自 trades 消失時 priceAggs 空集 fallback 回全體聚合,與 badge/totals 退化方向不一致(窄 edge)", "resolution": "accepted-deferred — docs/next-time.md 收錄,依 finder 建議防禦性小修不入本輪"}
+  ],
+  "summary": "P0=0 P1=1(fixed) P2=4(2 fixed / 1 spec 註記 / 1 deferred)"
+}

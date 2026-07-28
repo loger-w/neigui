@@ -1,0 +1,1161 @@
+diff --git a/e2e/helpers/global-setup.ts b/e2e/helpers/global-setup.ts
+index 1c17ee4..09d6fcb 100644
+--- a/e2e/helpers/global-setup.ts
++++ b/e2e/helpers/global-setup.ts
+@@ -14,7 +14,10 @@ import { assertLiveCap } from "./live-guard.ts";
+ export default async function globalSetup(): Promise<void> {
+   assertLiveCap(); // R5-P1 — globalSetup 一次跑
+ 
+-  const api = await request.newContext({ baseURL: "http://127.0.0.1:8000" });
++  const backendPort = process.env.NEIGUI_BACKEND_PORT ?? "8000";
++  const api = await request.newContext({
++    baseURL: `http://127.0.0.1:${backendPort}`,
++  });
+   const r = await api.get("/api/_meta/mode").catch(() => null);
+   if (!r || !r.ok()) {
+     throw new Error(
+diff --git a/e2e/helpers/selectors.ts b/e2e/helpers/selectors.ts
+index 602e52e..f5da8c2 100644
+--- a/e2e/helpers/selectors.ts
++++ b/e2e/helpers/selectors.ts
+@@ -68,6 +68,11 @@ export const TESTIDS = {
+   // 泡泡圖多選分點(feat/bubble-multi-broker E38)
+   brokerChip: "broker-chip",
+   brokerChipsClear: "broker-chips-clear",
++  // 泡泡圖單看 + header 空間預留(mod/bubble-chart-ux-polish E39/E40)
++  bubbleSoloBadge: "bubble-solo-badge",
++  bubbleSoloClear: "bubble-solo-clear",
++  bubbleStatsRow: "bubble-stats-row",
++  bubbleMainOverlay: "bubble-main-overlay",
+   // 泡泡圖過濾清單(BB-1 mod/batch-ui-update)
+   bubbleBlocklistTrigger: "bubble-blocklist-trigger",
+   bubbleBlocklistCandidate: "bubble-blocklist-candidate",
+diff --git a/e2e/playwright.config.ts b/e2e/playwright.config.ts
+index 747fa25..de95197 100644
+--- a/e2e/playwright.config.ts
++++ b/e2e/playwright.config.ts
+@@ -2,6 +2,12 @@ import { defineConfig, devices } from "@playwright/test";
+ 
+ const fakeMode = process.env.FAKE_FINMIND !== "real";
+ 
++// 並行 session 佔用 :8000 / :5173 時可用 NEIGUI_BACKEND_PORT /
++// NEIGUI_FRONTEND_PORT 覆寫(mod/bubble-chart-ux-polish 沉澱;預設不變)。
++// vite.config.ts 讀同名變數同步 dev server port 與 /api proxy target。
++const backendPort = process.env.NEIGUI_BACKEND_PORT ?? "8000";
++const frontendPort = process.env.NEIGUI_FRONTEND_PORT ?? "5173";
++
+ export default defineConfig({
+   testDir: "./specs",
+   fullyParallel: false, // backend singleton + cache,序列跑較穩
+@@ -11,7 +17,7 @@ export default defineConfig({
+   reporter: process.env.CI ? [["github"], ["html"]] : "list",
+   globalSetup: "./helpers/global-setup.ts",
+   use: {
+-    baseURL: "http://127.0.0.1:5173",
++    baseURL: `http://127.0.0.1:${frontendPort}`,
+     trace: "retain-on-failure",
+     screenshot: "only-on-failure",
+   },
+@@ -20,7 +26,7 @@ export default defineConfig({
+   ],
+   webServer: [
+     {
+-      command: "python -m uvicorn main:app --port 8000",
++      command: `python -m uvicorn main:app --port ${backendPort}`,
+       cwd: "../backend",
+       env: fakeMode
+         ? {
+@@ -31,14 +37,18 @@ export default defineConfig({
+           }
+         : { FAKE_FINMIND: "0" },
+       // F4 fix:/api/symbols?search=2 是真實 200 endpoint(/api/symbols/2330 不存在)
+-      url: "http://127.0.0.1:8000/api/symbols?search=2",
++      url: `http://127.0.0.1:${backendPort}/api/symbols?search=2`,
+       reuseExistingServer: false, // F6 — 不准 reuse 防撞 dev server
+       timeout: 60_000,
+     },
+     {
+-      command: "npm run dev -- --host 127.0.0.1",
++      command: `npm run dev -- --host 127.0.0.1 --port ${frontendPort}`,
+       cwd: "../frontend",
+-      url: "http://127.0.0.1:5173",
++      env: {
++        NEIGUI_BACKEND_PORT: backendPort,
++        NEIGUI_FRONTEND_PORT: frontendPort,
++      },
++      url: `http://127.0.0.1:${frontendPort}`,
+       reuseExistingServer: !process.env.CI,
+       timeout: 60_000,
+     },
+diff --git a/e2e/specs/equity.spec.ts b/e2e/specs/equity.spec.ts
+index 810b538..4811de2 100644
+--- a/e2e/specs/equity.spec.ts
++++ b/e2e/specs/equity.spec.ts
+@@ -472,6 +472,83 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
+     );
+   });
+ 
++  test("E39: 泡泡圖單看模式 — 點已選泡泡切單分點統計、組合不動;點空白兩段式(mod/bubble-chart-ux-polish SC-3/5)", async ({ page }) => {
++    // 痛點:多選建好的篩選組合一點就壞(舊 toggle 移除)。單看鏈 =
++    // hitTest → handleBubbleClick 已選分支 → solo → effectiveIds 統計/明細切換。
++    // fixture 陷阱(spec review R2/R2-1 寫死):三分點同價同量泡泡完全重合,
++    // hitTest 平手取 trades 序位第一 → solo 目標只能斷言分點001;circle
++    // pointerEvents=none → 必須 boundingBox + page.mouse.click 打 overlay。
++    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
++    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
++    await page.getByPlaceholder("搜尋分點...").fill("分點");
++    await page
++      .getByTestId(TESTIDS.brokerSearchItem)
++      .filter({ hasText: "分點001" })
++      .click();
++    await page
++      .getByTestId(TESTIDS.brokerSearchItem)
++      .filter({ hasText: "分點002" })
++      .click();
++    await page.keyboard.press("Escape"); // 關下拉(R2-1:避免座標點擊被 listbox 截走)
++    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(2);
++    const totals = page.getByTestId(TESTIDS.bubbleBrokerTotals);
++    await expect(totals).toContainText("買 200 張");
++    // buy 側 circle(圖表右半,遠離下拉覆蓋區)中心點擊 → 單看分點001
++    const buyCircle = page.locator('circle[data-broker-id="BROKER001"]').first();
++    const box = (await buyCircle.boundingBox())!;
++    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
++    await expect(page.getByTestId(TESTIDS.bubbleSoloBadge)).toContainText("分點001");
++    await expect(totals).toContainText("買 100 張");
++    await expect(totals).toContainText("1.10 億");
++    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(2); // 組合不動
++    await expect(page.getByTestId(TESTIDS.bubbleJumpToOverview)).toHaveCount(0); // 單看暫隱
++    // 再點同泡泡 → 回整組
++    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
++    await expect(page.getByTestId(TESTIDS.bubbleSoloBadge)).toHaveCount(0);
++    await expect(totals).toContainText("買 200 張");
++    // 點空白兩段式:單看中點空白只解單看;無單看點空白才全清
++    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2); // 進單看
++    await expect(page.getByTestId(TESTIDS.bubbleSoloBadge)).toBeVisible();
++    const overlay = page.getByTestId(TESTIDS.bubbleMainOverlay);
++    const oBox = (await overlay.boundingBox())!;
++    const blankX = oBox.x + oBox.width - 8;
++    const blankY = oBox.y + 8; // 右上角無泡泡區(單一價位帶在中段)
++    await page.mouse.click(blankX, blankY);
++    await expect(page.getByTestId(TESTIDS.bubbleSoloBadge)).toHaveCount(0);
++    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(2); // 組合仍在
++    await page.mouse.click(blankX, blankY);
++    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(0); // 第二段全清
++  });
++
++  test("E40: header 空間預留 — 搜尋下拉開啟時買賣統計完整可見不被遮擋(SC-1/2)", async ({ page }) => {
++    // 痛點:舊版單一 flex-wrap header,下拉開啟直接蓋住統計列
++    // (repro-six-selected-1536.png)。鎖 bounding box 不相交(功能級,免 visual baseline)。
++    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
++    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
++    await page.getByPlaceholder("搜尋分點...").fill("分點");
++    await page
++      .getByTestId(TESTIDS.brokerSearchItem)
++      .filter({ hasText: "分點001" })
++      .click();
++    await page
++      .getByTestId(TESTIDS.brokerSearchItem)
++      .filter({ hasText: "分點002" })
++      .click();
++    // R1:pick 後下拉維持開啟 — 此時統計必須仍完整可見
++    const listbox = page.locator("#broker-search-listbox");
++    await expect(listbox).toBeVisible();
++    const totals = page.getByTestId(TESTIDS.bubbleBrokerTotals);
++    await expect(totals).toContainText("買 200 張");
++    const lBox = (await listbox.boundingBox())!;
++    const tBox = (await totals.boundingBox())!;
++    const intersects =
++      lBox.x < tBox.x + tBox.width &&
++      lBox.x + lBox.width > tBox.x &&
++      lBox.y < tBox.y + tBox.height &&
++      lBox.y + lBox.height > tBox.y;
++    expect(intersects).toBe(false);
++  });
++
+   test("E25: 換股載入時泡泡圖 loading badge 出現後消失(A5)", async ({ page }) => {
+     // 痛點:loading feedback 鏈 = bubbleHook.loading → App loading prop →
+     // badge render。FAKE fixture 回太快窗口極窄 → route gate 扣住 response
+diff --git a/frontend/src/components/ChipBubbleView.test.tsx b/frontend/src/components/ChipBubbleView.test.tsx
+index cd04f6f..d852da8 100644
+--- a/frontend/src/components/ChipBubbleView.test.tsx
++++ b/frontend/src/components/ChipBubbleView.test.tsx
+@@ -1172,10 +1172,12 @@ describe("ChipBubbleView — 上限 6 + limitNotice (SC-1 edge 1)", () => {
+   });
+ });
+ 
+-describe("ChipBubbleView — 泡泡 / 明細列入口 toggle (SC-1)", () => {
++describe("ChipBubbleView — 泡泡 / 明細列入口 (SC-1 加選半邊 + 單看)", () => {
+   // 痛點:jsdom 的 svg rect getBoundingClientRect 全零 → hitTest 的 mx=clientX,
+   // 用 circle cx/cy 直接命中泡泡,驗真實 click 路徑(非 handler mock)。
+-  it("點泡泡 → 加選(chip 出現);再點同泡泡 → 移除", async () => {
++  // 🔴 mod/bubble-chart-ux-polish SC-3:點已選分點從「移除」改「單看」——
++  // 誤點不再破壞篩選組合;移除只走 chip × / 清除全部 / 搜尋下拉。
++  it("點泡泡 → 加選;再點同泡泡 → 進單看(chip 保留);三點 → 解除單看", async () => {
+     const { container } = render(
+       <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+     );
+@@ -1192,14 +1194,24 @@ describe("ChipBubbleView — 泡泡 / 明細列入口 toggle (SC-1)", () => {
+     fireEvent.click(overlay, { clientX: cx, clientY: cy });
+     await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+     expect(chipEls(container)[0]!.textContent ?? "").toContain("Alpha");
+-    // 選中後圖面只剩 Alpha,同位置(F11 axes-stable)再點 → toggle 移除
++    // 選中後圖面只剩 Alpha,同位置(F11 axes-stable)再點 → 單看,chip 不動
+     fireEvent.click(overlay, { clientX: cx, clientY: cy });
+-    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
++    await waitFor(() => {
++      expect(container.querySelector('[data-testid="bubble-solo-badge"]')).toBeTruthy();
++    });
++    expect(chipEls(container)).toHaveLength(1);
++    // 第三點 → 解除單看,chip 仍在
++    fireEvent.click(overlay, { clientX: cx, clientY: cy });
++    await waitFor(() => {
++      expect(container.querySelector('[data-testid="bubble-solo-badge"]')).toBeNull();
++    });
++    expect(chipEls(container)).toHaveLength(1);
+   });
+ 
+   // 痛點:TradeList 列是第三個入口;virtualizer 在 jsdom 走 offsetWidth/Height,
+   // stub prototype getter 才出列(frontend-testing 樣板)。
+-  it("點明細列 → 加選;再點 → 移除", async () => {
++  // 🔴 SC-3:明細列點已選同泡泡入口 — 進單看不移除。
++  it("點明細列 → 加選;再點 → 進單看(chip 保留)", async () => {
+     const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+     const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+     Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+@@ -1221,12 +1233,15 @@ describe("ChipBubbleView — 泡泡 / 明細列入口 toggle (SC-1)", () => {
+       });
+       fireEvent.click(rowFor("Alpha")!);
+       await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+-      // 選中後列表過濾為 Alpha;再點同列 toggle 移除
++      // 選中後列表過濾為 Alpha;再點同列 → 單看,chip 不動
+       await waitFor(() => {
+         if (!rowFor("Alpha")) throw new Error("filtered row not rendered");
+       });
+       fireEvent.click(rowFor("Alpha")!);
+-      await waitFor(() => expect(chipEls(container)).toHaveLength(0));
++      await waitFor(() => {
++        expect(container.querySelector('[data-testid="bubble-solo-badge"]')).toBeTruthy();
++      });
++      expect(chipEls(container)).toHaveLength(1);
+     } finally {
+       if (origH) Object.defineProperty(HTMLElement.prototype, "offsetHeight", origH);
+       if (origW) Object.defineProperty(HTMLElement.prototype, "offsetWidth", origW);
+@@ -1234,6 +1249,209 @@ describe("ChipBubbleView — 泡泡 / 明細列入口 toggle (SC-1)", () => {
+   });
+ });
+ 
++// mod/bubble-chart-ux-polish SC-3/4/5:單看模式 — 多選篩選中「看看這個泡泡」
++// 不破壞花時間建立的選取組合。
++describe("ChipBubbleView — 單看模式 (SC-3/4/5)", () => {
++  const soloBadge = (c: HTMLElement) =>
++    c.querySelector('[data-testid="bubble-solo-badge"]');
++  const totalsText = (c: HTMLElement) =>
++    c.querySelector('[data-testid="bubble-broker-totals"]')?.textContent ?? "";
++
++  async function clickCircle(container: HTMLElement, brokerId: string) {
++    const overlay = container.querySelector('[data-testid="bubble-main-overlay"]')!;
++    const circle = await waitFor(() => {
++      const c = Array.from(container.querySelectorAll("circle")).find(
++        (el) => el.getAttribute("data-broker-id") === brokerId,
++      );
++      if (!c) throw new Error(`${brokerId} circle not rendered`);
++      return c;
++    });
++    fireEvent.click(overlay, {
++      clientX: Number(circle.getAttribute("cx")),
++      clientY: Number(circle.getAttribute("cy")),
++    });
++  }
++
++  async function setupTwoSelected() {
++    const utils = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        onJumpToOverview={vi.fn()}
++      />,
++    );
++    await selectBrokerViaSearch("Alpha");
++    await selectBrokerViaSearch("Bravo");
++    await waitFor(() => expect(chipEls(utils.container)).toHaveLength(2));
++    return utils;
++  }
++
++  // 痛點:整組統計蓋掉單分點資訊是 user 抱怨主因 — 單看必須切到單分點數字。
++  it("多選 2 點已選泡泡 → 單看(badge + 單分點統計、chips 保留);再點回整組", async () => {
++    const { container } = await setupTwoSelected();
++    // 整組:Alpha 買10/賣30 + Bravo 買5/賣50 = 買15/賣80
++    expect(totalsText(container)).toContain("15");
++    await clickCircle(container, "AL1");
++    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
++    expect(soloBadge(container)!.textContent ?? "").toContain("Alpha");
++    expect(totalsText(container)).toContain("10");
++    expect(totalsText(container)).not.toContain("15");
++    expect(chipEls(container)).toHaveLength(2);
++    // 再點同泡泡 → 回整組
++    await clickCircle(container, "AL1");
++    await waitFor(() => expect(soloBadge(container)).toBeNull());
++    expect(totalsText(container)).toContain("15");
++    expect(chipEls(container)).toHaveLength(2);
++  });
++
++  // 痛點:單看是暫態檢視,點另一已選分點應直接切換目標,不是先解除再點。
++  it("單看 A 中點另一已選 B 泡泡 → 單看目標切換為 B", async () => {
++    const { container } = await setupTwoSelected();
++    await clickCircle(container, "AL1");
++    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
++    await clickCircle(container, "BR1");
++    await waitFor(() => {
++      expect(soloBadge(container)!.textContent ?? "").toContain("Bravo");
++    });
++    expect(totalsText(container)).toContain("50");
++    expect(chipEls(container)).toHaveLength(2);
++  });
++
++  // 痛點(SC-5):誤點空白把篩選組合全滅是 user 抱怨第二主因 — 兩段式緩衝。
++  it("單看中點空白 → 只解單看(chips 保留);再點空白 → 全清(照舊)", async () => {
++    const { container } = await setupTwoSelected();
++    await clickCircle(container, "AL1");
++    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
++    const overlay = container.querySelector('[data-testid="bubble-main-overlay"]')!;
++    fireEvent.click(overlay); // 無座標 → hitTest miss → broker null
++    await waitFor(() => expect(soloBadge(container)).toBeNull());
++    expect(chipEls(container)).toHaveLength(2);
++    fireEvent.click(overlay);
++    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
++  });
++
++  // 痛點(SC-4):加選意圖 = 擴組合,不得打斷進行中的單看。
++  it("單看中搜尋加選第三分點 → 加選成功、單看維持", async () => {
++    const { container } = await setupTwoSelected();
++    await clickCircle(container, "AL1");
++    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
++    await selectBrokerViaSearch("Charlie");
++    await waitFor(() => expect(chipEls(container)).toHaveLength(3));
++    expect(soloBadge(container)).toBeTruthy();
++    expect(soloBadge(container)!.textContent ?? "").toContain("Alpha");
++  });
++
++  // 痛點:移除單看目標後 badge 不得殘留指向已不在組合裡的分點。
++  it("chip × 移除單看分點 → 單看解除;重新加選同分點不復活(review R1)", async () => {
++    const { container } = await setupTwoSelected();
++    await clickCircle(container, "AL1");
++    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
++    fireEvent.click(screen.getByLabelText("移除〈Alpha〉"));
++    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
++    expect(soloBadge(container)).toBeNull();
++    // R1:stale solo 不得在重加選時無聲復活
++    await selectBrokerViaSearch("Alpha");
++    await waitFor(() => expect(chipEls(container)).toHaveLength(2));
++    expect(soloBadge(container)).toBeNull();
++  });
++
++  it("清除全部 → 單看一併解除", async () => {
++    const { container } = await setupTwoSelected();
++    await clickCircle(container, "AL1");
++    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
++    fireEvent.click(
++      container.querySelector('[data-testid="broker-chips-clear"]') as HTMLButtonElement,
++    );
++    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
++    expect(soloBadge(container)).toBeNull();
++  });
++
++  it("回整組鈕 → 解除單看;單看期間 jump 鈕暫隱", async () => {
++    const { container } = await setupTwoSelected();
++    expect(container.querySelector('[data-testid="bubble-jump-to-overview"]')).toBeTruthy();
++    await clickCircle(container, "AL1");
++    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
++    expect(container.querySelector('[data-testid="bubble-jump-to-overview"]')).toBeNull();
++    fireEvent.click(
++      container.querySelector('[data-testid="bubble-solo-clear"]') as HTMLButtonElement,
++    );
++    await waitFor(() => expect(soloBadge(container)).toBeNull());
++    expect(container.querySelector('[data-testid="bubble-jump-to-overview"]')).toBeTruthy();
++  });
++
++  // 痛點(SC-3 右欄同步):單看 = 該泡泡的單獨買賣超,右欄明細必須跟著只顯該分點。
++  it("單看時右欄明細只顯該分點列", async () => {
++    const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
++    const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
++    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
++      configurable: true, get: () => 400,
++    });
++    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
++      configurable: true, get: () => 400,
++    });
++    try {
++      const { container } = await setupTwoSelected();
++      await waitFor(() => {
++        const names = Array.from(
++          container.querySelectorAll("button span.text-left"),
++        ).map((s) => s.textContent ?? "");
++        expect(names.some((t) => t.includes("Bravo"))).toBe(true);
++      });
++      await clickCircle(container, "AL1");
++      await waitFor(() => expect(soloBadge(container)).toBeTruthy());
++      await waitFor(() => {
++        const names = Array.from(
++          container.querySelectorAll("button span.text-left"),
++        ).map((s) => s.textContent ?? "");
++        expect(names.length).toBeGreaterThan(0);
++        expect(names.every((t) => t.includes("Alpha"))).toBe(true);
++      });
++    } finally {
++      if (origH) Object.defineProperty(HTMLElement.prototype, "offsetHeight", origH);
++      if (origW) Object.defineProperty(HTMLElement.prototype, "offsetWidth", origW);
++    }
++  });
++
++  // 痛點(CH-1 白名單 5):focusRequest 聚焦 = 取代整組,不得殘留舊單看。
++  it("focusRequest 觸發 → 單看清除", async () => {
++    const { container, rerender } = await setupTwoSelected();
++    await clickCircle(container, "AL1");
++    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
++    rerender(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        onJumpToOverview={vi.fn()}
++        focusRequest={{ brokerId: "CH1", name: "Charlie", seq: 1 }}
++      />,
++    );
++    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
++    expect(soloBadge(container)).toBeNull();
++  });
++
++  // 痛點(review R3):mobile 進單看若不開 sheet,唯一回饋是 header 小字,
++  // 近乎靜默 — 對齊「tap 泡泡 → 自動開 sheet」既有心智。
++  it("mobile 進單看 → 自動開 sheet,標題顯「單看」", async () => {
++    mediaState.isMobile = true;
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    await selectBrokerViaSearch("Alpha");
++    await waitFor(() => {
++      expect(container.querySelector('[data-testid="bubble-detail-sheet"]')).toBeTruthy();
++    });
++    fireEvent.click(screen.getByLabelText("關閉明細"));
++    expect(container.querySelector('[data-testid="bubble-detail-sheet"]')).toBeNull();
++    await clickCircle(container, "AL1");
++    const sheet = await waitFor(() => {
++      const el = container.querySelector('[data-testid="bubble-detail-sheet"]');
++      if (!el) throw new Error("sheet not reopened on solo");
++      return el;
++    });
++    expect(sheet.textContent ?? "").toContain("單看");
++  });
++});
++
+ describe("ChipBubbleView — focusRequest 取代 / blocklist 保留其餘 (SC-6)", () => {
+   // 痛點:聚焦語意 =「看這個」,必須取代整組而非 append。
+   it("已多選 2 個後 focusRequest → 選取被取代為聚焦分點單獨一枚", async () => {
+@@ -1426,3 +1644,44 @@ describe("ChipBubbleView — mobile sheet 標題三分支 (SC-4 / edge 5)", () =
+     expect(container.querySelector('[data-testid="bubble-detail-sheet"]')).toBeTruthy();
+   });
+ });
++
++// mod/bubble-chart-ux-polish SC-1/SC-2:header 空間預留 — 搜尋固定左欄 +
++// chips 行 / 統計行常駐,搜尋與加選不再推擠統計(repro-six-selected-1536.png:
++// 舊版單一 flex-wrap,6 chip 時搜尋框被壓窄、統計掉第二行被下拉蓋住)。
++describe("ChipBubbleView — header 空間預留 (SC-1/SC-2)", () => {
++  // 痛點:桌面版面契約 = grid 三欄(360px 搜尋 / 中欄雙行 / 右工具),class
++  // 綁 testid 鎖住 — 退回 flex-wrap 混排即紅。
++  it("header 根容器帶桌面 grid 三欄 class(固定 360px 搜尋欄)", () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    const header = container.querySelector('[data-testid="bubble-header"]');
++    expect(header).toBeTruthy();
++    expect((header as HTMLElement).className).toContain(
++      "lg:grid-cols-[360px_minmax(0,1fr)_auto]",
++    );
++  });
++
++  // 痛點:統計行常駐(位置固定),未選時也 render(今日共 N 個分點)——
++  // 「selected>0 才出現」的舊條件會讓版面在加選瞬間跳動。
++  it("統計行常駐:未選時 bubble-stats-row 存在且顯「今日共 N 個分點」", () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    const row = container.querySelector('[data-testid="bubble-stats-row"]');
++    expect(row).toBeTruthy();
++    expect(row!.textContent ?? "").toContain("今日共");
++    expect(row!.textContent ?? "").toContain("3");
++  });
++
++  // 痛點:chips 行空態佔位 + 引導,header 高度不因首次加選跳動。
++  it("chips 行空態顯引導文字;加選後消失", async () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    expect((container.textContent ?? "").includes("點泡泡或搜尋分點加入比較")).toBe(true);
++    await selectBrokerViaSearch("Alpha");
++    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
++    expect((container.textContent ?? "").includes("點泡泡或搜尋分點加入比較")).toBe(false);
++  });
++});
+diff --git a/frontend/src/components/ChipBubbleView.tsx b/frontend/src/components/ChipBubbleView.tsx
+index 0c7975e..5b42b3a 100644
+--- a/frontend/src/components/ChipBubbleView.tsx
++++ b/frontend/src/components/ChipBubbleView.tsx
+@@ -106,6 +106,12 @@ export function ChipBubbleView({
+   const [blockRemovalNotice, setBlockRemovalNotice] = useState<string | null>(null);
+   const lastFocusSeq = useRef(0);
+ 
++  // SC-3(mod/bubble-chart-ux-polish):單看 — 選取中暫時只看一個分點的買賣超,
++  // 組合不動。與 CH-1 focusRequest(聚焦 = 取代整組選取)語意不同,獨立命名。
++  // invariant:solo 目標必在 selected 內 — 所有移除路徑顯式清殘留(review R1,
++  // 否則移除後重加選會無聲復活);activeSolo derived guard 只是防禦層。
++  const [solo, setSolo] = useState<{ id: string; name: string } | null>(null);
++
+   // Reset selection ONLY on symbol change (NOT on date / bubbleData change).
+   // C7 A1: brush 也一起清 —— 避免換股後舊 range 殘留誤導。
+   useEffect(() => {
+@@ -116,10 +122,14 @@ export function ChipBubbleView({
+     setSheetOpen(false);
+     setFocusedBroker(null);
+     setBlockRemovalNotice(null);
++    setSolo(null);
+   }, [symbol]);
+ 
+-  // SC-1 toggle 核心(三入口共用):已選 → 移除;未選 → 加選(滿員拒絕 + 提示)。
++  // SC-1 toggle 核心(搜尋 / chip × 入口;泡泡與明細列的已選半邊已改走單看):
++  // 已選 → 移除;未選 → 加選(滿員拒絕 + 提示)。
+   const toggleBroker = useCallback((id: string, name: string) => {
++    // review R1:同 id 的 solo 一律清 — 移除路徑解除單看;重加選不復活 stale solo。
++    setSolo((s) => (s && s.id === id ? null : s));
+     setSelected((prev) => {
+       if (prev.some((b) => b.id === id)) {
+         setLimitNotice(false);
+@@ -152,9 +162,11 @@ export function ChipBubbleView({
+     } else {
+       setBlockRemovalNotice(null);
+     }
+-    // SC-6:聚焦語意 =「看這個」— 取代整組選取,不 append。
++    // SC-6:聚焦語意 =「看這個」— 取代整組選取,不 append。舊單看一併清
++    // (白名單 5:不得殘留指向被取代組合的 solo)。
+     setSelected([{ id: focusRequest.brokerId, name: focusRequest.name, colorIdx: 0 }]);
+     setLimitNotice(false);
++    setSolo(null);
+     setFocusedBroker({ id: focusRequest.brokerId, name: focusRequest.name });
+   }, [focusRequest, blocked]);
+ 
+@@ -170,6 +182,16 @@ export function ChipBubbleView({
+     () => new Set(selected.map((b) => b.id)),
+     [selected],
+   );
++  // SC-3:activeSolo = 通過 invariant 檢查的單看目標;effectiveIds = 統計 /
++  // price bar / 明細列表的資料集合(單看時縮到單分點,選取集合本身不動)。
++  const activeSolo = useMemo(
++    () => (solo !== null && selectedIds.has(solo.id) ? solo : null),
++    [solo, selectedIds],
++  );
++  const effectiveIds = useMemo<ReadonlySet<string>>(
++    () => (activeSolo ? new Set([activeSolo.id]) : selectedIds),
++    [activeSolo, selectedIds],
++  );
+   // N ≥ 2 才配列圓點色(N = 1 圖面無外框,SC-5 單選視覺零回歸)。
+   // Phase 4 F2:key 一律 broker_id — 同名不同 id 兩分點的顏色不得互蓋。
+   const colorById = useMemo(() => {
+@@ -195,6 +217,7 @@ export function ChipBubbleView({
+   const handleBlockAdd = useCallback((b: BlockedBroker) => {
+     setBlocked((prev) => addBlocked(prev, b));
+     setSelected((prev) => prev.filter((s) => s.id !== b.id));
++    setSolo((s) => (s && s.id === b.id ? null : s));
+     setLimitNotice(false);
+   }, []);
+   const handleBlockRemove = useCallback((id: string) => {
+@@ -241,8 +264,8 @@ export function ChipBubbleView({
+   // C6 A3(SC-4 合併):選中分點集合的總買/賣張 + 精確成交金額加總。
+   // brushRange 有效時只算區間內。
+   const brokerTotals = useMemo(
+-    () => computeBrokerTotals(rangeTrades, selectedIds),
+-    [rangeTrades, selectedIds],
++    () => computeBrokerTotals(rangeTrades, effectiveIds),
++    [rangeTrades, effectiveIds],
+   );
+ 
+   const bubbleRef = useRef<HTMLDivElement | null>(null);
+@@ -275,27 +298,44 @@ export function ChipBubbleView({
+     [],
+   );
+ 
+-  // Phase 4 F1:svg / TradeList 沿路帶 broker_id,直接按 id toggle(SC-1)—
+-  // 同名不同 id 不再 name 反查猜第一筆。無 id 的舊路徑保留 name lookup fallback。
+-  // C7 A1: 點空白處(broker=null)同時清 brush,對齊 SC-A1c。
++  // Phase 4 F1:svg / TradeList 沿路帶 broker_id,同名不同 id 不反查猜第一筆;
++  // 無 id 的舊路徑解析出 broker_id 後進同一分派(review R5)。
++  // SC-3(mod/bubble-chart-ux-polish):點已選分點 → 單看 toggle,不再移除 —
++  // 誤點不破壞篩選組合;移除只走 chip × / 清除全部 / 搜尋下拉。
++  // SC-5 兩段式:單看中點空白只解單看;無單看才全清(C7 A1 SC-A1c 保留為第二段)。
+   const handleBubbleClick = useCallback(
+     (broker: string | null, brokerId?: string | null) => {
+       if (broker === null) {
++        if (activeSolo) {
++          setSolo(null);
++          return;
++        }
+         setSelected([]);
++        setSolo(null);
+         setLimitNotice(false);
+         setBrushRange(null);
+         setManualInputOpen(false);
+         return;
+       }
+-      if (brokerId) {
+-        toggleBroker(brokerId, broker);
++      let id = brokerId ?? null;
++      let name = broker;
++      if (!id) {
++        const t = visibleTrades.find((x) => x.broker === broker);
++        if (!t) return;
++        id = t.broker_id;
++        name = t.broker;
++      }
++      if (selectedIds.has(id)) {
++        const entering = activeSolo?.id !== id;
++        setSolo(entering ? { id, name } : null);
++        // review R3:mobile 進單看自動開 sheet(selected.length 不變,既有
++        // 自動開 effect 不會觸發)。
++        if (entering && isMobile) setSheetOpen(true);
+         return;
+       }
+-      const t = visibleTrades.find((x) => x.broker === broker);
+-      if (!t) return;
+-      toggleBroker(t.broker_id, t.broker);
++      toggleBroker(id, name); // SC-4:未選 → 加選照舊;solo 維持(異 id 不清)
+     },
+-    [visibleTrades, toggleBroker],
++    [visibleTrades, toggleBroker, selectedIds, activeSolo, isMobile],
+   );
+ 
+   // C7 A1: brush drag end callback。存 range → 顯示 summary panel。
+@@ -335,7 +375,7 @@ export function ChipBubbleView({
+ 
+   const priceAggs = useMemo(() => {
+     if (selected.length === 0) return allPriceAggs;
+-    const filtered = rangeTrades.filter((t) => selectedIds.has(t.broker_id));
++    const filtered = rangeTrades.filter((t) => effectiveIds.has(t.broker_id));
+     if (filtered.length === 0) return allPriceAggs;
+     const filteredAggs = aggregateByPrice(filtered);
+     const filteredPrices = new Set(filteredAggs.map((a) => a.price));
+@@ -344,14 +384,14 @@ export function ChipBubbleView({
+         ? filteredAggs.find((f) => f.price === a.price)!
+         : { price: a.price, buy: 0, sell: 0 },
+     );
+-  }, [rangeTrades, selected.length, selectedIds, allPriceAggs]);
++  }, [rangeTrades, selected.length, effectiveIds, allPriceAggs]);
+ 
+   // Bug fix: filter must precede the top-N slice. Building the rows then
+   // slicing drops every row that fell behind the global top-200 cap, which
+   // was hiding most of a small-volume broker's price levels after filter.
+   const { buyRows: filteredBuyRows, sellRows: filteredSellRows } = useMemo(
+-    () => buildTradeRows(rangeTrades, selectedIds, MAX_TRADE_ROWS, buySort, sellSort),
+-    [rangeTrades, selectedIds, buySort, sellSort],
++    () => buildTradeRows(rangeTrades, effectiveIds, MAX_TRADE_ROWS, buySort, sellSort),
++    [rangeTrades, effectiveIds, buySort, sellSort],
+   );
+ 
+   const detailPanel = (
+@@ -380,120 +420,160 @@ export function ChipBubbleView({
+     >
+       {/* Left: header search bar + bubble chart */}
+       <div className="h-full flex flex-col min-h-0 border-r border-line overflow-hidden">
+-        <div className="shrink-0 min-h-10 px-3 py-1 border-b border-line bg-bg-deep/30 flex flex-wrap items-center gap-x-3 gap-y-1">
++        {/* SC-1(mod/bubble-chart-ux-polish):搜尋固定左欄 + 中欄雙行(chips /
++            統計常駐)+ 右工具欄。舊版單一 flex-wrap 會讓 6 chip 壓窄搜尋框、
++            統計掉行被下拉蓋住。mobile(<lg)退化為垂直堆疊。 */}
++        <div
++          data-testid="bubble-header"
++          className="shrink-0 px-3 py-1.5 border-b border-line bg-bg-deep/30 flex flex-col gap-y-1 lg:grid lg:grid-cols-[360px_minmax(0,1fr)_auto] lg:gap-x-3 lg:items-start"
++        >
+           <BrokerSearch
+             trades={visibleTrades}
+             selectedIds={selectedIds}
+             onPick={toggleBroker}
+           />
+-          {/* SC-3 Legend chips:選取狀態唯一載體 — 專屬色圓點 + 顯示名 + ×。 */}
+-          {selected.map((b) => {
+-            const display = formatBrokerName(b.id, b.name);
+-            const color = BROKER_PALETTE[b.colorIdx]!;
+-            return (
+-              <span
+-                key={b.id}
+-                data-testid="broker-chip"
+-                className="inline-flex items-center gap-1.5 px-1.5 py-0.5 text-xs border border-line-strong bg-bg-deep/60 text-ink"
+-              >
+-                <span
+-                  data-testid="broker-chip-dot"
+-                  data-color={color}
+-                  aria-hidden="true"
+-                  className="size-2 rounded-full shrink-0"
+-                  style={{ background: color }}
+-                />
+-                {display}
++          <div className="min-w-0 flex flex-col gap-y-0.5">
++            {/* SC-3 Legend chips 行:選取狀態唯一載體 — 專屬色圓點 + 顯示名 + ×。
++                空態引導文字佔位,header 高度不因首次加選跳動(SC-2)。 */}
++            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-h-6">
++              {selected.map((b) => {
++                const display = formatBrokerName(b.id, b.name);
++                const color = BROKER_PALETTE[b.colorIdx]!;
++                return (
++                  <span
++                    key={b.id}
++                    data-testid="broker-chip"
++                    className="inline-flex items-center gap-1.5 px-1.5 py-0.5 text-xs border border-line-strong bg-bg-deep/60 text-ink"
++                  >
++                    <span
++                      data-testid="broker-chip-dot"
++                      data-color={color}
++                      aria-hidden="true"
++                      className="size-2 rounded-full shrink-0"
++                      style={{ background: color }}
++                    />
++                    {display}
++                    <button
++                      type="button"
++                      aria-label={`移除〈${display}〉`}
++                      onClick={() => toggleBroker(b.id, b.name)}
++                      className="text-ink-dim hover:text-bear cursor-pointer leading-none pointer-coarse:min-h-11"
++                    >
++                      ×
++                    </button>
++                  </span>
++                );
++              })}
++              {selected.length >= 2 && (
+                 <button
+                   type="button"
+-                  aria-label={`移除〈${display}〉`}
+-                  onClick={() => toggleBroker(b.id, b.name)}
+-                  className="text-ink-dim hover:text-bear cursor-pointer leading-none pointer-coarse:min-h-11"
++                  data-testid="broker-chips-clear"
++                  onClick={() => {
++                    setSelected([]);
++                    setLimitNotice(false);
++                  }}
++                  className="text-xs text-ink-dim hover:text-bear underline underline-offset-2 cursor-pointer"
+                 >
+-                  ×
++                  清除全部
+                 </button>
+-              </span>
+-            );
+-          })}
+-          {selected.length >= 2 && (
+-            <button
+-              type="button"
+-              data-testid="broker-chips-clear"
+-              onClick={() => {
+-                setSelected([]);
+-                setLimitNotice(false);
+-              }}
+-              className="text-xs text-ink-dim hover:text-bear underline underline-offset-2 cursor-pointer"
+-            >
+-              清除全部
+-            </button>
+-          )}
+-          {limitNotice && (
+-            <span role="status" className="text-xs text-[#f0b429]">
+-              {`最多同時選 ${MAX_SELECTED_BROKERS} 個分點`}
+-            </span>
+-          )}
+-          {selected.length > 0 ? (
+-            onJumpToOverview ? (
+-              <button
+-                type="button"
+-                data-testid="bubble-jump-to-overview"
+-                onClick={() =>
+-                  onJumpToOverview(
+-                    selected.length === 1
+-                      ? selected[0]!.id
+-                      : selected.map((b) => b.id),
+-                  )
+-                }
+-                className="text-xs text-accent hover:text-ink underline underline-offset-2 cursor-pointer"
+-              >
+-                {selected.length === 1 ? (
+-                  <>
+-                    查看 <span className="text-[#f0b429] font-medium">{formatBrokerName(selected[0]!.id, selected[0]!.name)}</span> 於籌碼總覽 →
+-                  </>
+-                ) : (
+-                  <>查看 {selected.length} 個分點於籌碼總覽 →</>
+-                )}
+-              </button>
+-            ) : (
+-              <span className="text-xs text-ink-dim">
+-                已篩選 <span className="text-[#f0b429] font-medium">{selected.length}</span> 個分點
+-              </span>
+-            )
+-          ) : (
+-            <span className="text-xs text-ink-dim">
+-              {brushRange ? "此區間" : "今日共"} <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
+-            </span>
+-          )}
+-          {selected.length > 0 && (
++              )}
++              {limitNotice && (
++                <span role="status" className="text-xs text-[#f0b429]">
++                  {`最多同時選 ${MAX_SELECTED_BROKERS} 個分點`}
++                </span>
++              )}
++              {blockRemovalNotice && (
++                <span
++                  data-testid="blocklist-removal-notice"
++                  role="status"
++                  className="text-xs text-[#f0b429]"
++                >
++                  {blockRemovalNotice}
++                </span>
++              )}
++              {selected.length === 0 && !blockRemovalNotice && (
++                <span className="text-xs text-ink-dim">
++                  點泡泡或搜尋分點加入比較
++                </span>
++              )}
++            </div>
++            {/* SC-2 統計行:常駐、位置固定 — 搜尋下拉在左欄下方展開,永不蓋到這裡。 */}
+             <div
+-              data-testid="bubble-broker-totals"
+-              className="flex items-center gap-3 text-xs text-ink-dim"
++              data-testid="bubble-stats-row"
++              className="flex flex-wrap items-center gap-x-3 gap-y-0.5 min-h-5"
+             >
+-              <span>
+-                買 <span className="text-accent tabular-nums">{fmtVol(brokerTotals.buyLots)}</span> 張
+-              </span>
+-              <span>
+-                賣 <span className="text-bear tabular-nums">{fmtVol(brokerTotals.sellLots)}</span> 張
+-              </span>
+-              <span>
+-                買額 <span className="text-accent tabular-nums">{fmtAmount(brokerTotals.buyAmount)}</span>
+-              </span>
+-              <span>
+-                賣額 <span className="text-bear tabular-nums">{fmtAmount(brokerTotals.sellAmount)}</span>
+-              </span>
++              {selected.length > 0 ? (
++                activeSolo ? (
++                  /* SC-3 單看 badge:統計數字已由 effectiveIds 切到單分點;
++                     jump 鈕暫隱(單看是暫態,避免兩個主行動並列)。 */
++                  <span data-testid="bubble-solo-badge" className="text-xs text-ink-muted">
++                    單看 <span className="text-[#f0b429] font-medium">{formatBrokerName(activeSolo.id, activeSolo.name)}</span>
++                  </span>
++                ) : onJumpToOverview ? (
++                  <button
++                    type="button"
++                    data-testid="bubble-jump-to-overview"
++                    onClick={() =>
++                      onJumpToOverview(
++                        selected.length === 1
++                          ? selected[0]!.id
++                          : selected.map((b) => b.id),
++                      )
++                    }
++                    className="text-xs text-accent hover:text-ink underline underline-offset-2 cursor-pointer"
++                  >
++                    {selected.length === 1 ? (
++                      <>
++                        查看 <span className="text-[#f0b429] font-medium">{formatBrokerName(selected[0]!.id, selected[0]!.name)}</span> 於籌碼總覽 →
++                      </>
++                    ) : (
++                      <>查看 {selected.length} 個分點於籌碼總覽 →</>
++                    )}
++                  </button>
++                ) : (
++                  <span className="text-xs text-ink-dim">
++                    已篩選 <span className="text-[#f0b429] font-medium">{selected.length}</span> 個分點
++                  </span>
++                )
++              ) : (
++                <span className="text-xs text-ink-dim">
++                  {brushRange ? "此區間" : "今日共"} <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
++                </span>
++              )}
++              {selected.length > 0 && (
++                <div
++                  data-testid="bubble-broker-totals"
++                  className="flex items-center gap-3 text-xs text-ink-dim"
++                >
++                  <span>
++                    買 <span className="text-accent tabular-nums">{fmtVol(brokerTotals.buyLots)}</span> 張
++                  </span>
++                  <span>
++                    賣 <span className="text-bear tabular-nums">{fmtVol(brokerTotals.sellLots)}</span> 張
++                  </span>
++                  <span>
++                    買額 <span className="text-accent tabular-nums">{fmtAmount(brokerTotals.buyAmount)}</span>
++                  </span>
++                  <span>
++                    賣額 <span className="text-bear tabular-nums">{fmtAmount(brokerTotals.sellAmount)}</span>
++                  </span>
++                </div>
++              )}
++              {activeSolo && (
++                <button
++                  type="button"
++                  data-testid="bubble-solo-clear"
++                  aria-label="回整組統計"
++                  onClick={() => setSolo(null)}
++                  className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer pointer-coarse:min-h-11"
++                >
++                  回整組 ×
++                </button>
++              )}
+             </div>
+-          )}
+-          {blockRemovalNotice && (
+-            <span
+-              data-testid="blocklist-removal-notice"
+-              role="status"
+-              className="text-xs text-[#f0b429]"
+-            >
+-              {blockRemovalNotice}
+-            </span>
+-          )}
+-          {/* C10 (🟢 Item 4 + 5):手動輸入區間 trigger + Help '?' icon 靠右 */}
++          </div>
++          {/* C10 (🟢 Item 4 + 5):手動輸入區間 trigger + Help '?' icon 靠右
++              (ml-auto:grid cell 與 mobile flex-col 兩形態都推右,review R4)。 */}
+           <div className="ml-auto flex items-center gap-2 shrink-0">
+             <BubbleBlocklistPopover
+               trades={bubbleData?.trades ?? []}
+@@ -543,6 +623,7 @@ export function ChipBubbleView({
+               onYBrush={isMobile ? undefined : handleYBrush}
+               brushRange={brushRange}
+               priceRange={rangeActiveForFilter ? brushRange : null}
++              soloBrokerId={activeSolo?.id ?? null}
+             />
+           ) : null}
+           {/* CH-1 R6 case 2: 聚焦分點當日無成交 — 維持選中,泡泡圖照常
+@@ -662,11 +743,13 @@ export function ChipBubbleView({
+             <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-line">
+               <span className="text-sm text-ink-muted">
+                 成交明細
+-                {selected.length === 1
+-                  ? ` — ${selected[0]!.name}`
+-                  : selected.length >= 2
+-                    ? ` — ${selected.length} 個分點`
+-                    : ""}
++                {activeSolo
++                  ? ` — 單看 ${formatBrokerName(activeSolo.id, activeSolo.name)}`
++                  : selected.length === 1
++                    ? ` — ${selected[0]!.name}`
++                    : selected.length >= 2
++                      ? ` — ${selected.length} 個分點`
++                      : ""}
+               </span>
+               <button
+                 type="button"
+diff --git a/frontend/src/lib/changelog.test.ts b/frontend/src/lib/changelog.test.ts
+index e48eb0b..673897a 100644
+--- a/frontend/src/lib/changelog.test.ts
++++ b/frontend/src/lib/changelog.test.ts
+@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
+     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
+   });
+ 
+-  it("最新版本是 v0.45.0(券差統計連動與看籌碼跳轉)", () => {
+-    expect(CHANGELOG[0]?.version).toBe("0.45.0");
++  it("最新版本是 v0.46.0(泡泡圖單看模式與 header 空間預留)", () => {
++    expect(CHANGELOG[0]?.version).toBe("0.46.0");
+   });
+ 
+   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
+diff --git a/frontend/src/lib/changelog.ts b/frontend/src/lib/changelog.ts
+index d40f0f6..6b435c8 100644
+--- a/frontend/src/lib/changelog.ts
++++ b/frontend/src/lib/changelog.ts
+@@ -39,6 +39,22 @@ export function semverGt(a: string, b: string): boolean {
+ // 版本字串遵循 SemVer 2.0.0 三段式 MAJOR.MINOR.PATCH;pre-1.0 階段 breaking change 也只 bump MINOR
+ // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
+ export const CHANGELOG: VersionEntry[] = [
++  {
++    version: "0.46.0",
++    date: "2026-07-28",
++    changes: [
++      {
++        kind: "feature",
++        scope: "equity",
++        text: "泡泡圖新增「單看」:已選多個分點時點任一泡泡或右側成交列表,可暫看該分點單獨的買賣張數與金額,再點一下或按「回整組」恢復,已選組合不會被取消",
++      },
++      {
++        kind: "fix",
++        scope: "equity",
++        text: "泡泡圖頂部改版:搜尋框寬度固定、買賣統計固定位置常駐,搜尋或加選分點時畫面不再互相推擠;誤點圖表空白處也不再一次清空所有已選分點",
++      },
++    ],
++  },
+   {
+     version: "0.45.0",
+     date: "2026-07-28",
+diff --git a/frontend/src/lib/chip-bubble-svg.test.tsx b/frontend/src/lib/chip-bubble-svg.test.tsx
+index 5482e55..49fc99e 100644
+--- a/frontend/src/lib/chip-bubble-svg.test.tsx
++++ b/frontend/src/lib/chip-bubble-svg.test.tsx
+@@ -733,4 +733,54 @@ describe("BubbleChartSvg — 多選分點外框色 (SC-2)", () => {
+     );
+     expect(container.querySelectorAll("circle")).toHaveLength(3);
+   });
+-});
+\ No newline at end of file
++});
++// mod/bubble-chart-ux-polish SC-3:單看泡泡聚焦外框(soloBrokerId)。
++describe("BubbleChartSvg — soloBrokerId 聚焦外框 (SC-3)", () => {
++  const twoSelectedTrades: BrokerTrade[] = [
++    mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 50, sell: 0 }),
++    mkTrade({ broker: "B", broker_id: "B1", price: 100, buy: 30, sell: 0 }),
++  ];
++  const twoSelected = [sel("A1", "A", 0), sel("B1", "B", 1)];
++
++  // 痛點:單看的圖面錨點 — 命中分點 ink 外框 + painter's order 排最後
++  // (review R6-1:重合泡泡下 ring 否則被後繪 palette 框遮蓋)。
++  it("命中分點 circle 帶 data-solo + ink stroke 2.5,且 render 於所有非 solo 泡泡之後", () => {
++    const { container } = render(
++      <BubbleChartSvg
++        trades={twoSelectedTrades}
++        width={400}
++        height={300}
++        selectedBrokers={twoSelected}
++        soloBrokerId="A1"
++      />,
++    );
++    const circles = Array.from(container.querySelectorAll("circle"));
++    const soloFlags = circles.map((c) => c.getAttribute("data-solo") === "true");
++    const soloCircles = circles.filter((_, i) => soloFlags[i]);
++    expect(soloCircles.length).toBeGreaterThan(0);
++    for (const c of soloCircles) {
++      expect(c.getAttribute("data-broker-id")).toBe("A1");
++      expect((c.getAttribute("stroke") ?? "").toLowerCase()).toBe("#ede4d3");
++      expect(c.getAttribute("stroke-width")).toBe("2.5");
++    }
++    // painter's order:第一個 solo 必在最後一個非 solo 之後
++    expect(soloFlags.indexOf(true)).toBeGreaterThan(soloFlags.lastIndexOf(false));
++    // 非 solo 的選中泡泡維持 palette 外框(identity encoding 不動)
++    const b1 = circles.find((c) => c.getAttribute("data-broker-id") === "B1")!;
++    expect(b1.getAttribute("stroke")).toBe(BROKER_PALETTE[1]);
++  });
++
++  // 痛點:optional prop 向下相容 — 不傳 / null 輸出與現行為完全一致。
++  it("soloBrokerId 未提供 / null → 無 data-solo,輸出一致", () => {
++    const base = {
++      trades: twoSelectedTrades,
++      width: 400,
++      height: 300,
++      selectedBrokers: twoSelected,
++    };
++    const { container: a } = render(<BubbleChartSvg {...base} />);
++    const { container: b } = render(<BubbleChartSvg {...base} soloBrokerId={null} />);
++    expect(a.querySelector("svg")!.outerHTML).toBe(b.querySelector("svg")!.outerHTML);
++    expect(a.querySelector("[data-solo]")).toBeNull();
++  });
++});
+diff --git a/frontend/src/lib/chip-bubble-svg.tsx b/frontend/src/lib/chip-bubble-svg.tsx
+index c57b619..ab5b90f 100644
+--- a/frontend/src/lib/chip-bubble-svg.tsx
++++ b/frontend/src/lib/chip-bubble-svg.tsx
+@@ -148,6 +148,10 @@ export interface BubbleChartProps {
+    *  軸(prices / volumes)仍用全 trades 計算,filter 後泡泡位置不變,
+    *  UX 感受為「淡出」而非「重排」。 */
+   priceRange?: { min: number; max: number } | null;
++  /** SC-3(mod/bubble-chart-ux-polish):單看分點 — 該分點泡泡改 ink 聚焦外框
++   *  並 reorder 至最後 render(重合時不被其他選中框遮蓋)。hitTest 用的
++   *  bubblesRef 維持原序(平手判定不變)。不傳 / null = 現行為。 */
++  soloBrokerId?: string | null;
+ }
+ 
+ // C7 A1 (🟢): Y 軸 brush drag min threshold(px)。防手誤與單擊誤觸。
+@@ -163,8 +167,15 @@ interface Bubble {
+   brokerId: string;
+   key: string;
+   payload: BubbleHoverPayload;
++  /** SC-3 單看聚焦(render 排序 + data-solo 錨點用)。 */
++  solo: boolean;
+ }
+ 
++// SC-3 單看聚焦外框:ink 色(對齊 --color-ink token 值),取代 palette /
++// 買賣 stroke(identity 由 header badge + chips 圓點補足,review R6 拍板)。
++const SOLO_STROKE = "#ede4d3";
++const SOLO_STROKE_WIDTH = 2.5;
++
+ export const BubbleChartSvg = memo(function BubbleChartSvg({
+   trades,
+   width,
+@@ -177,6 +188,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+   onYBrush,
+   brushRange,
+   priceRange,
++  soloBrokerId,
+ }: BubbleChartProps) {
+   // --- All hooks MUST be called before any conditional return ---
+ 
+@@ -572,17 +584,22 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+   let idx = 0;
+   for (const t of renderTrades) {
+     const ring = ringStroke(t.broker_id);
++    const isSolo = soloBrokerId != null && t.broker_id === soloBrokerId;
++    const stroke = (side: "buy" | "sell"): string =>
++      isSolo ? SOLO_STROKE : ring ?? (side === "buy" ? COLOR.buyStroke : COLOR.sellStroke);
++    const strokeWidth = isSolo ? SOLO_STROKE_WIDTH : ring ? 2 : 1;
+     if (t.buy > threshold) {
+       bubbles.push({
+         cx: centerX + (t.buy / volMax) * halfW,
+         cy: sY(t.price),
+         r: bubbleRadius(t.buy, maxVolume, MIN_R, MAX_R),
+         fill: COLOR.buyFill,
+-        stroke: ring ?? COLOR.buyStroke,
+-        strokeWidth: ring ? 2 : 1,
++        stroke: stroke("buy"),
++        strokeWidth,
+         brokerId: t.broker_id,
+         key: `b-${t.broker_id}-${t.price}-${idx}`,
+         payload: { broker: t.broker, brokerId: t.broker_id, volume: t.buy, price: t.price, side: "buy" },
++        solo: isSolo,
+       });
+     }
+     if (t.sell > threshold) {
+@@ -591,17 +608,24 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+         cy: sY(t.price),
+         r: bubbleRadius(t.sell, maxVolume, MIN_R, MAX_R),
+         fill: COLOR.sellFill,
+-        stroke: ring ?? COLOR.sellStroke,
+-        strokeWidth: ring ? 2 : 1,
++        stroke: stroke("sell"),
++        strokeWidth,
+         brokerId: t.broker_id,
+         key: `s-${t.broker_id}-${t.price}-${idx}`,
+         payload: { broker: t.broker, brokerId: t.broker_id, volume: t.sell, price: t.price, side: "sell" },
++        solo: isSolo,
+       });
+     }
+     idx++;
+   }
+ 
++  // hitTest 吃原序(平手判定不變 —「再點同泡泡解除單看」不被 reorder 翻轉);
++  // render 才把 solo 泡泡排最後(review R6-1 painter's order)。
+   bubblesRef.current = bubbles;
++  const renderBubbles: Bubble[] =
++    soloBrokerId != null
++      ? [...bubbles.filter((b) => !b.solo), ...bubbles.filter((b) => b.solo)]
++      : bubbles;
+ 
+   // Layout snapshot for crosshair reverse-mapping (pixel → price / volume)
+   layoutRef.current = {
+@@ -713,7 +737,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+       )}
+ 
+       {/* Bubbles — no per-element event handlers; overlay rect does hit testing */}
+-      {bubbles.map((b) => (
++      {renderBubbles.map((b) => (
+         <circle
+           key={b.key}
+           cx={b.cx}
+@@ -723,6 +747,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+           stroke={b.stroke}
+           strokeWidth={b.strokeWidth}
+           data-broker-id={b.brokerId}
++          data-solo={b.solo ? "true" : undefined}
+           pointerEvents="none"
+         />
+       ))}

@@ -470,6 +470,7 @@ export function ChipBubbleView({
                   data-testid="broker-chips-clear"
                   onClick={() => {
                     setSelected([]);
+                    setSolo(null); // review R1:移除路徑顯式清殘留,不靠 derived guard
                     setLimitNotice(false);
                   }}
                   className="text-xs text-ink-dim hover:text-bear underline underline-offset-2 cursor-pointer"
