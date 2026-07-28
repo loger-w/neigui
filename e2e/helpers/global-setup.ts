@@ -14,7 +14,10 @@ import { assertLiveCap } from "./live-guard.ts";
 export default async function globalSetup(): Promise<void> {
   assertLiveCap(); // R5-P1 — globalSetup 一次跑
 
-  const api = await request.newContext({ baseURL: "http://127.0.0.1:8000" });
+  const backendPort = process.env.NEIGUI_BACKEND_PORT ?? "8000";
+  const api = await request.newContext({
+    baseURL: `http://127.0.0.1:${backendPort}`,
+  });
   const r = await api.get("/api/_meta/mode").catch(() => null);
   if (!r || !r.ok()) {
     throw new Error(

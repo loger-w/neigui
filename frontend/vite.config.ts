@@ -11,11 +11,13 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    // 並行 session 佔 port 時用 NEIGUI_FRONTEND_PORT / NEIGUI_BACKEND_PORT
+    // 覆寫(playwright.config.ts 同步傳入;預設 5173 / 8000 不變)。
+    port: Number(process.env.NEIGUI_FRONTEND_PORT ?? 5173),
     strictPort: true,
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8000",
+        target: `http://127.0.0.1:${process.env.NEIGUI_BACKEND_PORT ?? 8000}`,
         // Vite 的 http-proxy 預設不轉發 client abort:瀏覽器 abort 只斷
         // browser↔vite,vite→backend 的 upstream request 繼續跑完。實測
         // (2026-07-03 quota side-channel):直連 :8000 abort 後 FinMind
