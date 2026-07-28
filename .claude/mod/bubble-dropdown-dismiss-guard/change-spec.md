@@ -59,7 +59,8 @@ follow-up,現況 = 該輪 change-spec + 實作(單看 / 兩段式空白已上)�
 
 - 🔴 `frontend/src/components/BrokerSearch.tsx`:Props + onOpenChange effect(~6 行)
 - 🔴 `frontend/src/components/ChipBubbleView.tsx`:兩 ref + wrapper onPointerDownCapture
-  + handleBubbleClick 開頭 guard(~10 行)
+  + onClickCapture 吞第一擊(**[amendment 2026-07-28: 自評 P2-4]** 對齊 R2 改版 —
+  guard 在 clickCapture 不在 handleBubbleClick,handleBubbleClick 零改動)
 - 測試(紅先行;**[amendment 2026-07-28: review R4]** 一律真實 timer — focus 開
   下拉不需推時間;禁用 fake timers 以免 Date/timer 假象讓測試以錯誤原因紅):
   - ChipBubbleView:T1 下拉開啟 pointerDown+click 空白 → chips 保留;T1b 同情境點
@@ -79,3 +80,5 @@ pointerdown)的測試會 arm guard 吞掉後續圖表點擊 → 兩個測試**�
 - 單看 T3「單看中點空白(chips + brush 保留)」(含 setupTwoSelected helper 統一補)
 
 其餘不該紅(無 pointerdown 的純 click 不 arm)。changelog 版本 pin 該紅(隨 0.46.1)。
+
+self_review_head: 26bc77fed7d9b019231a0c63b588fce7e5f167ad
