@@ -1,0 +1,6 @@
+[
+  {"id": "R1", "severity": "P1", "problem": "SC-1 依賴自然 blur 關下拉;iOS Safari tap 非 focusable 不觸發 blur → 下拉永開、圖表永久死區,且 jsdom/Chrome 模擬皆測不到", "resolution": "accepted — guard 於 pointerdown 主動 blur activeElement 觸發既有關閉鏈;spec 記已知驗證缺口(iOS 真機)"},
+  {"id": "R2", "severity": "P2", "problem": "殘留窗路徑盤點不全(drag-abort/brush-summary 鈕/手動面板),且 guard 放 handleBubbleClick 使殘留窗內明細列點擊也被吞,與 SC-3 矛盾", "resolution": "accepted — 改 per-gesture flag + wrapper onClickCapture stopPropagation:pointerdown 無條件覆寫 flag、click capture 消費,明細列結構性豁免"},
+  {"id": "R3", "severity": "P2", "problem": "400ms 時間窗對 >400ms 慢按壓失效(guard 漏保護)", "resolution": "accepted — 同 R2 改 gesture 配對,不用 wall-clock,問題消滅"},
+  {"id": "R4", "severity": "P2", "problem": "fake timers 會讓 Date/timer 假象使紅測試以錯誤原因紅", "resolution": "accepted — 測試計畫明訂一律真實 timer"}
+]

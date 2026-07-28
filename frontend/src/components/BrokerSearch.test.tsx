@@ -254,3 +254,24 @@ describe("BrokerSearch", () => {
     expect(onPick).toHaveBeenCalledWith("9201A", "凱基-台北");
   });
 });
+
+// mod/bubble-dropdown-dismiss-guard:下拉可見狀態回報 — ChipBubbleView 的
+// dismiss-click guard 靠它判斷「點圖表該不該吞」。
+describe("BrokerSearch — onOpenChange", () => {
+  it("focus 開下拉(有結果)回報 true;Escape 關閉回報 false", async () => {
+    const onOpen = vi.fn();
+    render(
+      <BrokerSearch
+        trades={trades}
+        selectedIds={noneSelected}
+        onPick={vi.fn()}
+        onOpenChange={onOpen}
+      />,
+    );
+    const input = screen.getByPlaceholderText("搜尋分點...");
+    fireEvent.focus(input);
+    await waitFor(() => expect(onOpen).toHaveBeenLastCalledWith(true));
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(onOpen).toHaveBeenLastCalledWith(false));
+  });
+});

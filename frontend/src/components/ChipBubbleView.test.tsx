@@ -488,8 +488,11 @@ describe("ChipBubbleView — A1 Y-axis brush integration (C7 🟢)", () => {
     const { container } = render(
       <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
     );
-    // 先建立 brush + selection 兩個狀態
+    // 先建立 brush + selection 兩個狀態(dismiss-guard 後:選完 Escape 關下拉,
+    // 否則 brush 的 pointerdown 會 arm guard 吞掉後續空白點擊 — 對齊真瀏覽器
+    // 「點圖表即 blur 關下拉」的序)
     await selectBrokerViaSearch("Alpha");
+    fireEvent.keyDown(screen.getByPlaceholderText("搜尋分點..."), { key: "Escape" });
     await triggerBrush(container);
     await waitFor(() => {
       if (!container.querySelector('[data-testid="brush-summary"]')) {
@@ -1283,6 +1286,12 @@ describe("ChipBubbleView — 單看模式 (SC-3/4/5)", () => {
     await selectBrokerViaSearch("Alpha");
     await selectBrokerViaSearch("Bravo");
     await waitFor(() => expect(chipEls(utils.container)).toHaveLength(2));
+    // dismiss-guard 後:選完關下拉再操作圖表(對齊真瀏覽器 — 點圖表的
+    // pointerdown 會 blur 關下拉;jsdom 無真 blur,顯式 Escape)。
+    fireEvent.keyDown(
+      screen.getByPlaceholderText("搜尋分點..."),
+      { key: "Escape" },
+    );
     return utils;
   }
 
@@ -1459,6 +1468,70 @@ describe("ChipBubbleView — 單看模式 (SC-3/4/5)", () => {
     );
     await waitFor(() => expect(chipEls(container)).toHaveLength(1));
     expect(soloBadge(container)).toBeNull();
+  });
+
+  // ————— mod/bubble-dropdown-dismiss-guard:下拉開啟時點圖表 = 只關下拉 —————
+  // 痛點:user 點別處想關下拉,誤觸圖表空白 → 兩段式清除照跑,組合被毀。
+  // 第一擊 dismiss(gesture 配對 flag + click capture 吞掉)、再擊才生效。
+  // 一律真實 timer(spec review R4:fake timers 的 Date 假象會讓紅測試錯因紅)。
+  it("下拉開啟時點圖表空白 → 組合不動(第一擊只 dismiss);關下拉後再點 → 照舊清除", async () => {
+    const { container } = await setupTwoSelected();
+    // 重新開啟下拉(setup 已 Escape 關閉)
+    const searchInput = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
+    fireEvent.focus(searchInput);
+    await waitFor(() => {
+      expect(screen.queryAllByTestId("broker-search-item").length).toBeGreaterThan(0);
+    });
+    const overlay = container.querySelector('[data-testid="bubble-main-overlay"]')!;
+    fireEvent.pointerDown(overlay); // wrapper capture arm flag
+    fireEvent.click(overlay);       // 空白擊被吞
+    expect(chipEls(container)).toHaveLength(2);
+    // 關下拉(Escape)後再點空白 → 照舊兩段式(無單看 → 全清)
+    const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
+    fireEvent.keyDown(input, { key: "Escape" });
+    fireEvent.pointerDown(overlay);
+    fireEvent.click(overlay);
+    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
+  });
+
+  it("下拉開啟時點已選泡泡 → 不進單看不加減選;關下拉後再點 → 單看照舊", async () => {
+    const { container } = await setupTwoSelected();
+    const searchInput = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
+    fireEvent.focus(searchInput);
+    await waitFor(() => {
+      expect(screen.queryAllByTestId("broker-search-item").length).toBeGreaterThan(0);
+    });
+    const overlay = container.querySelector('[data-testid="bubble-main-overlay"]')!;
+    const circle = Array.from(container.querySelectorAll("circle")).find(
+      (el) => el.getAttribute("data-broker-id") === "AL1",
+    )!;
+    const cx = Number(circle.getAttribute("cx"));
+    const cy = Number(circle.getAttribute("cy"));
+    fireEvent.pointerDown(overlay, { clientX: cx, clientY: cy });
+    fireEvent.click(overlay, { clientX: cx, clientY: cy });
+    expect(soloBadge(container)).toBeNull();
+    expect(chipEls(container)).toHaveLength(2);
+    const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
+    fireEvent.keyDown(input, { key: "Escape" });
+    fireEvent.pointerDown(overlay, { clientX: cx, clientY: cy });
+    fireEvent.click(overlay, { clientX: cx, clientY: cy });
+    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
+  });
+
+  // 痛點(spec review R1):iOS tap 非 focusable 不觸發 blur → 必須主動關。
+  // 鎖「pointerdown 時 activeElement 被 blur」= 既有 closeTimer 關閉鏈的入口。
+  it("下拉開啟時 pointerdown 圖表 → 主動 blur 搜尋框(關閉鏈入口)", async () => {
+    const { container } = await setupTwoSelected();
+    const input = screen.getByPlaceholderText("搜尋分點...") as HTMLInputElement;
+    input.focus();
+    fireEvent.focus(input); // React onFocus 開下拉(jsdom .focus() 不觸發 synthetic)
+    await waitFor(() => {
+      expect(screen.queryAllByTestId("broker-search-item").length).toBeGreaterThan(0);
+    });
+    expect(document.activeElement).toBe(input);
+    const overlay = container.querySelector('[data-testid="bubble-main-overlay"]')!;
+    fireEvent.pointerDown(overlay);
+    expect(document.activeElement).not.toBe(input);
   });
 
   // 痛點(review R3):mobile 進單看若不開 sheet,唯一回饋是 header 小字,

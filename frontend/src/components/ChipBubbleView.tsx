@@ -268,6 +268,32 @@ export function ChipBubbleView({
     [rangeTrades, effectiveIds],
   );
 
+  // dismiss-click guard(mod/bubble-dropdown-dismiss-guard):搜尋下拉開啟時,
+  // 點圖表的第一擊只當「關閉下拉」— pointerdown 以 gesture 配對 flag(spec
+  // review R2/R3:不用 wall-clock 窗),click capture 階段吞掉,不落
+  // handleBubbleClick;明細列在 wrapper 外,結構性不受 guard 影響。
+  const searchOpenRef = useRef(false);
+  const dismissNextClickRef = useRef(false);
+  const handleSearchOpenChange = useCallback((open: boolean) => {
+    searchOpenRef.current = open;
+  }, []);
+  const handleChartPointerDownCapture = useCallback(() => {
+    // 無條件覆寫:下拉已關的下一個手勢自動清 flag(drag-abort / brush 等
+    // 「pointerdown 有、click 不達」路徑不留殘留)。
+    dismissNextClickRef.current = searchOpenRef.current;
+    if (searchOpenRef.current && document.activeElement instanceof HTMLElement) {
+      // spec review R1:iOS tap 非 focusable 元素不觸發 blur → 主動 blur
+      // 搜尋框走既有 closeTimer 關閉鏈(桌面 double-blur 無害)。
+      document.activeElement.blur();
+    }
+  }, []);
+  const handleChartClickCapture = useCallback((e: React.MouseEvent) => {
+    if (dismissNextClickRef.current) {
+      dismissNextClickRef.current = false;
+      e.stopPropagation();
+    }
+  }, []);
+
   const bubbleRef = useRef<HTMLDivElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const bubbleSize = useContainerSize(bubbleRef);
@@ -431,6 +457,7 @@ export function ChipBubbleView({
             trades={visibleTrades}
             selectedIds={selectedIds}
             onPick={toggleBroker}
+            onOpenChange={handleSearchOpenChange}
           />
           <div className="min-w-0 flex flex-col gap-y-0.5">
             {/* SC-3 Legend chips 行:選取狀態唯一載體 — 專屬色圓點 + 顯示名 + ×。
@@ -606,7 +633,12 @@ export function ChipBubbleView({
             <BubbleHelpButton />
           </div>
         </div>
-        <div ref={bubbleRef} className="flex-1 min-h-0 overflow-hidden relative">
+        <div
+          ref={bubbleRef}
+          className="flex-1 min-h-0 overflow-hidden relative"
+          onPointerDownCapture={handleChartPointerDownCapture}
+          onClickCapture={handleChartClickCapture}
+        >
           {!bubbleData && !loading ? (
             <div className="h-full flex items-center justify-center text-ink-dim font-serif italic text-sm">
               請搜尋股票代號以載入泡泡圖
