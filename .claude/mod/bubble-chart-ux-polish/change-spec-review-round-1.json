@@ -1,0 +1,8 @@
+[
+  {"id": "R1", "severity": "P0", "problem": "solo 殘留復活:derived guard 不清 state,移除後重加選 → activeSolo 無聲復活,違反 SC-4", "resolution": "accepted — 移除路徑顯式清殘留(toggleBroker 移除半邊 / 清除全部 / handleBlockAdd),補測試 T6b"},
+  {"id": "R2", "severity": "P1", "problem": "E39 兩陷阱:fixture 同價位泡泡重合 hitTest 平手取序位第一;circle pointerEvents=none 擋 locator.click", "resolution": "accepted — E39 寫死 solo 目標=分點001、boundingBox+page.mouse.click、空白點角落"},
+  {"id": "R3", "severity": "P2", "problem": "mobile 進 solo 無可見回饋(sheet 只依 selected.length 開)", "resolution": "accepted — mobile 進 solo 時 setSheetOpen(true)"},
+  {"id": "R4", "severity": "P2", "problem": "justify-self-end 在 mobile flex-col 失效,工具列靠左回歸", "resolution": "accepted — 保留 ml-auto(grid/flex 通吃),SC-6 補工具列自成一行靠右"},
+  {"id": "R5", "severity": "P2", "problem": "name fallback 路徑若保留原 toggleBroker 直呼,與三分支矛盾", "resolution": "accepted — fallback 解析 broker_id 後進同一三分支"},
+  {"id": "R6", "severity": "P2", "problem": "solo ring 疊加 vs 取代未拍板", "resolution": "accepted — 拍板「取代 stroke 為 ink 2.5」,identity 由 badge+chips 補足"}
+]

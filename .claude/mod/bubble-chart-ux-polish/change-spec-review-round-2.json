@@ -1,0 +1,4 @@
+[
+  {"id": "R2-1", "severity": "P2", "problem": "E39 未寫關下拉步驟,座標點擊可能被 z-50 listbox 截走", "resolution": "accepted — E39 補 Escape 關下拉 + 點擊目標指明 buy 側 circle first()"},
+  {"id": "R6-1", "severity": "P2", "problem": "重合泡泡下 solo ink ring 被後繪 palette 框遮蓋", "resolution": "accepted — solo 命中 circle reorder 至最後 render;null 時順序不變"}
+]
