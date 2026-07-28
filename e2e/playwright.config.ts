@@ -49,7 +49,12 @@ export default defineConfig({
         NEIGUI_FRONTEND_PORT: frontendPort,
       },
       url: `http://127.0.0.1:${frontendPort}`,
-      reuseExistingServer: !process.env.CI,
+      // 自評 BF-2:port 覆寫(常因並行 session 佔用)時禁止 reuse — 半套設定
+      // 會 reuse 到「別 session 的 dev server」(proxy 指向真後端)靜默錯接。
+      reuseExistingServer:
+        !process.env.CI &&
+        !process.env.NEIGUI_BACKEND_PORT &&
+        !process.env.NEIGUI_FRONTEND_PORT,
       timeout: 60_000,
     },
   ],
