@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { FEE_HIGHLIGHT_THRESHOLD, type BorrowFeeRow } from "./borrow-fee";
 import {
+  aggregateDayStats,
   distinctStocks,
   formatFee,
+  formatLots,
   formatShares,
   matchStockOptions,
   sortRows,
@@ -115,5 +117,43 @@ describe("matchStockOptions", () => {
 describe("FEE_HIGHLIGHT_THRESHOLD", () => {
   it("與 backend services/daytrade_fee.py 同名常數鎖同值(test_fee_highlight_threshold_value)", () => {
     expect(FEE_HIGHLIGHT_THRESHOLD).toBe(3.5);
+  });
+});
+
+// mod/borrow-fee-layout SC-1/2:當日 per-stock 統計(免搜尋常駐右表的資料層)。
+describe("aggregateDayStats", () => {
+  it("同股多筆加總、name 取首見、total desc 排序", () => {
+    const rows = [
+      row("8046", 3000, 3.5),
+      row("2434", 21000, 2.619),
+      row("8046", 5000, 2.0),
+    ];
+    expect(aggregateDayStats(rows)).toEqual([
+      { stock_id: "2434", name: "n2434", total_shares: 21000 },
+      { stock_id: "8046", name: "n8046", total_shares: 8000 },
+    ]);
+  });
+
+  it("同 total tie-break 代號升冪(SC-2)", () => {
+    const rows = [row("8046", 3000, 3.5), row("5483", 3000, 3.5), row("8069", 25000, 1.0)];
+    expect(aggregateDayStats(rows).map((s) => s.stock_id)).toEqual([
+      "8069",
+      "5483",
+      "8046",
+    ]);
+  });
+
+  it("空陣列回空", () => {
+    expect(aggregateDayStats([])).toEqual([]);
+  });
+});
+
+describe("formatLots", () => {
+  it("整千顯整數、非整千四捨五入 1 位小數、千分位(change-spec R5 測試對)", () => {
+    expect(formatLots(3000)).toBe("3");
+    expect(formatLots(25000)).toBe("25");
+    expect(formatLots(1234)).toBe("1.2");
+    expect(formatLots(1900)).toBe("1.9");
+    expect(formatLots(2500000)).toBe("2,500");
   });
 });
