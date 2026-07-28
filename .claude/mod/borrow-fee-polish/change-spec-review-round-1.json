@@ -1,0 +1,12 @@
+{
+  "round": 1,
+  "reviewer": "change-spec-reviewer (a203e69064425d109)",
+  "date": "2026-07-28",
+  "findings": [
+    {"id": "R1", "severity": "P2", "summary": "看籌碼 onClick snippet 過不了 strict null check(disabled 不 narrow)", "triage": "accepted", "resolution": "snippet 改 handler 內 guard,禁 non-null assertion"},
+    {"id": "R2", "severity": "P2", "summary": "tr 鍵盤互動缺 Space preventDefault 與 focus-visible affordance", "triage": "accepted", "resolution": "Space 分支 preventDefault + focus-visible:bg 同 hover 階;測試覆蓋 Space"},
+    {"id": "R3", "severity": "P2", "summary": "SC-2「永不消失」與 data gate 矛盾、高度量測未定 viewport", "triage": "accepted", "resolution": "措辭改 data 載入後常駐、量測限 ≥1024px、窄幅換行豁免"},
+    {"id": "R4", "severity": "P2", "summary": "BF6 可免費補 tpex 月聚合資料級鎖(本月累計 26,000 / 2 次)", "triage": "accepted", "resolution": "BF6 加該兩 assertion(手算 1,000+25,000)"}
+  ],
+  "exit": "無 P0 / P1;P2 四條全 accepted 修 spec(標 [amendment 2026-07-28])→ 不觸發限縮加輪"
+}

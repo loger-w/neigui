@@ -1,0 +1,54 @@
+{
+  "round": 1,
+  "tier": "medium",
+  "date": "2026-07-28",
+  "lenses": [
+    "correctness+whitelist(sonnet)",
+    "test-coverage(sonnet)"
+  ],
+  "diff": "review-diff.txt(main...HEAD @21f0839 時點)",
+  "findings": [
+    {
+      "id": "TC-1",
+      "severity": "P1",
+      "lens": "test-coverage",
+      "summary": "清除選股測試只鎖日段占位,月段/次數段分支無鎖",
+      "triage": "accepted",
+      "resolution": "補 本月累計 — / not 17,000 / not ((commit 23bd614)"
+    },
+    {
+      "id": "TC-2",
+      "severity": "P2",
+      "lens": "test-coverage",
+      "summary": "未傳 onSymbolPick 點擊不炸無覆蓋(與統計表不對稱)",
+      "triage": "accepted",
+      "resolution": "補對稱 case(commit 23bd614)"
+    },
+    {
+      "id": "TC-3",
+      "severity": "P2",
+      "lens": "test-coverage",
+      "summary": "全集空但 data 非 null 的 summary 常駐分支零覆蓋",
+      "triage": "accepted",
+      "resolution": "rows 空測試補 summary 占位 + 看籌碼 disabled(commit 23bd614)"
+    },
+    {
+      "id": "TC-4",
+      "severity": "P2",
+      "lens": "test-coverage",
+      "summary": "affordance class 無正向鎖",
+      "triage": "accepted",
+      "resolution": "補 className 正向斷言(commit 23bd614)"
+    },
+    {
+      "id": "BF-P2-1",
+      "severity": "P2",
+      "lens": "correctness",
+      "summary": "統計列 affordance 無條件套用 — 唯讀 caller 會見假可點樣式且 Space 被吃",
+      "triage": "accepted",
+      "resolution": "tabIndex/aria/onClick/onKeyDown/class 全綁 onPickStock 存在 + 唯讀負向測試(commit 7c62a8b)"
+    }
+  ],
+  "whitelist_check": "correctness lens 白名單 1-8 逐條對照全保留;該紅僅事前標定兩處(summary vitest 兩例 + BF4 末段);另實跑 tsc/vitest 1004/borrow-fee e2e 6 例全綠佐證",
+  "exit": "P0=0;P1 一條 accepted 修復;P2 四條全修。收斂。"
+}
