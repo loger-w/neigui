@@ -6,6 +6,12 @@
 
 ---
 
+## From /mod borrow-fee-layout(2026-07-28)
+
+- **券差統計表 row 點擊帶入單檔篩選(click-to-filter)**:右表點列 → setSelectedStock 連動左明細。觸發重評估:user 覺得「看到統計還要手動搜尋該檔」麻煩時。
+- **券差統計表加市場 badge / 費率 / 次數欄或欄頭排序**:本次依原句只做 代號/名稱/張數 固定排序。觸發重評估:user 要求更多維度時。
+- **本月維度全市場統計表**(month_shares 全集):目前只有當日;payload 已有資料。觸發重評估:user 要月累計 overview 時。
+
 ## From /mod batch-ui-polish(2026-07-21)
 
 - **E25/E10 型負載 flake — 殘餘面收斂到 SymbolSearch option 步**(2026-07-21 收割更新):badge 時序 race 已由 chore/next-time-harvest-0721 根治(route 固定 1500ms delay 改事件同步 gate,badge 可見窗不再受機器負載影響;無負載 repeat×5 綠)。今日兩紅實際失敗點都在 `getByRole("option")` 15s 0 筆 — 發生於並行跑全套 gate 的高負載窗,無負載即綠,與 E10 既有「SymbolSearch dropdown 高負載」記錄同根。觸發重評估:非自造負載情境下再紅時,查 `/api/symbols/all` query 在 vite dev proxy 高負載下的 resolve 時序(app 層 prefetch 或 spec 層等 dropdown loading 態收斂)。
