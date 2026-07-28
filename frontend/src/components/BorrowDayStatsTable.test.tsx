@@ -50,8 +50,8 @@ describe("BorrowDayStatsTable", () => {
       "8046",
     ]);
     // 張數換算:8069 = 25,000 股 → 25 張;8046 = 3,000+5,000 → 8 張
-    expect(rows[0].textContent).toContain("25");
-    expect(rows[2].textContent).toContain("8");
+    expect(rows[0]?.textContent).toContain("25");
+    expect(rows[2]?.textContent).toContain("8");
   });
 
   it("數值標色不用 accent/bull/bear(色彩語意鐵則 — 非互動態)", () => {
