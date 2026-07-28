@@ -123,10 +123,11 @@ describe("FEE_HIGHLIGHT_THRESHOLD", () => {
 // mod/borrow-fee-layout SC-1/2:當日 per-stock 統計(免搜尋常駐右表的資料層)。
 describe("aggregateDayStats", () => {
   it("同股多筆加總、name 取首見、total desc 排序", () => {
+    // 第二筆刻意用不同 name — 鎖「取首見」而非「最後一筆覆蓋」(review TC-1)
     const rows = [
       row("8046", 3000, 3.5),
       row("2434", 21000, 2.619),
-      row("8046", 5000, 2.0),
+      { ...row("8046", 5000, 2.0), name: "南電(舊)" },
     ];
     expect(aggregateDayStats(rows)).toEqual([
       { stock_id: "2434", name: "n2434", total_shares: 21000 },
@@ -155,5 +156,11 @@ describe("formatLots", () => {
     expect(formatLots(1234)).toBe("1.2");
     expect(formatLots(1900)).toBe("1.9");
     expect(formatLots(2500000)).toBe("2,500");
+  });
+
+  it("邊界組合:千分位+小數並存、不足一張、捨入 tie(review TC-2)", () => {
+    expect(formatLots(1234567)).toBe("1,234.6");
+    expect(formatLots(500)).toBe("0.5");
+    expect(formatLots(1250)).toBe("1.3"); // halfExpand:1.25 → 1.3
   });
 });
