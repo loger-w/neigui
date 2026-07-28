@@ -40,6 +40,22 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.46.0",
+    date: "2026-07-28",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "泡泡圖新增「單看」:已選多個分點時點任一泡泡或右側成交列表,可暫看該分點單獨的買賣張數與金額,再點一下或按「回整組」恢復,已選組合不會被取消",
+      },
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "泡泡圖頂部改版:搜尋框寬度固定、買賣統計固定位置常駐,搜尋或加選分點時畫面不再互相推擠;誤點圖表空白處也不再一次清空所有已選分點",
+      },
+    ],
+  },
+  {
     version: "0.45.0",
     date: "2026-07-28",
     changes: [
