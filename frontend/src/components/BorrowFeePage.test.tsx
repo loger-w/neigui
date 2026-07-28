@@ -173,10 +173,14 @@ describe("BorrowFeePage 單檔篩選", () => {
 describe("BorrowFeePage 選股加總 summary", () => {
   const WITH_SHARES: BorrowFeeData = MULTI;
 
-  it("選股 → summary 出現:本日合計 = 同日兩筆相加、本月累計 + 次數(千分位)", () => {
+  // mod/borrow-fee-polish SC-2:summary 區塊改 data 載入後常駐(占位「—」),
+  // 選股只換內容不增刪區塊 — 消除 header 高度跳動。
+  it("未選股 summary 常駐占位「—」;選股 → 同區塊填數字(同日兩筆相加、千分位)", () => {
     hookState.data = WITH_SHARES;
     render(<BorrowFeePage />);
-    expect(screen.queryByTestId("borrow-fee-stock-summary")).toBeNull();
+    const before = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
+    expect(before).toContain("本日標借合計 —");
+    expect(before).toContain("本月累計 —");
     pickStock("8046");
     const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
     expect(t).toContain("本日標借合計 8,000 股"); // 3,000 + 5,000(同日兩筆)
@@ -184,13 +188,15 @@ describe("BorrowFeePage 選股加總 summary", () => {
     expect(t).toContain("(2 次)");
   });
 
-  it("清除選股 → summary 消失", () => {
+  it("清除選股 → summary 仍在、內容回占位", () => {
     hookState.data = WITH_SHARES;
     render(<BorrowFeePage />);
     pickStock("8046");
-    expect(screen.getByTestId("borrow-fee-stock-summary")).toBeTruthy();
+    expect(screen.getByTestId("borrow-fee-stock-summary").textContent).toContain("8,000");
     fireEvent.click(screen.getByTestId("stock-filter-clear"));
-    expect(screen.queryByTestId("borrow-fee-stock-summary")).toBeNull();
+    const t = screen.getByTestId("borrow-fee-stock-summary").textContent ?? "";
+    expect(t).toContain("本日標借合計 —");
+    expect(t).not.toContain("8,000");
   });
 
   it("該檔今日無列(refresh 後消失)→ 本日 0 股、本月累計照顯", () => {
