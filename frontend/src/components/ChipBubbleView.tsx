@@ -106,6 +106,12 @@ export function ChipBubbleView({
   const [blockRemovalNotice, setBlockRemovalNotice] = useState<string | null>(null);
   const lastFocusSeq = useRef(0);
 
+  // SC-3(mod/bubble-chart-ux-polish):單看 — 選取中暫時只看一個分點的買賣超,
+  // 組合不動。與 CH-1 focusRequest(聚焦 = 取代整組選取)語意不同,獨立命名。
+  // invariant:solo 目標必在 selected 內 — 所有移除路徑顯式清殘留(review R1,
+  // 否則移除後重加選會無聲復活);activeSolo derived guard 只是防禦層。
+  const [solo, setSolo] = useState<{ id: string; name: string } | null>(null);
+
   // Reset selection ONLY on symbol change (NOT on date / bubbleData change).
   // C7 A1: brush 也一起清 —— 避免換股後舊 range 殘留誤導。
   useEffect(() => {
@@ -116,10 +122,14 @@ export function ChipBubbleView({
     setSheetOpen(false);
     setFocusedBroker(null);
     setBlockRemovalNotice(null);
+    setSolo(null);
   }, [symbol]);
 
-  // SC-1 toggle 核心(三入口共用):已選 → 移除;未選 → 加選(滿員拒絕 + 提示)。
+  // SC-1 toggle 核心(搜尋 / chip × 入口;泡泡與明細列的已選半邊已改走單看):
+  // 已選 → 移除;未選 → 加選(滿員拒絕 + 提示)。
   const toggleBroker = useCallback((id: string, name: string) => {
+    // review R1:同 id 的 solo 一律清 — 移除路徑解除單看;重加選不復活 stale solo。
+    setSolo((s) => (s && s.id === id ? null : s));
     setSelected((prev) => {
       if (prev.some((b) => b.id === id)) {
         setLimitNotice(false);
@@ -152,9 +162,11 @@ export function ChipBubbleView({
     } else {
       setBlockRemovalNotice(null);
     }
-    // SC-6:聚焦語意 =「看這個」— 取代整組選取,不 append。
+    // SC-6:聚焦語意 =「看這個」— 取代整組選取,不 append。舊單看一併清
+    // (白名單 5:不得殘留指向被取代組合的 solo)。
     setSelected([{ id: focusRequest.brokerId, name: focusRequest.name, colorIdx: 0 }]);
     setLimitNotice(false);
+    setSolo(null);
     setFocusedBroker({ id: focusRequest.brokerId, name: focusRequest.name });
   }, [focusRequest, blocked]);
 
@@ -169,6 +181,16 @@ export function ChipBubbleView({
   const selectedIds = useMemo(
     () => new Set(selected.map((b) => b.id)),
     [selected],
+  );
+  // SC-3:activeSolo = 通過 invariant 檢查的單看目標;effectiveIds = 統計 /
+  // price bar / 明細列表的資料集合(單看時縮到單分點,選取集合本身不動)。
+  const activeSolo = useMemo(
+    () => (solo !== null && selectedIds.has(solo.id) ? solo : null),
+    [solo, selectedIds],
+  );
+  const effectiveIds = useMemo<ReadonlySet<string>>(
+    () => (activeSolo ? new Set([activeSolo.id]) : selectedIds),
+    [activeSolo, selectedIds],
   );
   // N ≥ 2 才配列圓點色(N = 1 圖面無外框,SC-5 單選視覺零回歸)。
   // Phase 4 F2:key 一律 broker_id — 同名不同 id 兩分點的顏色不得互蓋。
@@ -195,6 +217,7 @@ export function ChipBubbleView({
   const handleBlockAdd = useCallback((b: BlockedBroker) => {
     setBlocked((prev) => addBlocked(prev, b));
     setSelected((prev) => prev.filter((s) => s.id !== b.id));
+    setSolo((s) => (s && s.id === b.id ? null : s));
     setLimitNotice(false);
   }, []);
   const handleBlockRemove = useCallback((id: string) => {
@@ -241,8 +264,8 @@ export function ChipBubbleView({
   // C6 A3(SC-4 合併):選中分點集合的總買/賣張 + 精確成交金額加總。
   // brushRange 有效時只算區間內。
   const brokerTotals = useMemo(
-    () => computeBrokerTotals(rangeTrades, selectedIds),
-    [rangeTrades, selectedIds],
+    () => computeBrokerTotals(rangeTrades, effectiveIds),
+    [rangeTrades, effectiveIds],
   );
 
   const bubbleRef = useRef<HTMLDivElement | null>(null);
@@ -275,27 +298,44 @@ export function ChipBubbleView({
     [],
   );
 
-  // Phase 4 F1:svg / TradeList 沿路帶 broker_id,直接按 id toggle(SC-1)—
-  // 同名不同 id 不再 name 反查猜第一筆。無 id 的舊路徑保留 name lookup fallback。
-  // C7 A1: 點空白處(broker=null)同時清 brush,對齊 SC-A1c。
+  // Phase 4 F1:svg / TradeList 沿路帶 broker_id,同名不同 id 不反查猜第一筆;
+  // 無 id 的舊路徑解析出 broker_id 後進同一分派(review R5)。
+  // SC-3(mod/bubble-chart-ux-polish):點已選分點 → 單看 toggle,不再移除 —
+  // 誤點不破壞篩選組合;移除只走 chip × / 清除全部 / 搜尋下拉。
+  // SC-5 兩段式:單看中點空白只解單看;無單看才全清(C7 A1 SC-A1c 保留為第二段)。
   const handleBubbleClick = useCallback(
     (broker: string | null, brokerId?: string | null) => {
       if (broker === null) {
+        if (activeSolo) {
+          setSolo(null);
+          return;
+        }
         setSelected([]);
+        setSolo(null);
         setLimitNotice(false);
         setBrushRange(null);
         setManualInputOpen(false);
         return;
       }
-      if (brokerId) {
-        toggleBroker(brokerId, broker);
+      let id = brokerId ?? null;
+      let name = broker;
+      if (!id) {
+        const t = visibleTrades.find((x) => x.broker === broker);
+        if (!t) return;
+        id = t.broker_id;
+        name = t.broker;
+      }
+      if (selectedIds.has(id)) {
+        const entering = activeSolo?.id !== id;
+        setSolo(entering ? { id, name } : null);
+        // review R3:mobile 進單看自動開 sheet(selected.length 不變,既有
+        // 自動開 effect 不會觸發)。
+        if (entering && isMobile) setSheetOpen(true);
         return;
       }
-      const t = visibleTrades.find((x) => x.broker === broker);
-      if (!t) return;
-      toggleBroker(t.broker_id, t.broker);
+      toggleBroker(id, name); // SC-4:未選 → 加選照舊;solo 維持(異 id 不清)
     },
-    [visibleTrades, toggleBroker],
+    [visibleTrades, toggleBroker, selectedIds, activeSolo, isMobile],
   );
 
   // C7 A1: brush drag end callback。存 range → 顯示 summary panel。
@@ -335,7 +375,7 @@ export function ChipBubbleView({
 
   const priceAggs = useMemo(() => {
     if (selected.length === 0) return allPriceAggs;
-    const filtered = rangeTrades.filter((t) => selectedIds.has(t.broker_id));
+    const filtered = rangeTrades.filter((t) => effectiveIds.has(t.broker_id));
     if (filtered.length === 0) return allPriceAggs;
     const filteredAggs = aggregateByPrice(filtered);
     const filteredPrices = new Set(filteredAggs.map((a) => a.price));
@@ -344,14 +384,14 @@ export function ChipBubbleView({
         ? filteredAggs.find((f) => f.price === a.price)!
         : { price: a.price, buy: 0, sell: 0 },
     );
-  }, [rangeTrades, selected.length, selectedIds, allPriceAggs]);
+  }, [rangeTrades, selected.length, effectiveIds, allPriceAggs]);
 
   // Bug fix: filter must precede the top-N slice. Building the rows then
   // slicing drops every row that fell behind the global top-200 cap, which
   // was hiding most of a small-volume broker's price levels after filter.
   const { buyRows: filteredBuyRows, sellRows: filteredSellRows } = useMemo(
-    () => buildTradeRows(rangeTrades, selectedIds, MAX_TRADE_ROWS, buySort, sellSort),
-    [rangeTrades, selectedIds, buySort, sellSort],
+    () => buildTradeRows(rangeTrades, effectiveIds, MAX_TRADE_ROWS, buySort, sellSort),
+    [rangeTrades, effectiveIds, buySort, sellSort],
   );
 
   const detailPanel = (
@@ -463,7 +503,13 @@ export function ChipBubbleView({
               className="flex flex-wrap items-center gap-x-3 gap-y-0.5 min-h-5"
             >
               {selected.length > 0 ? (
-                onJumpToOverview ? (
+                activeSolo ? (
+                  /* SC-3 單看 badge:統計數字已由 effectiveIds 切到單分點;
+                     jump 鈕暫隱(單看是暫態,避免兩個主行動並列)。 */
+                  <span data-testid="bubble-solo-badge" className="text-xs text-ink-muted">
+                    單看 <span className="text-[#f0b429] font-medium">{formatBrokerName(activeSolo.id, activeSolo.name)}</span>
+                  </span>
+                ) : onJumpToOverview ? (
                   <button
                     type="button"
                     data-testid="bubble-jump-to-overview"
@@ -512,6 +558,17 @@ export function ChipBubbleView({
                     賣額 <span className="text-bear tabular-nums">{fmtAmount(brokerTotals.sellAmount)}</span>
                   </span>
                 </div>
+              )}
+              {activeSolo && (
+                <button
+                  type="button"
+                  data-testid="bubble-solo-clear"
+                  aria-label="回整組統計"
+                  onClick={() => setSolo(null)}
+                  className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer pointer-coarse:min-h-11"
+                >
+                  回整組 ×
+                </button>
               )}
             </div>
           </div>
@@ -685,11 +742,13 @@ export function ChipBubbleView({
             <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b border-line">
               <span className="text-sm text-ink-muted">
                 成交明細
-                {selected.length === 1
-                  ? ` — ${selected[0]!.name}`
-                  : selected.length >= 2
-                    ? ` — ${selected.length} 個分點`
-                    : ""}
+                {activeSolo
+                  ? ` — 單看 ${formatBrokerName(activeSolo.id, activeSolo.name)}`
+                  : selected.length === 1
+                    ? ` — ${selected[0]!.name}`
+                    : selected.length >= 2
+                      ? ` — ${selected.length} 個分點`
+                      : ""}
               </span>
               <button
                 type="button"
