@@ -1172,10 +1172,12 @@ describe("ChipBubbleView — 上限 6 + limitNotice (SC-1 edge 1)", () => {
   });
 });
 
-describe("ChipBubbleView — 泡泡 / 明細列入口 toggle (SC-1)", () => {
+describe("ChipBubbleView — 泡泡 / 明細列入口 (SC-1 加選半邊 + 單看)", () => {
   // 痛點:jsdom 的 svg rect getBoundingClientRect 全零 → hitTest 的 mx=clientX,
   // 用 circle cx/cy 直接命中泡泡,驗真實 click 路徑(非 handler mock)。
-  it("點泡泡 → 加選(chip 出現);再點同泡泡 → 移除", async () => {
+  // 🔴 mod/bubble-chart-ux-polish SC-3:點已選分點從「移除」改「單看」——
+  // 誤點不再破壞篩選組合;移除只走 chip × / 清除全部 / 搜尋下拉。
+  it("點泡泡 → 加選;再點同泡泡 → 進單看(chip 保留);三點 → 解除單看", async () => {
     const { container } = render(
       <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
     );
@@ -1192,14 +1194,24 @@ describe("ChipBubbleView — 泡泡 / 明細列入口 toggle (SC-1)", () => {
     fireEvent.click(overlay, { clientX: cx, clientY: cy });
     await waitFor(() => expect(chipEls(container)).toHaveLength(1));
     expect(chipEls(container)[0]!.textContent ?? "").toContain("Alpha");
-    // 選中後圖面只剩 Alpha,同位置(F11 axes-stable)再點 → toggle 移除
+    // 選中後圖面只剩 Alpha,同位置(F11 axes-stable)再點 → 單看,chip 不動
     fireEvent.click(overlay, { clientX: cx, clientY: cy });
-    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="bubble-solo-badge"]')).toBeTruthy();
+    });
+    expect(chipEls(container)).toHaveLength(1);
+    // 第三點 → 解除單看,chip 仍在
+    fireEvent.click(overlay, { clientX: cx, clientY: cy });
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="bubble-solo-badge"]')).toBeNull();
+    });
+    expect(chipEls(container)).toHaveLength(1);
   });
 
   // 痛點:TradeList 列是第三個入口;virtualizer 在 jsdom 走 offsetWidth/Height,
   // stub prototype getter 才出列(frontend-testing 樣板)。
-  it("點明細列 → 加選;再點 → 移除", async () => {
+  // 🔴 SC-3:明細列點已選同泡泡入口 — 進單看不移除。
+  it("點明細列 → 加選;再點 → 進單看(chip 保留)", async () => {
     const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
     const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
     Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
@@ -1221,16 +1233,222 @@ describe("ChipBubbleView — 泡泡 / 明細列入口 toggle (SC-1)", () => {
       });
       fireEvent.click(rowFor("Alpha")!);
       await waitFor(() => expect(chipEls(container)).toHaveLength(1));
-      // 選中後列表過濾為 Alpha;再點同列 toggle 移除
+      // 選中後列表過濾為 Alpha;再點同列 → 單看,chip 不動
       await waitFor(() => {
         if (!rowFor("Alpha")) throw new Error("filtered row not rendered");
       });
       fireEvent.click(rowFor("Alpha")!);
-      await waitFor(() => expect(chipEls(container)).toHaveLength(0));
+      await waitFor(() => {
+        expect(container.querySelector('[data-testid="bubble-solo-badge"]')).toBeTruthy();
+      });
+      expect(chipEls(container)).toHaveLength(1);
     } finally {
       if (origH) Object.defineProperty(HTMLElement.prototype, "offsetHeight", origH);
       if (origW) Object.defineProperty(HTMLElement.prototype, "offsetWidth", origW);
     }
+  });
+});
+
+// mod/bubble-chart-ux-polish SC-3/4/5:單看模式 — 多選篩選中「看看這個泡泡」
+// 不破壞花時間建立的選取組合。
+describe("ChipBubbleView — 單看模式 (SC-3/4/5)", () => {
+  const soloBadge = (c: HTMLElement) =>
+    c.querySelector('[data-testid="bubble-solo-badge"]');
+  const totalsText = (c: HTMLElement) =>
+    c.querySelector('[data-testid="bubble-broker-totals"]')?.textContent ?? "";
+
+  async function clickCircle(container: HTMLElement, brokerId: string) {
+    const overlay = container.querySelector('[data-testid="bubble-main-overlay"]')!;
+    const circle = await waitFor(() => {
+      const c = Array.from(container.querySelectorAll("circle")).find(
+        (el) => el.getAttribute("data-broker-id") === brokerId,
+      );
+      if (!c) throw new Error(`${brokerId} circle not rendered`);
+      return c;
+    });
+    fireEvent.click(overlay, {
+      clientX: Number(circle.getAttribute("cx")),
+      clientY: Number(circle.getAttribute("cy")),
+    });
+  }
+
+  async function setupTwoSelected() {
+    const utils = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        onJumpToOverview={vi.fn()}
+      />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await selectBrokerViaSearch("Bravo");
+    await waitFor(() => expect(chipEls(utils.container)).toHaveLength(2));
+    return utils;
+  }
+
+  // 痛點:整組統計蓋掉單分點資訊是 user 抱怨主因 — 單看必須切到單分點數字。
+  it("多選 2 點已選泡泡 → 單看(badge + 單分點統計、chips 保留);再點回整組", async () => {
+    const { container } = await setupTwoSelected();
+    // 整組:Alpha 買10/賣30 + Bravo 買5/賣50 = 買15/賣80
+    expect(totalsText(container)).toContain("15");
+    await clickCircle(container, "AL1");
+    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
+    expect(soloBadge(container)!.textContent ?? "").toContain("Alpha");
+    expect(totalsText(container)).toContain("10");
+    expect(totalsText(container)).not.toContain("15");
+    expect(chipEls(container)).toHaveLength(2);
+    // 再點同泡泡 → 回整組
+    await clickCircle(container, "AL1");
+    await waitFor(() => expect(soloBadge(container)).toBeNull());
+    expect(totalsText(container)).toContain("15");
+    expect(chipEls(container)).toHaveLength(2);
+  });
+
+  // 痛點:單看是暫態檢視,點另一已選分點應直接切換目標,不是先解除再點。
+  it("單看 A 中點另一已選 B 泡泡 → 單看目標切換為 B", async () => {
+    const { container } = await setupTwoSelected();
+    await clickCircle(container, "AL1");
+    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
+    await clickCircle(container, "BR1");
+    await waitFor(() => {
+      expect(soloBadge(container)!.textContent ?? "").toContain("Bravo");
+    });
+    expect(totalsText(container)).toContain("50");
+    expect(chipEls(container)).toHaveLength(2);
+  });
+
+  // 痛點(SC-5):誤點空白把篩選組合全滅是 user 抱怨第二主因 — 兩段式緩衝。
+  it("單看中點空白 → 只解單看(chips 保留);再點空白 → 全清(照舊)", async () => {
+    const { container } = await setupTwoSelected();
+    await clickCircle(container, "AL1");
+    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
+    const overlay = container.querySelector('[data-testid="bubble-main-overlay"]')!;
+    fireEvent.click(overlay); // 無座標 → hitTest miss → broker null
+    await waitFor(() => expect(soloBadge(container)).toBeNull());
+    expect(chipEls(container)).toHaveLength(2);
+    fireEvent.click(overlay);
+    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
+  });
+
+  // 痛點(SC-4):加選意圖 = 擴組合,不得打斷進行中的單看。
+  it("單看中搜尋加選第三分點 → 加選成功、單看維持", async () => {
+    const { container } = await setupTwoSelected();
+    await clickCircle(container, "AL1");
+    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
+    await selectBrokerViaSearch("Charlie");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(3));
+    expect(soloBadge(container)).toBeTruthy();
+    expect(soloBadge(container)!.textContent ?? "").toContain("Alpha");
+  });
+
+  // 痛點:移除單看目標後 badge 不得殘留指向已不在組合裡的分點。
+  it("chip × 移除單看分點 → 單看解除;重新加選同分點不復活(review R1)", async () => {
+    const { container } = await setupTwoSelected();
+    await clickCircle(container, "AL1");
+    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("移除〈Alpha〉"));
+    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+    expect(soloBadge(container)).toBeNull();
+    // R1:stale solo 不得在重加選時無聲復活
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(2));
+    expect(soloBadge(container)).toBeNull();
+  });
+
+  it("清除全部 → 單看一併解除", async () => {
+    const { container } = await setupTwoSelected();
+    await clickCircle(container, "AL1");
+    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
+    fireEvent.click(
+      container.querySelector('[data-testid="broker-chips-clear"]') as HTMLButtonElement,
+    );
+    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
+    expect(soloBadge(container)).toBeNull();
+  });
+
+  it("回整組鈕 → 解除單看;單看期間 jump 鈕暫隱", async () => {
+    const { container } = await setupTwoSelected();
+    expect(container.querySelector('[data-testid="bubble-jump-to-overview"]')).toBeTruthy();
+    await clickCircle(container, "AL1");
+    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
+    expect(container.querySelector('[data-testid="bubble-jump-to-overview"]')).toBeNull();
+    fireEvent.click(
+      container.querySelector('[data-testid="bubble-solo-clear"]') as HTMLButtonElement,
+    );
+    await waitFor(() => expect(soloBadge(container)).toBeNull());
+    expect(container.querySelector('[data-testid="bubble-jump-to-overview"]')).toBeTruthy();
+  });
+
+  // 痛點(SC-3 右欄同步):單看 = 該泡泡的單獨買賣超,右欄明細必須跟著只顯該分點。
+  it("單看時右欄明細只顯該分點列", async () => {
+    const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true, get: () => 400,
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true, get: () => 400,
+    });
+    try {
+      const { container } = await setupTwoSelected();
+      await waitFor(() => {
+        const names = Array.from(
+          container.querySelectorAll("button span.text-left"),
+        ).map((s) => s.textContent ?? "");
+        expect(names.some((t) => t.includes("Bravo"))).toBe(true);
+      });
+      await clickCircle(container, "AL1");
+      await waitFor(() => expect(soloBadge(container)).toBeTruthy());
+      await waitFor(() => {
+        const names = Array.from(
+          container.querySelectorAll("button span.text-left"),
+        ).map((s) => s.textContent ?? "");
+        expect(names.length).toBeGreaterThan(0);
+        expect(names.every((t) => t.includes("Alpha"))).toBe(true);
+      });
+    } finally {
+      if (origH) Object.defineProperty(HTMLElement.prototype, "offsetHeight", origH);
+      if (origW) Object.defineProperty(HTMLElement.prototype, "offsetWidth", origW);
+    }
+  });
+
+  // 痛點(CH-1 白名單 5):focusRequest 聚焦 = 取代整組,不得殘留舊單看。
+  it("focusRequest 觸發 → 單看清除", async () => {
+    const { container, rerender } = await setupTwoSelected();
+    await clickCircle(container, "AL1");
+    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
+    rerender(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        onJumpToOverview={vi.fn()}
+        focusRequest={{ brokerId: "CH1", name: "Charlie", seq: 1 }}
+      />,
+    );
+    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+    expect(soloBadge(container)).toBeNull();
+  });
+
+  // 痛點(review R3):mobile 進單看若不開 sheet,唯一回饋是 header 小字,
+  // 近乎靜默 — 對齊「tap 泡泡 → 自動開 sheet」既有心智。
+  it("mobile 進單看 → 自動開 sheet,標題顯「單看」", async () => {
+    mediaState.isMobile = true;
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="bubble-detail-sheet"]')).toBeTruthy();
+    });
+    fireEvent.click(screen.getByLabelText("關閉明細"));
+    expect(container.querySelector('[data-testid="bubble-detail-sheet"]')).toBeNull();
+    await clickCircle(container, "AL1");
+    const sheet = await waitFor(() => {
+      const el = container.querySelector('[data-testid="bubble-detail-sheet"]');
+      if (!el) throw new Error("sheet not reopened on solo");
+      return el;
+    });
+    expect(sheet.textContent ?? "").toContain("單看");
   });
 });
 
