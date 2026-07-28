@@ -286,3 +286,35 @@ describe("BorrowFeePage 本日借券統計", () => {
     expect(screen.getAllByTestId("day-stat-row").length).toBe(1);
   });
 });
+
+// mod/borrow-fee-polish SC-3/4:統計列點擊連動篩選 + 看籌碼跳轉。
+describe("BorrowFeePage 統計列連動與看籌碼", () => {
+  it("點統計列 → 左明細只剩該股、篩選框顯示選定、summary 填數字(SC-3)", () => {
+    hookState.data = MULTI;
+    render(<BorrowFeePage />);
+    const statRow = screen
+      .getAllByTestId("day-stat-row")
+      .find((r) => r.getAttribute("data-stock-id") === "8046") as HTMLElement;
+    fireEvent.click(statRow);
+    const rows = screen.getAllByTestId("fee-row");
+    expect(rows.length).toBe(2);
+    expect(rows.every((r) => r.getAttribute("data-stock-id") === "8046")).toBe(true);
+    const input = screen.getByTestId("borrow-fee-stock-filter") as HTMLInputElement;
+    expect(input.value).toBe("8046 南電");
+    expect(
+      screen.getByTestId("borrow-fee-stock-summary").textContent,
+    ).toContain("本日標借合計 8,000 股");
+  });
+
+  it("看籌碼鈕:未選股 disabled;選股後點擊呼叫 onSymbolPick(sid)(SC-4)", () => {
+    hookState.data = MULTI;
+    const jump = vi.fn();
+    render(<BorrowFeePage onSymbolPick={jump} />);
+    const btn = screen.getByTestId("jump-to-equity") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    pickStock("8046");
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(jump).toHaveBeenCalledWith("8046");
+  });
+});

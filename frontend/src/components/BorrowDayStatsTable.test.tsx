@@ -60,3 +60,31 @@ describe("BorrowDayStatsTable", () => {
     expect(root.innerHTML).not.toMatch(/accent|bull|bear/);
   });
 });
+
+// mod/borrow-fee-polish SC-3:統計列點擊 → onPickStock(等同 combobox 選定)。
+describe("BorrowDayStatsTable 列點擊", () => {
+  it("click 呼叫 onPickStock(stock_id)", () => {
+    const pick = vi.fn();
+    render(<BorrowDayStatsTable rows={ROWS} onPickStock={pick} />);
+    const rows = screen.getAllByTestId("day-stat-row");
+    fireEvent.click(rows[1] as HTMLElement);
+    expect(pick).toHaveBeenCalledWith("2434");
+  });
+
+  it("Enter / Space 鍵同效,Space 需 preventDefault(R2 — 防 overflow 欄跳捲)", () => {
+    const pick = vi.fn();
+    render(<BorrowDayStatsTable rows={ROWS} onPickStock={pick} />);
+    const row = screen.getAllByTestId("day-stat-row")[0] as HTMLElement;
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(pick).toHaveBeenCalledWith("8069");
+    // fireEvent 回傳 false = 事件被 preventDefault
+    const notPrevented = fireEvent.keyDown(row, { key: " " });
+    expect(notPrevented).toBe(false);
+    expect(pick).toHaveBeenCalledTimes(2);
+  });
+
+  it("無 onPickStock 時點擊不炸", () => {
+    render(<BorrowDayStatsTable rows={ROWS} />);
+    fireEvent.click(screen.getAllByTestId("day-stat-row")[0] as HTMLElement);
+  });
+});
