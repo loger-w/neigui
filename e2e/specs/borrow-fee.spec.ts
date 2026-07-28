@@ -68,9 +68,11 @@ test.describe("borrow fee mode", () => {
     await expect(summary).toContainText("本日標借合計 3,000 股");
     await expect(summary).toContainText("本月累計 17,000 股");
     await expect(summary).toContainText("(2 次)");
-    // 清除選股 → summary 消失(SC-2 後半)
+    // 清除選股 → summary 常駐、內容回占位(mod/borrow-fee-polish SC-2 改語意:
+    // 區塊不增刪消除 header 跳動,原「消失」assertion 事前標該紅改寫)
     await page.getByTestId(TESTIDS.stockFilterClear).click();
-    await expect(summary).toHaveCount(0);
+    await expect(summary).toBeVisible();
+    await expect(summary).toContainText("本日標借合計 —");
   });
 
   test("BF5: 本日借券統計常駐右表 — 免搜尋可見、張數 desc、不受篩選連動(mod/borrow-fee-layout SC-1/2/3)", async ({ page }) => {
