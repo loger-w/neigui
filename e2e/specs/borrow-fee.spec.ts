@@ -73,6 +73,29 @@ test.describe("borrow fee mode", () => {
     await expect(summary).toHaveCount(0);
   });
 
+  test("BF5: 本日借券統計常駐右表 — 免搜尋可見、張數 desc、不受篩選連動(mod/borrow-fee-layout SC-1/2/3)", async ({ page }) => {
+    // 痛點:本日合計原先要搜尋選股才可見(summary gate);統計表必須零互動
+    // 即有資料級內容。fixture 手算(06-26 當日):8069=25,000 / 2434=21,000 /
+    // 1513=14,000 / 5483=3,000 / 8046=3,000 → 張數 desc + 同值代號升冪。
+    const stats = page.getByTestId(TESTIDS.borrowDayStats);
+    await expect(stats).toBeVisible();
+    const statRows = page.getByTestId(TESTIDS.dayStatRow);
+    await expect(statRows).toHaveCount(5);
+    const order: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      order.push((await statRows.nth(i).getAttribute("data-stock-id")) ?? "");
+    }
+    expect(order).toEqual(["8069", "2434", "1513", "5483", "8046"]);
+    // 張數換算資料級鎖:首列 8069 = 25,000 股 → 25 張
+    await expect(statRows.first()).toContainText("25");
+    // SC-3:單檔篩選只動左明細,統計表列數不變
+    const filter = page.getByTestId(TESTIDS.borrowFeeStockFilter);
+    await filter.fill("8046");
+    await page.getByRole("option", { name: /8046/ }).click();
+    await expect(page.getByTestId(TESTIDS.feeRow)).toHaveCount(1);
+    await expect(statRows).toHaveCount(5);
+  });
+
   test("BF2: reload 後 borrow mode 持久化(SC-1)", async ({ page }) => {
     // 痛點:App.tsx useState init 讀 localStorage('mode');新 mode 值 'borrow'
     // 必須通過同一條持久化路徑(N2 只鎖 options,新枚舉值要自己的鎖)。

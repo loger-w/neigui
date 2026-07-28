@@ -1,8 +1,10 @@
 import { useMemo, useState, type ReactElement } from "react";
 import { useDaytradeFee } from "../hooks/useDaytradeFee";
+import { BorrowDayStatsTable } from "./BorrowDayStatsTable";
 import { BorrowFeeStockFilter } from "./BorrowFeeStockFilter";
 import { DaytradeFeeTable } from "./DaytradeFeeTable";
 import { distinctStocks, formatShares, type StockOption } from "../lib/borrow-fee-utils";
+import { cn } from "../lib/utils";
 
 // 券差查詢 — 最上層「券差」mode 頁(App.tsx 4-way ternary + lazy)。
 // root 用 flex-1 min-h-0(App root 是 flex col;h-full 會下溢 nav 高度被裁切)。
@@ -16,6 +18,8 @@ export function BorrowFeePage(): ReactElement {
       ? data.rows.filter((r) => r.stock_id === selectedStock.stock_id)
       : data.rows
     : [];
+  // 全集有無當日列(非篩選後)— 統計表 render 與空態高度基準的判準(SC-5)
+  const hasDayRows = !!data && data.rows.length > 0;
 
   return (
     <div data-testid="borrow-fee-page" className="flex-1 min-h-0 flex flex-col overflow-hidden">
@@ -115,21 +119,37 @@ export function BorrowFeePage(): ReactElement {
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-3">
-        {data && rows.length > 0 ? (
-          <div className="max-w-4xl">
-            <DaytradeFeeTable rows={rows} monthCounts={data.month_counts} />
-          </div>
-        ) : (
-          <div className="h-full flex items-center justify-center text-sm text-ink-dim">
-            {loading
-              ? "載入中..."
-              : error
-                ? ""
-                : data && selectedStock
-                  ? "該檔今日無券差資料"
-                  : "本月無券差資料"}
-          </div>
+      {/* 分欄(mod/borrow-fee-layout):≥lg 左明細 / 右統計各自獨立捲動,<lg 堆疊
+          單一捲動(明細先)。統計表吃全集 data.rows — 不受單檔篩選影響(SC-3),
+          全集空才整個不 render(SC-5)。 */}
+      <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden lg:flex lg:gap-x-6 px-4 sm:px-6 py-3">
+        <div className={cn("lg:flex-1 lg:min-w-0 lg:overflow-y-auto", !hasDayRows && "h-full")}>
+          {data && rows.length > 0 ? (
+            <div className="max-w-4xl">
+              <DaytradeFeeTable rows={rows} monthCounts={data.month_counts} />
+            </div>
+          ) : (
+            <div
+              className={cn(
+                "flex items-center justify-center text-sm text-ink-dim",
+                // 統計表並存時堆疊流高度為 auto,h-full 失去基準 → 改 min-h 置中
+                hasDayRows ? "min-h-40" : "h-full",
+              )}
+            >
+              {loading
+                ? "載入中..."
+                : error
+                  ? ""
+                  : data && selectedStock
+                    ? "該檔今日無券差資料"
+                    : "本月無券差資料"}
+            </div>
+          )}
+        </div>
+        {hasDayRows && data && (
+          <aside className="mt-6 lg:mt-0 lg:w-72 lg:shrink-0 lg:overflow-y-auto">
+            <BorrowDayStatsTable rows={data.rows} />
+          </aside>
         )}
       </div>
     </div>
