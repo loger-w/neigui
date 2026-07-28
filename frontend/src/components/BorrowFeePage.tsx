@@ -26,6 +26,13 @@ export function BorrowFeePage({ onSymbolPick }: Props = {}): ReactElement {
   // 全集有無當日列(非篩選後)— 統計表 render 與空態高度基準的判準(SC-5)
   const hasDayRows = !!data && data.rows.length > 0;
 
+  // 統計列點擊 → 等同 combobox 選定(polish SC-3);StockOption 需 market,
+  // 由 distinctStocks 結果反查,combobox input 由其 selected effect 自動同步。
+  const handleStatPick = (stockId: string) => {
+    const o = stockOptions.find((opt) => opt.stock_id === stockId);
+    if (o) setSelectedStock(o);
+  };
+
   return (
     <div data-testid="borrow-fee-page" className="flex-1 min-h-0 flex flex-col overflow-hidden">
       <header className="shrink-0 px-4 sm:px-6 pt-5 pb-3 border-b border-line">
@@ -187,7 +194,7 @@ export function BorrowFeePage({ onSymbolPick }: Props = {}): ReactElement {
         </div>
         {hasDayRows && data && (
           <aside className="mt-6 lg:mt-0 lg:w-72 lg:shrink-0 lg:overflow-y-auto">
-            <BorrowDayStatsTable rows={data.rows} />
+            <BorrowDayStatsTable rows={data.rows} onPickStock={handleStatPick} />
           </aside>
         )}
       </div>

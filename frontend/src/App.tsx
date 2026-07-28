@@ -612,7 +612,7 @@ export default function App() {
             </div>
           }
         >
-          <BorrowFeePage />
+          <BorrowFeePage onSymbolPick={handleSymbolPick} />
         </Suspense>
       )}
     </div>

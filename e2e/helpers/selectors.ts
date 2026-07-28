@@ -45,6 +45,8 @@ export const TESTIDS = {
   // 本日借券統計常駐右表(mod/borrow-fee-layout BF5)
   borrowDayStats: "borrow-day-stats",
   dayStatRow: "day-stat-row",
+  // 看籌碼跳轉鈕(mod/borrow-fee-polish BF6)
+  jumpToEquity: "jump-to-equity",
   // equity 權證 tab(feat/warrant-selector)
   warrantRow: "warrant-row",
   warrantKindBadge: "warrant-kind-badge",
