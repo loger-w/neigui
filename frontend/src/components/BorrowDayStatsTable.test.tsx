@@ -98,4 +98,11 @@ describe("BorrowDayStatsTable 列 affordance", () => {
     expect(cls).toContain("hover:bg-line-strong/30");
     expect(cls).toContain("focus-visible:bg-line-strong/30");
   });
+
+  it("無 onPickStock 時不套互動 affordance(BF-P2-1 — 唯讀 caller 誠實性)", () => {
+    render(<BorrowDayStatsTable rows={ROWS} />);
+    const row = screen.getAllByTestId("day-stat-row")[0] as HTMLElement;
+    expect(row.className).not.toContain("cursor-pointer");
+    expect(row.hasAttribute("tabindex")).toBe(false);
+  });
 });
