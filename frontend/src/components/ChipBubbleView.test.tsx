@@ -1318,16 +1318,44 @@ describe("ChipBubbleView — 單看模式 (SC-3/4/5)", () => {
   });
 
   // 痛點(SC-5):誤點空白把篩選組合全滅是 user 抱怨第二主因 — 兩段式緩衝。
-  it("單看中點空白 → 只解單看(chips 保留);再點空白 → 全清(照舊)", async () => {
+  // T3(自評 F2 補強):段1 必須連 brush 都保留 — early-return 改走全清路徑就紅。
+  it("單看中點空白 → 只解單看(chips + brush 保留);再點空白 → 全清(照舊)", async () => {
     const { container } = await setupTwoSelected();
+    await triggerBrush(container);
+    await waitFor(() => {
+      if (!container.querySelector('[data-testid="brush-summary"]')) {
+        throw new Error("brush summary not visible");
+      }
+    });
     await clickCircle(container, "AL1");
     await waitFor(() => expect(soloBadge(container)).toBeTruthy());
     const overlay = container.querySelector('[data-testid="bubble-main-overlay"]')!;
     fireEvent.click(overlay); // 無座標 → hitTest miss → broker null
     await waitFor(() => expect(soloBadge(container)).toBeNull());
     expect(chipEls(container)).toHaveLength(2);
+    expect(container.querySelector('[data-testid="brush-summary"]')).toBeTruthy();
     fireEvent.click(overlay);
     await waitFor(() => expect(chipEls(container)).toHaveLength(0));
+    expect(container.querySelector('[data-testid="brush-summary"]')).toBeNull();
+  });
+
+  // 痛點(自評 F2 補強,白名單 12):換股 reset 必須顯式清 solo state,
+  // 不靠 derived guard — 換股後重選同分點不得復活單看。
+  it("換股 → 單看清除;新股重選同分點不復活", async () => {
+    const { container, rerender } = await setupTwoSelected();
+    await clickCircle(container, "AL1");
+    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
+    rerender(
+      <ChipBubbleView
+        symbol="2454"
+        bubbleData={mkData(namedTrades)}
+        onJumpToOverview={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(chipEls(container)).toHaveLength(0));
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+    expect(soloBadge(container)).toBeNull();
   });
 
   // 痛點(SC-4):加選意圖 = 擴組合,不得打斷進行中的單看。
@@ -1355,7 +1383,7 @@ describe("ChipBubbleView — 單看模式 (SC-3/4/5)", () => {
     expect(soloBadge(container)).toBeNull();
   });
 
-  it("清除全部 → 單看一併解除", async () => {
+  it("清除全部 → 單看一併解除;重新加選同分點不復活(自評 F1 / review R1)", async () => {
     const { container } = await setupTwoSelected();
     await clickCircle(container, "AL1");
     await waitFor(() => expect(soloBadge(container)).toBeTruthy());
@@ -1363,6 +1391,10 @@ describe("ChipBubbleView — 單看模式 (SC-3/4/5)", () => {
       container.querySelector('[data-testid="broker-chips-clear"]') as HTMLButtonElement,
     );
     await waitFor(() => expect(chipEls(container)).toHaveLength(0));
+    expect(soloBadge(container)).toBeNull();
+    // R1 pattern:stale solo 不得靠 derived guard 蓋著 — 重加選同分點必須不復活
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
     expect(soloBadge(container)).toBeNull();
   });
 

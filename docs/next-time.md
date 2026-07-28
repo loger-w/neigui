@@ -199,3 +199,4 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 - **BrokerSearch 下拉 買/賣欄固定 44px 大數字溢位**:grid-cols-[12px_1fr_50px_44px_44px],≥6 位數(含千分位)會擠壓相鄰欄。user 未點名,獨立小修。觸發:下拉數字視覺被反映時
 - **單看時「查看於籌碼總覽」鈕暫隱** — 若要補「單看單跳」(查看該分點於籌碼總覽),入口與 payload(activeSolo.id)已就緒,只差 UI 決策。觸發:user 在單看中找跳轉鈕時
 - **hover tooltip 補該分點當日總買賣超**(brainstorm 拍板未採選項 B,單看模式已覆蓋主需求)。觸發:user 反映 hover 就想看總量、不想點擊時
+- **solo 空集時 price bar 回落全體聚合**(自評 BF-3,窄 edge):單看分點在 refetch 後自 trades 消失 → priceAggs `filtered.length===0` fallback 回 allPriceAggs,badge 仍顯「單看」、totals 顯 0 — 三者退化方向不一致。修法 = activeSolo 時不走 fallback(顯零值 aggs)。觸發:refresh 後單看畫面被反映怪異時
