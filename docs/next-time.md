@@ -8,7 +8,7 @@
 
 ## From /mod borrow-fee-layout(2026-07-28)
 
-- **券差統計表 row 點擊帶入單檔篩選(click-to-filter)**:右表點列 → setSelectedStock 連動左明細。觸發重評估:user 覺得「看到統計還要手動搜尋該檔」麻煩時。
+- (原「券差統計表 row 點擊帶入單檔篩選」條目已由 mod/borrow-fee-polish 解決刪除,2026-07-28:user 主動要求,statRow click/Enter/Space → setSelectedStock,combobox echo 自動同步)
 - **券差統計表加市場 badge / 費率 / 次數欄或欄頭排序**:本次依原句只做 代號/名稱/張數 固定排序。觸發重評估:user 要求更多維度時。
 - **本月維度全市場統計表**(month_shares 全集):目前只有當日;payload 已有資料。觸發重評估:user 要月累計 overview 時。
 

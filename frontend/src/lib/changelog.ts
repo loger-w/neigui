@@ -40,6 +40,22 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.45.0",
+    date: "2026-07-28",
+    changes: [
+      {
+        kind: "feature",
+        scope: "global",
+        text: "券差查詢:點右側統計表任一列即自動篩選左側明細,選定後可按「看籌碼」直接切到個股頁查看該檔籌碼",
+      },
+      {
+        kind: "fix",
+        scope: "global",
+        text: "券差查詢:合計資訊列改為常駐(未選股顯示「—」),搜尋選股時畫面不再跳動;明細表捲軸貼齊表格",
+      },
+    ],
+  },
+  {
     version: "0.44.0",
     date: "2026-07-28",
     changes: [
