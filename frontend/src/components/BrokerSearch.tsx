@@ -22,6 +22,9 @@ interface Props {
   selectedIds: ReadonlySet<string>;
   /** toggle 語意由 caller 決定(已選再點 = 移除);本元件只回報點了誰。 */
   onPick: (id: string, name: string) => void;
+  /** 下拉「實際可見」(open 且有結果)變化回報 — ChipBubbleView 的
+   *  dismiss-click guard 用(下拉開啟時點圖表只關下拉、不動選取)。 */
+  onOpenChange?: (open: boolean) => void;
 }
 
 const HIGHLIGHT = "#f0b429";
@@ -57,7 +60,7 @@ function highlightMatch(name: string, q: string): React.ReactNode {
   );
 }
 
-export function BrokerSearch({ trades, selectedIds, onPick }: Props) {
+export function BrokerSearch({ trades, selectedIds, onPick, onOpenChange }: Props) {
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [open, setOpen] = useState(false);
@@ -126,6 +129,12 @@ export function BrokerSearch({ trades, selectedIds, onPick }: Props) {
     setActiveIdx(0);
   }, [filtered]);
 
+  // 下拉實際可見 = open 且有結果(與 render 條件同源)。
+  const dropdownVisible = open && filtered.length > 0;
+  useEffect(() => {
+    onOpenChange?.(dropdownVisible);
+  }, [dropdownVisible, onOpenChange]);
+
   // R1:pick 後不關下拉、不清 query — 連續加選是多選核心操作流。
   const pick = (b: AggBroker) => {
     onPick(b.id, b.broker);
@@ -175,7 +184,7 @@ export function BrokerSearch({ trades, selectedIds, onPick }: Props) {
         aria-controls="broker-search-listbox"
         className="w-full bg-bg-deep border border-line text-ink px-2.5 py-1 text-xs outline-none focus:border-[#f0b429]"
       />
-      {open && filtered.length > 0 && (
+      {dropdownVisible && (
         <div
           id="broker-search-listbox"
           role="listbox"

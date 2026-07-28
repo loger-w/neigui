@@ -520,6 +520,34 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(0); // 第二段全清
   });
 
+  test("E41: 搜尋下拉開啟時點圖表 = 只關下拉,篩選組合不動(mod/bubble-dropdown-dismiss-guard SC-1/2)", async ({ page }) => {
+    // 痛點:user 點別處想關下拉,誤觸圖表空白 → 兩段式清除照跑組合被毀。
+    // 真瀏覽器事件序(pointerdown → blur → click)是 guard 的核心假設,唯此可驗。
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    await page.getByPlaceholder("搜尋分點...").fill("分點");
+    await page
+      .getByTestId(TESTIDS.brokerSearchItem)
+      .filter({ hasText: "分點001" })
+      .click();
+    await page
+      .getByTestId(TESTIDS.brokerSearchItem)
+      .filter({ hasText: "分點002" })
+      .click();
+    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(2);
+    const listbox = page.locator("#broker-search-listbox");
+    await expect(listbox).toBeVisible(); // R1:pick 後下拉仍開
+    // 第一擊圖表空白:只關下拉,組合不動
+    const overlay = page.getByTestId(TESTIDS.bubbleMainOverlay);
+    const oBox = (await overlay.boundingBox())!;
+    await page.mouse.click(oBox.x + oBox.width - 8, oBox.y + 8);
+    await expect(listbox).toBeHidden();
+    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(2);
+    // 第二擊:下拉已關,照舊全清
+    await page.mouse.click(oBox.x + oBox.width - 8, oBox.y + 8);
+    await expect(page.getByTestId(TESTIDS.brokerChip)).toHaveCount(0);
+  });
+
   test("E40: header 空間預留 — 搜尋下拉開啟時買賣統計完整可見不被遮擋(SC-1/2)", async ({ page }) => {
     // 痛點:舊版單一 flex-wrap header,下拉開啟直接蓋住統計列
     // (repro-six-selected-1536.png)。鎖 bounding box 不相交(功能級,免 visual baseline)。
