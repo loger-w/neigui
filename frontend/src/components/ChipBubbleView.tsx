@@ -380,120 +380,143 @@ export function ChipBubbleView({
     >
       {/* Left: header search bar + bubble chart */}
       <div className="h-full flex flex-col min-h-0 border-r border-line overflow-hidden">
-        <div className="shrink-0 min-h-10 px-3 py-1 border-b border-line bg-bg-deep/30 flex flex-wrap items-center gap-x-3 gap-y-1">
+        {/* SC-1(mod/bubble-chart-ux-polish):搜尋固定左欄 + 中欄雙行(chips /
+            統計常駐)+ 右工具欄。舊版單一 flex-wrap 會讓 6 chip 壓窄搜尋框、
+            統計掉行被下拉蓋住。mobile(<lg)退化為垂直堆疊。 */}
+        <div
+          data-testid="bubble-header"
+          className="shrink-0 px-3 py-1.5 border-b border-line bg-bg-deep/30 flex flex-col gap-y-1 lg:grid lg:grid-cols-[360px_minmax(0,1fr)_auto] lg:gap-x-3 lg:items-start"
+        >
           <BrokerSearch
             trades={visibleTrades}
             selectedIds={selectedIds}
             onPick={toggleBroker}
           />
-          {/* SC-3 Legend chips:選取狀態唯一載體 — 專屬色圓點 + 顯示名 + ×。 */}
-          {selected.map((b) => {
-            const display = formatBrokerName(b.id, b.name);
-            const color = BROKER_PALETTE[b.colorIdx]!;
-            return (
-              <span
-                key={b.id}
-                data-testid="broker-chip"
-                className="inline-flex items-center gap-1.5 px-1.5 py-0.5 text-xs border border-line-strong bg-bg-deep/60 text-ink"
-              >
-                <span
-                  data-testid="broker-chip-dot"
-                  data-color={color}
-                  aria-hidden="true"
-                  className="size-2 rounded-full shrink-0"
-                  style={{ background: color }}
-                />
-                {display}
+          <div className="min-w-0 flex flex-col gap-y-0.5">
+            {/* SC-3 Legend chips 行:選取狀態唯一載體 — 專屬色圓點 + 顯示名 + ×。
+                空態引導文字佔位,header 高度不因首次加選跳動(SC-2)。 */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-h-6">
+              {selected.map((b) => {
+                const display = formatBrokerName(b.id, b.name);
+                const color = BROKER_PALETTE[b.colorIdx]!;
+                return (
+                  <span
+                    key={b.id}
+                    data-testid="broker-chip"
+                    className="inline-flex items-center gap-1.5 px-1.5 py-0.5 text-xs border border-line-strong bg-bg-deep/60 text-ink"
+                  >
+                    <span
+                      data-testid="broker-chip-dot"
+                      data-color={color}
+                      aria-hidden="true"
+                      className="size-2 rounded-full shrink-0"
+                      style={{ background: color }}
+                    />
+                    {display}
+                    <button
+                      type="button"
+                      aria-label={`移除〈${display}〉`}
+                      onClick={() => toggleBroker(b.id, b.name)}
+                      className="text-ink-dim hover:text-bear cursor-pointer leading-none pointer-coarse:min-h-11"
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
+              {selected.length >= 2 && (
                 <button
                   type="button"
-                  aria-label={`移除〈${display}〉`}
-                  onClick={() => toggleBroker(b.id, b.name)}
-                  className="text-ink-dim hover:text-bear cursor-pointer leading-none pointer-coarse:min-h-11"
+                  data-testid="broker-chips-clear"
+                  onClick={() => {
+                    setSelected([]);
+                    setLimitNotice(false);
+                  }}
+                  className="text-xs text-ink-dim hover:text-bear underline underline-offset-2 cursor-pointer"
                 >
-                  ×
+                  清除全部
                 </button>
-              </span>
-            );
-          })}
-          {selected.length >= 2 && (
-            <button
-              type="button"
-              data-testid="broker-chips-clear"
-              onClick={() => {
-                setSelected([]);
-                setLimitNotice(false);
-              }}
-              className="text-xs text-ink-dim hover:text-bear underline underline-offset-2 cursor-pointer"
-            >
-              清除全部
-            </button>
-          )}
-          {limitNotice && (
-            <span role="status" className="text-xs text-[#f0b429]">
-              {`最多同時選 ${MAX_SELECTED_BROKERS} 個分點`}
-            </span>
-          )}
-          {selected.length > 0 ? (
-            onJumpToOverview ? (
-              <button
-                type="button"
-                data-testid="bubble-jump-to-overview"
-                onClick={() =>
-                  onJumpToOverview(
-                    selected.length === 1
-                      ? selected[0]!.id
-                      : selected.map((b) => b.id),
-                  )
-                }
-                className="text-xs text-accent hover:text-ink underline underline-offset-2 cursor-pointer"
-              >
-                {selected.length === 1 ? (
-                  <>
-                    查看 <span className="text-[#f0b429] font-medium">{formatBrokerName(selected[0]!.id, selected[0]!.name)}</span> 於籌碼總覽 →
-                  </>
-                ) : (
-                  <>查看 {selected.length} 個分點於籌碼總覽 →</>
-                )}
-              </button>
-            ) : (
-              <span className="text-xs text-ink-dim">
-                已篩選 <span className="text-[#f0b429] font-medium">{selected.length}</span> 個分點
-              </span>
-            )
-          ) : (
-            <span className="text-xs text-ink-dim">
-              {brushRange ? "此區間" : "今日共"} <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
-            </span>
-          )}
-          {selected.length > 0 && (
-            <div
-              data-testid="bubble-broker-totals"
-              className="flex items-center gap-3 text-xs text-ink-dim"
-            >
-              <span>
-                買 <span className="text-accent tabular-nums">{fmtVol(brokerTotals.buyLots)}</span> 張
-              </span>
-              <span>
-                賣 <span className="text-bear tabular-nums">{fmtVol(brokerTotals.sellLots)}</span> 張
-              </span>
-              <span>
-                買額 <span className="text-accent tabular-nums">{fmtAmount(brokerTotals.buyAmount)}</span>
-              </span>
-              <span>
-                賣額 <span className="text-bear tabular-nums">{fmtAmount(brokerTotals.sellAmount)}</span>
-              </span>
+              )}
+              {limitNotice && (
+                <span role="status" className="text-xs text-[#f0b429]">
+                  {`最多同時選 ${MAX_SELECTED_BROKERS} 個分點`}
+                </span>
+              )}
+              {blockRemovalNotice && (
+                <span
+                  data-testid="blocklist-removal-notice"
+                  role="status"
+                  className="text-xs text-[#f0b429]"
+                >
+                  {blockRemovalNotice}
+                </span>
+              )}
+              {selected.length === 0 && !blockRemovalNotice && (
+                <span className="text-xs text-ink-dim">
+                  點泡泡或搜尋分點加入比較
+                </span>
+              )}
             </div>
-          )}
-          {blockRemovalNotice && (
-            <span
-              data-testid="blocklist-removal-notice"
-              role="status"
-              className="text-xs text-[#f0b429]"
+            {/* SC-2 統計行:常駐、位置固定 — 搜尋下拉在左欄下方展開,永不蓋到這裡。 */}
+            <div
+              data-testid="bubble-stats-row"
+              className="flex flex-wrap items-center gap-x-3 gap-y-0.5 min-h-5"
             >
-              {blockRemovalNotice}
-            </span>
-          )}
-          {/* C10 (🟢 Item 4 + 5):手動輸入區間 trigger + Help '?' icon 靠右 */}
+              {selected.length > 0 ? (
+                onJumpToOverview ? (
+                  <button
+                    type="button"
+                    data-testid="bubble-jump-to-overview"
+                    onClick={() =>
+                      onJumpToOverview(
+                        selected.length === 1
+                          ? selected[0]!.id
+                          : selected.map((b) => b.id),
+                      )
+                    }
+                    className="text-xs text-accent hover:text-ink underline underline-offset-2 cursor-pointer"
+                  >
+                    {selected.length === 1 ? (
+                      <>
+                        查看 <span className="text-[#f0b429] font-medium">{formatBrokerName(selected[0]!.id, selected[0]!.name)}</span> 於籌碼總覽 →
+                      </>
+                    ) : (
+                      <>查看 {selected.length} 個分點於籌碼總覽 →</>
+                    )}
+                  </button>
+                ) : (
+                  <span className="text-xs text-ink-dim">
+                    已篩選 <span className="text-[#f0b429] font-medium">{selected.length}</span> 個分點
+                  </span>
+                )
+              ) : (
+                <span className="text-xs text-ink-dim">
+                  {brushRange ? "此區間" : "今日共"} <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
+                </span>
+              )}
+              {selected.length > 0 && (
+                <div
+                  data-testid="bubble-broker-totals"
+                  className="flex items-center gap-3 text-xs text-ink-dim"
+                >
+                  <span>
+                    買 <span className="text-accent tabular-nums">{fmtVol(brokerTotals.buyLots)}</span> 張
+                  </span>
+                  <span>
+                    賣 <span className="text-bear tabular-nums">{fmtVol(brokerTotals.sellLots)}</span> 張
+                  </span>
+                  <span>
+                    買額 <span className="text-accent tabular-nums">{fmtAmount(brokerTotals.buyAmount)}</span>
+                  </span>
+                  <span>
+                    賣額 <span className="text-bear tabular-nums">{fmtAmount(brokerTotals.sellAmount)}</span>
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+          {/* C10 (🟢 Item 4 + 5):手動輸入區間 trigger + Help '?' icon 靠右
+              (ml-auto:grid cell 與 mobile flex-col 兩形態都推右,review R4)。 */}
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <BubbleBlocklistPopover
               trades={bubbleData?.trades ?? []}

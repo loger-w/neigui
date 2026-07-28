@@ -1426,3 +1426,44 @@ describe("ChipBubbleView — mobile sheet 標題三分支 (SC-4 / edge 5)", () =
     expect(container.querySelector('[data-testid="bubble-detail-sheet"]')).toBeTruthy();
   });
 });
+
+// mod/bubble-chart-ux-polish SC-1/SC-2:header 空間預留 — 搜尋固定左欄 +
+// chips 行 / 統計行常駐,搜尋與加選不再推擠統計(repro-six-selected-1536.png:
+// 舊版單一 flex-wrap,6 chip 時搜尋框被壓窄、統計掉第二行被下拉蓋住)。
+describe("ChipBubbleView — header 空間預留 (SC-1/SC-2)", () => {
+  // 痛點:桌面版面契約 = grid 三欄(360px 搜尋 / 中欄雙行 / 右工具),class
+  // 綁 testid 鎖住 — 退回 flex-wrap 混排即紅。
+  it("header 根容器帶桌面 grid 三欄 class(固定 360px 搜尋欄)", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    const header = container.querySelector('[data-testid="bubble-header"]');
+    expect(header).toBeTruthy();
+    expect((header as HTMLElement).className).toContain(
+      "lg:grid-cols-[360px_minmax(0,1fr)_auto]",
+    );
+  });
+
+  // 痛點:統計行常駐(位置固定),未選時也 render(今日共 N 個分點)——
+  // 「selected>0 才出現」的舊條件會讓版面在加選瞬間跳動。
+  it("統計行常駐:未選時 bubble-stats-row 存在且顯「今日共 N 個分點」", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    const row = container.querySelector('[data-testid="bubble-stats-row"]');
+    expect(row).toBeTruthy();
+    expect(row!.textContent ?? "").toContain("今日共");
+    expect(row!.textContent ?? "").toContain("3");
+  });
+
+  // 痛點:chips 行空態佔位 + 引導,header 高度不因首次加選跳動。
+  it("chips 行空態顯引導文字;加選後消失", async () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    expect((container.textContent ?? "").includes("點泡泡或搜尋分點加入比較")).toBe(true);
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+    expect((container.textContent ?? "").includes("點泡泡或搜尋分點加入比較")).toBe(false);
+  });
+});
