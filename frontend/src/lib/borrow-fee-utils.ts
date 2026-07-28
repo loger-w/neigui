@@ -56,8 +56,41 @@ export function matchStockOptions(options: StockOption[], query: string): StockO
   );
 }
 
+// 當日 per-stock 統計(免搜尋常駐右表):同股多筆加總,name 取首見;
+// 排序 total desc → stock_id 升冪(tie-break 與 sortRows 同理,保持可預測)。
+export interface DayStat {
+  stock_id: string;
+  name: string;
+  total_shares: number;
+}
+
+export function aggregateDayStats(rows: BorrowFeeRow[]): DayStat[] {
+  const byStock = new Map<string, DayStat>();
+  for (const r of rows) {
+    const s = byStock.get(r.stock_id);
+    if (s) {
+      s.total_shares += r.lending_shares;
+    } else {
+      byStock.set(r.stock_id, {
+        stock_id: r.stock_id,
+        name: r.name,
+        total_shares: r.lending_shares,
+      });
+    }
+  }
+  return [...byStock.values()].sort((a, b) => {
+    if (a.total_shares !== b.total_shares) return b.total_shares - a.total_shares;
+    return a.stock_id < b.stock_id ? -1 : a.stock_id > b.stock_id ? 1 : 0;
+  });
+}
+
 export function formatShares(n: number): string {
   return n.toLocaleString("en-US");
+}
+
+// 股 → 張(1 張 = 1,000 股);上游慣例整千,非整千四捨五入 1 位小數防靜默錯值。
+export function formatLots(shares: number): string {
+  return (shares / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 });
 }
 
 export function formatFee(n: number): string {
