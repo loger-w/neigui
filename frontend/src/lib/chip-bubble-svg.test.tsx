@@ -734,3 +734,53 @@ describe("BubbleChartSvg — 多選分點外框色 (SC-2)", () => {
     expect(container.querySelectorAll("circle")).toHaveLength(3);
   });
 });
+// mod/bubble-chart-ux-polish SC-3:單看泡泡聚焦外框(soloBrokerId)。
+describe("BubbleChartSvg — soloBrokerId 聚焦外框 (SC-3)", () => {
+  const twoSelectedTrades: BrokerTrade[] = [
+    mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 50, sell: 0 }),
+    mkTrade({ broker: "B", broker_id: "B1", price: 100, buy: 30, sell: 0 }),
+  ];
+  const twoSelected = [sel("A1", "A", 0), sel("B1", "B", 1)];
+
+  // 痛點:單看的圖面錨點 — 命中分點 ink 外框 + painter's order 排最後
+  // (review R6-1:重合泡泡下 ring 否則被後繪 palette 框遮蓋)。
+  it("命中分點 circle 帶 data-solo + ink stroke 2.5,且 render 於所有非 solo 泡泡之後", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={twoSelectedTrades}
+        width={400}
+        height={300}
+        selectedBrokers={twoSelected}
+        soloBrokerId="A1"
+      />,
+    );
+    const circles = Array.from(container.querySelectorAll("circle"));
+    const soloFlags = circles.map((c) => c.getAttribute("data-solo") === "true");
+    const soloCircles = circles.filter((_, i) => soloFlags[i]);
+    expect(soloCircles.length).toBeGreaterThan(0);
+    for (const c of soloCircles) {
+      expect(c.getAttribute("data-broker-id")).toBe("A1");
+      expect((c.getAttribute("stroke") ?? "").toLowerCase()).toBe("#ede4d3");
+      expect(c.getAttribute("stroke-width")).toBe("2.5");
+    }
+    // painter's order:第一個 solo 必在最後一個非 solo 之後
+    expect(soloFlags.indexOf(true)).toBeGreaterThan(soloFlags.lastIndexOf(false));
+    // 非 solo 的選中泡泡維持 palette 外框(identity encoding 不動)
+    const b1 = circles.find((c) => c.getAttribute("data-broker-id") === "B1")!;
+    expect(b1.getAttribute("stroke")).toBe(BROKER_PALETTE[1]);
+  });
+
+  // 痛點:optional prop 向下相容 — 不傳 / null 輸出與現行為完全一致。
+  it("soloBrokerId 未提供 / null → 無 data-solo,輸出一致", () => {
+    const base = {
+      trades: twoSelectedTrades,
+      width: 400,
+      height: 300,
+      selectedBrokers: twoSelected,
+    };
+    const { container: a } = render(<BubbleChartSvg {...base} />);
+    const { container: b } = render(<BubbleChartSvg {...base} soloBrokerId={null} />);
+    expect(a.querySelector("svg")!.outerHTML).toBe(b.querySelector("svg")!.outerHTML);
+    expect(a.querySelector("[data-solo]")).toBeNull();
+  });
+});
