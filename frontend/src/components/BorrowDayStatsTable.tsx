@@ -4,12 +4,14 @@ import { aggregateDayStats, formatLots } from "../lib/borrow-fee-utils";
 
 interface Props {
   rows: BorrowFeeRow[];
+  /** 列點擊 → 設定單檔篩選(等同 combobox 選定;polish SC-3)。 */
+  onPickStock?: (stockId: string) => void;
 }
 
 // 本日借券統計(mod/borrow-fee-layout):當日全集 per-stock 加總,張數 desc
 // 固定排序;免搜尋常駐 overview,不受單檔篩選影響(rows 一律傳全集)。
 // 數字用 ink 階層 — 資料非互動態,禁 accent(色彩語意鐵則)。
-export function BorrowDayStatsTable({ rows }: Props): ReactElement {
+export function BorrowDayStatsTable({ rows, onPickStock }: Props): ReactElement {
   const stats = useMemo(() => aggregateDayStats(rows), [rows]);
 
   return (
@@ -32,7 +34,18 @@ export function BorrowDayStatsTable({ rows }: Props): ReactElement {
               key={s.stock_id}
               data-testid="day-stat-row"
               data-stock-id={s.stock_id}
-              className="border-b border-line"
+              tabIndex={0}
+              aria-label={`篩選 ${s.stock_id} ${s.name}`}
+              onClick={() => onPickStock?.(s.stock_id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  // Space 預設捲動頁面 — 統計欄本身 overflow-y-auto,不擋會
+                  // 選股同時跳捲(spec R2)
+                  e.preventDefault();
+                  onPickStock?.(s.stock_id);
+                }
+              }}
+              className="border-b border-line cursor-pointer hover:bg-line-strong/30 focus-visible:bg-line-strong/30 transition-colors"
             >
               <td className="py-1.5 pr-2 text-ink font-medium">{s.stock_id}</td>
               <td className="py-1.5 px-2 text-ink-muted">{s.name}</td>

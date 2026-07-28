@@ -4,8 +4,8 @@
  * 本日借券統計表(mod/borrow-fee-layout SC-1/2)— 免搜尋常駐右表:
  * per-stock 加總、張數換算、固定 desc 排序、testid 契約。
  */
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { BorrowFeeRow } from "../lib/borrow-fee";
 import { BorrowDayStatsTable } from "./BorrowDayStatsTable";
 

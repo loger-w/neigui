@@ -98,6 +98,32 @@ test.describe("borrow fee mode", () => {
     await expect(statRows).toHaveCount(5);
   });
 
+  test("BF6: 統計列點擊連動篩選 + 看籌碼跳 equity(mod/borrow-fee-polish SC-3/4)", async ({ page }) => {
+    // 痛點:統計表點擊 → setSelectedStock 的連動鏈(stat row → stockOptions
+    // 反查 → combobox echo → 明細過濾 → summary 填數)任一環斷都只有資料級
+    // assertion 抓得到;跳轉鏈復用 handleSymbolPick,斷言 mode 切換三件套
+    // (券差頁 unmount / 個股 nav active / localStorage),不依賴 8069 chip fixture。
+    const statRows = page.getByTestId(TESTIDS.dayStatRow);
+    await expect(statRows.first()).toBeVisible();
+    // 首列 = 8069(25,000 股 desc 首位);點擊 → 左明細剩該股 1 列
+    await statRows.first().click();
+    const feeRows = page.getByTestId(TESTIDS.feeRow);
+    await expect(feeRows).toHaveCount(1);
+    expect(await feeRows.first().getAttribute("data-stock-id")).toBe("8069");
+    const summary = page.getByTestId(TESTIDS.borrowFeeStockSummary);
+    await expect(summary).toContainText("本日標借合計 25,000 股");
+    // tpex 月聚合資料級鎖(R4):06-25 1,000 + 06-26 25,000、distinct dates 2
+    await expect(summary).toContainText("本月累計 26,000 股");
+    await expect(summary).toContainText("(2 次)");
+    // 看籌碼 → equity mode 三件套
+    await page.getByTestId(TESTIDS.jumpToEquity).click();
+    await expect(page.getByTestId(TESTIDS.borrowFeePage)).toHaveCount(0);
+    await expect(
+      page.getByRole(ROLES.modeSwitchEquity.role, { name: ROLES.modeSwitchEquity.name }),
+    ).toHaveAttribute("aria-current", "page");
+    expect(await page.evaluate(() => localStorage.getItem("mode"))).toBe("equity");
+  });
+
   test("BF2: reload 後 borrow mode 持久化(SC-1)", async ({ page }) => {
     // 痛點:App.tsx useState init 讀 localStorage('mode');新 mode 值 'borrow'
     // 必須通過同一條持久化路徑(N2 只鎖 options,新枚舉值要自己的鎖)。
