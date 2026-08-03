@@ -3,6 +3,7 @@ name: refactor-plan-reviewer
 description: /refactor Phase 3 dispatch(大型 refactor):對 refactor-plan.md 做對抗式 review(行為零差異前提),回傳 P0/P1/P2 JSON findings。
 tools: Read, Grep, Glob
 effort: high
+model: opus
 ---
 
 **第一件事:Read `C:/Users/USER/.claude/harness/refs/reviewer-preamble.md`** — 立場、severity

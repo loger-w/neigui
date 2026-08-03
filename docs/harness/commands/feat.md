@@ -36,18 +36,22 @@ worktree 路徑寫 state.json。
 
 ## Phase 0:Brainstorm + 可驗證性 gate + S/M/L 分流
 
-1. 呼叫 `brainstorming`,**遵循 skill 的對話流程**(一次一問、2-3 方案、分節確認)。
-   以下是疊在 skill 之上的**加值 gate**,不取代其流程。
-   **提問姿態分流(2026-07-27 拍板)**:user 帶**已成形方案**(判準見 `refs/feat-phase0-2.md`,
-   拿不準預設模糊 idea)→ 提問階段改用 `grilling` 姿態(逐分支決策樹、一次一題、每題附
-   建議答案;事實自查環境,決策問 user),「提 2-3 方案」縮成「確認 user 方案 + 至多一個
-   counter-proposal」,拷問至共識、**user 拍板後**直進 SC gate。模糊 idea → 照現行
-   brainstorming 不變(例外:僅條件 1 成立 — 指名做法但無開放決策點 — 提案縮減照樣適用,
-   細節見同 ref;2026-07-27 review 補修)。兩路共識同樣落 `brainstorm.md`,
-   SC gate / S/M/L 分流照常。
-   **疊 /auto 不豁免拍板**:已成形方案的 grilling 共識拍板視同 auto.md「仍必停」清單
-   (blocker 不是 gate),不因自主模式自問自答續跑;規格來自 user 撰寫 / 已拍板**文件**者
-   不觸發本分流,照 auto.md 預核准替代條件走。
+1. **提問拍板(2026-08-03 拍板:`grilling` 為預設姿態,`brainstorming` skill 呼叫退役 —
+   11 輪實測 0 載入而產物品質由 grilling 路徑撐起,依據見 RATIONALE)**:
+   - user 帶**已成形方案**(判準見 `refs/feat-phase0-2.md`,拿不準預設模糊)→ `grilling`
+     姿態:逐分支決策樹、一次一題、每題附建議答案;事實自查環境,決策逐題附建議答案
+     (停等語意見下方提問紀律 bullet);提案縮成
+     「確認 user 方案 + 至多一個 counter-proposal」,拷問至共識。
+   - **模糊 idea / 空白頁** → 先 `/adhd` 發散探索設計空間、收斂出 2-3 候選,再以
+     `grilling` 姿態逐題收斂至共識。
+   - **提問紀律(2026-08-03 拍板,取代 07-27「共識拍板必停」)**:每題附建議答案並
+     **預設採建議解續跑**,決策記 brainstorm.md `[auto-default: <選擇> | reason: <理由>]`;
+     **僅方向性抉擇**(判準見 auto.md:選項互換會改寫 SC 集合 / out of scope / 對外契約)
+     **或給不出建議解時才停下問 user**。本紀律**顯式覆寫** `grilling` skill 本文的
+     「逐題等答覆 / 未確認不行動」條款(gate 義務 — 拷問並落檔 — 沿用,停等語意以本紀律為準)。
+     共識落 `brainstorm.md` 直進 SC gate / S/M/L 分流,
+     收尾回報列出全部 `[auto-default]` 決策供事後 audit。規格來自 user 撰寫 / 已拍板
+     **文件**者照 auto.md 預核准替代條件走。
 2. **SC gate**:每條成功條件編號 `SC-1, SC-2…`,強制附「驗證方式」一行(指令 / 測試名 /
    截圖步驟)。**量化 SC(size / time / count)必附 measurement unit + 量法指令** —
    `size ≤ 50 KB` 不合格,要寫 `size ≤ 50 KB(gzip 後;量法 curl --compressed | wc -c)`。
@@ -55,8 +59,9 @@ worktree 路徑寫 state.json。
    (anytime / 盤中 / 特定日)**+ 窗口外的降級策略** — Phase 0 就決定,不留給 review 補抓。
    **UI / 畫面類 SC 必寫成「畫面可指認」表述**(位置 / 文字 / 顏色 / 元素)—
    `顯示分點排行` 不合格,要寫 `頁面右上出現「分點排行」tab,點入後表格首欄為分點名稱(繁中)`。
-   e2e assertion 與截圖驗收都以此表述為準,轉譯不留歧義空間(2026-07-27 拍板:e2e 綠 ≠
-   user 要的畫面,根因是 assertion 轉譯歧義)。
+   UI SC 的驗收 = **AI 以 DevTools MCP 開真實畫面對照此表述截圖核對 + user 過目**雙層
+   (2026-08-03 回復 AI 截圖層;Playwright assertion gate 不回復,細節見 auto-verify
+   「UI 畫面驗證」節;user 過目仍是最終關卡)。
    寫不出 → 該條不合格(gate 不是建議)。
 3. 寫 `brainstorm.md`;寫入要求與「沿用前輪設計時的跨輪約束掃描」見 `refs/feat-phase0-2.md`。
 4. **S/M/L 分流**(寫 `state.json.scope`):判準見 `refs/scope-tiers.md`。
@@ -65,6 +70,10 @@ worktree 路徑寫 state.json。
 
 1. 呼叫 `writing-plans` 寫 `design.md`:架構 / 檔案組織 / 資料流 / 邊界 / 接點;
    每條 SC-N 對應設計章節;標版本 v1(後續改 → v2…,檔頭保留 changelog)。
+   **借腦通道(2026-07-29 拍板)**:主 session 非 fable 且判斷密度高(L 級 / 新架構)→
+   dispatch `spec-writer`(fable 已釘)寫 v1 初稿,傳 brainstorm.md + 相關源碼路徑 +
+   輸出路徑;回傳的 Open Decisions 由主 session 問 user 拍板後補進 design.md,才進 review。
+   S/M 預設主 session 自寫。
 2. Review 依 `refs/review-protocol.md` A 節 dispatch `design-reviewer`,**預設 1 輪**。
 3. **加輪條件(至多 1 次)**:round 1 有 accepted P0 → 修復後補一輪**限縮 review**:
    dispatch prompt 只指向 changelog / amendment 段落,審「fix 是否改出新矛盾 / 漏更新
@@ -96,8 +105,8 @@ worktree 路徑寫 state.json。
      (body 註 `red→green for <red-sha>`)
    - Refactor:`🔵 refactor(<area>): ... [refactor]` — **有重構才加**,不列強制順序
    - **goal_efficiency_mode**(見 auto.md):可改 wave batch,單 `[waveN]` tag
-   - **Tag 判準**:`[green]` 只掛在有對應 `[red]` 的 commit;同步產物(e2e spec 補寫 /
-     changelog / 版本 pin / build-gate 修 / flake 修)**不掛 TDD tag**,只用 🟢/🔵/🔴 分類
+   - **Tag 判準**:`[green]` 只掛在有對應 `[red]` 的 commit;同步產物(changelog /
+     版本 pin / build-gate 修 / flake 修)**不掛 TDD tag**,只用 🟢/🔵/🔴 分類
 3. 新發現 case 的處置與 test-infra 例外見 `refs/feat-phase3.md`。
 4. **next-time.md 鉤子**:Phase 3 開工前 cat `docs/next-time.md` 一次,順手改動衝動隨時寫入
    (Phase 8 收尾前會再 cat 一次)。**Subagent 模式下 main agent 在每 task dispatch 前代查**
@@ -140,19 +149,17 @@ worktree 路徑寫 state.json。
 
 ## Phase 6:真實環境驗證
 
-1. 呼叫 `auto-verify` skill 的「真實環境驗證」節(feature shape 分流表以 skill 為準)。
-2. **Subsumed 判定**:feature shape = web 且該 SC 已有 Playwright e2e 覆蓋(Phase 5 跑過真
-   backend + 真 browser)→ 該 SC 標 `subsumed by Phase 5`,不重複 DevTools MCP 截圖。
-   **限縮(2026-07-27 拍板):只適用純 regression SC** — 本輪新增 / 改動的 UI SC 第一輪
-   一律真截圖(e2e assertion 是模型轉譯的,轉譯錯照樣綠;新畫面首次人眼驗證不可被頂替)。
-3. **Infra_fail 標準 case 與 fallback 路徑以 `auto-verify` 真實環境節為準**。本流程只補記帳
+1. 呼叫 `auto-verify` skill 的「真實環境驗證」節(feature shape 分流表以 skill 為準;
+   web 的 UI SC = AI 截圖對照 + user 過目雙層,2026-08-03 回復,細節以該 skill
+   「UI 畫面驗證」節為準)。
+2. **Infra_fail 標準 case 與 fallback 路徑以 `auto-verify` 真實環境節為準**。本流程只補記帳
    規則:不算 SC 回退,state.json 記 `phase_6_blocked_reason`;fallback 的 UI SC 註記寫進
    Phase 7 evidence 欄。
-4. **real-env finding 的修復 commit 文法**:掛 `[green]` + body 註 `Phase 6 real-env finding`
+3. **real-env finding 的修復 commit 文法**:掛 `[green]` + body 註 `Phase 6 real-env finding`
    (`check_feat_tags.py` 豁免 (b)),**不掛 `[red][green]` 雙 tag**(掛錯實測要線性重建 commit)。
-5. **失敗回退**(記 rollbacks):(a) 情境沒列 SC → 回 Phase 0 補 SC /(b) SC 有列
+4. **失敗回退**(記 rollbacks):(a) 情境沒列 SC → 回 Phase 0 補 SC /(b) SC 有列
    design 沒兼顧 → 回 Phase 1 /(c) 測試漏 → 回 Phase 3 先寫紅。
-6. 證據放 `evidence/`,檔名含 SC-N(例:`SC-2_login-empty-input.png`);每輪輸出
+5. 證據放 `evidence/`,檔名含 SC-N(例:`SC-2_api-edge-cases.txt`);每輪輸出
    `real-env-verification-round-<N>.json`。
 
 ## Phase 7:回頭核 goal — 結構化證據表 + meta-cycle
@@ -168,8 +175,8 @@ worktree 路徑寫 state.json。
 
    任一欄出現「N/A」「verified ✓」「應該可以」→ 直接視為未完成。**例外**:real-env 欄允許
    `infra_fail: <reason>`(須對應 state.json `phase_6_blocked_reason`)或
-   `subsumed by Phase 5: <e2e spec#>`(僅純 regression SC 可標,與 Phase 6 限縮同判準;
-   2026-07-27 拍板)。
+   `截圖: <evidence 路徑> + user 過目`(UI SC 專用;2026-08-03 起 AI 截圖與 user 過目雙層,
+   截圖缺席時允許 `browser_unavailable: <reason> + user 過目`)。
 4. **失敗類型四分流**(只寫 FAIL 的那條,通過不逐條聲明):(1) goal 沒被 design 涵蓋 →
    Phase 1 /(2) design 有實作沒做 → Phase 2/3 /(3) 實作有做測試漏 → Phase 3 先寫紅 /
    (4) goal 模糊互斥 → Phase 0 改寫 SC(舊 SC 的 rollbacks 記錄移 `docs/next-time.md` 備查,

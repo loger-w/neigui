@@ -10,6 +10,8 @@
 
 1. 用對應的 typed reviewer agent type dispatch(`design-reviewer` /
    `impl-spec-reviewer` / `change-spec-reviewer` / `refactor-plan-reviewer`)。
+   **一律 dispatch,不得主 session 自審**(2026-08-03 拍板 — 07-30 兩輪「自審落 .md」
+   經稽核判為違規樣態:對抗性 review 的前提是 fresh context,自審找不到自己的盲點)。
    傳**檔案路徑**不傳內容 —— reviewer 是 fresh context,對話裡的表傳不進去。
    Criteria / severity / JSON schema 固化在 agent 定義,dispatch prompt 不重抄。
 2. round 2 一律為**限縮輪**(round 1 有 accepted P0 才發生;dispatch prompt 只指**本輪
@@ -31,7 +33,8 @@
 
 ## B. Code review(/feat Phase 4;/mod Phase 5;收尾補齊)
 
-**檔位預設 medium**;全量掃描保留給 user 顯式要求。
+**檔位預設 medium**(檔位 = 掃描範圍 / 深度,**非 effort** — effort 依鐵則 G 一律 high);
+全量掃描保留給 user 顯式要求。
 
 > **雙焦點與 round JSON 的輸出契約由呼叫方 command 定義**(feat.md Phase 4 / mod.md
 > Phase 5),本檔不重抄 —— 同一份契約放三個地方必然漂移。
@@ -40,6 +43,12 @@
 
 dispatch **≥ 2 個角度真差異化的 lens finder**(Workflow fan-out 或平行 Agent 皆可),
 結果彙整成單一 `code-review-round-<N>.json`。
+
+**模型路由(2026-08-03 拍板,鐵則 G 統一 opus;取代 2026-07-29 三分類)**:lens finder /
+verify / skeptic **一律 `opus`**(主 session 已換 `fable`,subagent 統一 opus 不再分檔)。
+Workflow `agent()` 與 ad-hoc Agent dispatch 一律**顯式帶 `model: opus`**
+(未帶 = 繼承主 session = `fable`,是最貴的模型不是中性預設)。
+快篩紀律 (a)-(d) 不因降級放鬆 — 把關本來就在 main agent。
 
 **Diff 先落檔**:main agent 先把待審 diff 寫成單一檔(如
 `git diff <base>..HEAD > <artifact>/review-diff.txt`),finder prompt 指向該檔 + 需要的

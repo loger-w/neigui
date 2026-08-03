@@ -26,16 +26,21 @@
    (只審修復所觸及的步驟,main agent 於 dispatch prompt 圈定)。退出條件:無 P0,且 P1
    逐條處置(修復,或裁決後寫入 refactor-plan.md 風險註記)**。限縮輪後仍有 P0 →
    停下回報 user(縮範圍 / 換拆法 / 接受風險註記)
-4. **Phase 4|逐步執行**:每步 = 改 → 跑相關測試 → 全綠 → `git commit`(**純 🔵**)→ 下一步。
+4. **Phase 4|逐步執行**:**每步 dispatch implementer subagent(顯式 `model: opus`),
+   main session 不自寫**(2026-08-03 拍板,紀律同 `~/.claude/harness/refs/feat-phase3.md`)。
+   每步 = 改 → 跑相關測試 → 全綠 → `git commit`(**純 🔵**)→ 下一步。
    若紅:**預設 refactor 改錯**(鐵則 C),次選才考慮測試在測 **implementation detail**
    (若真是 → 標註,這已變相是 mod,停下切 `/mod`)
 5. **Phase 5|Blast radius**:grep 動到的命名 / signature 所有 caller(含**動態用法** /
    template string / reflection / 外部 caller),跑完整 test suite(不只動到那塊);
    `graphify-out/` 存在時可先 `graphify query` 當起點(直接跑 CLI 不載 skill,2026-07-27
    同 /feat 讀檔紀律),**動態用法仍必 grep**
-6. **Phase 6|自動化驗證**:呼叫 `auto-verify` skill 全綠
-7. **Phase 7|真實環境驗證**:呼叫 `auto-verify` 真實環境節 — dev server 跑改動範圍功能,
-   **行為跟 refactor 前完全一樣**
+6. **Phase 6|自動化驗證**:呼叫 `auto-verify` skill 全綠;結果落檔
+   `.claude/refactor/<slug>/verification.md`(小型 refactor 未建目錄時此時補建;
+   verify-gate hook 收尾依據,2026-08-03)
+7. **Phase 7|真實環境驗證**:呼叫 `auto-verify` 真實環境節 — 改動範圍功能**行為跟
+   refactor 前完全一樣**(web 畫面類以 auto-verify「UI 畫面驗證」節為準 —
+   AI 截圖對照 + user 過目雙層,2026-08-03 部分回復)
 8. **Phase 8|回頭核**:Phase 1 動機解決了?diff 中沒有任何行為差異?能量化的改進(複雜度 /
    duplication / 命名 / 行數)有沒有真的好
 

@@ -20,13 +20,20 @@
    (直接跑 CLI 不載 skill),query 答不了再 Grep / Read(2026-07-27 同 /feat 讀檔紀律)
 3. **Phase 3|紅測試先行**(鐵則 C):用 Phase 1 重現條件寫測試 → 現在紅且訊息符合 →
    以後防 regression。「寫不出測試」九成是測試設計問題,寫不出來說明原因
+   (紅測試的執行模式見 Phase 4 dispatch 條文 — 紅測試 + 修復同屬 implementer)
 4. **Phase 4|最小修改**:只動 root cause 對應那幾行。不順手 refactor / rename / lint
-   (順手衝動寫進 `docs/next-time.md`)。Commit 標 🔴 行為改動(鐵則 B)
+   (順手衝動寫進 `docs/next-time.md`)。Commit 標 🔴 行為改動(鐵則 B)。
+   **實作(紅測試 + 修復)一律 dispatch implementer subagent(顯式 `model: opus`),
+   main session 不自寫**(2026-08-03 拍板,紀律同 `~/.claude/harness/refs/feat-phase3.md`;
+   root cause 判定與裁決留 main session)
 5. **Phase 5|Blast radius**:grep 同函式 / 變數所有 caller(含動態用法 / template string /
    reflection / 外部 caller),列受影響功能各跑 sanity check
-6. **Phase 6|自動化驗證**:呼叫 `auto-verify` skill(驗證指令來源以該 skill 為準)全綠
+6. **Phase 6|自動化驗證**:呼叫 `auto-verify` skill(驗證指令來源以該 skill 為準)全綠;
+   結果落檔 `.claude/bug/<slug>/verification.md`(gate 指令 + exit code;
+   verify-gate hook 收尾依據,2026-08-03)
 7. **Phase 7|真實環境驗證**:呼叫 `auto-verify` **真實環境節**;其中 /bug 特有的一項是
-   **重走 Phase 1 重現步驟**,確認現在不會發生。Console 0 errors
+   **重走 Phase 1 重現步驟**,確認現在不會發生(web 畫面類以 auto-verify
+   「UI 畫面驗證」節為準 — AI 截圖對照 + user 過目雙層,2026-08-03 部分回復)
 8. **Phase 8|反向驗證**(關鍵):暫時還原 Phase 4 修復讓 bug 重現 — 修復已 commit(本流程預設)
    → `git revert --no-commit <fix-sha>`;尚未 commit → `git stash`。Phase 3 紅測試**該紅回來**
    → 還原修復(`git revert --abort` / `git stash pop`)→ 綠回去。**還原修復後測試還是綠 →

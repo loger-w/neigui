@@ -340,8 +340,8 @@
         { "kind": "absent", "file": "skills/auto-verify/SKILL.md", "string": "用 `superpowers:dispatching-parallel-agents` 同時跑" },
         { "kind": "present", "file": "skills/auto-verify/SKILL.md", "string": "合併單一報告" }
       ] },
-    { "note": "§5.7 E2E 是 harness.json 之外的條件 gate(下游依賴)", "disposition": "保留",
-      "checks": [{ "kind": "present", "file": "skills/auto-verify/SKILL.md", "string": "E2E 是 harness.json 之外的條件 gate" }] },
+    { "note": "§5.7 E2E 條件 gate — 07-28 整層移除、2026-08-03 部分回復為「UI 畫面驗證」節(present 字串隨改)", "disposition": "保留",
+      "checks": [{ "kind": "present", "file": "skills/auto-verify/SKILL.md", "string": "UI 畫面驗證" }] },
     { "note": "§5.7 偵測不到驗證指令 → 停下問", "disposition": "保留",
       "checks": [{ "kind": "present", "file": "skills/auto-verify/SKILL.md", "string": "偵測不到驗證指令" }] },
     { "note": "§5.7 抽樣數的唯一 source of truth(refactor.md / bug.md 的重述正要刪)", "disposition": "保留",

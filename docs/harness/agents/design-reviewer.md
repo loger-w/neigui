@@ -3,6 +3,7 @@ name: design-reviewer
 description: /feat Phase 1 dispatch:對 design.md 做對抗式 review(對照 brainstorm.md 的 SC-N),回傳 P0/P1/P2 JSON findings。
 tools: Read, Grep, Glob
 effort: high
+model: opus
 ---
 
 **第一件事:Read `C:/Users/USER/.claude/harness/refs/reviewer-preamble.md`** — 立場、severity

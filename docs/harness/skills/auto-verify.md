@@ -1,9 +1,9 @@
 ---
 name: auto-verify
-description: 跑「自動化驗證指令(tsc / vitest / pytest / ruff / build)」與「真實環境驗證(dev server + DevTools MCP + 截圖 / curl / CLI)」。在 /feat /bug /mod /refactor /perf 流程的「完成前 gate」階段呼叫,確認改動沒打壞既有測試與 build。先檢查專案形狀再選對應驗證指令來源,不硬跑 `cd frontend/` 撞牆。本 skill 是形狀偵測表與驗證方式表的唯一 source of truth(command 檔不重抄)。
+description: 跑「自動化驗證指令(tsc / vitest / pytest / ruff / build)」與「真實環境驗證(curl / CLI / consumer script / DevTools MCP 截圖對照)」。在 /feat /bug /mod /refactor /perf 流程的「完成前 gate」階段呼叫,確認改動沒打壞既有測試與 build。先檢查專案形狀再選對應驗證指令來源,不硬跑 `cd frontend/` 撞牆。本 skill 是形狀偵測表與驗證方式表的唯一 source of truth(command 檔不重抄)。
 metadata:
   author: user
-  version: "3.1.0"
+  version: "4.1.0"
 ---
 
 # Auto-Verify
@@ -30,11 +30,6 @@ source of truth** — command 只寫「呼叫 auto-verify」,不重抄表格。
 (與 git pre-push hook 共用,單一 source of truth);沒有 → 用本 skill 的形狀對應表。
 **Stale 偵測**:verify 陣列任一 `cwd` 目錄不存在 → 整檔視為 stale(殘留模板),fallback
 專案 CLAUDE.md / 形狀對應表,並提醒 user 修 harness.json — 不硬跑不存在的目錄。
-
-**E2E 是 harness.json 之外的條件 gate**(刻意不入 verify 陣列 — 太慢,pre-push 不跑):
-有 Playwright e2e 的專案,verify 陣列全綠**不等於自動化驗證完成** — 還要依專案 e2e 判準
-(neigui:skill `e2e-conventions` 判準表)判定本次改動是否必跑 e2e;屬豁免類型 → commit
-message 註明(如 `[no-e2e: internal refactor]`)。
 
 任一步紅 → 停下修,套鐵則 F「失敗處理 3 次上限」。
 
@@ -66,26 +61,34 @@ PowerShell `;` 不看 exit code、Windows PowerShell 5.1 亦無 `&&`,`vitest ...
 
 | Shape | 真實環境驗證方式 |
 |---|---|
-| web | `/run` 啟動 → Chrome DevTools MCP 操作 → Console 0 errors / 0 red warnings + 截圖 |
+| web | API 層 `curl` happy + ≥ 2 edge;UI SC 走「UI 畫面驗證」節(AI 截圖對照 + user 過目雙層,2026-08-03 回復) |
 | 純後端 API | `curl` / `httpie` 跑 happy + ≥ 2 edge,貼 request / response 當證據 |
 | CLI | 真實 argv × 3 + exit code + stdout / stderr 對照 |
 | library | 一個獨立 consumer script 跑公開 API |
 | worker / queue | 真實 message + retry + DLQ 驗證 |
 | TUI | terminal recording(asciinema 或等價) |
-| Electron / desktop | 真實啟動 + 三場景 + 截圖 |
+| Electron / desktop | 真實啟動 + 三場景(AI 截圖對照 + user 過目) |
 
 至少測:Happy path、≥ 2 個 edge case(空輸入 / 錯誤輸入 / 邊界值)、**抽 2 個沒改的相關功能**
 確認 regression 沒打壞。
 
-**Subsumed 判定**(web):該情境已有 Playwright e2e 覆蓋(spec 跑過真 backend + 真 browser)
-→ 標 `subsumed by e2e`,不重複 DevTools MCP 截圖。**限縮(2026-07-27 拍板):只適用純
-regression 情境** —
-本輪新增 / 改動的 UI 第一輪一律真截圖(e2e assertion 是模型轉譯的,轉譯錯照樣綠;
-新畫面首次人眼驗證不可被 e2e 頂替)。
+### UI 畫面驗證(2026-08-03 回復 AI 截圖層,user 拍板)
 
-**Infra 失敗 fallback**(token 過期 / browser MCP 斷線 / 外部 503):不硬撞 — 標
-`infra_fail: <reason>` 回報呼叫方流程(/feat 記 `state.json.phase_6_blocked_reason`),
-browser MCP 斷線先試 `--isolated` profile,再退 curl + 元件測試替代覆蓋。
+- 用 DevTools MCP(或 claude-in-chrome)開**真實頁面**,逐條 UI SC 對照「可指認」表述
+  (位置 / 文字 / 顏色 / 元素)核對,截圖存 artifact `evidence/`,**檔名含 SC-N**;
+  順手看 console 有無新增 error。
+- 截圖對照**dispatch subagent 執行**(顯式 `model: opus`,browser 工具經 ToolSearch 載入;
+  prompt 帶 SC 可指認表述清單 + 操作路徑 + evidence 落點),回傳逐 SC 判定
+  (PASS / FAIL + 依據)+ 截圖路徑;main session 只裁決 FAIL 項,不自己開瀏覽器
+  (2026-08-03 拍板)。
+- **不回復 Playwright assertion gate 與 subsumed 條款**(2026-07-27 根因:e2e assertion
+  是模型轉譯的,轉譯錯照樣綠 — 該層留在墳裡,不因本次回復復活)。
+- AI 截圖核對**不取代 user 過目**:收尾回報仍逐條列可指認表述 + 操作路徑請 user 確認,
+  雙層缺一不可。截圖的價值是在 user 過目前先攔明顯不符 + 留可追溯證據。
+- 瀏覽器 / MCP 不可用 → 降級純 user 過目,evidence 標 `browser_unavailable: <reason>`。
 
-證據(截圖 / log / req-res 對照)放當前 task 的 artifact 目錄(例:
-`.claude/feat/<slug>/evidence/`),**檔名含 SC-N 或情境標籤**(例:`SC-2_login-empty-input.png`)。
+**Infra 失敗 fallback**(token 過期 / 外部 503):不硬撞 — 標
+`infra_fail: <reason>` 回報呼叫方流程(/feat 記 `state.json.phase_6_blocked_reason`)。
+
+證據(log / req-res 對照)放當前 task 的 artifact 目錄(例:
+`.claude/feat/<slug>/evidence/`),**檔名含 SC-N 或情境標籤**(例:`SC-2_api-edge-cases.txt`)。

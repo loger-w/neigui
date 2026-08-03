@@ -17,24 +17,23 @@
 
    FAIL 且無豁免 → 回 Phase 3 rebase commit message(**不增計數**)。
 
-2. **Artifact commit**:手動編輯 `.git/info/exclude` 移除 `.claude/feat/<slug>/` 該行
-   (用編輯器 / `grep -v` 重寫,**不用花式 sed delimiter**),然後:
+2. **Artifact commit**(2026-08-03 起 artifact 目錄常駐版控,`.git/info/exclude` 舞步退役):
    ```bash
    git add ".claude/feat/<slug>/" && git commit -m "chore(feat-<slug>): artifacts"
    ```
-   不允許 `git add -f` 短路(會掩蓋 exclude 是否真清除)。
-
-   **分支條件**:repo `.gitignore` 排除 `.claude/` → 沿專案政策 skip,state.json 記
-   `artifact_commit: "skipped (.claude/ gitignored)"`。有 commit 前例的專案照常 commit。
+   repo `.gitignore` 尚未放行 → 先補白名單(`.claude/*` + `!.claude/feat/` 等,`*.log`
+   仍排除),不允許 `git add -f` 短路。worktree 輪注意:artifact 一開始就寫主 tree
+   (CLAUDE.md §8 教訓),commit 也在主 tree 做。
 
 3. **graphify 圖更新(條件式)**:`graphify-out/` 存在且本輪動了 code →
    `graphify <專案根> --update`(AST 增量,免 LLM、零 token);不存在則跳過,不在收尾建圖。
 
 4. **收尾路徑**:預設走 `branch-lifecycle` 收尾節(push → PR → review 補齊 → 自動 merge)。
 
-   **UI 驗收點(2026-07-27 拍板)**:本輪新增 / 改動的 UI SC → 收尾回報訊息**逐條附**
-   關鍵截圖路徑(`evidence/SC-N_*.png`)+ 一句畫面內容描述(位置 / 文字 / 顏色),
-   給 user 固定過目點 — 截圖只存 evidence/ 自查不算,回報裡沒出現 = 未完成收尾。
+   **UI 驗收點(2026-08-03 改版:AI 截圖層回復)**:本輪新增 / 改動的 UI SC → Phase 6 應已有
+   AI 截圖對照(auto-verify「UI 畫面驗證」節,evidence/ 含 SC-N 截圖);收尾回報仍**逐條列
+   SC 可指認表述 + 對應操作路徑**(哪個頁 / 點哪裡)請 user 過目確認 — 雙層缺一不可,
+   回報裡沒列 = 未完成收尾。
 
 5. **非預設路徑(user 指定才走)**:保留 branch(state.json 標 `paused: <reason>`,
    不 push 不 merge)。merge 規則在 `branch-lifecycle`,不重抄。

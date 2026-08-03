@@ -1,14 +1,19 @@
 # /feat Phase 3 細節:實作模式、多 task 紀律、失敗回退
 
-## 實作模式(預設建議)
+## 實作模式(2026-08-03 拍板:一律 dispatch,main session 不自寫實作)
+
+**不分案件大小,實作一律 dispatch implementer subagent(顯式 `model: opus`)** — main
+session(fable)只做 spec / routing / 拍板 / review 裁決,不自寫實作 code。
+「≤ 2 檔 main agent 自己 TDD」路徑退役(主 session 換 fable 後自寫 code 是最貴路徑,
+且統一 dispatch 後 ledger / review gate 紀律無例外)。
 
 | 條件 | 模式 |
 |---|---|
-| ≥ 3 檔且彼此獨立 | Workflow fan-out / 逐 task dispatch implementer(紀律見下節) |
-| 單檔但長時間 / 跨 session | `superpowers:executing-plans` + checkpoint(skill 缺席 → `progress.md` ledger + checkpoint,見下節紀律 2;2026-07-27 補註)|
-| ≤ 2 檔且函式清單明確 | main agent 自己 TDD |
+| 多檔獨立 task | 逐 task dispatch implementer(一次一個,紀律見下節) |
+| 單檔 / 小案 | 同樣 dispatch 單一 implementer(prompt 帶該 task 的 spec 節 + 介面 + 全域約束) |
+| 長時間 / 跨 session | dispatch + `progress.md` ledger + checkpoint(紀律 2;`superpowers:executing-plans` 缺席之 fallback 同) |
 
-非自主模式向 user 確認一次;自主模式直接採用並在 state.json 標 `[auto-default]`。
+模式唯一,免確認;`progress.md` ledger 自此**一律必要**(不再限多 task 案)。
 
 ## 多 task dispatch 的三條紀律
 
@@ -47,6 +52,16 @@ dispatch prompt 只描述**這一個 task**,不描述 session 歷史。不要把
 
 產物用**檔案路徑**交接,不用貼內容 —— 貼進 prompt 的東西會在你自己的 context 裡常駐到
 session 結束,而且每一輪都重讀一次。
+
+**next-time.md 代查(全 dispatch 制的配套)**:`docs/next-time.md` 的 checkpoint 代查由
+main session 在每 task dispatch 前執行(feat.md Phase 3 步驟 4;fresh implementer 不知道
+該檔存在)— /mod /bug /refactor /perf 沿用。
+
+**Commit / tag 歸屬(2026-08-03,全 dispatch 制的配套)**:commit 由 implementer 下,
+但 dispatch prompt **必附**該 task 的 commit tag 規則([red]/[green] 配對 + 🔴🟢🔵 三類,
+摘自 feat.md Phase 3 / mod.md Phase 4);main session 在每 task 的 review gate 一併核 tag,
+Phase 8 機械驗證前就攔(fresh implementer 不知道 tag 規則,漏附 = Phase 8 FAIL 後
+線性重建 commit 的前科重演)。
 
 ## 新發現 case 的處置
 

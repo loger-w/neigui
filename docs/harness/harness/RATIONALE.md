@@ -364,3 +364,58 @@ harness refs + superpowers SKILL 在 16 session 合計重複讀 3 次 / 4KB(Skil
 
 **[mod/bug/perf/refactor 側零結構化 review artifact]**
 25 個非 feat run 的 review 記錄退化成 change-spec.md 散文,「多輪 review 制度」實際只在 /feat 落地 —— 其他流程的同步改版列入下次處理(本輪 user 指示只動 /feat)。
+
+---
+
+## 2026-07-28 browser AI E2E 驗證層移除(user 拍板,/doctor 批次)
+
+**[browser AI E2E 全移除:Playwright e2e gate + DevTools MCP 截圖 + subsumed + UI 驗收點截圖義務]**
+動機(user 原話):「耗費太多 Token 之外 正確性也不夠」。07-27 已先限縮 subsumed(e2e assertion 是模型轉譯的,轉譯錯照樣綠),07-28 直接整層移除。量化佐證:僅 07-26~28 三天窗口 transcripts 就有 35 次 devtools click + 34 次截圖;正確性問題見 07-27 /feat 節「e2e 意圖對齊」條根因。
+**保留**(user 選「拔 browser AI 層」而非全拔):curl / CLI / consumer script 類輕量真實環境驗證、/bug 重走重現步驟、/perf prod-like 量測、鐵則 D「還要真實環境」句不動。**UI SC 的驗證點改為 user 人眼過目**(收尾回報逐條列可指認表述 + 操作路徑)。
+落點(2026-07-28 標記句可 grep):auto-verify SKILL.md(description 去 DevTools/截圖、刪 E2E 條件 gate 段、web/Electron row 改 user 過目、刪 Subsumed 段、infra fallback 去 browser 分支、版本 3.1.0 → **4.0.0**);feat.md(Phase 0 UI SC 驗收句、Phase 6 刪 subsumed 步驟並重編號、Phase 7 例外改 `user 過目:`、Phase 3 同步產物例句去 e2e);mod.md(Phase 2 可指認句、Phase 7 刪 Console 行、Phase 8 截圖義務改過目);bug.md(Phase 7 去 Console 0 errors);refactor.md(Phase 7 去 dev server);chore.md(刪步驟 3 e2e 判準檢查並重編號);refs/feat-phase8.md(UI 驗收點改版);copycat `.claude/settings.local.json`(e2e-conventions off,順手清 stale `enabledMcpjsonServers`)。
+**neigui 側未動**:neigui 的 e2e-conventions project skill、harness.json、既有 Playwright spec 皆保留(專案 code 不屬 harness;該專案要同步關閉時在該 repo 的 settings.local.json 加 skillOverrides)。`check_feat_tags.py` 豁免 (b)「Phase 6 real-env finding」保留(輕量真實環境仍在)。
+還原 = 各檔 grep `2026-07-28` 標記句逐處回填(Subsumed / E2E gate 段原文見 git 歷史或本檔 07-27 條目)、auto-verify 版本回 3.1.0、settings.local.json 恢復原兩 key。
+
+**[同批 /doctor 清理(2026-07-28)]**
+鐵則 E 刪 `--no-verify / --skip-hooks / --no-gpg-sign` 一行(block-no-verify.py 已機械擋,本檔共通層 07-25 條早已判「寫在 prompt 裡是純負擔」,此次才真正執行);user settings skillOverrides 加 neoapi-python(富邦已棄用,最後使用 ~06-14)/ vercel-react-best-practices(最後使用 ~04-25)兩支 off;copycat CLAUDE.md §2/§3 整節遷移至專案 skill backend-conventions(新)/ frontend-conventions(併入),§5 去重(身份/port 指路 §0/§1)+ **修正過期矛盾**:§5 原載「下單抽象 + 券商授權前提」(06-26 survey)與 §8「達錢 4 無下單功能」(07-21 實證)兩說,改以實證為準。還原 = revert 專案 diff + settings skillOverrides 兩 key 刪除 + 鐵則 E 句補回。
+
+---
+
+## 2026-07-29 模型三分類路由與 fable 借腦(user 拍板)
+
+**[模型三分類路由(2026-07-29 user 拍板)]**
+動機:round 2 實測 76.6% 花費在 fable-5(同題 vs opus 4.74×),而 harness 原設計是「單一模型繼承」— typed reviewer 只釘 effort 不釘 model、review-protocol 無 model 指定,主 session 開什麼整棵派工樹就是什麼;07-28 三個 L 級 run(單 code-review round 錨點 51 agent / 2.81M tok)全樹跑 fable 直接撞流量。方法論外源:model-routing 簡報(gggodlin,2026-07-28 workshop)三分類「實作 / 機械 / 判斷」取任務性質不取難度 + 「定義檔釘 model = 最便宜的 enforce」;該簡報模型宇宙止於 opus(腦)/sonnet+haiku(手),「主 session fable、判斷 opus」是把梯子上移一階的本地配置,非簡報原文。
+落點:四支 reviewer agent frontmatter 加 `model: opus`(宣告式 enforce,不靠自律);review-protocol B 節加模型路由段(finder sonnet / verify opus / 派工必顯式帶 model);鐵則 G 資源條改三分類路由(effort 實測數字壓縮成一行,全文留 neigui findings F2)。主 session 檔位屬操作指引無法機械 enforce:日常 opus、fable 留高難度設計與卡關升級(先升 effort 再換模型)。
+既有紀律不動:快篩 (a)-(d)(minimal-model 不可靠的把關)、effort 一律 high、G 的 haiku 限縮(僅純格式轉換)。**判斷類降級品質未 sweep**(簡報紀律:座標要自己掃)— 若 reviewer 產出品質可疑,雙派 fable/opus 對照一輪再定,結果回填本條。
+還原 = 四支 frontmatter 刪 `model:` 行、review-protocol 刪路由段、鐵則 G 恢復原資源條(原文見 git 歷史 / 本條上方 07-26 節)。
+
+**[spec-writer:fable 借腦通道(2026-07-29 user 拍板,同批補)]**
+user 意圖:主 session 用 opus,「需要 fable 的」用 subagent 派出去寫 spec — 即 advisor 模式的生成式變體:fable 揹單發有界任務(design.md v1 起草)而非整場 session。邊界:Phase 0 brainstorm / 拍板不可外包(subagent 無法與 user 對話),fable 接手的是「拍板完的 brainstorm.md → design.md 初稿」;方向性決策點回傳 Open Decisions 由主 session 問 user,**subagent 不自行拍板**(與 /auto「必停拍板」同軸)。落點:新 typed agent `agents/spec-writer.md`(model: fable / effort: high / tools 含 Write);feat.md Phase 1 步驟 1 借腦通道句(條件 = 主 session 非 fable 且 L 級 / 新架構,S/M 預設自寫);鐵則 G 判斷條補「最高判斷密度 → fable」半句。/mod change-spec 側未接(下次處理)。還原 = 刪 agent 檔 + feat.md 刪借腦通道句 + 鐵則 G 判斷條刪「最高判斷密度…」半句(該 bullet 本體屬路由條目,不整句刪)+ load-manifest 刪 spec-writer 條目。
+
+**[2026-07-29 fable 復審:無 P0,4 P1 + 5 P2 即修]**
+本批(路由 + spec-writer)dispatch fable subagent 對抗式復審(criteria C1-C8:兩檔兩說 / 懸空引用 / 載入帳 / 紀律衝突 / frontmatter / 還原路徑 / 未覆蓋派工路徑 / 跨批一致)。Accepted 修畢:R1 load-manifest feat-L 補 spec-writer 條件條目(慣例同 auto-wave);R2 三分類漏「實作類派工」的路由答案 → G 補「implementer / wave batch → 顯式帶主 session 同檔」bullet(feat-phase3.md 的 dispatch 由 G 常駐覆蓋,不另改);R3 「effort 一律 high」×「先升 effort」死梯級 → 升級句補 xhigh 解禁例外;R4 G「review→opus」與 finder→sonnet 兩檔兩說 → G 判斷條補 lens finder 除外註;R5 spec-writer 還原句誤刪範圍 → 改精確(上行);P2:review-protocol 檔位≠effort 消歧註、/doctor 條目移回 07-28 節 + 章節歸位、顧問無 typed agent 標「屬刻意」。驗過無失:frontmatter 格式、Open Decisions 與 auto.md 必停同軸、快篩紀律不因降級放鬆、跨批無打架。
+
+---
+
+## 2026-08-03 模型路由簡化:主 session fable、subagent 統一 opus(user 拍板)
+
+**[主 session fable + subagent 全 opus(2026-08-03 user 拍板,取代 07-29 三分類)]**
+動機:user 拍板翻轉 07-29 配置 — 日常主 session 改 `fable`(routing / 拍板 / brainstorm / design.md / PLAN.md 起草全在主 session,docs 因此天然出自 fable,不需外包);opus 5 成本已降,「判斷 / 實作 / 機械」三分類的路由判斷成本不再值得,**所有 subagent dispatch 統一顯式帶 `opus`**(sonnet / haiku 機械檔位廢止)。唯一例外:鐵則 F 卡關顧問仍 dispatch `fable`(fresh context 借腦,只要 plan 不動手)。
+連帶語意變化:(a)「未指定 model = 繼承主 session」的代價從 opus 升為 fable,漏帶 model 從次佳變成 bug 級;(b) `spec-writer` 借腦通道條件「主 session 非 fable」常態不成立 → 自然休眠,agent 檔與 feat.md 條款保留不動(自帶條件閘,主 session 若臨時換回 opus 即恢復作用);(c) 07-29 條的「判斷類降級品質 sweep」待辦失效(判斷類已回 opus 之上無降級)。
+落點:鐵則 G 路由條整段改寫(2026-08-03 版);review-protocol B 節模型路由段 finder sonnet → 全 opus。typed reviewer frontmatter(model: opus)不動。
+還原 = 鐵則 G 與 review-protocol 路由段恢復 07-29 版(原文見 git 歷史 / 上方 07-29 條)。
+
+**[2026-08-03 稽核驅動改版批(user 逐條拍板):verify-gate hook / artifact 版控 / E2E 回復 / grilling 轉正 / 實作全 dispatch]**
+動機:三路稽核(/mod 六輪 artifact、/feat 五輪 artifact、07-28 後 22 個 session transcript)發現:brainstorming / receiving-code-review / systematic-debugging 三支 skill 窗內 0 載入(body fingerprint 掃描證實)、auto-verify / vbc 只覆蓋 3-4/11 輪、07-30 起 spec review 退化為主 session 自審、rollbacks 記帳失效、artifact 無版控無備援(index-board 事故已真實吃掉 caller map)。逐條落點:
+1. **verify-gate hook**(`hooks/verify-gate.py`,PreToolUse Bash|PowerShell 第三支):流程分支 push / merge 前機械檢查 `.claude/<flow>/<slug>/` 有驗證產物(automated-verification* / phase7-verification.md / verification.md / real-env-verification*),缺 → exit 2;escape = 指令帶 `VERIFY_GATE_SKIP`(僅 user 明示)。依據「開工節 11/11 因顯式步驟、收尾 gate 靠自覺 3/11」。pipe-test 5 case + sentinel 實測觸發。**連帶新義務:/mod /bug /refactor /perf 收尾前驗證證據至少落一份上述檔名**(先前無固定檔名,hook 迫使收斂)。
+2. **artifact 納版控**:copycat .gitignore 改 `.claude/*` + 白名單放行 feat/mod/bug/refactor/perf、`.claude/**/*.log` 續排除(12MB server log 不進 git);存量 161 檔 26k 行 commit 98bad0c(**copycat 無 remote,local-only**)。neigui 本來就 track 免動。feat-state.md 步驟 2 / feat-phase8.md 步驟 2 的 `.git/info/exclude` 舞步退役。
+3. **browser AI E2E 部分回復**(auto-verify 4.0.0 → 4.1.0):回復 DevTools MCP 截圖對照層(逐 UI SC 對照可指認表述、截圖存 evidence/ 含 SC-N、dispatch `opus` subagent 執行不佔 main context),**不回復** Playwright assertion gate 與 subsumed(07-27 根因「assertion 是模型轉譯的,轉譯錯照樣綠」留在墳裡);user 過目仍為最終關卡(雙層)。動機:opus 5 成本降,07-28 移除的 token 理由不再成立(user 拍板)。落點:auto-verify「UI 畫面驗證」節 + feat.md Phase 0/6/7 + mod.md Phase 2/8 + feat-phase8.md 步驟 4。
+4. **grilling + /adhd 轉正,brainstorming skill 呼叫退役**:稽核實證 11 輪 0 載入而 SC 品質由 grilling 路徑撐起。已成形方案 → grilling;模糊 idea → /adhd 發散 + grilling 收斂。**同批撤銷 07-27「共識拍板必停」**:逐題預設採建議解標 `[auto-default]`,僅方向性抉擇或給不出建議解才停(user 拍板「直接用推薦最佳解」)。落點:feat.md Phase 0 / mod.md Phase 2 / auto.md 例外句 + 必停清單 + 建議表。brainstorming skill 檔保留未刪(復原 = 各處還原 07-27 句)。
+5. **實作全 dispatch**(feat-phase3.md + mod.md Phase 4):不分大小一律 dispatch implementer(顯式 `model: opus`),「≤2 檔 main agent 自己 TDD」退役;spec(design/PLAN)一律 main session(fable)寫;spec review **一律 dispatch typed reviewer,禁主 session 自審**(review-protocol A.1 補強制句,07-30 兩輪自審判違規樣態);progress.md ledger 一律必要。
+未修待辦(稽核發現但本批未動):receiving-code-review 0 載入(其紀律已在 feat.md 核心原則,暫不動)、round JSON schema 統一(候選:固化在 reviewer agent 定義)、rollbacks 記帳失效(無機械 enforce 候選,觀察一輪)、state.json 一致性自檢。還原 = settings.json 刪 verify-gate 條目 + 刪 hook 檔;.gitignore revert + git rm --cached;各檔 grep `2026-08-03` 標記句回填。
+
+**[2026-08-03 fable 復審:1 P0 + 6 P1 + 7 P2,全數即修]**
+本批(D1-D10)dispatch fable subagent 對抗式復審(user 特例拍板用 fable;criteria C1-C8 沿 07-29 前例)。Accepted 修畢:R1(P0)verify-gate 漏 /bug 的 `fix/` 分支 prefix → 改用與 check_feat_tags 同源的 PREFIX_TO_FLOW 對映(fix→bug),補 fix/ pipe-test;R2 feat-phase0-2 判準節整段殘留 07-27 舊制(brainstorming 預設 / 停等拍板 / 拍板不豁免)→ 改寫為 /adhd+grilling 與 2026-08-03 停等規則;R3 grilling skill「逐題等答 / 未確認不行動」與新制打架 → feat.md 提問紀律補顯式覆寫句(gate 義務沿用、停等語意以 command 為準);R4 hook worktree 查錯棵樹 → git-common-dir 推主 tree 根,兩棵都查;R5 D9 落檔義務零落點 → mod/bug/refactor/perf 四支 Phase 6 各補 `verification.md` 落檔句(小型 refactor/perf 未建目錄時補建);R6 bug.md/refactor.md「E2E 已移除」過期括號 → 改指 auto-verify「UI 畫面驗證」節;R7 D3 全 dispatch 未同步三流程 → bug/refactor/perf Phase 4 補 dispatch 條文(user 原話「統一…不管大小」判定範圍為全流程);R8 tag 歸屬 → feat-phase3 補「commit 由 implementer 下、dispatch prompt 必附 tag 規則、task review gate 核 tag」;R9 load-manifest feat-L/mod-M 移除 brainstorming 列、grilling 轉預設、補 adhd 條件列(-before 凍結檔不動);R10 dispositions E2E row present 字串改「UI 畫面驗證」;R11 auto.md「契約沿原」兩讀 → 拆「gate 義務 / 停等語意」兩層;R12 還原路徑補列:settings.json `model` 欄(D1 的實際 enforce 落點,還原時一併改回)與 auto-verify 版本欄(4.1.0 → 4.0.0 需手動,版本欄無標記句);R13 TRIGGER_RE 容 git.exe 與 -C 前置參數(escape 濫用稽核留待 stop-audit 補掃描,未修);R14 adhd skill 補分支 agent model: opus 句。P2 未修:98bad0c commit message 漏列 perf(純訊息瑕疵)、sp-overrides 觸發句(無害)。
+
+**[2026-08-03 fable 復審 round 2(限縮輪):無 P0,2 P1 + 5 P2,修 7 留 1]**
+限縮輪只審 round-1 fix 觸及段落 + 全 command 同步掃描。Accepted 修畢:S1(P1)鐵則 G「小案直做」與 D3 全 dispatch 打架 → scope 改「/chore 雜務直做」+ 補「流程內實作一律 dispatch」句;S2(P1)feat.md「決策問 user」07-27 殘句 → 改「逐題附建議答案(停等語意見提問紀律)」;S3 verify-gate 對映註解改「check_feat_tags superset(另容手開 bug/ 分支)」;S4 TRIGGER_RE 補 `-c <值>` 與 gh 帶值選項形,prose 誤觸記為已知限制(fail-closed + SKIP escape);S5 相對 common_dir 改 join cwd + resolve(git 語意;主 tree 子目錄 cwd 曾算出錯棵根);S6 bug.md Phase 3 補「執行模式見 Phase 4」指路;S7 chore 例外明文化:**D3 實作 dispatch 不適用 /chore(輕量入口 main session 直做,刻意)**,E2E / grilling / verification.md 落檔對 chore 天然不適用(不開流程分支,verify-gate 不管)。p2_summary 三條:next-time 代查歸屬已補進 feat-phase3.md(main session dispatch 前代查,四流程沿用);feat-phase0-2 標題框架句滯後(內文已正確)未修;S5 訊息路徑隨修自解。全 command 殘留掃描零非刻意命中,round 2 出場(無 P0/P1 殘留)。

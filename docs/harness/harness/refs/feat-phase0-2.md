@@ -15,24 +15,25 @@
 - 「分點頁面載入太慢,幫我改善」→ 模糊 idea(只有目標)。
 - 「加一個 heatmap tab,吃現有 market snapshot 資料」→ 已成形(UI 形式 + 資料源指名)。
 
-**拿不準 → 預設模糊 idea 走 brainstorming**(生成式是安全預設;grilling 對模糊輸入會空轉)。
-條件 1 成立、僅條件 2 不成立(方案完整到無開放決策點)時走 brainstorming,但「提 2-3 方案」
-的縮減照樣適用(確認 + 至多一個 counter-proposal,不硬湊)— 對已完全想好的 user 重演提案
-儀式即本分流要消除的痛點(2026-07-27 review 補修)。此類分流判定記錄寫「條件 1 中、
-條件 2 未中」;疊 /auto:方案完整且無 counter-proposal → 不停,照 auto.md 替代條件推進並標
-`[auto-default]`;有 counter-proposal 或任何待討論點 → 停等拍板,確認步不得自問自答
-(2026-07-27 user 拍板)。
+**拿不準 → 預設模糊 idea,走 `/adhd` 發散 + `grilling` 收斂**(2026-08-03 拍板:
+brainstorming skill 呼叫已退役 — 發散交 /adhd,收斂一律 grilling;grilling 對模糊輸入
+會空轉,所以模糊路先發散)。條件 1 成立、僅條件 2 不成立(方案完整到無開放決策點)時
+免發散、直接 grilling 確認,「提 2-3 方案」縮減照樣適用(確認 + 至多一個
+counter-proposal,不硬湊)。此類分流判定記錄寫「條件 1 中、條件 2 未中」。
+**停等規則(2026-08-03,取代 07-27「停等拍板」句)**:逐題預設採建議解標
+`[auto-default]`,僅方向性抉擇(判準見 auto.md)或給不出建議解時停下問 user。
 
 分流只換「怎麼問」,其餘零差異:
 
 - grilling 姿態 = 逐分支決策樹、一次一題、每題附建議答案;**事實**(檔案現況 / 既有實作)
-  自查環境不問 user,**決策**才逐條問、等答覆。
+  自查環境不問 user;**決策**逐題預設採建議解續跑(2026-08-03 — 僅方向性抉擇或給不出
+  建議解才停,見上方停等規則)。
 - 「提 2-3 方案」縮成「確認 user 方案 + 至多一個 counter-proposal」— 有明顯更優解才提,
   沒有不硬湊。
 - 共識落各流程 artifact(/feat:`brainstorm.md` / /mod:`change-spec.md`)、成功條件 gate、
   規模分流照常。
-- 疊 /auto:拍板不豁免,以呼叫端 command 的分流句為準(feat.md Phase 0 步驟 1 /
-  mod.md Phase 2;2026-07-27 復審改 — 原僅指 feat.md)。
+- 疊 /auto:停等規則同上(2026-08-03 — 僅方向性抉擇停),以呼叫端 command 的分流句為準
+  (feat.md Phase 0 步驟 1 / mod.md Phase 2)。
 - **/mod Phase 2 亦用本判準**(2026-07-27 接入;分流句與落檔要求在 mod.md Phase 2)。
 
 ## Phase 0:延續型 feature 的前輪指示掃描

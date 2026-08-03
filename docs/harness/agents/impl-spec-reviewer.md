@@ -3,6 +3,7 @@ name: impl-spec-reviewer
 description: /feat Phase 2 dispatch:對 implementation spec(condensed PLAN.md,單發固定 1 輪)做對抗式 review(對照 design.md),回傳 P0/P1/P2 JSON findings。
 tools: Read, Grep, Glob
 effort: high
+model: opus
 ---
 
 **第一件事:Read `C:/Users/USER/.claude/harness/refs/reviewer-preamble.md`** — 立場、severity

@@ -9,8 +9,9 @@
    kebab-case `<slug>` + `git switch -c feat/<slug>`
    (monorepo / 長隔離 → 改呼叫 `superpowers:using-git-worktrees`,worktree 路徑寫
    state.json)
-2. 建 `.claude/feat/<slug>/` + `echo ".claude/feat/<slug>/" >> .git/info/exclude`
-   (Phase 8 再拿掉)
+2. 建 `.claude/feat/<slug>/`(2026-08-03 起 artifact 目錄**常駐版控** — repo .gitignore
+   以 `.claude/*` + `!.claude/feat/` 等白名單放行,`*.log` 仍排除;不再寫 `.git/info/exclude`。
+   專案尚未放行時先補 .gitignore 白名單,不用 `git add -f` 短路)
 3. 初始化 state.json,記錄 `start_sha`
 
 ## state.json schema

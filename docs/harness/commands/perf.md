@@ -29,6 +29,9 @@
    - 列「**行為保證不變**」的既有測試 / 功能白名單
    - 排優先序:CP 值高的先做(big O > 常數級)
 4. **Phase 4|實作**:
+   - **一律 dispatch implementer subagent(顯式 `model: opus`),main session 不自寫**
+     (2026-08-03 拍板,紀律同 `~/.claude/harness/refs/feat-phase3.md`;策略排序與
+     量測裁決留 main session)
    - 既有測試保持全綠(行為不變)
    - **before/after 量測指令寫進 optimize-plan.md 且可重跑**;benchmark script 入庫降為
      條件式(該 metric 需長期監控才做,且若入庫則必須進 `.claude/harness.json` 或 pytest suite)
@@ -41,7 +44,8 @@
    - 量**其他不該退化的 metric**(整體性能 / 記憶體 / 其他 endpoint)→ 確認沒拆東牆補西牆
 6. **Phase 6|行為驗證**:呼叫 `auto-verify` skill(自動化 + 真實環境)— 全部測試綠 + dev server
    真實場景結果**跟優化前完全一樣** + 邊界 case(空 / 大量 / 極端輸入)+ prod-like 量測
-   (dev 數字常騙人)
+   (dev 數字常騙人);結果落檔 `.claude/perf/<slug>/verification.md`(未建目錄時此時補建;
+   verify-gate hook 收尾依據,2026-08-03)
 7. **Phase 7|回頭核**:呼叫 `verification-before-completion` — 目標達標?
    (before / after 表)沒退化其他 metric?Trade-off 可接受?三個月後別人看得懂?
 
