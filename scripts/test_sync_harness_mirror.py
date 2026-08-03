@@ -33,6 +33,7 @@ def make_home(tmp_path: Path) -> Path:
         "bl v1", encoding="utf-8"
     )
     (home / "CLAUDE.md").write_text("rules v1", encoding="utf-8")
+    (home / "settings.json").write_text('{"model": "v1"}', encoding="utf-8")
     return home
 
 

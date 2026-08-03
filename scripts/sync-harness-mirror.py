@@ -12,7 +12,10 @@
 - ~/.claude/agents/*.md        → docs/harness/agents/
 - ~/.claude/skills/{auto-verify,branch-lifecycle}/SKILL.md → docs/harness/skills/*.md
 - ~/.claude/skills/<6 支改寫複製 skill>/*.md → docs/harness/skills/<name>/(2026-07-27 納入)
+- ~/.claude/skills/adhd/*.md   → docs/harness/skills/adhd/(2026-08-03 納入 — model 指定句只存磁碟)
 - ~/.claude/CLAUDE.md          → docs/harness/global-rules.md
+- ~/.claude/settings.json      → docs/harness/settings.json(2026-08-03 納入 — D1 model 檔位
+  與 hooks 註冊的 enforce 落點,原本無 VCS;user 拍板接受 public repo 暴露個人 settings)
 
 目錄對映走 glob:原檔側新增檔案自動入列(消滅「清單漏列」雙源);
 鏡像側多出無對應原檔的檔案報 ORPHAN(不自動刪 — 人工判斷是改名還是該刪)。
@@ -52,6 +55,9 @@ DIR_MAPS: list[tuple[str, str, str]] = [
     ("skills/receiving-code-review", "*.md", "skills/receiving-code-review"),
     ("skills/verification-before-completion", "*.md", "skills/verification-before-completion"),
     ("skills/systematic-debugging", "*.md", "skills/systematic-debugging"),
+    # adhd:Phase 0 模糊路徑的預設發散 skill(2026-08-03 grilling 轉正批),model 指定句
+    # 等改寫只存在磁碟 → 納入 VCS 保護。附件同樣只收 *.md。
+    ("skills/adhd", "*.md", "skills/adhd"),
 ]
 
 # (原檔相對 ~/.claude、鏡像相對 docs/harness)
@@ -59,6 +65,9 @@ SINGLE_MAPS: list[tuple[str, str]] = [
     ("skills/auto-verify/SKILL.md", "skills/auto-verify.md"),
     ("skills/branch-lifecycle/SKILL.md", "skills/branch-lifecycle.md"),
     ("CLAUDE.md", "global-rules.md"),
+    # settings.json:hooks 註冊(verify-gate 等)與主 session model 檔位的 enforce 落點
+    # (2026-08-03 拍板納入;無 secrets — token 不在此檔)
+    ("settings.json", "settings.json"),
 ]
 
 # 鏡像側 orphan 掃描範圍(目錄、pattern)— 與上面兩組對映的落點一致
@@ -79,6 +88,7 @@ ORPHAN_SCOPES: list[tuple[str, str]] = [
     ("skills/receiving-code-review", "*.md"),
     ("skills/verification-before-completion", "*.md"),
     ("skills/systematic-debugging", "*.md"),
+    ("skills/adhd", "*.md"),
 ]
 
 

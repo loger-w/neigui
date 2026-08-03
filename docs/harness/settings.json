@@ -1,0 +1,128 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push)",
+      "Bash(git push *)",
+      "PowerShell(git push)",
+      "PowerShell(git push *)",
+      "Bash(gh pr merge *)",
+      "PowerShell(gh pr merge *)"
+    ],
+    "defaultMode": "auto"
+  },
+  "model": "claude-fable-5[1m]",
+  "skillOverrides": {
+    "web-design-guidelines": "off",
+    "bencium-innovative-ux-designer": "off",
+    "mlb-game-analyzer": "off",
+    "worldcup-game-analyzer": "off",
+    "tw-market-research-distilled": "off",
+    "neoapi-python": "off",
+    "vercel-react-best-practices": "off"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/USER/.claude/hooks/block-no-verify.py"
+          },
+          {
+            "type": "command",
+            "command": "python C:/Users/USER/.claude/hooks/safety-hooks.py"
+          },
+          {
+            "type": "command",
+            "command": "python C:/Users/USER/.claude/hooks/verify-gate.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/USER/.claude/hooks/format-on-edit.py"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/USER/.claude/hooks/harness-context.py"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/USER/.claude/hooks/harness-context.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/USER/.claude/hooks/harness-stop-audit.py"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline-command.sh"
+  },
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": false,
+    "superpowers@claude-plugins-official": false,
+    "chrome-devtools-mcp@chrome-devtools-plugins": true,
+    "pyright-lsp@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "superpowers-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers-marketplace"
+      }
+    },
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    },
+    "pm-skills": {
+      "source": {
+        "source": "github",
+        "repo": "phuryn/pm-skills"
+      }
+    },
+    "chrome-devtools-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "ChromeDevTools/chrome-devtools-mcp"
+      }
+    }
+  },
+  "effortLevel": "high",
+  "autoUpdatesChannel": "latest",
+  "tui": "fullscreen",
+  "skipWorkflowUsageWarning": true,
+  "theme": "dark",
+  "autoCompactEnabled": false,
+  "skipAutoPermissionPrompt": true
+}

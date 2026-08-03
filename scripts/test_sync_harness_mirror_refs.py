@@ -34,6 +34,7 @@ def make_home(tmp_path: Path) -> Path:
     w(home / "skills" / "auto-verify" / "SKILL.md", "av v1\n")
     w(home / "skills" / "branch-lifecycle" / "SKILL.md", "bl v1\n")
     w(home / "CLAUDE.md", "rules v1\n")
+    w(home / "settings.json", '{"model": "v1"}\n')
     # 本輪新增的落點
     w(home / "harness" / "RATIONALE.md", "why v1\n")
     w(home / "harness" / "load-manifest.json", '{"profiles": {}}\n')
