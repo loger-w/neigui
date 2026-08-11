@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.46.2",
+    date: "2026-08-11",
+    changes: [
+      {
+        kind: "fix",
+        scope: "global",
+        text: "深夜至清晨(午夜到早上八點)開啟時,「今日」可能被誤判成前一天、顯示到舊交易日資料的問題已修正",
+      },
+    ],
+  },
+  {
     version: "0.46.1",
     date: "2026-07-28",
     changes: [
