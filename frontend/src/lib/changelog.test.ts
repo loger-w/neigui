@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
   });
 
-  it("最新版本是 v0.46.2(時區判日修正)", () => {
-    expect(CHANGELOG[0]?.version).toBe("0.46.2");
+  it("最新版本是 v0.46.3(a11y 鍵盤操作補強)", () => {
+    expect(CHANGELOG[0]?.version).toBe("0.46.3");
   });
 
   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
