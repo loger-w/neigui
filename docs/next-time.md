@@ -6,6 +6,10 @@
 
 ---
 
+## From 🔴 fix(backend) clock 時區修復(2026-08-11)
+
+- **+08:00 時區常數兩份**(`services/clock.py::TAIPEI` 新增 vs `services/trading_session.py:17::TPE_TZ` 既有,值相同):realtime / trading_session 改吃 `clock.TAIPEI` 即可收斂,純 refactor。觸發:下次動 trading_session 或 finmind_realtime 時順手;或第三份 +08:00 常數出現時必收。
+
 ## From react-doctor 掃描(2026-08-11,5 error 已修,餘 93 warning 精選)
 
 - **unused ui 檔 ×3**(`ui/button.tsx` / `ui/skeleton.tsx` / `ui/tabs.tsx`,deslop/unused-file 零引用):shadcn 殘留,可直接刪(連帶 only-export-components 2 條消失)。觸發:下次 frontend chore 順手。
