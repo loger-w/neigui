@@ -421,6 +421,13 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(bars).toHaveCount(1);
     const w = Number(await bars.first().getAttribute("width"));
     expect(w).toBeGreaterThan(0);
+    // review C-P2-3:單價位 fixture 下 width>0 無鑑別力(正規化恆滿格)—
+    // 補幾何值:唯一條即最大條,寬 = (svg寬 − 56 − 16) × 20%。
+    const svgW = await page
+      .getByTestId("bubble-volume-profile")
+      .evaluate((g) => Number(g.closest("svg")!.getAttribute("width")));
+    expect(svgW).toBeGreaterThan(0);
+    expect(w).toBeCloseTo((svgW - 72) * 0.2, 3);
   });
 
   test("E24: 泡泡圖選分點 → 總買/賣張與金額資料級 assertion(A3)", async ({ page }) => {
