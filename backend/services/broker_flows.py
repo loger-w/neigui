@@ -91,11 +91,14 @@ def _is_stale(payload: dict, max_age_minutes: int) -> bool:
         dt = datetime.fromisoformat(fetched)
     except ValueError:
         return True
-    return datetime.now() - dt > timedelta(minutes=max_age_minutes)
+    if dt.tzinfo is None:
+        # 舊 cache 的 naive 戳記視為台北時間;轉換期誤差至多 8h,下次寫入即復原
+        dt = dt.replace(tzinfo=clock.TAIPEI)
+    return clock.now() - dt > timedelta(minutes=max_age_minutes)
 
 
 def _now_str() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    return clock.now().isoformat(timespec="seconds")
 
 
 # ---------------------------------------------------------------- aggregation

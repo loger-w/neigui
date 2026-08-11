@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from services import clock
 from utils.cache import atomic_write_json, chip_cache_dir, read_json
 from utils.concurrency import run_once
 
@@ -97,7 +98,10 @@ def _is_fresh(cached: dict, ttl_hours: float) -> bool:
         dt = datetime.fromisoformat(fetched_at)
     except ValueError:
         return False
-    return datetime.now() - dt < timedelta(hours=ttl_hours)
+    if dt.tzinfo is None:
+        # 舊 cache 的 naive 戳記視為台北時間;轉換期誤差至多 8h,下次寫入即復原
+        dt = dt.replace(tzinfo=clock.TAIPEI)
+    return clock.now() - dt < timedelta(hours=ttl_hours)
 
 
 async def _run_once(key: str, coro_fn: Callable[[], Awaitable[Any]]) -> Any:
@@ -156,7 +160,7 @@ async def _do_fetch_chain() -> dict[str, dict[str, list[str]]]:
     _write_cache(
         {
             "map": chain_map,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
         }
     )
     return chain_map

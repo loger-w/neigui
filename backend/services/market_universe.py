@@ -142,7 +142,10 @@ def _is_fresh(cached: dict, ttl_hours: float) -> bool:
         dt = datetime.fromisoformat(fetched_at)
     except ValueError:
         return False
-    return datetime.now() - dt < timedelta(hours=ttl_hours)
+    if dt.tzinfo is None:
+        # 舊 cache 的 naive 戳記視為台北時間;轉換期誤差至多 8h,下次寫入即復原
+        dt = dt.replace(tzinfo=clock.TAIPEI)
+    return clock.now() - dt < timedelta(hours=ttl_hours)
 
 
 async def _run_once(key: str, coro_fn: Callable[[], Awaitable[Any]]) -> Any:
@@ -212,7 +215,7 @@ async def _do_fetch_disposition(today: date, cache_key: str) -> set[str]:
         cache_key,
         {
             "stock_ids": sorted(active),
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
         },
     )
     return active

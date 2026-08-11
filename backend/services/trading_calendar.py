@@ -69,7 +69,7 @@ def _write_cache(dates: list[date]) -> None:
         chip_cache_dir() / f"{_CACHE_KEY}.json",
         {
             "_cache_version": _CACHE_VERSION,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             "dates": [d.isoformat() for d in dates],
         },
     )
@@ -83,7 +83,10 @@ def _is_stale(cached: dict) -> bool:
         dt = datetime.fromisoformat(fetched)
     except ValueError:
         return True
-    return (datetime.now() - dt).total_seconds() > _CACHE_TTL_SECONDS
+    if dt.tzinfo is None:
+        # 舊 cache 的 naive 戳記視為台北時間;轉換期誤差至多 8h,下次寫入即復原
+        dt = dt.replace(tzinfo=clock.TAIPEI)
+    return (clock.now() - dt).total_seconds() > _CACHE_TTL_SECONDS
 
 
 async def _fetch_raw_dates_from_finmind() -> list[date]:

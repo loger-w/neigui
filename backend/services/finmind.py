@@ -148,7 +148,10 @@ class FinMindClient:
             return True
         try:
             dt = datetime.fromisoformat(fetched)
-            return datetime.now() - dt > timedelta(minutes=max_age_minutes)
+            if dt.tzinfo is None:
+                # 舊 cache 的 naive 戳記視為台北時間;轉換期誤差至多 8h,下次寫入即復原
+                dt = dt.replace(tzinfo=clock.TAIPEI)
+            return clock.now() - dt > timedelta(minutes=max_age_minutes)
         except ValueError:
             return True
 
@@ -210,7 +213,7 @@ class FinMindClient:
         result = {
             "symbol": symbol,
             "date": date_str,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             "institutional": _parse_institutional(inst_raw),
             "margin": _parse_margin(margin_raw),
             "top_brokers": _parse_top_brokers(broker_raw),
@@ -251,7 +254,7 @@ class FinMindClient:
         result = {
             "symbol": symbol,
             "date": date_str,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             "trades": [
                 {
                     "broker": r["securities_trader"],
@@ -318,7 +321,7 @@ class FinMindClient:
         result = {
             "symbol": symbol,
             "date": date_str,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             "points": points,
         }
         self._write_cache(cache_key, result)
@@ -448,7 +451,7 @@ class FinMindClient:
 
         result = {
             "symbol": symbol,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             "last_date": e,
             "candles": candles,
             "institutional": _parse_institutional_series(inst_raw),
@@ -522,7 +525,7 @@ class FinMindClient:
         candles, inst_raw, margin_raw, e = await self._fetch_history_base_parts(symbol, days)
         result = {
             "symbol": symbol,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             "last_date": e,
             "candles": candles,
             "institutional": _parse_institutional_series(inst_raw),
@@ -612,7 +615,7 @@ class FinMindClient:
 
         result = {
             "symbol": symbol,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             "last_date": e,
             "major": major_series,
         }
@@ -873,7 +876,7 @@ class FinMindClient:
 
         payload = {
             "symbol": symbol,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             "last_date": end.isoformat(),
             "brokers": existing_brokers,
         }
@@ -975,7 +978,7 @@ class FinMindClient:
             try:
                 self._write_cache_v(
                     day_key,
-                    {"rows": rows, "fetched_at": datetime.now().isoformat(timespec="seconds")},
+                    {"rows": rows, "fetched_at": clock.now().isoformat(timespec="seconds")},
                     _CACHE_VERSION_OPTIONS,
                 )
             except OSError as exc:
@@ -995,7 +998,7 @@ class FinMindClient:
         result = {
             "contract": f"{contract['option_id']}{contract['contract_date']}",
             "date": date_str,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             **parsed,
         }
         self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS)
@@ -1144,7 +1147,7 @@ class FinMindClient:
             )
             slim = {
                 **self._sv_slim_from_rows(rows, d_iso),
-                "fetched_at": datetime.now().isoformat(timespec="seconds"),
+                "fetched_at": clock.now().isoformat(timespec="seconds"),
             }
             self._write_cache_v(day_key, slim, _CACHE_VERSION_STRIKE_VOL_DAY)
             return self._materialize_sv(slim, d_iso)
@@ -1159,7 +1162,7 @@ class FinMindClient:
         result = {
             "contract": f"{contract['option_id']}{contract['contract_date']}",
             "date": date_str,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             **parsed,
         }
         self._write_cache_v(cache_key, result, _CACHE_VERSION_STRIKE_VOL)
@@ -1211,7 +1214,7 @@ class FinMindClient:
         parsed = parse_spot(raw)
         result = {
             "date": date_str,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             **parsed,
         }
         self._write_cache_v(cache_key, result, _CACHE_VERSION_OPTIONS)
@@ -1404,7 +1407,7 @@ class FinMindClient:
                 ],
                 return_exceptions=True,
             )
-            fetched_at = datetime.now().isoformat(timespec="seconds")
+            fetched_at = clock.now().isoformat(timespec="seconds")
             for d, res in zip(to_fetch, results):
                 rows = [] if isinstance(res, BaseException) else (res or [])
                 slim = {**self._slim_from_rows(rows), "fetched_at": fetched_at}
@@ -1465,7 +1468,7 @@ class FinMindClient:
                 by_date[d_str] = {"contract_date": str(cd), "price": price}
         payload = {
             "by_date": by_date,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
         }
         self._write_cache_v(cache_key, payload, _CACHE_VERSION_OPTIONS_CHIP)
         return {date.fromisoformat(d): info for d, info in by_date.items()}
@@ -1527,7 +1530,7 @@ class FinMindClient:
                 front_cd[d_str] = cd
         payload = {
             "by_date": by_date,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
         }
         self._write_cache_v(cache_key, payload, _CACHE_VERSION_OPTIONS_CHIP)
         return {date.fromisoformat(d): v for d, v in by_date.items()}
@@ -1638,7 +1641,7 @@ class FinMindClient:
         result = {
             "contract": contract_id,
             "date": date_str,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             "as_of_date": non_empty_dates[-1] if non_empty_dates else date_str,
             "current": current_mp,
             "hit_rate": None if hit_rate["samples"] == 0 else hit_rate,
@@ -1751,7 +1754,7 @@ class FinMindClient:
         result = {
             "contract": contract_id,
             "date": date_str,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             "as_of_date": non_empty_dates[-1] if non_empty_dates else date_str,
             "current": current_walls,
             "hit_rate": None if hit_rate["samples"] == 0 else hit_rate,
@@ -1837,7 +1840,7 @@ class FinMindClient:
             "date": date_str,
             "scope": scope,
             "contract": contract_id if scope == "per_contract" else None,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             "as_of_date": non_empty_dates[-1] if non_empty_dates else date_str,
             "current": {
                 "pcr": current_pcr,
@@ -1969,7 +1972,7 @@ class FinMindClient:
 
         result = {
             "date": date_str,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             "as_of_date": as_of,
             "current": current["current"],
             "series": parse_foreign_total_net_series(rows_day),
@@ -2027,7 +2030,7 @@ class FinMindClient:
         )
         result = {
             "date": date_str,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             **parse_retail_mtx(rows_total, rows_inst),
         }
         self._write_cache_v(cache_key, result, _CACHE_VERSION_FUTURES)
@@ -2068,7 +2071,7 @@ class FinMindClient:
         )
         result = {
             "date": date_str,
-            "fetched_at": datetime.now().isoformat(timespec="seconds"),
+            "fetched_at": clock.now().isoformat(timespec="seconds"),
             **parse_foreign_futures(rows_inst),
         }
         self._write_cache_v(cache_key, result, _CACHE_VERSION_FUTURES)
@@ -2373,7 +2376,7 @@ def _aggregate_brokers_window(
         "window_days": days,
         "trading_dates": trading_dates,
         "actual_days": len(trading_dates),
-        "fetched_at": datetime.now().isoformat(timespec="seconds"),
+        "fetched_at": clock.now().isoformat(timespec="seconds"),
         "top_brokers": top_brokers,
         "margin": margin,
         "institutional": inst_acc,
