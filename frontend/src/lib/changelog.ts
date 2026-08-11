@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.47.0",
+    date: "2026-08-11",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "泡泡圖新增每價位量能分布:圖內左側以灰色橫條呈現全市場成交集中的價位帶,方便對照分點買賣落點",
+      },
+    ],
+  },
+  {
     version: "0.46.3",
     date: "2026-08-11",
     changes: [
