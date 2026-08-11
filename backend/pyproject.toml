@@ -31,6 +31,13 @@ asyncio_mode = "auto"
 line-length = 100
 target-version = "py312"
 
+[tool.ruff.lint]
+extend-select = ["DTZ"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["DTZ"]
+"scripts/**" = ["DTZ"]
+
 [tool.pyright]
 include = ["routes", "services", "utils", "main.py"]
 exclude = ["**/__pycache__", "tests"]
