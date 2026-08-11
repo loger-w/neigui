@@ -411,6 +411,18 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(page.getByTestId(TESTIDS.chipSelectedBar)).not.toContainText("未選擇分點");
   });
 
+  test("E42: 泡泡圖每價位量能分布背景層 — 資料級 rect 對 fixture 價位(feat/bubble-volume-profile SC-5)", async ({ page }) => {
+    // 痛點:背景層 pointer-events none 且無文字,visibility-only assertion
+    // 假綠風險高 — 數 rect + width > 0 資料級鎖住。fixture 單一價位 1100
+    // (3 分點 × 買100/賣80)→ 恰 1 條,量 = (300+240)/2 = 270。
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    const bars = page.getByTestId("bubble-volume-profile").locator("rect");
+    await expect(bars).toHaveCount(1);
+    const w = Number(await bars.first().getAttribute("width"));
+    expect(w).toBeGreaterThan(0);
+  });
+
   test("E24: 泡泡圖選分點 → 總買/賣張與金額資料級 assertion(A3)", async ({ page }) => {
     // 痛點:computeBrokerTotals 全鏈(trades → 聚合 → fmtVol/fmtAmount)。
     // visibility-only 會被「顯示 0 張」蓋住 — 鎖 fixture 手算值:
