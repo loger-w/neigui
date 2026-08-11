@@ -7,12 +7,28 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { BrokerTrade, IntradayPoint } from "./chip-data";
+import { aggregateByPrice } from "./chip-data";
 import { CHIP } from "./chip-theme";
 import { IntradayLineLayer } from "./chip-intraday-line-svg";
 
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
+
+/** 每價位總成交量(volume profile 背景層)。分點資料買賣雙邊各 ≈ 該價位
+ *  總量,(Σbuy+Σsell)/2 為不偏估計 — 直接加總會虛報兩倍。價位由高到低
+ *  (沿用 aggregateByPrice 排序)。 */
+export interface VolumeProfileBar {
+  price: number;
+  volume: number;
+}
+
+export function buildVolumeProfile(trades: BrokerTrade[]): VolumeProfileBar[] {
+  return aggregateByPrice(trades).map((a) => ({
+    price: a.price,
+    volume: (a.buy + a.sell) / 2,
+  }));
+}
 
 /** Map volume to a circle radius between minR and maxR (sqrt scale). */
 export function bubbleRadius(
@@ -58,11 +74,17 @@ const COLOR = {
   crosshair: "rgba(237, 228, 211, 0.35)",
   crosshairLabelBg: "rgba(15, 12, 8, 0.85)",
   crosshairLabelText: CHIP.ink,
+  // 量能分布背景條:intradayLine 同色系低透明 — 中性暖灰,避開紅綠
+  // (多空保留)與 accent(資料標籤非互動態禁用)。
+  profileFill: "rgba(124, 111, 85, 0.28)",
 } as const;
 
 const MIN_R = 3;
 const MAX_R = 22;
 const VOLUME_THRESHOLD = 5; // ignore volumes <= 5
+// Volume profile 背景條最長 = 圖寬 20%(recessive 背景層,不壓過泡泡主體)。
+const PROFILE_MAX_FRAC = 0.2;
+const PROFILE_BAR_MAX_H = 8;
 
 // Small helper: a full-size SVG showing a single centered hint message.
 // Used for "no data" / "no volume" / "broker has no notable trades" states
@@ -581,6 +603,19 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   }
   const volMax = volTicks[volTicks.length - 1]!;
 
+  // -- Volume profile 背景層(SC-1/3):恆以「全量 trades」聚合(非 layout
+  // top-100 / 非 filter 後 renderTrades),分點選取與 priceRange 過濾都不動
+  // 它 — 定位是全市場背景脈絡,對齊 F11 axes-stable 原則。越界價位(broker-
+  // axes fallback 時 y-range 只涵蓋該分點)跳過不畫出圖外。
+  const profileBars = buildVolumeProfile(trades).filter(
+    (b) => b.volume > 0 && b.price >= yLow && b.price <= yHigh,
+  );
+  const profileMaxVol = profileBars.reduce((m, b) => Math.max(m, b.volume), 0);
+  const profileBarH =
+    profileBars.length > 0
+      ? Math.min(PROFILE_BAR_MAX_H, Math.max(1, (cH / profileBars.length) * 0.7))
+      : 0;
+
   // -- Build bubble data (butterfly: sell left, buy right) -----------------
   // F1: no yellow CHIP.ma5 stroke for selected broker; the header chip
   // "已篩選 1 個分點" + only the matched broker's bubbles remaining onscreen
@@ -665,6 +700,24 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           strokeWidth={1}
         />
       ))}
+
+      {/* Volume profile 背景層 — 每價位全市場總量水平條(feat/bubble-volume-
+          profile SC-1)。z-order:grid 之後、centerline / 分時線 / 泡泡之前;
+          pointer-events none 不參與 hit test(SC-2)。 */}
+      {profileMaxVol > 0 && (
+        <g data-testid="bubble-volume-profile" pointerEvents="none">
+          {profileBars.map((b) => (
+            <rect
+              key={`vp-${b.price}`}
+              x={PADDING.left}
+              y={sY(b.price) - profileBarH / 2}
+              width={(b.volume / profileMaxVol) * (cW * PROFILE_MAX_FRAC)}
+              height={profileBarH}
+              fill={COLOR.profileFill}
+            />
+          ))}
+        </g>
+      )}
 
       {/* Center vertical divider */}
       <line
