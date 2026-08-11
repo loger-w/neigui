@@ -3,7 +3,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { BROKER_PALETTE, BubbleChartSvg } from "./chip-bubble-svg";
+import { BROKER_PALETTE, BubbleChartSvg, buildVolumeProfile } from "./chip-bubble-svg";
 import type { BubbleSelectedBroker } from "./chip-bubble-svg";
 import type { BrokerTrade } from "./chip-data";
 
@@ -782,5 +782,172 @@ describe("BubbleChartSvg — soloBrokerId 聚焦外框 (SC-3)", () => {
     const { container: b } = render(<BubbleChartSvg {...base} soloBrokerId={null} />);
     expect(a.querySelector("svg")!.outerHTML).toBe(b.querySelector("svg")!.outerHTML);
     expect(a.querySelector("[data-solo]")).toBeNull();
+  });
+});
+
+// feat/bubble-volume-profile:每價位量能分布背景層(volume profile)。
+// SC-1 圖內水平條 / SC-2 不影響互動 / SC-3 恆全量計算不隨過濾變。
+describe("buildVolumeProfile — 每價位總量聚合 (SC-1)", () => {
+  // 痛點:分點資料買賣雙邊各 ≈ 該價位總成交量,(Σbuy+Σsell)/2 是不偏估計;
+  // 直接加總會虛報兩倍。
+  it("同價位跨分點聚合,volume = (Σbuy+Σsell)/2,價位由高到低排序", () => {
+    const trades: BrokerTrade[] = [
+      mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 60, sell: 40 }),
+      mkTrade({ broker: "B", broker_id: "B1", price: 100, buy: 40, sell: 60 }),
+      mkTrade({ broker: "C", broker_id: "C1", price: 99, buy: 10, sell: 0 }),
+    ];
+    expect(buildVolumeProfile(trades)).toEqual([
+      { price: 100, volume: 100 },
+      { price: 99, volume: 5 },
+    ]);
+  });
+
+  it("空 trades → 空陣列", () => {
+    expect(buildVolumeProfile([])).toEqual([]);
+  });
+});
+
+describe("BubbleChartSvg — 每價位量能分布背景層 (SC-1/2/3)", () => {
+  const trades: BrokerTrade[] = [
+    mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 100, sell: 100 }),
+    mkTrade({ broker: "B", broker_id: "B1", price: 105, buy: 50, sell: 50 }),
+  ];
+
+  it("SC-1: 每個價位一條 rect,長度 ∝ 總量,錨定左緣", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={trades} width={400} height={300} />,
+    );
+    const layer = container.querySelector('[data-testid="bubble-volume-profile"]');
+    expect(layer).not.toBeNull();
+    const bars = Array.from(layer!.querySelectorAll("rect"));
+    expect(bars).toHaveLength(2); // 兩個相異價位
+    // 全部錨定 x = PADDING.left(56)
+    for (const b of bars) expect(b.getAttribute("x")).toBe("56");
+    // 長度比例:price 100 量 100 vs price 105 量 50 → 寬度比 2:1
+    const widthByY = bars
+      .map((b) => ({ y: Number(b.getAttribute("y")), w: Number(b.getAttribute("width")) }))
+      .sort((a, b) => a.y - b.y); // y 小 = 價高(105)在前
+    expect(widthByY[1]!.w / widthByY[0]!.w).toBeCloseTo(2, 5);
+    expect(widthByY[0]!.w).toBeGreaterThan(0);
+  });
+
+  it("SC-1: 條垂直置中對齊該價位的 sY(與同價位泡泡 cy 一致)", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={trades} width={400} height={300} />,
+    );
+    const bubble100 = Array.from(container.querySelectorAll("circle")).find(
+      (c) => c.getAttribute("data-broker-id") === "A1",
+    )!;
+    const cy = Number(bubble100.getAttribute("cy"));
+    const bars = Array.from(
+      container.querySelectorAll('[data-testid="bubble-volume-profile"] rect'),
+    );
+    const centers = bars.map(
+      (b) => Number(b.getAttribute("y")) + Number(b.getAttribute("height")) / 2,
+    );
+    expect(centers.some((c) => Math.abs(c - cy) < 0.01)).toBe(true);
+  });
+
+  it("SC-1: z-order — 量能層繪於泡泡之前(DOM 序在第一個 circle 前)", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={trades} width={400} height={300} />,
+    );
+    const svg = container.querySelector("svg")!;
+    const all = Array.from(svg.querySelectorAll("*"));
+    const layerIdx = all.findIndex(
+      (el) => el.getAttribute("data-testid") === "bubble-volume-profile",
+    );
+    const firstCircleIdx = all.findIndex((el) => el.tagName === "circle");
+    expect(layerIdx).toBeGreaterThanOrEqual(0);
+    expect(layerIdx).toBeLessThan(firstCircleIdx);
+  });
+
+  it("SC-2: 量能層 pointer-events=none,且不用紅綠/accent 色", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={trades} width={400} height={300} />,
+    );
+    const layer = container.querySelector('[data-testid="bubble-volume-profile"]')!;
+    expect(layer.getAttribute("pointer-events")).toBe("none");
+    for (const b of Array.from(layer.querySelectorAll("rect"))) {
+      const fill = (b.getAttribute("fill") ?? "").toLowerCase();
+      expect(fill).not.toContain("232, 90, 79"); // bull 紅 rgba
+      expect(fill).not.toContain("127, 201, 154"); // bear 綠 rgba
+      expect(fill).not.toBe("#e85a4f");
+      expect(fill).not.toBe("#7fc99a");
+    }
+  });
+
+  it("SC-3: selectedBrokers / priceRange 過濾下,量能條完全不變(恆全量)", () => {
+    const snapshot = (c: HTMLElement) =>
+      Array.from(c.querySelectorAll('[data-testid="bubble-volume-profile"] rect'))
+        .map(
+          (b) =>
+            `${b.getAttribute("x")},${b.getAttribute("y")},${b.getAttribute("width")},${b.getAttribute("height")}`,
+        )
+        .sort();
+
+    const { container: base } = render(
+      <BubbleChartSvg trades={trades} width={400} height={300} />,
+    );
+    const baseBars = snapshot(base);
+    expect(baseBars).toHaveLength(2);
+
+    cleanup();
+    const { container: withSel } = render(
+      <BubbleChartSvg
+        trades={trades}
+        width={400}
+        height={300}
+        selectedBrokers={[sel("A1", "A", 0)]}
+      />,
+    );
+    expect(snapshot(withSel)).toEqual(baseBars);
+
+    cleanup();
+    const { container: withRange } = render(
+      <BubbleChartSvg
+        trades={trades}
+        width={400}
+        height={300}
+        priceRange={{ min: 99, max: 101 }}
+      />,
+    );
+    expect(snapshot(withRange)).toEqual(baseBars);
+  });
+
+  // 痛點:F2 broker-axes fallback(安靜日 + 選取)時 y-scale 只涵蓋該分點
+  // 價位 — 全量 profile 中越界價位必須跳過,不畫出圖外。
+  it("edge: broker-axes fallback 下,只畫落在 y-range 內的價位條", () => {
+    const quiet: BrokerTrade[] = [
+      mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 3, sell: 0 }),
+      mkTrade({ broker: "B", broker_id: "B1", price: 500, buy: 4, sell: 0 }),
+    ];
+    const { container } = render(
+      <BubbleChartSvg
+        trades={quiet}
+        width={400}
+        height={300}
+        selectedBrokers={[sel("A1", "A", 0)]}
+      />,
+    );
+    // broker 軸 [99,101]:price 500 越界 → 只剩 price 100 一條
+    const bars = container.querySelectorAll(
+      '[data-testid="bubble-volume-profile"] rect',
+    );
+    expect(bars).toHaveLength(1);
+  });
+
+  it("edge: 單一價位 → 1 條,寬度 > 0(無除零)", () => {
+    const single: BrokerTrade[] = [
+      mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 80, sell: 20 }),
+    ];
+    const { container } = render(
+      <BubbleChartSvg trades={single} width={400} height={300} />,
+    );
+    const bars = Array.from(
+      container.querySelectorAll('[data-testid="bubble-volume-profile"] rect'),
+    );
+    expect(bars).toHaveLength(1);
+    expect(Number(bars[0]!.getAttribute("width"))).toBeGreaterThan(0);
   });
 });
