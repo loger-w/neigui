@@ -221,6 +221,11 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
       .slice(0, 100);
   }, [trades]);
 
+  // Volume profile 聚合 memo 化(review C-P2-2):Y 軸 brush 拖曳每個
+  // pointermove 都 re-render,不能在 render body 對全量 trades 重跑
+  // Map 聚合 + sort(高量股數萬列)。
+  const volumeProfile = useMemo(() => buildVolumeProfile(trades), [trades]);
+
   const bubblesRef = useRef<Bubble[]>([]);
   const rafId = useRef(0);
 
@@ -607,10 +612,12 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   // top-100 / 非 filter 後 renderTrades),分點選取與 priceRange 過濾都不動
   // 它 — 定位是全市場背景脈絡,對齊 F11 axes-stable 原則。越界價位(broker-
   // axes fallback 時 y-range 只涵蓋該分點)跳過不畫出圖外。
-  const profileBars = buildVolumeProfile(trades).filter(
+  // [amendment S-P2-1] 分母 = 全量 profile 最大值(clip 前取),clip 只決定
+  // 畫不畫 — fallback 下存活條不得被拉伸成滿格。
+  const profileMaxVol = volumeProfile.reduce((m, b) => Math.max(m, b.volume), 0);
+  const profileBars = volumeProfile.filter(
     (b) => b.volume > 0 && b.price >= yLow && b.price <= yHigh,
   );
-  const profileMaxVol = profileBars.reduce((m, b) => Math.max(m, b.volume), 0);
   const profileBarH =
     profileBars.length > 0
       ? Math.min(PROFILE_BAR_MAX_H, Math.max(1, (cH / profileBars.length) * 0.7))
@@ -704,13 +711,18 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
       {/* Volume profile 背景層 — 每價位全市場總量水平條(feat/bubble-volume-
           profile SC-1)。z-order:grid 之後、centerline / 分時線 / 泡泡之前;
           pointer-events none 不參與 hit test(SC-2)。 */}
-      {profileMaxVol > 0 && (
+      {profileMaxVol > 0 && profileBars.length > 0 && (
         <g data-testid="bubble-volume-profile" pointerEvents="none">
           {profileBars.map((b) => (
             <rect
               key={`vp-${b.price}`}
               x={PADDING.left}
-              y={sY(b.price) - profileBarH / 2}
+              // [amendment C-P2-1] clamp 進 chart 內區:邊界價位的條不得
+              // 半截畫進上下 padding / 刻度帶。
+              y={Math.min(
+                Math.max(sY(b.price) - profileBarH / 2, PADDING.top),
+                PADDING.top + cH - profileBarH,
+              )}
               width={(b.volume / profileMaxVol) * (cW * PROFILE_MAX_FRAC)}
               height={profileBarH}
               fill={COLOR.profileFill}
