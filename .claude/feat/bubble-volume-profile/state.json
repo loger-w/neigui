@@ -1,0 +1,19 @@
+{
+  "slug": "bubble-volume-profile",
+  "start_sha": "84c2c5d1d992e9c3a76ee21db054dea2ef3dd47f",
+  "branch": "feat/bubble-volume-profile",
+  "worktree_path": null,
+  "current_phase": 8,
+  "completed_phases": [-1, 0, 3, 4, 5, 6, 7],
+  "scope": "S",
+  "phase_6_blocked_reason": null,
+  "scope_overrides": { "goal_efficiency_mode": false },
+  "last_updated": "2026-08-11T17:52:00+08:00",
+  "project_shape": "frontend-vite",
+  "last_commit_sha": "5d28469",
+  "final_merge_sha": null,
+  "self_review_head": "5d28469",
+  "artifact_commit": null,
+  "rollbacks": [],
+  "paused": null
+}
