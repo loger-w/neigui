@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
   });
 
-  it("最新版本是 v0.46.3(a11y 鍵盤操作補強)", () => {
-    expect(CHANGELOG[0]?.version).toBe("0.46.3");
+  it("最新版本是 v0.47.0(泡泡圖每價位量能分布)", () => {
+    expect(CHANGELOG[0]?.version).toBe("0.47.0");
   });
 
   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
