@@ -917,7 +917,9 @@ describe("BubbleChartSvg — 每價位量能分布背景層 (SC-1/2/3)", () => {
 
   // 痛點:F2 broker-axes fallback(安靜日 + 選取)時 y-scale 只涵蓋該分點
   // 價位 — 全量 profile 中越界價位必須跳過,不畫出圖外。
-  it("edge: broker-axes fallback 下,只畫落在 y-range 內的價位條", () => {
+  // [amendment S-P2-1] 比例分母恆用全量 max:clip 只決定畫不畫,存活條不得
+  // 被拉伸成滿格(price 100 量 1.5 / 全量 max 2 → 寬 = 0.75 × maxBarW)。
+  it("edge: broker-axes fallback 下,只畫 y-range 內價位條,且分母仍為全量 max", () => {
     const quiet: BrokerTrade[] = [
       mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 3, sell: 0 }),
       mkTrade({ broker: "B", broker_id: "B1", price: 500, buy: 4, sell: 0 }),
@@ -935,6 +937,27 @@ describe("BubbleChartSvg — 每價位量能分布背景層 (SC-1/2/3)", () => {
       '[data-testid="bubble-volume-profile"] rect',
     );
     expect(bars).toHaveLength(1);
+    // maxBarW = (400-56-16) × 0.2 = 65.6;vol 1.5 / 全量 max 2 = 0.75
+    expect(Number(bars[0]!.getAttribute("width"))).toBeCloseTo(65.6 * 0.75, 5);
+  });
+
+  // [amendment C-P2-1] 邊界價位的條(sY ± barH/2)必須整條落在 chart 內區,
+  // 不得半截畫進上下 padding / 刻度帶。height=80(cH=36)時 min/max 價位的
+  // 條若不 clamp 會上下各溢出 ~1.5px。
+  it("edge: 條繪製範圍 clamp 進 chart 內區(小圖高不溢出上下邊界)", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={trades} width={400} height={80} />,
+    );
+    const bars = Array.from(
+      container.querySelectorAll('[data-testid="bubble-volume-profile"] rect'),
+    );
+    expect(bars.length).toBeGreaterThan(0);
+    for (const b of bars) {
+      const y = Number(b.getAttribute("y"));
+      const h = Number(b.getAttribute("height"));
+      expect(y).toBeGreaterThanOrEqual(12); // PADDING.top
+      expect(y + h).toBeLessThanOrEqual(80 - 32); // height - PADDING.bottom
+    }
   });
 
   it("edge: 單一價位 → 1 條,寬度 > 0(無除零)", () => {
