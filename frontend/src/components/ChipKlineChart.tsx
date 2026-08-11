@@ -102,6 +102,7 @@ export function ChipKlineChart({
   // suppressNextClickRef 在 pan 結束後阻止 KlineChartSvg 的 onClickIndex
   // 觸發(pointerup 還會 fire 一個 click event;沒有此 ref 會誤選日期)
   const suppressNextClickRef = useRef(false);
+  const suppressClickTimerRef = useRef(0);
 
   const fullDerived = useMemo(() => {
     if (!history) return null;
@@ -184,7 +185,8 @@ export function ChipKlineChart({
       if (drag?.triggered) {
         // 拖過閾值才 suppress click — 純點擊不會落這
         suppressNextClickRef.current = true;
-        setTimeout(() => {
+        clearTimeout(suppressClickTimerRef.current);
+        suppressClickTimerRef.current = window.setTimeout(() => {
           suppressNextClickRef.current = false;
         }, PAN_CLICK_SUPPRESS_MS);
       }
@@ -194,6 +196,7 @@ export function ChipKlineChart({
     return () => {
       document.removeEventListener("pointermove", onMove);
       document.removeEventListener("pointerup", onUp);
+      clearTimeout(suppressClickTimerRef.current);
     };
   }, []);
 

@@ -2,7 +2,7 @@
 // Pure functions exported for testing; component uses automatic JSX transform.
 
 import {
-  memo, useCallback, useMemo, useRef, useState,
+  memo, useCallback, useLayoutEffect, useMemo, useRef, useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -225,6 +225,17 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
     width: number;
     height: number;
   } | null>(null);
+
+  // render 主體算出的 bubbles / layout 先填 render-local(render 必須純,不可
+  // 直接寫 ref;concurrent render 可能重跑或丟棄),commit 後由 useLayoutEffect
+  // 回寫 —— paint / 事件派發前就緒,hitTest 與 crosshair 反算永遠對齊已 commit
+  // 的畫面。early return(無資料)路徑兩者維持 null,不更新 ref(語意同舊版)。
+  let pendingBubbles: Bubble[] | null = null;
+  let pendingLayout: typeof layoutRef.current = null;
+  useLayoutEffect(() => {
+    if (pendingBubbles) bubblesRef.current = pendingBubbles;
+    if (pendingLayout) layoutRef.current = pendingLayout;
+  });
 
   const hideCrosshair = useCallback(() => {
     for (const r of [
@@ -621,14 +632,14 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
 
   // hitTest 吃原序(平手判定不變 —「再點同泡泡解除單看」不被 reorder 翻轉);
   // render 才把 solo 泡泡排最後(review R6-1 painter's order)。
-  bubblesRef.current = bubbles;
+  pendingBubbles = bubbles;
   const renderBubbles: Bubble[] =
     soloBrokerId != null
       ? [...bubbles.filter((b) => !b.solo), ...bubbles.filter((b) => b.solo)]
       : bubbles;
 
   // Layout snapshot for crosshair reverse-mapping (pixel → price / volume)
-  layoutRef.current = {
+  pendingLayout = {
     centerX, halfW, volMax, yLow, yHigh, cH,
     paddingLeft: PADDING.left, paddingRight: PADDING.right,
     paddingTop: PADDING.top, paddingBottom: PADDING.bottom,

@@ -127,25 +127,27 @@ export function ChipBubbleView({
 
   // SC-1 toggle 核心(搜尋 / chip × 入口;泡泡與明細列的已選半邊已改走單看):
   // 已選 → 移除;未選 → 加選(滿員拒絕 + 提示)。
+  // 分支判斷直接讀 selected(deps 帶 [selected]),不用 setSelected(prev => ...)
+  // 順手 setLimitNotice —— updater 必須純(StrictMode 雙跑);toggle 只由
+  // click 觸發,單一 event 內不會連呼,無 stale closure 風險。
   const toggleBroker = useCallback((id: string, name: string) => {
     // review R1:同 id 的 solo 一律清 — 移除路徑解除單看;重加選不復活 stale solo。
     setSolo((s) => (s && s.id === id ? null : s));
-    setSelected((prev) => {
-      if (prev.some((b) => b.id === id)) {
-        setLimitNotice(false);
-        return prev.filter((b) => b.id !== id);
-      }
-      if (prev.length >= MAX_SELECTED_BROKERS) {
-        setLimitNotice(true);
-        return prev;
-      }
+    if (selected.some((b) => b.id === id)) {
       setLimitNotice(false);
-      const used = new Set(prev.map((b) => b.colorIdx));
-      let colorIdx = 0;
-      while (used.has(colorIdx)) colorIdx++;
-      return [...prev, { id, name, colorIdx }];
-    });
-  }, []);
+      setSelected(selected.filter((b) => b.id !== id));
+      return;
+    }
+    if (selected.length >= MAX_SELECTED_BROKERS) {
+      setLimitNotice(true);
+      return;
+    }
+    setLimitNotice(false);
+    const used = new Set(selected.map((b) => b.colorIdx));
+    let colorIdx = 0;
+    while (used.has(colorIdx)) colorIdx++;
+    setSelected([...selected, { id, name, colorIdx }]);
+  }, [selected]);
 
   // CH-1: focusRequest 聚焦。宣告順序必須在 symbol reset effect 之後 —
   // mount 時 effects 依序跑,「帶著 focusRequest 首次 mount」(lazy tab 首開

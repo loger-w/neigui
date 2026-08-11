@@ -6,6 +6,14 @@
 
 ---
 
+## From react-doctor 掃描(2026-08-11,5 error 已修,餘 93 warning 精選)
+
+- **unused ui 檔 ×3**(`ui/button.tsx` / `ui/skeleton.tsx` / `ui/tabs.tsx`,deslop/unused-file 零引用):shadcn 殘留,可直接刪(連帶 only-export-components 2 條消失)。觸發:下次 frontend chore 順手。
+- **ChipBubbleView prop→state 同步鏈**(no-adjust-state-on-prop-change ×13 集中 118–170 行 + no-derived-state ×2 + no-effect-chain):symbol reset effect + focusRequest effect 的既有設計,行為有測試鎖住;重構屬 /refactor 級(state 派生化 or key-based remount)。觸發:該區再出 stale-state bug、或 ChipBubbleView 下次大改時一併評。
+- **effect 回推資料給 parent**(`BrokerSearch.tsx:135` / `ChipKlineChart.tsx:258`,no-pass-data-to-parent 系):反轉資料流 anti-pattern,改法 = state 提升或 callback 在事件點直呼。觸發:任一處要加新回推欄位時先還債。
+- **exhaustive-deps ×3**(`ChipBrokersPanel.tsx:198/201/215`):漏依賴有 stale closure 風險,需逐條判是刻意省略還是真漏。觸發:ChipBrokersPanel 出現「資料沒跟上」類 bug 時優先查這裡。
+- **a11y 批**(15 條:WarrantSelector label 未綁 control ×7、click 無鍵盤 handler、placeholder 當 label、autofocus、nested interactive 等):非阻斷但累積可觀。觸發:user 提 a11y 需求、或動到對應元件時順手修該檔份額。
+
 ## From /mod borrow-fee-layout(2026-07-28)
 
 - (原「券差統計表 row 點擊帶入單檔篩選」條目已由 mod/borrow-fee-polish 解決刪除,2026-07-28:user 主動要求,statRow click/Enter/Space → setSelectedStock,combobox echo 自動同步)

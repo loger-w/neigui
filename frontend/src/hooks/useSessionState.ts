@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
 interface SerializeOpts<T> {
@@ -28,27 +28,21 @@ export function useSessionState<T>(
     }
   });
 
-  const set = useCallback<Dispatch<SetStateAction<T>>>(
-    (action) => {
-      setValue((prev) => {
-        const next =
-          typeof action === "function"
-            ? (action as (p: T) => T)(prev)
-            : action;
-        try {
-          sessionStorage.setItem(
-            key,
-            opts ? opts.serialize(next) : JSON.stringify(next),
-          );
-        } catch {
-          // sessionStorage 不可用(隱私模式/配額)時退化為純 useState
-        }
-        return next;
-      });
-    },
+  // 寫回放 commit 後 effect,不放 setter 的 updater 內 —— updater 必須純
+  // (StrictMode 雙跑 / concurrent render 可能丟棄)。mount 也會寫一次
+  // (寫回剛讀到的值或 initial),順帶覆掉壞 JSON。
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        key,
+        opts ? opts.serialize(value) : JSON.stringify(value),
+      );
+    } catch {
+      // sessionStorage 不可用(隱私模式/配額)時退化為純 useState
+    }
+    // opts 是 caller 的 inline 物件(identity 不穩),serialize 需為純函式,不入 deps
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key],
-  );
+  }, [key, value]);
 
-  return [value, set];
+  return [value, setValue];
 }
