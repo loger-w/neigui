@@ -1,0 +1,12 @@
+{
+  "round": 1,
+  "date": "2026-08-11",
+  "all_green": true,
+  "steps": [
+    { "step": "backend pytest", "command": "python -m pytest -q (backend/)", "exit_code": 0, "stderr_tail": "", "result": "689 passed, 1 skipped" },
+    { "step": "backend lint", "command": "ruff check . (backend/)", "exit_code": 0, "stderr_tail": "", "result": "All checks passed!" },
+    { "step": "frontend build", "command": "npm run build (frontend/)", "exit_code": 0, "stderr_tail": "", "result": "tsc -b + vite build OK, built in 1.63s" },
+    { "step": "frontend vitest", "command": "npm test (frontend/)", "exit_code": 0, "stderr_tail": "", "result": "99 files / 1036 passed (baseline 1027 + 新 9)" },
+    { "step": "e2e playwright", "command": "npm test (e2e/)", "exit_code": 0, "stderr_tail": "", "result": "67 passed (57.7s),含新 E42" }
+  ]
+}

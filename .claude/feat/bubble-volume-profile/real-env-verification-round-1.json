@@ -1,0 +1,42 @@
+{
+  "round": 1,
+  "date": "2026-08-11",
+  "env": "本機 uvicorn :8000(非 --reload,fix 波後新起)+ vite :5173(dev,按需編譯吃最新源)+ chrome-devtools MCP,真 FinMind 資料",
+  "checks": [
+    {
+      "case": "happy — 2330 / 2026-08-11 泡泡圖,未選分點",
+      "sc": "SC-1 / SC-4",
+      "evidence": "docs/specs/bubble-volume-profile/screenshots/SC-4-volume-profile-unselected.png(fix 波後重拍)",
+      "result": "PASS — 2380–2405 各價位左緣灰色量能條,2395 最長,形態與右欄 PriceBarSvg 一致;泡泡/分時線壓在其上;非紅非綠非 accent"
+    },
+    {
+      "case": "happy — 選取分點(港麥格理)後量能條不變",
+      "sc": "SC-3",
+      "evidence": "docs/specs/bubble-volume-profile/screenshots/SC-3-volume-profile-broker-selected.png",
+      "result": "PASS — 僅該分點泡泡保留,量能條與未選態逐條相同"
+    },
+    {
+      "case": "edge — 前一交易日(2026-08-10)換日資料",
+      "sc": "SC-1",
+      "evidence": "頁面 a11y snapshot(價位軸 2380–2410,買賣明細真值)",
+      "result": "PASS — 換日後泡泡圖與量能層正常渲染,無 console 錯誤中斷"
+    },
+    {
+      "case": "edge — hover / crosshair / brush 提示存在(互動未被新層攔截)",
+      "sc": "SC-2",
+      "evidence": "snapshot:bubble-brush-hint 常駐、分點點選(港麥格理)成功觸發選取",
+      "result": "PASS — 點擊泡泡圖選取鏈正常,新層 pointer-events none"
+    },
+    {
+      "case": "regression 抽樣 1 — 籌碼總覽 tab(未改功能)",
+      "evidence": "snapshot:K 線 OHLC(2026-08-10 開2390/高2410/低2380/收2380)+ 三大法人 + 前 15 大買賣超真值",
+      "result": "PASS"
+    },
+    {
+      "case": "regression 抽樣 2 — 右欄 PriceBarSvg 每價位買賣長條(未改功能)",
+      "evidence": "SC-4 截圖右上區:2375–2405 紅綠雙向長條正常",
+      "result": "PASS"
+    }
+  ],
+  "all_pass": true
+}

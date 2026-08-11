@@ -1,0 +1,58 @@
+{
+  "round": 1,
+  "date": "2026-08-11",
+  "lenses": ["correctness/interaction (opus)", "spec-conformance/test-gap (opus)"],
+  "diff": "review-diff.txt (84c2c5d..2763956)",
+  "findings": [
+    {
+      "id": "S-P1-1", "severity": "P1", "lens": "spec",
+      "claim": "SC-1「最大條寬 = maxBarW」無測試鎖住(PROFILE_MAX_FRAC 改 0.8 全綠)",
+      "disposition": "accepted",
+      "resolution": "SC-1 測試補絕對值 65.6/32.8(commit 4cfe388,[lock] + mutation-verified)"
+    },
+    {
+      "id": "S-P1-2", "severity": "P1", "lens": "spec",
+      "claim": "edge case 3(大量價位條高公式)零測試覆蓋,min/max 分支從未執行",
+      "disposition": "accepted",
+      "resolution": "60 檔價位 lock 測試:count/高度 [1,8]/相鄰不重疊(commit 4cfe388)"
+    },
+    {
+      "id": "S-P2-1", "severity": "P2(行為級,展開)", "lens": "spec",
+      "claim": "分母取 clip 後 max → broker-axes fallback 存活條被拉伸滿格",
+      "disposition": "accepted",
+      "resolution": "分母改全量 profile max,clip 只決定畫不畫;紅先行(f678183→c446e13)"
+    },
+    {
+      "id": "C-P2-1", "severity": "P2(行為級,展開)", "lens": "correctness",
+      "claim": "邊界價位條 sY±barH/2 半截畫出 chart 內區(小圖高 / fallback 命中)",
+      "disposition": "accepted",
+      "resolution": "y clamp [PADDING.top, PADDING.top+cH-barH];紅先行(f678183→c446e13)"
+    },
+    {
+      "id": "C-P2-2 / S-P2-3", "severity": "P2", "lens": "both(重合)",
+      "claim": "buildVolumeProfile 未 memo,brush 拖曳每幀對全量 trades 重跑聚合+sort",
+      "disposition": "accepted",
+      "resolution": "useMemo(() => buildVolumeProfile(trades), [trades])(c446e13)"
+    },
+    {
+      "id": "C-P2-3", "severity": "P2", "lens": "correctness",
+      "claim": "E42 單價位 fixture 使 width>0 無鑑別力(正規化恆滿格)",
+      "disposition": "accepted",
+      "resolution": "E42 補幾何 assertion 寬=(svg寬-72)×0.2(5d28469);多價位正規化由 vitest 組分擔"
+    },
+    {
+      "id": "S-P2-2", "severity": "P2", "lens": "spec",
+      "claim": "brush hint 文字與頂端量能條在矮圖時疊字",
+      "disposition": "rejected_with_reason",
+      "resolution": "real-env 截圖實測(1600×900,cH≈630):hint y≈239 vs 頂條 y≈272,相距 30px+;8% price pad 使頂條距 top ≈ 6.9%·cH,桌面常態圖高(cH≥500)下 >34px;mobile 無 brush 無 hint。觸發條件(cH<~200 桌面圖)實際 layout 不出現(bubble 區 flex-1 min-h-0)"
+    },
+    {
+      "id": "S-P2-4", "severity": "P2", "lens": "spec",
+      "claim": "SC-4 截圖產物缺件",
+      "disposition": "accepted",
+      "resolution": "review 執行中即補拍:docs/specs/bubble-volume-profile/screenshots/ 兩態(未選/已選)"
+    }
+  ],
+  "p2_summary": "P2 共 6 條:4 accepted 已修(行為級 2 條展開紅先行)、1 rejected(截圖幾何反證)、1 為截圖缺件已補",
+  "exit": "無未處置 P0/P1;accepted 全修畢 + 測試綠"
+}
