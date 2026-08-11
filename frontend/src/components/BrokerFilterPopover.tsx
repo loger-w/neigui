@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import type { TopBroker } from "../lib/chip-data";
 import { fmtVol } from "../lib/chip-data";
 import { formatBrokerName, normalizeBrokerQuery } from "../lib/broker-name";
-import { Checkbox } from "./ui/checkbox";
 import { PopoverPanel } from "./ui/PopoverPanel";
 
 type SortMode = "net" | "name";
@@ -119,30 +118,42 @@ export function BrokerFilterPopover({
               ? "text-bear"
               : "text-ink-dim";
           return (
-            <div
+            // 整列 = 單一 toggle button(原 role="button" div)。勾選狀態由
+            // aria-pressed 承載,方框只是視覺指示 → 用 aria-hidden 的 span 畫,
+            // 不再嵌真的 checkbox(button 內不得放可聚焦控件)。
+            <button
               key={b.broker_id}
+              type="button"
               data-testid="broker-filter-row"
               data-broker-id={b.broker_id}
-              role="button"
-              tabIndex={0}
               aria-pressed={selected}
+              aria-label={label}
               onClick={() => onToggleBroker(b.broker_id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onToggleBroker(b.broker_id);
-                }
-              }}
-              className={`flex items-center gap-2 px-3 py-1.5 border-b border-line/40 text-xs cursor-pointer hover:bg-bg-deep/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${
+              className={`w-full text-left flex items-center gap-2 px-3 py-1.5 border-b border-line/40 text-xs cursor-pointer hover:bg-bg-deep/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${
                 selected ? "bg-[#b794f4]/[0.08]" : ""
               }`}
             >
-              <span onClick={(e) => e.stopPropagation()} className="inline-flex">
-                <Checkbox
-                  checked={selected}
-                  onCheckedChange={() => onToggleBroker(b.broker_id)}
-                  aria-label={`勾選 ${label}`}
-                />
+              <span
+                aria-hidden="true"
+                className={`shrink-0 inline-flex items-center justify-center w-3.5 h-3.5 rounded-sm border transition-colors ${
+                  selected
+                    ? "bg-[#b794f4] border-[#b794f4]"
+                    : "border-line bg-bg-deep hover:border-line-strong"
+                }`}
+              >
+                {selected && (
+                  <svg
+                    viewBox="0 0 16 16"
+                    className="w-3 h-3"
+                    fill="none"
+                    stroke="#fff"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="3,8 7,12 13,4" />
+                  </svg>
+                )}
               </span>
               <span className="flex-1 min-w-0 truncate text-ink-muted" title={label}>
                 {label}
@@ -150,7 +161,7 @@ export function BrokerFilterPopover({
               <span className={`shrink-0 tabular-nums ${netCls}`}>
                 {b.net > 0 ? "+" : ""}{fmtVol(b.net)}
               </span>
-            </div>
+            </button>
           );
         })
       )}

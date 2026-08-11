@@ -220,9 +220,13 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
         </label>
         {/* 期限/位階群組 */}
         <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-2 pl-3 border-l border-line">
-          <label className="inline-flex items-center gap-1 text-ink-muted">
+          <label
+            htmlFor="warrant-filter-min-days-left"
+            className="inline-flex items-center gap-1 text-ink-muted"
+          >
             剩餘天數 ≥
             <NumberField
+              id="warrant-filter-min-days-left"
               ariaLabel="剩餘天數下限"
               name="minDaysLeft"
               step={10}
@@ -232,7 +236,9 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
               }
             />
           </label>
-          <label className="inline-flex items-center gap-1 text-ink-muted">
+          {/* 兩個 input 的群組:<label> 只能綁單一控件,故用 span 承載群組文字,
+              個別控件語意由 NumberField 自帶的 aria-label 提供。 */}
+          <span className="inline-flex items-center gap-1 text-ink-muted">
             價內外%
             <NumberField
               ariaLabel="價內外下限(%)"
@@ -255,11 +261,12 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
                 setFilters((f) => ({ ...f, moneynessMax: n == null ? null : n / 100 }));
               }}
             />
-          </label>
+          </span>
         </span>
         {/* 估值/成本群組 */}
         <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-2 pl-3 border-l border-line">
-          <label className="inline-flex items-center gap-1 text-ink-muted">
+          {/* 同上:兩個 input 的群組用 span,語意靠各自 aria-label。 */}
+          <span className="inline-flex items-center gap-1 text-ink-muted">
             估價差%
             <NumberField
               ariaLabel="估價差下限(%)"
@@ -282,10 +289,14 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
                 setFilters((f) => ({ ...f, mispricingMax: n == null ? null : n / 100 }));
               }}
             />
-          </label>
-          <label className="inline-flex items-center gap-1 text-ink-muted">
+          </span>
+          <label
+            htmlFor="warrant-filter-iv-pctl-max"
+            className="inline-flex items-center gap-1 text-ink-muted"
+          >
             IV百分位 ≤
             <NumberField
+              id="warrant-filter-iv-pctl-max"
               ariaLabel="IV百分位上限"
               name="ivPctlMax"
               step={5}
@@ -295,9 +306,13 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
               }
             />
           </label>
-          <label className="inline-flex items-center gap-1 text-ink-muted">
+          <label
+            htmlFor="warrant-filter-spread-ratio-max"
+            className="inline-flex items-center gap-1 text-ink-muted"
+          >
             價差比% ≤
             <NumberField
+              id="warrant-filter-spread-ratio-max"
               ariaLabel="價差比上限(%)"
               name="spreadRatioMax"
               step={0.5}
@@ -308,9 +323,13 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
               }}
             />
           </label>
-          <label className="inline-flex items-center gap-1 text-ink-muted">
+          <label
+            htmlFor="warrant-filter-slr-max"
+            className="inline-flex items-center gap-1 text-ink-muted"
+          >
             差槓比 ≤
             <NumberField
+              id="warrant-filter-slr-max"
               ariaLabel="差槓比上限"
               name="slrMax"
               step={0.05}
@@ -321,9 +340,13 @@ export function WarrantSelector({ symbol, active }: { symbol: string; active: bo
         </span>
         {/* 流動性群組 */}
         <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-2 pl-3 border-l border-line">
-          <label className="inline-flex items-center gap-1 text-ink-muted">
+          <label
+            htmlFor="warrant-filter-min-ask-price"
+            className="inline-flex items-center gap-1 text-ink-muted"
+          >
             委賣價 ≥
             <NumberField
+              id="warrant-filter-min-ask-price"
               ariaLabel="委賣價下限"
               name="minAskPrice"
               step={0.1}

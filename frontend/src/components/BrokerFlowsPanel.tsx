@@ -399,7 +399,10 @@ function FlowTable({
                   aria-label={`檢視 ${r.stock_name || r.stock_id} 籌碼總覽`}
                   onClick={() => onPickStock(r.stock_id, r.stock_name || null, brokerId)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                    // role=button 要 Enter 與 Space 都能啟動;Space 需
+                    // preventDefault 擋住頁面捲動的預設行為。
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
                       onPickStock(r.stock_id, r.stock_name || null, brokerId);
                     }
                   }}

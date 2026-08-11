@@ -179,6 +179,7 @@ export function BrokerSearch({ trades, selectedIds, onPick, onOpenChange }: Prop
         }}
         onKeyDown={handleKeyDown}
         placeholder="搜尋分點..."
+        aria-label="搜尋分點"
         role="combobox"
         aria-expanded={open && filtered.length > 0}
         aria-controls="broker-search-listbox"

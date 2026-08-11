@@ -14,6 +14,8 @@ export interface NumberFieldProps {
   name?: string;
   placeholder?: string;
   className?: string;
+  /** 內層 input 的 id — 呼叫端用 `<label htmlFor>` 綁定可見文字標籤時給。 */
+  id?: string;
 }
 
 export function NumberField({
@@ -24,6 +26,7 @@ export function NumberField({
   name,
   placeholder,
   className,
+  id,
 }: NumberFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -49,6 +52,7 @@ export function NumberField({
       </button>
       <input
         ref={inputRef}
+        id={id}
         type="number"
         name={name}
         inputMode="decimal"

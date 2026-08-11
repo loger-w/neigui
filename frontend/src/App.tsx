@@ -152,6 +152,25 @@ export default function App() {
     },
     [panelWidth],
   );
+  // 鍵盤操作(window splitter 慣例):← 加寬、→ 縮窄(與拖曳同向 —— 面板
+  // 靠右錨定,把分隔線往左推 = 面板變寬);Home/End 跳到上下限。
+  const handlePanelResizeKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 50 : 10;
+    const clamp = (w: number) =>
+      Math.max(PANEL_WIDTH_MIN, Math.min(PANEL_WIDTH_MAX, w));
+    if (e.key === "ArrowLeft") {
+      setPanelWidth((w) => clamp(w + step));
+    } else if (e.key === "ArrowRight") {
+      setPanelWidth((w) => clamp(w - step));
+    } else if (e.key === "Home") {
+      setPanelWidth(PANEL_WIDTH_MIN);
+    } else if (e.key === "End") {
+      setPanelWidth(PANEL_WIDTH_MAX);
+    } else {
+      return;
+    }
+    e.preventDefault();
+  }, []);
   // Broker selection is keyed by broker_id (FinMind `securities_trader_id`):
   // the SecIdAgg endpoint requires that exact id as a query filter, so this
   // is the value that round-trips through the broker_history fetch. Display
@@ -512,10 +531,15 @@ export default function App() {
                   role="separator"
                   aria-orientation="vertical"
                   aria-label="調整籌碼欄寬度"
+                  aria-valuenow={panelWidth}
+                  aria-valuemin={PANEL_WIDTH_MIN}
+                  aria-valuemax={PANEL_WIDTH_MAX}
                   data-testid="panel-resize-handle"
+                  tabIndex={0}
                   onMouseDown={handlePanelResizeMouseDown}
-                  className="h-full cursor-col-resize bg-line hover:bg-accent transition-colors"
-                  title="拖曳調整籌碼欄寬度"
+                  onKeyDown={handlePanelResizeKeyDown}
+                  className="h-full cursor-col-resize bg-line hover:bg-accent focus-visible:bg-accent focus-visible:outline-none transition-colors"
+                  title="拖曳或以左右方向鍵調整籌碼欄寬度"
                 />
                 <div className="h-full overflow-hidden">{brokersPanel}</div>
               </div>

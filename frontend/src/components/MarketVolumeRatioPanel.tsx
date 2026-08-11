@@ -72,8 +72,13 @@ export function MarketVolumeRatioPanel({ rows, loading, onSymbolPick }: Props): 
               min={0}
               value={threshold}
               onChange={(e) => {
-                const n = Number(e.target.value);
-                setThreshold(Number.isFinite(n) ? n : DEFAULT_THRESHOLD);
+                const raw = e.target.value;
+                const n = Number(raw);
+                // type=number 的非法輸入會回空字串(Number("") === 0,清空 =
+                // 門檻 0 = 全列,既有語意),NaN/Infinity 實務不可達;真收到
+                // 就忽略這次輸入、維持原門檻,不倒回預設值。
+                if (Number.isNaN(n) || !Number.isFinite(n)) return;
+                setThreshold(n);
               }}
               className="w-16 h-6 px-1 bg-bg border border-line text-ink tabular-nums focus:outline-none focus:border-accent"
             />

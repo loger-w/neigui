@@ -40,6 +40,22 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.46.3",
+    date: "2026-08-11",
+    changes: [
+      {
+        kind: "fix",
+        scope: "global",
+        text: "鍵盤操作補強:籌碼欄寬分隔線可用左右方向鍵調整,分點篩選與流向清單列支援 Enter/空白鍵啟動",
+      },
+      {
+        kind: "fix",
+        scope: "global",
+        text: "搜尋框與權證篩選欄位補齊朗讀標籤,螢幕報讀軟體可正確唸出各欄位用途",
+      },
+    ],
+  },
+  {
     version: "0.46.2",
     date: "2026-08-11",
     changes: [
