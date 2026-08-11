@@ -828,7 +828,43 @@ describe("BubbleChartSvg — 每價位量能分布背景層 (SC-1/2/3)", () => {
       .map((b) => ({ y: Number(b.getAttribute("y")), w: Number(b.getAttribute("width")) }))
       .sort((a, b) => a.y - b.y); // y 小 = 價高(105)在前
     expect(widthByY[1]!.w / widthByY[0]!.w).toBeCloseTo(2, 5);
-    expect(widthByY[0]!.w).toBeGreaterThan(0);
+    // [lock S-P1-1] 最大條寬 = cW × 20% 絕對值:(400-56-16) × 0.2 = 65.6。
+    // 只鎖比例的話 PROFILE_MAX_FRAC 改 0.8(壓過泡泡主體)測試照樣綠。
+    expect(widthByY[1]!.w).toBeCloseTo(65.6, 5);
+    expect(widthByY[0]!.w).toBeCloseTo(32.8, 5);
+  });
+
+  // [lock S-P1-2] 大量價位(60 檔)下條高公式 min(8, max(1, cH/n×0.7)) 的
+  // 密度分支從未被 1-2 價位的測試執行到 — 鎖住高度區間與不重疊。
+  it("edge: 60 檔價位 → 60 條、高度在 [1,8]、相鄰不重疊", () => {
+    const dense: BrokerTrade[] = Array.from({ length: 60 }, (_, i) =>
+      mkTrade({
+        broker: `b${i}`,
+        broker_id: `B${i}`,
+        price: 100 + i,
+        buy: 50,
+        sell: 50,
+      }),
+    );
+    const { container } = render(
+      <BubbleChartSvg trades={dense} width={400} height={300} />,
+    );
+    const bars = Array.from(
+      container.querySelectorAll('[data-testid="bubble-volume-profile"] rect'),
+    )
+      .map((b) => ({
+        y: Number(b.getAttribute("y")),
+        h: Number(b.getAttribute("height")),
+      }))
+      .sort((a, b) => a.y - b.y);
+    expect(bars).toHaveLength(60);
+    for (const b of bars) {
+      expect(b.h).toBeGreaterThanOrEqual(1);
+      expect(b.h).toBeLessThanOrEqual(8);
+    }
+    for (let i = 1; i < bars.length; i++) {
+      expect(bars[i]!.y).toBeGreaterThanOrEqual(bars[i - 1]!.y + bars[i - 1]!.h);
+    }
   });
 
   it("SC-1: 條垂直置中對齊該價位的 sY(與同價位泡泡 cy 一致)", () => {
