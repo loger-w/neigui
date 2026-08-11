@@ -30,6 +30,9 @@ interface Props {
 
 const fmt = (n: number): string => Math.abs(n).toLocaleString("zh-TW");
 
+/** 正負值的多空色 class(台股慣例:紅漲綠跌)。純函式,module scope 建一次。 */
+const posNeg = (n: number): string => (n >= 0 ? "text-bull" : "text-bear");
+
 export function buildForeignReading(
   series: Array<{ date: string; foreign_total_net: number }>,
 ): string | null {
@@ -135,8 +138,6 @@ export function OptionsThermometerRow({
   // --- 散戶小台 ---
   const retailCurrent = retail.data?.current ?? null;
   const retailSeries = (retail.data?.series ?? []).map((s) => s.ratio);
-
-  const posNeg = (n: number): string => (n >= 0 ? "text-bull" : "text-bear");
 
   return (
     <section

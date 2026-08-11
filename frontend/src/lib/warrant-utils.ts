@@ -151,14 +151,17 @@ export function sortWarrants(
   });
 }
 
+// Intl formatter 建構成本高 → module scope 建一次重複用。
+const TAIPEI_CLOCK_FMT = new Intl.DateTimeFormat("en-US", {
+  timeZone: "Asia/Taipei",
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
 export function isMarketOpen(d: Date): boolean {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Taipei",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(d);
+  const parts = TAIPEI_CLOCK_FMT.formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   const wd = get("weekday");
   if (wd === "Sat" || wd === "Sun") return false;

@@ -13,11 +13,14 @@ interface Props {
   spot?: number | null;
 }
 
+// Intl formatter 建構成本高 → module scope 建一次重複用。
+const NTD_FMT = new Intl.NumberFormat("zh-TW", {
+  style: "currency", currency: "TWD", maximumFractionDigits: 0,
+});
+
 function fmtNTD(n: number): string {
   if (!isFinite(n) || n === 0) return "—";
-  return new Intl.NumberFormat("zh-TW", {
-    style: "currency", currency: "TWD", maximumFractionDigits: 0,
-  }).format(n);
+  return NTD_FMT.format(n);
 }
 
 export function OptionsMaxPainCard({

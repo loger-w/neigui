@@ -194,7 +194,10 @@ export function ChipBrokersPanel({
 }: Props) {
   const [mode, setMode] = useState<Mode>("net");
 
-  const allBrokers = summary?.top_brokers ?? [];
+  // `summary?.top_brokers ?? []` 直接寫在 render body 時,summary 為 null 的
+  // 每次 render 都產生新 array,下游三個 useMemo 的 dep identity 恆變 = 永遠
+  // 重算。包一層 useMemo 讓 dep 綁在 summary 上,行為不變、cache 真的生效。
+  const allBrokers = useMemo(() => summary?.top_brokers ?? [], [summary]);
   const { buyers, sellers } = useMemo(() => splitBrokers(allBrokers), [allBrokers]);
   const volumeBrokers = useMemo(
     () => topByVolume(allBrokers, dayTotalLots),

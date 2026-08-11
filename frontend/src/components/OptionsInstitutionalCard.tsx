@@ -8,9 +8,12 @@ interface Props {
   onRefresh: () => void;
 }
 
+// Intl formatter 建構成本高 → module scope 建一次重複用。
+const INT_FMT = new Intl.NumberFormat("zh-TW");
+
 function fmtInt(n: number | null | undefined): string {
   if (n === null || n === undefined || !isFinite(n)) return "—";
-  return new Intl.NumberFormat("zh-TW").format(n);
+  return INT_FMT.format(n);
 }
 
 function sideRow(label: string, side: InstitutionalSide, highlight = false): ReactElement {

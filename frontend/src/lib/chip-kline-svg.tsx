@@ -15,6 +15,9 @@ const CHIP_THEME = {
 export const KLINE_PAD_L = 12;
 export const KLINE_PAD_R = 58;
 
+/** 價格軸格線刻度的「好看倍數」候選(乘上 10 的冪次)。靜態表,module scope。 */
+const GRID_STEP_CANDIDATES = [1, 2, 5, 10, 20, 50];
+
 // ── pure geometry (可單獨測試) ──────────────────────────────────────────────
 
 /** 回傳 price→y 映射函式。padTop = chart area 頂部留白 px。 */
@@ -225,9 +228,8 @@ function KlineChartSvgImpl({
   const priceRange = pMax - pMin;
   const rawStep = priceRange / 5;
   const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-  const candidates = [1, 2, 5, 10, 20, 50];
   let gridStep = mag;
-  for (const c of candidates) {
+  for (const c of GRID_STEP_CANDIDATES) {
     if (c * mag >= rawStep) { gridStep = c * mag; break; }
   }
   const gridLines: number[] = [];
