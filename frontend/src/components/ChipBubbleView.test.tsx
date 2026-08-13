@@ -7,14 +7,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ChipBubbleView } from "./ChipBubbleView";
+import * as screenshotLib from "../lib/bubble-screenshot";
 import { BROKER_PALETTE } from "../lib/chip-bubble-svg";
 import type { BrokerTrade, ChipBubbleData } from "../lib/chip-data";
 
 // C7 A1 test 需要 BubbleChartSvg 真正 render(Y-axis brush overlay 從裡面出)。
 // jsdom 沒 layout → useContainerSize 回 {0,0} → svg gate 掉。mock 讓 A1 tests
 // 能 exercise brush 路徑。既有 F2 sort header tests 不依賴 svg render,不受影響。
+// SC-7 [R3]:尺寸改可控 —— 「容器尺寸尚未回報 → 圖表 svg 不存在」是截圖
+// no-op 分支的唯一觸發面,預設值不變(既有測試零影響)。
+const sizeState = vi.hoisted(() => ({ width: 400, height: 300 }));
 vi.mock("../hooks/useContainerSize", () => ({
-  useContainerSize: () => ({ width: 400, height: 300 }),
+  useContainerSize: () => ({ width: sizeState.width, height: sizeState.height }),
 }));
 
 // bubble-multi-broker:mobile sheet 標題測試需要可控 isMobile(真 hook 在
@@ -33,6 +37,8 @@ beforeEach(() => {
   // BB-1 blocklist 走 localStorage 全域持久化 — 測試間必清,避免跨 describe 污染。
   localStorage.clear();
   mediaState.isMobile = false;
+  sizeState.width = 400;
+  sizeState.height = 300;
   globalThis.ResizeObserver = class {
     observe() {}
     disconnect() {}
@@ -2053,5 +2059,164 @@ describe("ChipBubbleView — SC-5 聚合資料流 + 文案分流", () => {
       container.querySelector('[data-testid="bubble-focus-no-trades"]')!.textContent ?? "";
     expect(text).toContain("該分點近 5 日無成交");
     expect(text).not.toContain("當日無成交");
+  });
+});
+
+// feat/bubble-streak-screenshot SC-7(design §4):截圖鈕 + handleScreenshot。
+// svgToPngBlob 的 canvas 全鏈 jsdom 測不到(e2e E44 承擔),這裡鎖的是
+// 「什麼時候呼叫、帶什麼檔名/標註、失敗與 no-op 分支怎麼回饋」。
+describe("ChipBubbleView — SC-7 截圖", () => {
+  const shotBtn = (c: HTMLElement) =>
+    c.querySelector('[data-testid="bubble-screenshot"]') as HTMLButtonElement | null;
+  const shotNotice = (c: HTMLElement) =>
+    c.querySelector('[data-testid="bubble-screenshot-notice"]');
+
+  const mkPngBlob = () => new Blob(["png"], { type: "image/png" });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("bubbleData null → 不渲染截圖鈕", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={null} loading />,
+    );
+    expect(shotBtn(container)).toBeNull();
+  });
+
+  it("bubbleData 有值 → 渲染截圖鈕", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    const btn = shotBtn(container);
+    expect(btn).toBeTruthy();
+    expect(btn!.textContent).toBe("截圖");
+  });
+
+  it("點擊(days=1)→ svgToPngBlob + downloadBlob 被呼叫,檔名無 w 後綴、無 annotation", async () => {
+    const toPng = vi
+      .spyOn(screenshotLib, "svgToPngBlob")
+      .mockResolvedValue(mkPngBlob());
+    const dl = vi
+      .spyOn(screenshotLib, "downloadBlob")
+      .mockImplementation(() => {});
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    fireEvent.click(shotBtn(container)!);
+    await waitFor(() => expect(dl).toHaveBeenCalledTimes(1));
+    expect(toPng).toHaveBeenCalledTimes(1);
+    expect(toPng.mock.calls[0]![1].scale).toBe(2);
+    expect(toPng.mock.calls[0]![1].annotation).toBeUndefined();
+    expect(dl.mock.calls[0]![1]).toBe("bubble_2330_2026-06-25.png");
+    expect(shotNotice(container)).toBeNull();
+  });
+
+  it("點擊(days=5)→ 檔名帶 _w5,annotation 與 badge 同源", async () => {
+    const toPng = vi
+      .spyOn(screenshotLib, "svgToPngBlob")
+      .mockResolvedValue(mkPngBlob());
+    const dl = vi
+      .spyOn(screenshotLib, "downloadBlob")
+      .mockImplementation(() => {});
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+        windowMeta={{ windowDays: 5, actualDays: 5 }}
+      />,
+    );
+    fireEvent.click(shotBtn(container)!);
+    await waitFor(() => expect(dl).toHaveBeenCalledTimes(1));
+    expect(toPng.mock.calls[0]![1].annotation).toBe("近 5 個交易日累計");
+    expect(dl.mock.calls[0]![1]).toBe("bubble_2330_2026-06-25_w5.png");
+  });
+
+  it("actualDays < windowDays → annotation 追加「(實際 X 日)」", async () => {
+    const toPng = vi
+      .spyOn(screenshotLib, "svgToPngBlob")
+      .mockResolvedValue(mkPngBlob());
+    const dl = vi
+      .spyOn(screenshotLib, "downloadBlob")
+      .mockImplementation(() => {});
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+        windowMeta={{ windowDays: 5, actualDays: 3 }}
+      />,
+    );
+    fireEvent.click(shotBtn(container)!);
+    await waitFor(() => expect(dl).toHaveBeenCalledTimes(1));
+    expect(toPng.mock.calls[0]![1].annotation).toBe("近 5 個交易日累計(實際 3 日)");
+  });
+
+  it("svgToPngBlob reject → 顯「截圖失敗,請重試」role=status 提示", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(screenshotLib, "svgToPngBlob").mockRejectedValue(
+      new Error("toBlob returned null"),
+    );
+    const dl = vi
+      .spyOn(screenshotLib, "downloadBlob")
+      .mockImplementation(() => {});
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    fireEvent.click(shotBtn(container)!);
+    await waitFor(() => {
+      if (!shotNotice(container)) throw new Error("notice not shown yet");
+    });
+    const el = shotNotice(container)!;
+    expect(el.getAttribute("role")).toBe("status");
+    expect(el.textContent).toBe("截圖失敗,請重試");
+    expect(dl).not.toHaveBeenCalled();
+  });
+
+  // [impl-review R3] 容器尺寸尚未回報(ResizeObserver 視窗期)→ BubbleChartSvg
+  // 不渲染,容器內只剩無 width/height 的 loading spinner svg。選擇器若寫成
+  // querySelector("svg") 會誤抓 spinner 送去 canvas;這條鎖 no-op + 提示。
+  it("容器內無合格 svg → 顯「圖表尚未就緒」且 svgToPngBlob 未被呼叫", async () => {
+    sizeState.width = 0;
+    sizeState.height = 0;
+    const toPng = vi
+      .spyOn(screenshotLib, "svgToPngBlob")
+      .mockResolvedValue(mkPngBlob());
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} loading />,
+    );
+    expect(
+      container.querySelector('[data-testid="bubble-loading-badge"]'),
+    ).toBeTruthy();
+    fireEvent.click(shotBtn(container)!);
+    await waitFor(() => {
+      if (!shotNotice(container)) throw new Error("notice not shown yet");
+    });
+    expect(shotNotice(container)!.textContent).toBe("圖表尚未就緒,請稍候再試");
+    expect(toPng).not.toHaveBeenCalled();
+  });
+
+  it("成功截圖 → 清除既有失敗提示", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const toPng = vi
+      .spyOn(screenshotLib, "svgToPngBlob")
+      .mockRejectedValueOnce(new Error("boom"))
+      .mockResolvedValue(mkPngBlob());
+    vi.spyOn(screenshotLib, "downloadBlob").mockImplementation(() => {});
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    fireEvent.click(shotBtn(container)!);
+    await waitFor(() => {
+      if (!shotNotice(container)) throw new Error("notice not shown yet");
+    });
+    fireEvent.click(shotBtn(container)!);
+    await waitFor(() => {
+      if (shotNotice(container)) throw new Error("notice not cleared yet");
+    });
+    expect(toPng).toHaveBeenCalledTimes(2);
   });
 });
