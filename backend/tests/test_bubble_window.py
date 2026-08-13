@@ -10,8 +10,9 @@ Strategy(結構抄 test_brokers_window.py):
 """
 from __future__ import annotations
 
+import asyncio
 import logging
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -527,6 +528,129 @@ async def test_fetch_bubble_window_complete_window_is_cached(monkeypatch):
     assert client.fetch_chip_bubble.await_count == 3
     await client.fetch_bubble_window("2330", "2026-06-26", days=3)
     assert client.fetch_chip_bubble.await_count == 3
+
+
+async def test_fetch_bubble_window_concurrent_refresh_does_not_dedup_into_non_refresh(
+    monkeypatch,
+):
+    """[SC2-DEDUP-KEY-NO-TEST] lock test(移植 test_brokers_window.py:421):
+    並發的 refresh=True 呼叫不得 await 一個 in-flight 的 refresh=False task,
+    否則 refresh 呼叫端無聲拿到舊資料。防線 = _run_once dedup key 的
+    `_r{int(refresh)}`;拿掉它兩個呼叫會塌成同一個 task。
+    """
+    from services.finmind import FinMindClient
+    import services.trading_calendar as tc
+
+    monkeypatch.setattr(
+        tc, "get_trading_days", _mock_trading_calendar(["2026-06-25", "2026-06-26"])
+    )
+
+    client = FinMindClient()
+    seen_refresh: list[bool] = []
+
+    async def fake_bubble(symbol: str, d: str, refresh: bool) -> dict:
+        # 讓兩個呼叫端都真的處在 in-flight 狀態才繼續
+        await asyncio.sleep(0)
+        seen_refresh.append(refresh)
+        return _bubble(d, [_trade("甲", "A", 1100.0, 10, 8)])
+
+    client.fetch_chip_bubble = AsyncMock(side_effect=fake_bubble)
+
+    await asyncio.gather(
+        client.fetch_bubble_window("2330", "2026-06-26", days=2, refresh=False),
+        client.fetch_bubble_window("2330", "2026-06-26", days=2, refresh=True),
+    )
+    # 修復前:兩者共乘一個 task → 2;修復後:各自 fan-out → 4
+    assert client.fetch_chip_bubble.await_count == 4
+    assert True in seen_refresh and False in seen_refresh
+
+
+async def test_fetch_bubble_window_filters_dates_after_anchor(monkeypatch):
+    """[BACKEND-EDGE-TEST-GAPS a] lock test:anchor 落在 calendar 中段時,
+    trading_dates 只能含 ≤ anchor 的交易日(往後看 = look-ahead,使用者選
+    過去日期看到的量會混進之後幾天)。"""
+    from services.finmind import FinMindClient
+    import services.trading_calendar as tc
+
+    dates = [
+        "2026-06-10", "2026-06-11", "2026-06-12", "2026-06-15",
+        "2026-06-16", "2026-06-17", "2026-06-18", "2026-06-19",
+    ]
+    monkeypatch.setattr(tc, "get_trading_days", _mock_trading_calendar(dates))
+
+    client = FinMindClient()
+    client.fetch_chip_bubble = AsyncMock(
+        side_effect=lambda symbol, d, refresh: _bubble(
+            d, [_trade("甲", "A", 1100.0, 10, 8)]
+        )
+    )
+
+    out = await client.fetch_bubble_window("2330", "2026-06-15", days=10)
+    assert out["trading_dates"] == ["2026-06-10", "2026-06-11", "2026-06-12", "2026-06-15"]
+    assert out["actual_days"] == 4
+    called_dates = [c.args[1] for c in client.fetch_chip_bubble.await_args_list]
+    assert called_dates == ["2026-06-10", "2026-06-11", "2026-06-12", "2026-06-15"]
+
+
+async def test_fetch_bubble_window_today_fresh_cache_served(monkeypatch):
+    """[BACKEND-EDGE-TEST-GAPS b-1] lock test:date = 今日且 cache 新鮮
+    (< 30 min)→ 直接回 cache,不重新 fan-out。"""
+    from services import clock
+    from services.finmind import FinMindClient
+    import services.trading_calendar as tc
+
+    today = clock.today()
+    prev = today - timedelta(days=1)
+    monkeypatch.setattr(
+        tc, "get_trading_days", _mock_trading_calendar([prev.isoformat(), today.isoformat()])
+    )
+
+    client = FinMindClient()
+    client.fetch_chip_bubble = AsyncMock(
+        side_effect=lambda symbol, d, refresh: _bubble(
+            d, [_trade("甲", "A", 1100.0, 10, 8)]
+        )
+    )
+
+    await client.fetch_bubble_window("2330", today.isoformat(), days=2)
+    assert client.fetch_chip_bubble.await_count == 2
+    await client.fetch_bubble_window("2330", today.isoformat(), days=2)
+    assert client.fetch_chip_bubble.await_count == 2  # 新鮮 → 不重抓
+
+
+async def test_fetch_bubble_window_today_stale_cache_refetches(monkeypatch):
+    """[BACKEND-EDGE-TEST-GAPS b-2] lock test:date = 今日且 cache 已逾 30 min
+    → 重新 fan-out(盤中資料會變;沒有這條分支今日圖表會凍在早盤)。"""
+    from services import clock
+    from services.finmind import FinMindClient, _CACHE_VERSION_BUBBLE_W
+    import services.trading_calendar as tc
+
+    today = clock.today()
+    prev = today - timedelta(days=1)
+    monkeypatch.setattr(
+        tc, "get_trading_days", _mock_trading_calendar([prev.isoformat(), today.isoformat()])
+    )
+
+    client = FinMindClient()
+    client.fetch_chip_bubble = AsyncMock(
+        side_effect=lambda symbol, d, refresh: _bubble(
+            d, [_trade("甲", "A", 1100.0, 10, 8)]
+        )
+    )
+
+    await client.fetch_bubble_window("2330", today.isoformat(), days=2)
+    assert client.fetch_chip_bubble.await_count == 2
+
+    cache_key = f"2330_{today.isoformat()}_w2_bubblew"
+    cached = client._read_cache_v(cache_key, _CACHE_VERSION_BUBBLE_W)
+    assert cached is not None
+    cached["fetched_at"] = (
+        clock.now() - timedelta(minutes=31)
+    ).isoformat(timespec="seconds")
+    client._write_cache_v(cache_key, cached, _CACHE_VERSION_BUBBLE_W)
+
+    await client.fetch_bubble_window("2330", today.isoformat(), days=2)
+    assert client.fetch_chip_bubble.await_count == 4  # stale → 重抓
 
 
 # ---------------------------------------------------------------------------

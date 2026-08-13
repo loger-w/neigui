@@ -16,6 +16,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 const spies = vi.hoisted(() => ({
   bubbleCalls: [] as { symbol: string; date: string; days: number | undefined }[],
   intradayCalls: [] as { symbol: string; date: string }[],
+  // [review-1 WHITELIST3-NO-TEST] 泡泡天數與總覽 windowDays 是兩個獨立 state,
+  // 互不影響是白名單 3 —— 要驗「不變」就得看得到 brokers_window 收到的 days。
+  brokersWindowCalls: [] as { symbol: string; date: string; days: number }[],
   bubbleRefresh: vi.fn(),
   intradayRefresh: vi.fn(),
 }));
@@ -111,9 +114,10 @@ vi.mock("./hooks/useBrokerHistory", () => ({
   useBrokerHistory: () => ({ series: {}, loading: false, error: null, refresh: vi.fn() }),
 }));
 vi.mock("./hooks/useChipBrokersWindow", () => ({
-  useChipBrokersWindow: () => ({
-    data: null, loading: false, error: null, refresh: vi.fn(),
-  }),
+  useChipBrokersWindow: (symbol: string, date: string, days: number) => {
+    spies.brokersWindowCalls.push({ symbol, date, days });
+    return { data: null, loading: false, error: null, refresh: vi.fn() };
+  },
 }));
 
 import App from "./App";
@@ -122,6 +126,7 @@ beforeEach(() => {
   localStorage.clear();
   spies.bubbleCalls.length = 0;
   spies.intradayCalls.length = 0;
+  spies.brokersWindowCalls.length = 0;
   spies.bubbleRefresh.mockClear();
   spies.intradayRefresh.mockClear();
 });
@@ -299,6 +304,55 @@ describe("App mode persistence (SC-4)", () => {
     await waitFor(() => {
       expect(spies.bubbleCalls[spies.bubbleCalls.length - 1]!.symbol).toBe("2454");
     });
+    expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
+    expect(spies.bubbleCalls[spies.bubbleCalls.length - 1]!.days).toBe(5);
+  });
+
+  // [review-1 WHITELIST3-NO-TEST] lock test:brainstorm 白名單 3 —— 籌碼總覽的
+  // windowDays 與泡泡圖天數是兩個獨立 state(前者 localStorage 持久化、後者
+  // 刻意不持久化)。兩顆選擇器長得幾乎一樣,接線接錯不會有任何畫面異常,
+  // 只會讓使用者調 A 時 B 也跟著跳、還把泡泡天數寫進 chip_window_days。
+  it("切泡泡天數 → windowDays 與 chip_window_days 不動", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "sym-pick-2330" }));
+    fireEvent.click(screen.getByRole("button", { name: "泡泡圖" }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("chip-bubble")).toBeTruthy();
+    });
+    expect(localStorage.getItem("chip_window_days")).toBe("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "stub-days-5" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
+    });
+    // brokers_window 仍收 1;localStorage 未被泡泡天數污染
+    const lastWindow = spies.brokersWindowCalls[spies.brokersWindowCalls.length - 1]!;
+    expect(lastWindow.days).toBe(1);
+    expect(localStorage.getItem("chip_window_days")).toBe("1");
+    expect(
+      screen.getByRole("button", { name: "設為 1 日" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("切 windowDays → 泡泡天數不動(反向)", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "sym-pick-2330" }));
+    fireEvent.click(screen.getByRole("button", { name: "泡泡圖" }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("chip-bubble")).toBeTruthy();
+    });
+    // 先把泡泡切到 5,確保「windowDays 改動不得把它拉回 1」也在鎖住範圍
+    fireEvent.click(screen.getByRole("button", { name: "stub-days-5" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "設為 10 日" }));
+    await waitFor(() => {
+      expect(localStorage.getItem("chip_window_days")).toBe("10");
+    });
+    expect(spies.brokersWindowCalls[spies.brokersWindowCalls.length - 1]!.days).toBe(10);
+    // 泡泡天數不受影響
     expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
     expect(spies.bubbleCalls[spies.bubbleCalls.length - 1]!.days).toBe(5);
   });
