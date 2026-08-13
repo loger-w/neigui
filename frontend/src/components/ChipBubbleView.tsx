@@ -667,15 +667,21 @@ export function ChipBubbleView({
                   回整組 ×
                 </button>
               )}
+              {/* SC-4 [design §3 R15 fallback]:天數 selector 原放右工具欄,
+                  1280px 下第三 grid 欄 +170px 把中欄 minmax(0,1fr) 壓成一字寬
+                  (header 撐高 2.6 倍 → 圖區 397→125px,e2e E39 因 circle 座標
+                  位移而紅)。改掛統計行右端:中欄本來就是 minmax(0,1fr) 可伸縮,
+                  ml-auto 推到行尾(mobile flex-col 自然堆疊)。 */}
+              {onDaysChange && (
+                <div className="ml-auto">
+                  <BubbleDaysSelector value={days} onChange={onDaysChange} />
+                </div>
+              )}
             </div>
           </div>
           {/* C10 (🟢 Item 4 + 5):手動輸入區間 trigger + Help '?' icon 靠右
               (ml-auto:grid cell 與 mobile flex-col 兩形態都推右,review R4)。 */}
           <div className="ml-auto flex items-center gap-2 shrink-0">
-            {/* SC-4:天數視窗 preset 放工具欄列最左(design §3 R3/R25b)。 */}
-            {onDaysChange && (
-              <BubbleDaysSelector value={days} onChange={onDaysChange} />
-            )}
             <BubbleBlocklistPopover
               trades={bubbleData?.trades ?? []}
               blocked={blocked}
