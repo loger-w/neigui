@@ -1,6 +1,6 @@
 import type {
-  ChipSummary, ChipBubbleData, ChipHistory, ChipBrokerHistory, ChipBrokersWindow,
-  ChipIntraday,
+  ChipSummary, ChipBubbleData, ChipBubbleWindowData, ChipHistory, ChipBrokerHistory,
+  ChipBrokersWindow, ChipIntraday,
 } from "./chip-data";
 import type { BorrowFeeData } from "./borrow-fee";
 import type { WarrantQuotesPayload, WarrantsPayload } from "./warrant-data";
@@ -196,6 +196,13 @@ export const api = {
     if (date) params.date = date;
     if (refresh) params.refresh = "true";
     return get(`${BASE}/chip/${symbol}/bubble`, params, options);
+  },
+  chipBubbleWindow(
+    symbol: string, date: string, days: number, refresh?: boolean, options?: RequestOptions,
+  ): Promise<ChipBubbleWindowData> {
+    const params: Record<string, string> = { date, days: String(days) };
+    if (refresh) params.refresh = "true";
+    return get(`${BASE}/chip/${symbol}/bubble_window`, params, options);
   },
   chipIntraday(
     symbol: string, date?: string, refresh?: boolean, options?: RequestOptions,

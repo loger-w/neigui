@@ -79,6 +79,14 @@ export interface ChipBubbleData {
   trades: BrokerTrade[];
 }
 
+/** N 交易日聚合的泡泡資料 — trades shape 與單日相同(ChipBubbleData 超集)。 */
+export interface ChipBubbleWindowData extends ChipBubbleData {
+  window_days: number;
+  trading_dates: string[];
+  /** 實際有資料的日數(fetch 失敗或空 trades 日不計)。 */
+  actual_days: number;
+}
+
 export interface IntradayPoint {
   t: string;
   price: number;
