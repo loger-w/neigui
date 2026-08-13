@@ -1,16 +1,29 @@
 import { api } from "../lib/api";
-import type { ChipBubbleData } from "../lib/chip-data";
+import type { ChipBubbleData, ChipBubbleWindowData } from "../lib/chip-data";
 import { useForceRefreshQuery } from "./useForceRefreshQuery";
 
-export function useChipBubble(symbol: string, date: string) {
-  const { data, isFetching, error, refresh } = useForceRefreshQuery<ChipBubbleData>({
-    queryKey: ["chip-bubble", symbol, date],
-    queryFn: async (force, { signal }) => api.chipBubble(symbol, date, force, { signal }),
+/**
+ * days = 1(預設)走既有 /bubble;days > 1 走 /bubble_window 的 N 日聚合。
+ * days 進 queryKey → 切天數自動 refetch,且各天數獨立 cache。
+ */
+export function useChipBubble(symbol: string, date: string, days: number = 1) {
+  const { data, isFetching, error, refresh } = useForceRefreshQuery<
+    ChipBubbleData | ChipBubbleWindowData
+  >({
+    queryKey: ["chip-bubble", symbol, date, days],
+    queryFn: async (force, { signal }) =>
+      days > 1
+        ? api.chipBubbleWindow(symbol, date, days, force, { signal })
+        : api.chipBubble(symbol, date, force, { signal }),
     enabled: symbol !== "",
   });
 
   return {
     data: data ?? null,
+    windowMeta:
+      data && days > 1 && "window_days" in data
+        ? { windowDays: data.window_days, actualDays: data.actual_days }
+        : null,
     loading: isFetching,
     error: error ? error.message : null,
     refresh,
