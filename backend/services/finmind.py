@@ -24,6 +24,10 @@ _CACHE_VERSION = 3
 # (symbol, date, days). Independent of _CACHE_VERSION so bumping one
 # doesn't invalidate the other.
 _CACHE_VERSION_BW = 1
+# Aggregate-payload cache for fetch_bubble_window — 獨立 bump 面,跟 _CACHE_VERSION_BW
+# 互不影響(兩者聚合語意不同:brokers_window 是 summary.top_brokers,
+# bubble_window 是 (broker, price) 逐筆)。
+_CACHE_VERSION_BUBBLE_W = 1
 
 # ---------------------------------------------------------------------------
 # Singleton
@@ -792,6 +796,84 @@ class FinMindClient:
             self._write_cache_v(cache_key, result, _CACHE_VERSION_BW)
         except OSError as exc:
             logger.warning("brokers_window cache write failed for %s: %s", cache_key, exc)
+        return result
+
+    # -- bubble window (N-day aggregate of the per-day bubble payload) ------
+
+    async def fetch_bubble_window(
+        self,
+        symbol: str,
+        date_str: str,
+        days: int,
+        refresh: bool = False,
+    ) -> dict:
+        """Aggregate the last `days` trading days of (broker, price) bubble rows
+        ending at `date_str` (inclusive). Same shape as fetch_brokers_window:
+        trading dates from ``services.trading_calendar`` (shared 12h cache),
+        fan-out over the already-cached per-day ``fetch_chip_bubble``, pure
+        aggregation, then self-cache the aggregate under
+        ``{symbol}_{date}_w{days}_bubblew``.
+
+        Payload is a superset of the single-day /bubble payload so the frontend
+        bubble/detail/stats pipeline needs no changes (SC-1).
+        """
+        cache_key = f"{symbol}_{date_str}_w{days}_bubblew"
+        if not refresh:
+            cached = self._read_cache_v(cache_key, _CACHE_VERSION_BUBBLE_W)
+            if cached is not None:
+                if not self._is_today(date_str) or not self._is_stale(cached):
+                    return cached
+
+        # refresh 進 dedup key:並發的 refresh=True caller 不得 await 一個
+        # in-flight refresh=False task(那會讓 refresh 語意失效回舊資料)。
+        return await self._run_once(
+            f"bubble_window_{cache_key}_r{int(refresh)}",
+            lambda: self._do_fetch_bubble_window(symbol, date_str, days, refresh, cache_key),
+        )
+
+    async def _do_fetch_bubble_window(
+        self,
+        symbol: str,
+        date_str: str,
+        days: int,
+        refresh: bool,
+        cache_key: str,
+    ) -> dict:
+        from services.trading_calendar import get_trading_days
+
+        end = date.fromisoformat(date_str)
+        recent = await get_trading_days(end, n=days)
+        if not recent:
+            raise ValueError("bubble_window_unavailable")
+        # get_trading_days returns newest-first; ascending 讓聚合的
+        # 「後日名稱蓋前日」語意成立
+        trading_dates = [d.isoformat() for d in reversed(recent)]
+
+        # gather(不是 TaskGroup):語意是「部分日失敗仍出貨」,與
+        # brokers_window 一致;TaskGroup 的 fail-fast 適用於「任一失敗整包
+        # 放棄」的場景,這裡不是。
+        results = await asyncio.gather(
+            *[self.fetch_chip_bubble(symbol, d, refresh) for d in trading_dates],
+            return_exceptions=True,
+        )
+        bubbles = [b for b in results if not isinstance(b, BaseException) and isinstance(b, dict)]
+        # 全日失敗 = upstream 不可達,不是「這幾天沒人交易」。靜默回空 payload
+        # 會被讀成正常的冷清日 — 一律 503 bubble_window_unavailable。
+        if not bubbles:
+            raise ValueError("bubble_window_unavailable")
+        result = _aggregate_bubble_window(
+            symbol=symbol,
+            date_str=date_str,
+            days=days,
+            trading_dates=trading_dates,
+            bubbles=bubbles,
+        )
+        # Cache write 是最佳化不是正確性需求:磁碟滿 / 唯讀時聚合結果仍有效,
+        # 沒有這層 guard 會讓 atomic_write_json 的 OSError 把請求變成 500。
+        try:
+            self._write_cache_v(cache_key, result, _CACHE_VERSION_BUBBLE_W)
+        except OSError as exc:
+            logger.warning("bubble_window cache write failed for %s: %s", cache_key, exc)
         return result
 
     async def fetch_broker_history(
@@ -2381,6 +2463,60 @@ def _aggregate_brokers_window(
         "margin": margin,
         "institutional": inst_acc,
         "total_traded_lots": total_traded_lots,
+    }
+
+
+def _aggregate_bubble_window(
+    symbol: str,
+    date_str: str,
+    days: int,
+    trading_dates: list[str],
+    bubbles: list[dict],
+) -> dict:
+    """Aggregate per-day bubble payloads into one N-day window payload.
+
+    - key = (broker_id, price);buy/sell 跨日加總,分點名稱取最後一日
+      (分點改名時顯示最新名)
+    - broker_id 可能為空字串(fetch_chip_bubble 的 `r.get(..., "")`)。同一個
+      分點「某日缺 id、另日有 id」不得分裂成兩列 → 先掃一輪建 name → 最新非空
+      id 的對映,第二輪用正規化後的 id 當 key;id 全程缺席才退回 name。
+    - actual_days = 有資料的日數:fetch 失敗**或空 trades** 皆不計。停牌 /
+      無成交日 FinMind 回 200 + trades:[](不 raise),比 HTTP 失敗常見得多,
+      算進去會讓前端「近 N 日累計」的實際樣本數失真。顯式偏離
+      _aggregate_brokers_window 的 len(trading_dates) 語意;trading_dates 仍是
+      calendar 嘗試日(除錯可對照)。
+    - trades 排序 (price, -(buy+sell)) — deterministic,前端自行重排不依賴此序。
+    """
+    # pass 1:name → 最新非空 broker_id(ascending 掃,後日蓋前日)
+    name_to_id: dict[str, str] = {}
+    for b in bubbles:
+        for t in b.get("trades", []):
+            if t["broker_id"]:
+                name_to_id[t["broker"]] = t["broker_id"]
+
+    # pass 2:key = (正規化 id, price);id 全程缺席才退 name
+    acc: dict[tuple[str, float], dict] = {}
+    for b in bubbles:
+        for t in b.get("trades", []):
+            norm_id = t["broker_id"] or name_to_id.get(t["broker"], "")
+            key = (norm_id or t["broker"], t["price"])
+            slot = acc.get(key)
+            if slot is None:
+                acc[key] = {**t, "broker_id": norm_id}
+            else:
+                slot["buy"] += t["buy"]
+                slot["sell"] += t["sell"]
+                slot["broker"] = t["broker"]
+
+    trades = sorted(acc.values(), key=lambda t: (t["price"], -(t["buy"] + t["sell"])))
+    return {
+        "symbol": symbol,
+        "date": date_str,
+        "window_days": days,
+        "trading_dates": trading_dates,
+        "actual_days": sum(1 for b in bubbles if b.get("trades")),
+        "fetched_at": clock.now().isoformat(timespec="seconds"),
+        "trades": trades,
     }
 
 
