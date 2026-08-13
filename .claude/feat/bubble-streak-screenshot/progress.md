@@ -17,6 +17,14 @@ worktree 依賴複製成本高於收益,採序列 [auto-default]。
 | E39 fix(R15 fallback) | done | 112a766 | selector 移統計行右端;equity 41P 全綠;1280px header 量測見結案節 |
 | review fix 波(round 1) | done | f8867b4 [red] → f3700b3 [green] / a069d7d [lock] / 281fe84(e2e) | 10/10 findings;pytest 721P + ruff 0 + vitest 1091P + build 0 + equity e2e 42P(新 E45);mutation 六連驗過;changelog 判同 ship event 不加條目;self_review_head = 281fe84 |
 
+## 收尾後追記(2026-08-13)
+
+- PR #70 rebase merge → main 4011cda;8.5 沉澱 2bd868e;next-time P2 8eec1f4。
+- **User 過目:通過**(「可以了 沒問題」)— SC-4 / SC-7 雙層驗收(AI 截圖 + user 過目)完成。
+- 追加(user 要求,流程外 🔴 紅先行):preset 擴為 1/2/3/4/5/10/20(4225e34 紅 →
+  b849f42 綠;changelog 同 ship event 併入;vitest 110P / build 0 / equity e2e 42P)。
+- 試用 dev server(:8000 / :5175)已關閉。
+
 ## E 包驗紅紀錄(PLAN R6 驗紅義務)
 
 - E43 mutation:`toHaveText("500")` → `toHaveText("100")` → 紅
