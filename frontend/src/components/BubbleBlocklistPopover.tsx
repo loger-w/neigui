@@ -109,7 +109,7 @@ export function BubbleBlocklistPopover({
         <div>
           {candidates.length === 0 ? (
             <div className="px-3 py-3 text-xs text-ink-dim italic">
-              無符合的當日分點
+              無符合的分點
             </div>
           ) : (
             candidates.map((c) => (
