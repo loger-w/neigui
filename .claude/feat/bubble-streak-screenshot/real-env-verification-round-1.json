@@ -1,0 +1,22 @@
+{
+  "round": 1,
+  "date": "2026-08-13",
+  "env": "dev backend :8000(真 FinMind)+ frontend :5175;chrome-devtools MCP",
+  "results": [
+    {"sc": "SC-1", "verdict": "PASS", "evidence": "evidence/SC-1_api-edges-and-payload.md(happy shape / 422×2 / /bubble 零改動)"},
+    {"sc": "SC-4a", "verdict": "PASS", "evidence": "screenshots/SC-4_1day.png, SC-4_5day.png — selector 統計行右端、badge「近 5 個交易日累計」、intraday-line 單日有多日無、統計行「近 5 日共 817 個分點」"},
+    {"sc": "SC-4b(1280px)", "verdict": "PASS(帶 P2 保留:中欄 79px 文字折行,功能無損)", "evidence": "screenshots/SC-4_1280px.png — 零橫向溢出、圖區 456px(63% 視高)未壓扁"},
+    {"sc": "SC-4c(430px)", "verdict": "PASS", "evidence": "screenshots/SC-4_mobile.png — emulate 430×900,零溢出、preset 44px 觸控高可點"},
+    {"sc": "SC-7", "verdict": "PASS", "evidence": "evidence/SC-7_download.png(270,976B)+ SC-7_download_w5.png(354,411B,檔名含 _w5);notice 缺席、console 無 error;內容開圖核對正確"},
+    {"sc": "perf(design §6.4)", "verdict": "PASS", "evidence": "screenshots/SC-perf_3481-20d.png — 3481×20日(818 分點/206k rows payload):最長 long task 48.8ms < 1000ms;>50ms task 0 個;右欄虛擬化僅 15 列;→ preset 維持 [1,3,5,10,20] 不降檔"},
+    {"sc": "payload(edge 7)", "verdict": "超標(18.1MB > 10MB)→ 依 design §6.3 記 next-time slim 化(降檔救不了:10 日仍 12.8MB);gzip wire ~2MB 級當下可用", "evidence": "evidence/SC-1_api-edges-and-payload.md"},
+    {"sc": "regression(a) 單日選取/明細", "verdict": "PASS", "evidence": "screenshots/REG_single-day-select.png"},
+    {"sc": "regression(b) ChipBrokersPanel windowDays 獨立", "verdict": "PASS", "evidence": "screenshots/REG_brokers-window.png — 切 20 日不影響泡泡 5 日"}
+  ],
+  "console": "僅既有 favicon 404 噪音;無 JS error / React warning",
+  "notes": [
+    "3481 上游資料含 3 個亂碼分點名(?亞 等)— 既有資料問題非本次引入",
+    "量測方法論:long task 必須用真實 input 派送;evaluate_script 內 .click() 會把注入函式+渲染+GC 併成假 1129ms task(首錄踩到,已重錄)",
+    "resize_page 下限 500px;<500 用 emulate(會重載清 state)— 候選沉澱 frontend-conventions"
+  ]
+}

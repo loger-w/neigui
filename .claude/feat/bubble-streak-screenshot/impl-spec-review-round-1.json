@@ -1,0 +1,20 @@
+{
+  "review": "impl-spec-review",
+  "round": 1,
+  "reviewer": "impl-spec-reviewer (opus)",
+  "date": "2026-08-13",
+  "findings_total": 9,
+  "accepted_p0": 1,
+  "dispositions": {
+    "R1": {"severity": "P0", "disposition": "accepted", "note": "Props 改 optional + 預設(days=1 / onDaysChange 缺席不渲染 selector / windowMeta default null),既有 30+ 測試 render 不動"},
+    "R2": {"severity": "P1", "disposition": "accepted", "note": "selectors.ts 改 regex 錨定 /^設為 N 日$/(exact 欄位是 no-op),呼叫端零改動"},
+    "R3": {"severity": "P1", "disposition": "accepted", "note": "svg 選擇器改 svg[width][height](排除 loading spinner);補容器尺寸 0 測試"},
+    "R4": {"severity": "P1", "disposition": "accepted", "note": "App.test.tsx 補 intraday gate + bubbleDays 不重置兩 case"},
+    "R5": {"severity": "P1", "disposition": "accepted", "note": "popover 文案拆兩 commit([red]/[green] 配對)"},
+    "R6": {"severity": "P2", "disposition": "accepted", "note": "e2e 單 commit 不掛 TDD tag + covered-by-implementation + mutation 驗紅義務"},
+    "R7": {"severity": "P2", "disposition": "accepted", "note": "state 名定 screenshotNotice,design R10 段殘留名作廢"},
+    "R8": {"severity": "P2", "disposition": "accepted", "note": "App refresh() 對 intraday 加 bubbleDays===1 gate"},
+    "R9": {"severity": "P2", "disposition": "accepted", "note": "rootFont fallback 16px;測試顯式設 20px 鎖縮放情境"}
+  },
+  "exit": "固定 1 輪;accepted 全修入 PLAN.md,進 Phase 3"
+}

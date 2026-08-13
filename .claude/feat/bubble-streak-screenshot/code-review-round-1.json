@@ -1,0 +1,27 @@
+{
+  "review": "code-review(自評)",
+  "round": 1,
+  "lenses": ["correctness(opus)", "spec 對照 + test gap(opus)"],
+  "date": "2026-08-13",
+  "diff": "review-diff.txt(da71ce1..112a766,21 檔 +1871)",
+  "findings": {
+    "P1": [
+      {"id": "BW-CACHE-PARTIAL-PERSIST", "disposition": "accepted", "fix": "部分日失敗的聚合不寫永久 cache(len(bubbles)==len(trading_dates) 才寫);紅測試:partial 後第二次呼叫重 fan-out"},
+      {"id": "SC2-DEDUP-KEY-NO-TEST", "disposition": "accepted", "fix": "移植 test_brokers_window 併發 refresh dedup 測試(lock test + mutation 抽驗)"}
+    ],
+    "P2": [
+      {"id": "E43-CIRCLE-ASSERTION-INERT", "disposition": "accepted", "fix": "circle 計數 scope 到泡泡圖 svg(隱藏 overview 子樹的 circle 恆真)"},
+      {"id": "COPY-DAY-SCOPED-EMPTY-HINT / SC5-COPY-TODAY-LEFTOVER", "disposition": "accepted(兩 lens 重複命中)", "fix": "BubbleChartSvg 加 optional days prop,emptyHint days>1 分流(days=1 bit-for-bit 保白名單);vitest 鎖"},
+      {"id": "E44-ANNOTATION-BRANCH-UNCOVERED", "disposition": "accepted", "fix": "e2e 補多日截圖 download(_w5 + size>0 + notice 缺席)— annotation/CJK serialize 分支入真瀏覽器覆蓋"},
+      {"id": "AGG-NAME-TO-ID-AMBIGUITY", "disposition": "accepted", "fix": "name_to_id 衝突偵測(同名第二個非空 id → 移除對映 + warning)+ key namespace 分離;pytest 案例 A/B"},
+      {"id": "SCREENSHOT-NOTICE-LIFECYCLE", "disposition": "accepted", "fix": "notice 隨 [days, bubbleData] effect 自癒清除;!bubbleData 註明型別收窄用途"},
+      {"id": "SC4-PLACEMENT-DEVIATION-UNRECORDED", "disposition": "accepted(main session 文件回寫)", "fix": "progress.md 關 blocker 段 + brainstorm SC-4 amendment(落點改統計行右端)"},
+      {"id": "BACKEND-EDGE-TEST-GAPS", "disposition": "accepted", "fix": "移植 anchor 截斷測試 + today TTL 兩態測試(lock)"},
+      {"id": "WHITELIST3-NO-TEST", "disposition": "accepted", "fix": "App.test 補 windowDays 與 bubbleDays 互不影響(lock)"},
+      {"id": "ANNOTATION-COORD-COUPLING", "disposition": "accepted", "fix": "chip-bubble-svg export PADDING,bubble-screenshot 引用導出座標;vitest 斷導出值"}
+    ]
+  },
+  "p2_summary": "10 條 P2:文案分流殘漏 ×1(雙 lens 重複)、e2e 鑑別力 ×2、聚合強健化 ×1、notice 生命週期 ×1、測試缺口 ×3、常數耦合 ×1、文件回寫 ×1;無疑似行為級遺漏",
+  "refuted": [],
+  "next": "fix 波 dispatch(backend+frontend+e2e 單包);完成後記 self_review_head"
+}
