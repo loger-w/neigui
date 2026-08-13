@@ -423,6 +423,9 @@ export function ChipBubbleView({
     // 也是 svg(無 width/height attr),裸 querySelector("svg") 在載入視窗期
     // 會誤抓 spinner 去轉圖。
     const svg = bubbleRef.current?.querySelector<SVGSVGElement>("svg[width][height]");
+    // `!bubbleData` 在此純為型別收窄(下面要讀 bubbleData.date)—— 截圖鈕本身
+    // 由 `bubbleData &&` gate 住,執行期不會是 null。真正會踩到這條的是
+    // `!svg`(ResizeObserver 尚未回報尺寸的視窗期)。
     if (!svg || !bubbleData) {
       // [R24] 有資料但容器尺寸未回報(ResizeObserver 視窗期)也不靜默。
       setScreenshotNotice("圖表尚未就緒,請稍候再試");
@@ -450,6 +453,14 @@ export function ChipBubbleView({
       setScreenshotNotice("截圖失敗,請重試");
     }
   }, [bubbleData, symbol, days, windowMeta]);
+
+  // [review-1 SCREENSHOT-NOTICE-LIFECYCLE] 截圖提示是暫態回饋,不是狀態顯示:
+  // 天數切換 / 資料刷新後畫面已是另一張圖,舊的「截圖失敗」「圖表尚未就緒」
+  // 還掛在 header 上會被讀成「現在這張也壞了」。換股清除由 [symbol] effect
+  // 負責(白名單 4 那條 deps 不動),這裡只補 [days, bubbleData]。
+  useEffect(() => {
+    setScreenshotNotice(null);
+  }, [days, bubbleData]);
 
   const brushSummary = useMemo(() => {
     if (!brushRange || !bubbleData) return null;
@@ -746,6 +757,7 @@ export function ChipBubbleView({
               onYBrush={isMobile ? undefined : handleYBrush}
               brushRange={brushRange}
               priceRange={rangeActiveForFilter ? brushRange : null}
+              days={days}
               soloBrokerId={activeSolo?.id ?? null}
             />
           ) : null}

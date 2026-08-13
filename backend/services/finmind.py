@@ -868,12 +868,25 @@ class FinMindClient:
             trading_dates=trading_dates,
             bubbles=bubbles,
         )
-        # Cache write 是最佳化不是正確性需求:磁碟滿 / 唯讀時聚合結果仍有效,
-        # 沒有這層 guard 會讓 atomic_write_json 的 OSError 把請求變成 500。
-        try:
-            self._write_cache_v(cache_key, result, _CACHE_VERSION_BUBBLE_W)
-        except OSError as exc:
-            logger.warning("bubble_window cache write failed for %s: %s", cache_key, exc)
+        # 只有「每個交易日都拿到 payload」才寫 cache。部分日失敗的降級結果照樣
+        # 回給呼叫端(可用性優先),但不得固化 —— 過去日的 aggregate cache 無
+        # TTL,一次上游抽風會被永久記成該 (symbol, date, days) 的答案,使用者
+        # 只能靠手動重新整理才逃得出來。空 trades 日是正常結果(停牌 / 無成交),
+        # 算完整。
+        if len(bubbles) == len(trading_dates):
+            # Cache write 是最佳化不是正確性需求:磁碟滿 / 唯讀時聚合結果仍有效,
+            # 沒有這層 guard 會讓 atomic_write_json 的 OSError 把請求變成 500。
+            try:
+                self._write_cache_v(cache_key, result, _CACHE_VERSION_BUBBLE_W)
+            except OSError as exc:
+                logger.warning("bubble_window cache write failed for %s: %s", cache_key, exc)
+        else:
+            logger.warning(
+                "bubble_window partial result not cached for %s: %d/%d days fetched",
+                cache_key,
+                len(bubbles),
+                len(trading_dates),
+            )
         return result
 
     async def fetch_broker_history(
@@ -2480,6 +2493,10 @@ def _aggregate_bubble_window(
     - broker_id 可能為空字串(fetch_chip_bubble 的 `r.get(..., "")`)。同一個
       分點「某日缺 id、另日有 id」不得分裂成兩列 → 先掃一輪建 name → 最新非空
       id 的對映,第二輪用正規化後的 id 當 key;id 全程缺席才退回 name。
+      對映歧義(同一 name 出現兩個不同非空 id)→ 該 name 整條移出對映並
+      warning:寧可多分一列(缺 id 那筆自成一列),也不把 B 的量錯算到 A 頭上。
+    - key 帶來源標籤("id" / "name"):兩者共用同一個 namespace 時,「名稱恰為
+      9600 的無 id 分點」會跟「broker_id = 9600 的分點」撞成同一列。
     - actual_days = 有資料的日數:fetch 失敗**或空 trades** 皆不計。停牌 /
       無成交日 FinMind 回 200 + trades:[](不 raise),比 HTTP 失敗常見得多,
       算進去會讓前端「近 N 日累計」的實際樣本數失真。顯式偏離
@@ -2487,19 +2504,40 @@ def _aggregate_bubble_window(
       calendar 嘗試日(除錯可對照)。
     - trades 排序 (price, -(buy+sell)) — deterministic,前端自行重排不依賴此序。
     """
-    # pass 1:name → 最新非空 broker_id(ascending 掃,後日蓋前日)
+    # pass 1:name → 最新非空 broker_id(ascending 掃,後日蓋前日);
+    # 同名對到兩個不同 id = 對映不可用,整條移除(ambiguous 記在旁邊,
+    # 之後再出現同名也不得重新建立對映)。
     name_to_id: dict[str, str] = {}
+    ambiguous_names: set[str] = set()
     for b in bubbles:
         for t in b.get("trades", []):
-            if t["broker_id"]:
-                name_to_id[t["broker"]] = t["broker_id"]
+            if not t["broker_id"]:
+                continue
+            name = t["broker"]
+            if name in ambiguous_names:
+                continue
+            prev = name_to_id.get(name)
+            if prev is not None and prev != t["broker_id"]:
+                ambiguous_names.add(name)
+                del name_to_id[name]
+                logger.warning(
+                    "bubble_window ambiguous broker name %r maps to both %r and %r "
+                    "for %s — name→id 對映停用,缺 id 的成交自成一列",
+                    name,
+                    prev,
+                    t["broker_id"],
+                    symbol,
+                )
+                continue
+            name_to_id[name] = t["broker_id"]
 
-    # pass 2:key = (正規化 id, price);id 全程缺席才退 name
-    acc: dict[tuple[str, float], dict] = {}
+    # pass 2:key = ("id", 正規化 id, price);id 全程缺席(或名稱歧義)才退
+    # ("name", broker, price)。來源標籤讓 id 與 name 兩個 namespace 不互撞。
+    acc: dict[tuple[str, str, float], dict] = {}
     for b in bubbles:
         for t in b.get("trades", []):
             norm_id = t["broker_id"] or name_to_id.get(t["broker"], "")
-            key = (norm_id or t["broker"], t["price"])
+            key = ("id", norm_id, t["price"]) if norm_id else ("name", t["broker"], t["price"])
             slot = acc.get(key)
             if slot is None:
                 acc[key] = {**t, "broker_id": norm_id}
