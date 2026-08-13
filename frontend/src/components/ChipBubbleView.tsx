@@ -1019,7 +1019,7 @@ function DetailPanel({
 // 1-60 自由輸入面(不適用)且被籌碼總覽以 hidden 留在 DOM,改共用元件會擴大
 // 白名單風險。aria-label 冠「泡泡圖」前綴 + data-testid scope:RangeSelector
 // 已占用「設為 N 日」,1/10/20 三值否則會撞名(design §3 R3)。
-const BUBBLE_DAYS_PRESETS: readonly number[] = [1, 3, 5, 10, 20] as const;
+const BUBBLE_DAYS_PRESETS: readonly number[] = [1, 2, 3, 4, 5, 10, 20] as const;
 
 function BubbleDaysSelector({
   value,

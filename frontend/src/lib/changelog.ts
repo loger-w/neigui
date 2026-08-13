@@ -46,7 +46,7 @@ export const CHANGELOG: VersionEntry[] = [
       {
         kind: "feature",
         scope: "equity",
-        text: "泡泡圖新增多日累計視圖:可切 1 / 3 / 5 / 10 / 20 個交易日,分點買賣張數依所選天數累計呈現,圖上並標示目前累計的交易日數",
+        text: "泡泡圖新增多日累計視圖:可切 1〜5 / 10 / 20 個交易日,分點買賣張數依所選天數累計呈現,圖上並標示目前累計的交易日數",
       },
       {
         kind: "feature",
