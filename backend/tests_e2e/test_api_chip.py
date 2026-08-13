@@ -50,3 +50,65 @@ async def test_chip_history_shape(client):
     body = r.json()
     candles = body.get("candles", [])
     assert len(candles) >= 50, f"K-line history too short: {len(candles)} rows"
+
+
+async def test_chip_bubble_window_shape(client):
+    """SC-1 contract:bubble_window payload = ChipBubbleData 超集。
+    痛點:前端 ChipBubbleWindowData extends ChipBubbleData —— 少任一欄
+    (trades 元素的 broker_id / price)前端泡泡圖直接空白。"""
+    r = await client.get("/api/chip/2330/bubble_window?date=2026-06-26&days=5")
+    assert r.status_code == 200
+    body = r.json()
+    for key in ("symbol", "date", "fetched_at", "trades",
+                "window_days", "trading_dates", "actual_days"):
+        assert key in body, f"bubble_window payload missing {key}: {sorted(body)}"
+    assert body["window_days"] == 5
+    assert body["trades"], "fixture 應有 3 個分點,空 trades = fake fixture 沒接到"
+    for key in ("broker", "broker_id", "price", "buy", "sell"):
+        assert key in body["trades"][0], f"trade row missing {key}: {body['trades'][0]}"
+
+
+async def test_chip_bubble_window_aggregates_five_days(client):
+    """[R1] 聚合倍數 —— fixture 11 個交易日每日同值(BROKER00x / 1100.0 /
+    買 100 張 / 賣 80 張),5 日窗口全落在覆蓋內 → 同 (broker_id, price) 列
+    的 buy 必為單日 ×5。
+
+    痛點:badge 出現 + 有泡泡在「沒真的切端點」「聚合寫成覆寫而非加總」兩種
+    壞法下都會偽綠;倍數關係是唯一能分辨「真的加總了」的訊號。"""
+    single = await client.get("/api/chip/2330/bubble?date=2026-06-26")
+    assert single.status_code == 200
+    day_row = single.json()["trades"][0]
+
+    r = await client.get("/api/chip/2330/bubble_window?date=2026-06-26&days=5")
+    assert r.status_code == 200
+    body = r.json()
+    win_row = next(
+        t for t in body["trades"]
+        if t["broker_id"] == day_row["broker_id"] and t["price"] == day_row["price"]
+    )
+    assert win_row["buy"] == day_row["buy"] * 5
+    assert win_row["sell"] == day_row["sell"] * 5
+
+
+async def test_chip_bubble_window_trading_dates_and_days_are_honoured(client):
+    """[R21] 同質 fixture 下 ×5 分不出「取錯窗口日」「days 被寫死」——
+    釘 trading_dates 實際日期 + 換 days=3 驗倍數同步變。"""
+    r5 = await client.get("/api/chip/2330/bubble_window?date=2026-06-26&days=5")
+    assert r5.status_code == 200
+    body5 = r5.json()
+    assert body5["trading_dates"] == [
+        "2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26",
+    ]
+    assert body5["actual_days"] == 5
+
+    single = (await client.get("/api/chip/2330/bubble?date=2026-06-26")).json()["trades"][0]
+    r3 = await client.get("/api/chip/2330/bubble_window?date=2026-06-26&days=3")
+    assert r3.status_code == 200
+    body3 = r3.json()
+    assert body3["window_days"] == 3
+    assert body3["trading_dates"] == ["2026-06-24", "2026-06-25", "2026-06-26"]
+    row3 = next(
+        t for t in body3["trades"]
+        if t["broker_id"] == single["broker_id"] and t["price"] == single["price"]
+    )
+    assert row3["buy"] == single["buy"] * 3
