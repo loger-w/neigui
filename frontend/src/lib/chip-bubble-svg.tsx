@@ -823,21 +823,26 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
         />
       )}
 
-      {/* Bubbles — no per-element event handlers; overlay rect does hit testing */}
-      {renderBubbles.map((b) => (
-        <circle
-          key={b.key}
-          cx={b.cx}
-          cy={b.cy}
-          r={b.r}
-          fill={b.fill}
-          stroke={b.stroke}
-          strokeWidth={b.strokeWidth}
-          data-broker-id={b.brokerId}
-          data-solo={b.solo ? "true" : undefined}
-          pointerEvents="none"
-        />
-      ))}
+      {/* Bubbles — no per-element event handlers; overlay rect does hit testing。
+          data-testid 是 e2e 的計數錨點:page 全域的 `svg circle` 會數到 hidden
+          的籌碼總覽分頁子樹裡的 circle,泡泡一顆都沒畫時仍恆真(E43 假綠)。
+          group 本身不帶 pointer-events / transform,純錨點,不影響既有行為。 */}
+      <g data-testid="bubble-circles">
+        {renderBubbles.map((b) => (
+          <circle
+            key={b.key}
+            cx={b.cx}
+            cy={b.cy}
+            r={b.r}
+            fill={b.fill}
+            stroke={b.stroke}
+            strokeWidth={b.strokeWidth}
+            data-broker-id={b.brokerId}
+            data-solo={b.solo ? "true" : undefined}
+            pointerEvents="none"
+          />
+        ))}
+      </g>
 
       {/* Empty-state hint — 分點過濾 or price-range filter 打空時顯示。
           C10 (🔴 Item 3): priceRange 疊加後可能 0 bubble,需 fallback 提示。 */}
