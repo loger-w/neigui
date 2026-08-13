@@ -111,6 +111,25 @@ async def get_chip_brokers_window(
     )
 
 
+@router.get("/api/chip/{symbol}/bubble_window")
+async def get_chip_bubble_window(
+    symbol: str,
+    request: Request,
+    date: str = Query(default=""),
+    days: int = Query(default=5, ge=2, le=20),
+    refresh: bool = Query(default=False),
+) -> dict:
+    """近 N 個交易日的 (分點, 價位) 累計泡泡資料。
+
+    `ge=2`:單日視圖走既有 `/bubble`,前端不打此端點(days=1 路徑保持 bit-for-bit
+    不變);`le=20` 是 payload 上限。越界由 FastAPI 自動 422。
+    """
+    d = date or _today()
+    return await run_with_disconnect(
+        request, get_finmind().fetch_bubble_window(symbol, d, days, refresh)
+    )
+
+
 @router.get("/api/chip/{symbol}/broker_history")
 async def get_chip_broker_history(
     symbol: str,
