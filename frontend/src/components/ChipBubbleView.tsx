@@ -49,6 +49,16 @@ interface Props {
    *  (顯式意圖優先於舊設定,持久生效)+ R10 提示;當日無成交 → 維持選中 +
    *  空狀態。name 由 caller 帶入 — 無成交時 trades 內查不到名稱。 */
   focusRequest?: { brokerId: string; name: string; seq: number } | null;
+  /** SC-4:目前天數視窗(1 = 當日,>1 = 近 N 個交易日累計)。**「幾日」呈現的
+   *  單一來源**(design §3 R22)— badge 的「實際 X 日」註記才看 windowMeta。
+   *  未提供 → 1(既有 caller 行為 bit-for-bit)。 */
+  days?: number;
+  /** SC-4:天數切換 callback。未提供 → 不渲染 BubbleDaysSelector
+   *  (impl-review R1:無 handler 的選擇器等於死鈕)。 */
+  onDaysChange?: (d: number) => void;
+  /** SC-4:多日聚合的視窗 meta(來自 useChipBubble)。null = 單日模式或視窗
+   *  資料尚未回(載入視窗期)→ 不顯 badge。 */
+  windowMeta?: { windowDays: number; actualDays: number } | null;
 }
 
 // F12: surface every broker who traded today, including 1-張 ones. The
@@ -70,6 +80,9 @@ export function ChipBubbleView({
   onJumpToOverview,
   loading,
   focusRequest,
+  days = 1,
+  onDaysChange,
+  windowMeta = null,
 }: Props) {
   // bubble-multi-broker(SC-1):有序多選(≤6),id = broker_id 對齊 App.tsx
   // selectedBrokerIds 契約;name 存 state(分點自 trades 消失時 chip 不失效);
@@ -567,7 +580,8 @@ export function ChipBubbleView({
                 )
               ) : (
                 <span className="text-xs text-ink-dim">
-                  {brushRange ? "此區間" : "今日共"} <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
+                  {/* SC-5 R22:「幾日」單一來源 = days prop(即時反映選擇)。 */}
+                  {brushRange ? "此區間" : days > 1 ? `近 ${days} 日共` : "今日共"} <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
                 </span>
               )}
               {selected.length > 0 && (
@@ -605,6 +619,10 @@ export function ChipBubbleView({
           {/* C10 (🟢 Item 4 + 5):手動輸入區間 trigger + Help '?' icon 靠右
               (ml-auto:grid cell 與 mobile flex-col 兩形態都推右,review R4)。 */}
           <div className="ml-auto flex items-center gap-2 shrink-0">
+            {/* SC-4:天數視窗 preset 放工具欄列最左(design §3 R3/R25b)。 */}
+            {onDaysChange && (
+              <BubbleDaysSelector value={days} onChange={onDaysChange} />
+            )}
             <BubbleBlocklistPopover
               trades={bubbleData?.trades ?? []}
               blocked={blocked}
@@ -674,10 +692,23 @@ export function ChipBubbleView({
                 className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
               >
                 <div className="bg-bg-deep/90 border border-line-strong px-4 py-2 rounded shadow text-sm text-ink-muted">
-                  〈{focusedBroker.name}〉該分點當日無成交
+                  〈{focusedBroker.name}〉該分點{days > 1 ? `近 ${days} 日` : "當日"}無成交
                 </div>
               </div>
             )}
+          {/* SC-4 累計 badge:windowMeta 有值(= 多日資料已回)才顯;
+              pointer-events-none 不擋泡泡互動。「實際 X 日」= 部分日 fetch
+              失敗 / 空成交 / 歷史不足。 */}
+          {windowMeta !== null && (
+            <div
+              data-testid="bubble-window-badge"
+              className="absolute top-2 left-2 z-30 text-xs text-ink-muted bg-bg-deep/90 px-2 py-1 border border-line-strong rounded shadow pointer-events-none"
+            >
+              近 {windowMeta.windowDays} 個交易日累計
+              {windowMeta.actualDays < windowMeta.windowDays &&
+                `(實際 ${windowMeta.actualDays} 日)`}
+            </div>
+          )}
           {loading && symbol && (
             <div
               data-testid="bubble-loading-badge"
@@ -897,6 +928,50 @@ function DetailPanel({
           onSortChange={onSellSortChange}
         />
       </div>
+    </div>
+  );
+}
+
+// SC-4(feat/bubble-streak-screenshot):泡泡圖天數視窗 preset。上限 20 對齊
+// 後端 `days: int = Query(ge=2, le=20)`;不共用 ui/RangeSelector —— 那顆帶
+// 1-60 自由輸入面(不適用)且被籌碼總覽以 hidden 留在 DOM,改共用元件會擴大
+// 白名單風險。aria-label 冠「泡泡圖」前綴 + data-testid scope:RangeSelector
+// 已占用「設為 N 日」,1/10/20 三值否則會撞名(design §3 R3)。
+const BUBBLE_DAYS_PRESETS: readonly number[] = [1, 3, 5, 10, 20] as const;
+
+function BubbleDaysSelector({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (d: number) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="泡泡圖天數視窗"
+      data-testid="bubble-days-selector"
+      className="shrink-0 inline-flex items-stretch border border-line-strong rounded overflow-hidden"
+    >
+      {BUBBLE_DAYS_PRESETS.map((n) => {
+        const active = n === value;
+        return (
+          <button
+            key={n}
+            type="button"
+            aria-pressed={active}
+            aria-label={`泡泡圖設為 ${n} 日`}
+            onClick={() => onChange(n)}
+            className={`px-2 py-0.5 text-xs tabular-nums cursor-pointer transition-colors border-r border-line-strong last:border-r-0 pointer-coarse:min-h-11 ${
+              active
+                ? "text-ink border-accent bg-accent/[0.08]"
+                : "text-ink-dim hover:text-ink"
+            }`}
+          >
+            {n}
+          </button>
+        );
+      })}
     </div>
   );
 }
