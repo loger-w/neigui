@@ -206,6 +206,35 @@ describe("api cache", () => {
     expect(url).not.toContain("refresh=");
   });
 
+  it("chipBubbleWindow URL contains date + days + refresh", async () => {
+    const fetchMock = mockFetch({
+      symbol: "2330", date: "2026-06-26", window_days: 5,
+      trading_dates: [], actual_days: 5, fetched_at: "", trades: [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.chipBubbleWindow("2330", "2026-06-26", 5, true);
+    const url = (fetchMock.mock.calls[0]![0] as URL).toString();
+    expect(url).toContain("/api/chip/2330/bubble_window");
+    expect(url).toContain("date=2026-06-26");
+    expect(url).toContain("days=5");
+    expect(url).toContain("refresh=true");
+  });
+
+  it("chipBubbleWindow URL omits refresh when not given", async () => {
+    const fetchMock = mockFetch({
+      symbol: "2330", date: "2026-06-26", window_days: 10,
+      trading_dates: [], actual_days: 10, fetched_at: "", trades: [],
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await api.chipBubbleWindow("2330", "2026-06-26", 10);
+    const url = (fetchMock.mock.calls[0]![0] as URL).toString();
+    expect(url).toContain("/api/chip/2330/bubble_window");
+    expect(url).toContain("days=10");
+    expect(url).not.toContain("refresh=");
+  });
+
   it("clearApiCache empties the cache", async () => {
     const fetchMock = mockFetch(MOCK_HISTORY);
     vi.stubGlobal("fetch", fetchMock);
