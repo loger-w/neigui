@@ -1,16 +1,15 @@
 // feat/bubble-streak-screenshot SC-7(design §4):泡泡圖 SVG → PNG 下載。
 // 零新依賴:XMLSerializer → blob URL → Image → canvas → toBlob。
+import { PADDING } from "./chip-bubble-svg";
 import { CHIP } from "./chip-theme";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-// 窗口標註座標。來源 = chip-bubble-svg.tsx 的 `PADDING = { top: 12, left: 56 }`
-// (未 export,故此處用字面值):x = PADDING.left + 8 = 64、
-// y = PADDING.top + 14 = 26 —— 落在 chart 內區左上,避開 x <= PADDING.left 的
-// 價位 label 帶與第一條 grid 線(design §4 R14/R23)。chip-bubble-svg 的
-// PADDING 若改,這兩個值要跟著改。
-const ANNOTATION_X = 64;
-const ANNOTATION_Y = 26;
+// 窗口標註座標:自 chip-bubble-svg 導出的 PADDING 推導,不抄字面值 ——
+// 落在 chart 內區左上,避開 x <= PADDING.left 的價位 label 帶與第一條
+// grid 線(design §4 R14/R23)。偏移量與圖內的拖曳提示同一組。
+const ANNOTATION_X = PADDING.left + 8;
+const ANNOTATION_Y = PADDING.top + 14;
 const ANNOTATION_FONT_SIZE = "0.75rem";
 
 /** 檔名:單日 `bubble_{symbol}_{date}.png`;多日 `bubble_{symbol}_{date}_w{days}.png`。 */

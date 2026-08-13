@@ -60,7 +60,10 @@ export interface BubbleHoverPayload {
 // Layout constants
 // ---------------------------------------------------------------------------
 
-const PADDING = { top: 12, right: 16, bottom: 32, left: 56 };
+/** 圖表內距。export 是為了讓「疊在圖上的外部標註」(bubble-screenshot 的
+ *  窗口 annotation)能算出同一組座標,而不是抄字面值 —— 抄值的版本在 PADDING
+ *  改動時會靜默飄到價位 label 帶上,只有打開 PNG 才看得出來。 */
+export const PADDING = { top: 12, right: 16, bottom: 32, left: 56 };
 const FONT = CHIP.font;
 const COLOR = {
   buyFill: "rgba(232, 90, 79, 0.45)",
@@ -170,6 +173,10 @@ export interface BubbleChartProps {
    *  軸(prices / volumes)仍用全 trades 計算,filter 後泡泡位置不變,
    *  UX 感受為「淡出」而非「重排」。 */
   priceRange?: { min: number; max: number } | null;
+  /** feat/bubble-streak-screenshot:聚合窗口天數。1(預設)= 單日,文案維持
+   *  「今日…」;>1 = N 日聚合,空狀態文案改「近 N 日…」。圖面空狀態是唯一
+   *  還寫死「今日」的地方,不分流會與 header 的「近 N 日共」自相矛盾。 */
+  days?: number;
   /** SC-3(mod/bubble-chart-ux-polish):單看分點 — 該分點泡泡改 ink 聚焦外框
    *  並 reorder 至最後 render(重合時不被其他選中框遮蓋)。hitTest 用的
    *  bubblesRef 維持原序(平手判定不變)。不傳 / null = 現行為。 */
@@ -210,6 +217,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   onYBrush,
   brushRange,
   priceRange,
+  days = 1,
   soloBrokerId,
 }: BubbleChartProps) {
   // --- All hooks MUST be called before any conditional return ---
@@ -498,10 +506,13 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   const selectedIdSet = new Set(selected.map((b) => b.id));
   const colorIdxById = new Map(selected.map((b) => [b.id, b.colorIdx]));
   // 空狀態 hint:單選維持現行文案(SC-5 零回歸);多選用複數文案。
+  // days > 1 換成窗口文案,與 header 統計行 / 聚焦 badge 同一套講法;
+  // days = 1 的字串維持 bit-for-bit(白名單 1)。
+  const scope = days > 1 ? `近 ${days} 日` : "今日";
   const emptyHint =
     selected.length === 1
-      ? `${selected[0]!.name} 今日無顯著成交量`
-      : "選中分點今日無顯著成交量";
+      ? `${selected[0]!.name} ${scope}無顯著成交量`
+      : `選中分點${scope}無顯著成交量`;
 
   // Matched brokers' trades — computed ONCE and reused by the F2 axis
   // fallback below and the F11 render source further down.
