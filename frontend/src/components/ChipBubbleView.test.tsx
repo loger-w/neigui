@@ -2220,3 +2220,130 @@ describe("ChipBubbleView — SC-7 截圖", () => {
     expect(toPng).toHaveBeenCalledTimes(2);
   });
 });
+
+// [review-1 SCREENSHOT-NOTICE-LIFECYCLE] 截圖提示只在「換股」與「下次成功截圖」
+// 清除。換天數 / 資料刷新後畫面內容已變,舊的「圖表尚未就緒」「截圖失敗」還掛
+// 在 header 上會被讀成「現在這張圖也壞了」。提示是暫態回饋,不是狀態顯示。
+describe("ChipBubbleView — SC-7 截圖提示生命週期(review-1)", () => {
+  const shotBtn = (c: HTMLElement) =>
+    c.querySelector('[data-testid="bubble-screenshot"]') as HTMLButtonElement | null;
+  const shotNotice = (c: HTMLElement) =>
+    c.querySelector('[data-testid="bubble-screenshot-notice"]');
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function renderWithNotice(days: number) {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(screenshotLib, "svgToPngBlob").mockRejectedValue(new Error("boom"));
+    vi.spyOn(screenshotLib, "downloadBlob").mockImplementation(() => {});
+    const data = mkData(trades);
+    const view = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={data}
+        days={days}
+        onDaysChange={vi.fn()}
+      />,
+    );
+    fireEvent.click(shotBtn(view.container)!);
+    await waitFor(() => {
+      if (!shotNotice(view.container)) throw new Error("notice not shown yet");
+    });
+    return view;
+  }
+
+  it("提示顯示後切換天數 → 提示消失", async () => {
+    const { container, rerender } = await renderWithNotice(1);
+    rerender(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(trades)}
+        days={5}
+        onDaysChange={vi.fn()}
+        windowMeta={{ windowDays: 5, actualDays: 5 }}
+      />,
+    );
+    await waitFor(() => {
+      if (shotNotice(container)) throw new Error("notice not cleared on days change");
+    });
+  });
+
+  it("提示顯示後資料刷新(bubbleData 換新物件)→ 提示消失", async () => {
+    const { container, rerender } = await renderWithNotice(1);
+    rerender(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(trades)}
+        days={1}
+        onDaysChange={vi.fn()}
+      />,
+    );
+    await waitFor(() => {
+      if (shotNotice(container)) throw new Error("notice not cleared on data change");
+    });
+  });
+
+  it("同 props 重繪 → 提示留著(不是每次 render 都清)", async () => {
+    const data = mkData(trades);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(screenshotLib, "svgToPngBlob").mockRejectedValue(new Error("boom"));
+    vi.spyOn(screenshotLib, "downloadBlob").mockImplementation(() => {});
+    const { container, rerender } = render(
+      <ChipBubbleView symbol="2330" bubbleData={data} days={1} onDaysChange={vi.fn()} />,
+    );
+    fireEvent.click(shotBtn(container)!);
+    await waitFor(() => {
+      if (!shotNotice(container)) throw new Error("notice not shown yet");
+    });
+    rerender(
+      <ChipBubbleView symbol="2330" bubbleData={data} days={1} onDaysChange={vi.fn()} />,
+    );
+    expect(shotNotice(container)).toBeTruthy();
+  });
+});
+
+// [review-1 COPY-DAY-SCOPED-EMPTY-HINT] days 必須透傳進 BubbleChartSvg,
+// 否則圖面空狀態仍寫「今日」,與 header「近 N 日共」自相矛盾。
+describe("ChipBubbleView — days 透傳給圖面空狀態文案(review-1)", () => {
+  it("days=5 + 聚焦無成交分點 → 圖面 hint 為「近 5 日無顯著成交量」", async () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(trades)}
+        days={5}
+        onDaysChange={vi.fn()}
+        windowMeta={{ windowDays: 5, actualDays: 5 }}
+        focusRequest={{ brokerId: "ZZ9", name: "無成交分點", seq: 1 }}
+      />,
+    );
+    await waitFor(() => {
+      const svg = container.querySelector("svg[width][height]");
+      if (!svg || !(svg.textContent ?? "").includes("無顯著成交量")) {
+        throw new Error("empty hint not rendered yet");
+      }
+    });
+    const svgText = container.querySelector("svg[width][height]")!.textContent ?? "";
+    expect(svgText).toContain("無成交分點 近 5 日無顯著成交量");
+    expect(svgText).not.toContain("今日無顯著成交量");
+  });
+
+  it("days=1(預設)→ 圖面 hint 維持「今日無顯著成交量」", async () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(trades)}
+        focusRequest={{ brokerId: "ZZ9", name: "無成交分點", seq: 1 }}
+      />,
+    );
+    await waitFor(() => {
+      const svg = container.querySelector("svg[width][height]");
+      if (!svg || !(svg.textContent ?? "").includes("無顯著成交量")) {
+        throw new Error("empty hint not rendered yet");
+      }
+    });
+    const svgText = container.querySelector("svg[width][height]")!.textContent ?? "";
+    expect(svgText).toContain("無成交分點 今日無顯著成交量");
+  });
+});

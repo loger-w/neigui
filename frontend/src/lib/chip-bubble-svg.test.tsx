@@ -1010,3 +1010,88 @@ describe("BubbleChartSvg — 每價位量能分布背景層 (SC-1/2/3)", () => {
     expect(Number(bars[0]!.getAttribute("width"))).toBeGreaterThan(0);
   });
 });
+
+// [review-1 COPY-DAY-SCOPED-EMPTY-HINT / SC5-COPY-TODAY-LEFTOVER]
+// 痛點:SC-5 文案分流只改了 ChipBubbleView 的統計行與聚焦 badge,圖面空狀態
+// 仍寫死「今日」。多日模式下選到一個近 N 日都沒成交的分點,畫面會說
+// 「XX 今日無顯著成交量」—— 與 header「近 5 日共」互相打臉。
+// days=1(不傳 / 傳 1)的字串必須 bit-for-bit 不變(白名單 1)。
+describe("BubbleChartSvg — days-scoped 空狀態文案", () => {
+  const subThreshold: BrokerTrade[] = [
+    mkTrade({ broker: "其他甲", broker_id: "X1", price: 100, buy: 1, sell: 1 }),
+  ];
+  const significant: BrokerTrade[] = [
+    mkTrade({ broker: "甲", broker_id: "A1", price: 100, buy: 50, sell: 0 }),
+    mkTrade({ broker: "乙", broker_id: "B1", price: 101, buy: 0, sell: 30 }),
+  ];
+
+  it("days 未傳 → 單選空狀態維持「今日無顯著成交量」(白名單:字串不變)", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={subThreshold}
+        width={400}
+        height={300}
+        selectedBrokers={[sel("NOPE", "找不到的分點", 0)]}
+      />,
+    );
+    expect(container.textContent).toContain("找不到的分點 今日無顯著成交量");
+  });
+
+  it("days=1 → 與未傳 days 同字串", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={subThreshold}
+        width={400}
+        height={300}
+        days={1}
+        selectedBrokers={[sel("NOPE", "找不到的分點", 0)]}
+      />,
+    );
+    expect(container.textContent).toContain("找不到的分點 今日無顯著成交量");
+    expect(container.textContent).not.toContain("近 1 日");
+  });
+
+  it("days=5 單選 → 「XX 近 5 日無顯著成交量」(HintSvg 路徑)", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={subThreshold}
+        width={400}
+        height={300}
+        days={5}
+        selectedBrokers={[sel("NOPE", "找不到的分點", 0)]}
+      />,
+    );
+    expect(container.textContent).toContain("找不到的分點 近 5 日無顯著成交量");
+    expect(container.textContent).not.toContain("今日無顯著成交量");
+  });
+
+  it("days=5 多選 → 「選中分點近 5 日無顯著成交量」(HintSvg 路徑)", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={subThreshold}
+        width={400}
+        height={300}
+        days={5}
+        selectedBrokers={[sel("NOPE1", "沒有甲", 0), sel("NOPE2", "沒有乙", 1)]}
+      />,
+    );
+    expect(container.textContent).toContain("選中分點近 5 日無顯著成交量");
+    expect(container.textContent).not.toContain("今日");
+  });
+
+  it("days=20 單選 + 有量的圖面(inline <text> 路徑)→ 同樣走多日文案", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={significant}
+        width={400}
+        height={300}
+        days={20}
+        selectedBrokers={[sel("NOPE", "找不到的分點", 0)]}
+      />,
+    );
+    // 圖有量(軸畫得出來)但選中分點無泡泡 → 走 bubbles.length === 0 的 <text>
+    expect(container.querySelectorAll("circle")).toHaveLength(0);
+    expect(container.textContent).toContain("找不到的分點 近 20 日無顯著成交量");
+    expect(container.textContent).not.toContain("今日");
+  });
+});
