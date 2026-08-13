@@ -465,8 +465,11 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     );
     // (b) 倍數:同一列張數 = 單日 ×5(核心鑑別訊號)
     await expect(buyVol).toHaveText("500");
-    // (c) 聚合資料仍流進圖表管線(泡泡有畫出來)
-    expect(await page.locator("svg circle").count()).toBeGreaterThan(0);
+    // (c) 聚合資料仍流進圖表管線(泡泡有畫出來)。
+    // [review-1 E43-CIRCLE-ASSERTION-INERT] 必須 scope 到泡泡 group:page 全域
+    // 的 `svg circle` 會數到 hidden 籌碼總覽分頁裡的 circle(K 線 / spinner),
+    // 泡泡一顆都沒畫也恆真 = 這條 assertion 等於沒寫。
+    await expect(page.getByTestId("bubble-circles").locator("circle")).not.toHaveCount(0);
   });
 
   test("E44: 泡泡圖截圖鈕 → 真實下載 PNG(feat/bubble-streak-screenshot SC-8)", async ({ page }) => {
@@ -481,6 +484,32 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await page.getByTestId("bubble-screenshot").click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe("bubble_2330_2026-06-26.png");
+    const file = await download.path();
+    expect(file).toBeTruthy();
+    expect(statSync(file!).size).toBeGreaterThan(0);
+    await expect(page.getByTestId("bubble-screenshot-notice")).toHaveCount(0);
+  });
+
+  test("E45: 多日模式截圖 → 檔名帶 _w5 且 annotation 分支真的跑得完(feat/bubble-streak-screenshot SC-8)", async ({ page }) => {
+    // [review-1 E44-ANNOTATION-BRANCH-UNCOVERED] E44 只走 days=1,serializeSvg
+    // 的 annotation 分支(createElementNS <text> + CJK 內容 → XMLSerializer →
+    // blob → Image decode)在真瀏覽器完全沒被跑過。CJK 序列化 / 編碼出錯會讓
+    // Image.onerror 觸發 → catch → 提示,vitest 那層(jsdom 無 canvas)看不到。
+    // 故此條同時鎖:檔名 _w5 後綴、下載檔非 0 byte、無失敗提示。
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    await page
+      .getByTestId("bubble-days-selector")
+      .getByRole("button", { name: "泡泡圖設為 5 日" })
+      .click();
+    // 聚合資料已上畫面才截圖(截的是多日那張,不是切換前的殘影)
+    await expect(page.getByTestId("bubble-window-badge")).toContainText(
+      "近 5 個交易日累計",
+    );
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByTestId("bubble-screenshot").click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe("bubble_2330_2026-06-26_w5.png");
     const file = await download.path();
     expect(file).toBeTruthy();
     expect(statSync(file!).size).toBeGreaterThan(0);
