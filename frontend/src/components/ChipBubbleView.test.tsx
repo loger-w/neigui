@@ -1817,8 +1817,8 @@ describe("ChipBubbleView — SC-4 天數選擇器 + 累計 badge", () => {
   const badge = (c: HTMLElement) =>
     c.querySelector('[data-testid="bubble-window-badge"]');
 
-  // 測試 1
-  it("渲染 5 個 preset(1/3/5/10/20),目前值 aria-pressed=true 其餘 false", () => {
+  // 測試 1(2026-08-13 user 要求 preset 擴為 1-5/10/20)
+  it("渲染 7 個 preset(1/2/3/4/5/10/20),目前值 aria-pressed=true 其餘 false", () => {
     const { container } = render(
       <ChipBubbleView
         symbol="2330"
@@ -1832,9 +1832,9 @@ describe("ChipBubbleView — SC-4 天數選擇器 + 累計 badge", () => {
     expect(group!.getAttribute("role")).toBe("group");
     expect(group!.getAttribute("aria-label")).toBe("泡泡圖天數視窗");
     const btns = dayButtons(container);
-    expect(btns.map((b) => b.textContent)).toEqual(["1", "3", "5", "10", "20"]);
+    expect(btns.map((b) => b.textContent)).toEqual(["1", "2", "3", "4", "5", "10", "20"]);
     expect(dayButton(container, 5).getAttribute("aria-pressed")).toBe("true");
-    for (const n of [1, 3, 10, 20]) {
+    for (const n of [1, 2, 3, 4, 10, 20]) {
       expect(dayButton(container, n).getAttribute("aria-pressed")).toBe("false");
     }
   });
