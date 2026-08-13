@@ -10,6 +10,7 @@ Strategy(結構抄 test_brokers_window.py):
 """
 from __future__ import annotations
 
+import logging
 from datetime import date
 from unittest.mock import AsyncMock, patch
 
@@ -182,6 +183,104 @@ def test_aggregate_actual_days_excludes_empty_trade_days():
     )
     assert out["actual_days"] == 2
     assert out["trades"][0]["buy"] == 3
+
+
+# ---------------------------------------------------------------------------
+# [review-1 AGG-NAME-TO-ID-AMBIGUITY] name → id 對映的歧義處理
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_ambiguous_name_two_ids_does_not_merge_empty_id_day(caplog):
+    """案例 A:同一名稱對到兩個不同 broker_id → 該 name 的對映不可用。
+
+    痛點:name_to_id 是「後日蓋前日」的單值表,同名兩 id 時只會留最後一個,
+    之後那些「缺 id」的成交會被無聲併進最後那個 id 的列(錯併 = 假的分點行為)。
+    寧可不併(多一列)也不錯併(把 A2 的量算到 A1 頭上)。
+    """
+    from services.finmind import _aggregate_bubble_window
+
+    bubbles = [
+        _bubble(
+            "2026-06-25",
+            [_trade("甲分點", "A1", 1100.0, 10, 0), _trade("甲分點", "A2", 1100.0, 20, 0)],
+        ),
+        _bubble("2026-06-26", [_trade("甲分點", "", 1100.0, 5, 0)]),
+    ]
+    with caplog.at_level(logging.WARNING, logger="services.finmind"):
+        out = _aggregate_bubble_window(
+            symbol="2330",
+            date_str="2026-06-26",
+            days=2,
+            trading_dates=["2026-06-25", "2026-06-26"],
+            bubbles=bubbles,
+        )
+    # 三列:A1 / A2 / 缺 id 那筆自成一列(不錯併)
+    assert len(out["trades"]) == 3
+    assert sorted(t["buy"] for t in out["trades"]) == [5, 10, 20]
+    by_id = {t["broker_id"]: t for t in out["trades"]}
+    assert by_id["A1"]["buy"] == 10
+    assert by_id["A2"]["buy"] == 20
+    assert by_id[""]["buy"] == 5
+    # 歧義要出現在 log(靜默降級 = 之後查不出量為何對不上)
+    assert any("甲分點" in r.message for r in caplog.records if r.levelno >= logging.WARNING)
+
+
+def test_aggregate_renamed_broker_with_missing_id_day_stays_split():
+    """案例 B(characterization):分點改名 + 舊名那天缺 id → 分裂為兩列。
+
+    現行為固定:name→id 對映只從「有 id 的成交」建表,舊名那天既無 id、
+    新表也沒有舊名的 entry,無從得知兩者是同一分點。此測試把這個已知極限
+    釘住 —— 之後若有人加「名稱模糊比對」而讓它悄悄合併,這裡會紅並強迫
+    重新討論(合併準確度 vs 錯併風險)。
+    """
+    from services.finmind import _aggregate_bubble_window
+
+    out = _aggregate_bubble_window(
+        symbol="2330",
+        date_str="2026-06-26",
+        days=2,
+        trading_dates=["2026-06-25", "2026-06-26"],
+        bubbles=[
+            _bubble("2026-06-25", [_trade("元大舊名", "", 1100.0, 10, 0)]),
+            _bubble("2026-06-26", [_trade("元大新名", "B1", 1100.0, 5, 0)]),
+        ],
+    )
+    assert len(out["trades"]) == 2
+    by_name = {t["broker"]: t for t in out["trades"]}
+    assert by_name["元大舊名"]["buy"] == 10
+    assert by_name["元大舊名"]["broker_id"] == ""
+    assert by_name["元大新名"]["buy"] == 5
+    assert by_name["元大新名"]["broker_id"] == "B1"
+
+
+def test_aggregate_name_equal_to_other_broker_id_does_not_collide():
+    """案例 C:A 分點的**名稱**恰等於 B 分點的 **broker_id** → 不得互撞。
+
+    痛點:key 是 `(norm_id or broker, price)`,id 與 name 共用同一個 namespace,
+    所以「名稱 9600 的無 id 分點」與「id 9600 的分點」會撞成同一列(量相加)。
+    key 加上來源標籤(id / name)後兩者永遠分開。
+    """
+    from services.finmind import _aggregate_bubble_window
+
+    out = _aggregate_bubble_window(
+        symbol="2330",
+        date_str="2026-06-26",
+        days=1,
+        trading_dates=["2026-06-26"],
+        bubbles=[
+            _bubble(
+                "2026-06-26",
+                [
+                    _trade("9600", "", 1100.0, 10, 0),
+                    _trade("元大", "9600", 1100.0, 20, 0),
+                ],
+            ),
+        ],
+    )
+    assert len(out["trades"]) == 2
+    by_name = {t["broker"]: t for t in out["trades"]}
+    assert by_name["9600"]["buy"] == 10
+    assert by_name["元大"]["buy"] == 20
 
 
 # ---------------------------------------------------------------------------
@@ -368,6 +467,66 @@ async def test_fetch_bubble_window_cache_write_failure_still_returns_result(monk
     out = await client.fetch_bubble_window("2330", "2026-06-26", days=2)
     assert out["symbol"] == "2330"
     assert out["actual_days"] == 1
+
+
+# ---------------------------------------------------------------------------
+# [review-1] fix 波補測:降級結果不進 cache / dedup key / anchor / today TTL
+# ---------------------------------------------------------------------------
+
+
+async def test_fetch_bubble_window_partial_failure_is_not_cached(monkeypatch):
+    """[BW-CACHE-PARTIAL-PERSIST] 部分日 fetch 失敗的降級聚合**不得**寫進永久
+    cache —— 那會讓「某天上游抽風」被固化成該 (symbol, date, days) 的長期答案
+    (過去日的 cache 無 TTL,重新整理以外永不復原)。
+
+    降級結果照樣回給呼叫端(可用性優先),但下一次呼叫必須重新 fan-out。
+    """
+    from services.finmind import FinMindClient
+    import services.trading_calendar as tc
+
+    dates = ["2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26"]
+    monkeypatch.setattr(tc, "get_trading_days", _mock_trading_calendar(dates))
+
+    client = FinMindClient()
+
+    async def fake_bubble(symbol: str, d: str, refresh: bool) -> dict:
+        if d == "2026-06-24":
+            raise RuntimeError("upstream blip")
+        return _bubble(d, [_trade("甲", "A", 1100.0, 10, 8)])
+
+    client.fetch_chip_bubble = AsyncMock(side_effect=fake_bubble)
+
+    out1 = await client.fetch_bubble_window("2330", "2026-06-26", days=5)
+    assert out1["actual_days"] == 4
+    assert client.fetch_chip_bubble.await_count == 5
+    # 第二次呼叫:cache 沒被寫 → 重新 fan-out(await 次數翻倍)
+    out2 = await client.fetch_bubble_window("2330", "2026-06-26", days=5)
+    assert client.fetch_chip_bubble.await_count == 10
+    assert out2["actual_days"] == 4
+
+
+async def test_fetch_bubble_window_complete_window_is_cached(monkeypatch):
+    """對照組:全日成功(含「回 200 + trades:[]」的無成交日)= 完整結果,
+    照常寫 cache,第二次呼叫不再 fan-out。空 trades 不是失敗。"""
+    from services.finmind import FinMindClient
+    import services.trading_calendar as tc
+
+    dates = ["2026-06-24", "2026-06-25", "2026-06-26"]
+    monkeypatch.setattr(tc, "get_trading_days", _mock_trading_calendar(dates))
+
+    client = FinMindClient()
+
+    async def fake_bubble(symbol: str, d: str, refresh: bool) -> dict:
+        if d == "2026-06-25":
+            return _bubble(d, [])
+        return _bubble(d, [_trade("甲", "A", 1100.0, 10, 8)])
+
+    client.fetch_chip_bubble = AsyncMock(side_effect=fake_bubble)
+
+    await client.fetch_bubble_window("2330", "2026-06-26", days=3)
+    assert client.fetch_chip_bubble.await_count == 3
+    await client.fetch_bubble_window("2330", "2026-06-26", days=3)
+    assert client.fetch_chip_bubble.await_count == 3
 
 
 # ---------------------------------------------------------------------------

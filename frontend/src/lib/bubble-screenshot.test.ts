@@ -7,6 +7,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { bubbleScreenshotFilename, serializeSvg } from "./bubble-screenshot";
+import { PADDING } from "./chip-bubble-svg";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -79,6 +80,16 @@ describe("serializeSvg", () => {
       annotation: "近 5 個交易日累計(實際 3 日)",
     });
     expect(out).toContain("近 5 個交易日累計(實際 3 日)");
+  });
+
+  // [review-1 ANNOTATION-COORD-COUPLING] 標註座標原本是抄自 chip-bubble-svg 的
+  // 字面值(64 / 26)+ 一行「PADDING 若改要跟著改」的註解。註解攔不住改動:
+  // 有人調 PADDING.left 後標註會靜默飄到價位 label 帶上,PNG 才看得出來。
+  // 改成引用導出的 PADDING,這條測試同時鎖住「引用」與「偏移量」。
+  it("annotation <text> 座標 = 導出的 PADDING 偏移(不得回退成硬編值)", () => {
+    const out = serializeSvg(mkSvg(), { annotation: "近 5 個交易日累計" });
+    expect(out).toContain(`x="${PADDING.left + 8}"`);
+    expect(out).toContain(`y="${PADDING.top + 14}"`);
   });
 
   it("不動原 svg(clone 操作)", () => {
