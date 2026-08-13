@@ -1,0 +1,26 @@
+{
+  "review": "design-review",
+  "round": 1,
+  "reviewer": "design-reviewer (opus)",
+  "date": "2026-08-13",
+  "findings_total": 15,
+  "dispositions": {
+    "R1": {"severity": "P0", "disposition": "accepted", "note": "fixture 事實已快篩證實(11 日 × 3 rows 同值);E43 改倍數 assertion(單日 100 張 → 5 日 500 張)+ contract test 強化 + partial-window 覆蓋改由 pytest 承擔"},
+    "R2": {"severity": "P1", "disposition": "accepted", "note": "採 brainstorm 語意:actual_days = len(成功 fetch 日);偏離 brokers_window 語意於 design 明記;測試 8 補 actual_days==4"},
+    "R3": {"severity": "P1", "disposition": "accepted", "note": "aria-label 改「泡泡圖設為 N 日」+ 測試 selector 一律 scope 到 bubble-days-selector"},
+    "R4": {"severity": "P1", "disposition": "accepted", "note": "補聚合 payload 下明細列數/統計數字 vitest case"},
+    "R5": {"severity": "P1", "disposition": "accepted", "note": "serializeSvg 寫入 root font-size 到 clone;vitest 斷根 svg 帶 font-size"},
+    "R6": {"severity": "P1", "disposition": "accepted", "note": "§6 加前端量測(trades.length / render / 排序切換 blocking);門檻不過 → 本輪砍 preset 上限至 10"},
+    "R7": {"severity": "P1", "disposition": "accepted", "note": "文案 days 分流(今日共/近N日共、當日無成交/近N日無成交);popover 改中性文案;既有 3 條「今日共」測試 days=1 不變"},
+    "R8": {"severity": "P2", "disposition": "accepted", "note": "聚合改兩階段(name→latest id 正規化);補混合 id 測試"},
+    "R9": {"severity": "P2", "disposition": "accepted", "note": "api.ts 片段逐字對齊 chipBrokersWindow 形狀"},
+    "R10": {"severity": "P2", "disposition": "accepted", "note": "截圖失敗走既有 role=status 提示 + try/catch + vitest case"},
+    "R11": {"severity": "P2", "disposition": "accepted", "note": "量測指令改 PowerShell、門檻定於未壓縮 bytes、記 trades 筆數"},
+    "R12": {"severity": "P2", "disposition": "accepted", "note": "保留新檔 test_bubble_window.py,brainstorm SC-1/SC-2 驗證指令同步 amendment"},
+    "R13": {"severity": "P2", "disposition": "accepted", "note": "revoke 延後 1s + 移除 anchor;E44 補 download.path() size>0"},
+    "R14": {"severity": "P2", "disposition": "accepted", "note": "days>1 時 serialize 前在 clone svg 內加窗口 <text> 標註"},
+    "R15": {"severity": "P2", "disposition": "accepted", "note": "§6 補 1280px header 不換行截圖驗證;換行 fallback = selector 移中欄統計行右端"}
+  },
+  "accepted_p0": 1,
+  "next": "design v2 修復 → 限縮輪 round 2(僅審 changelog v2 所列段落)"
+}

@@ -1,0 +1,2292 @@
+﻿diff --git a/backend/routes/chip.py b/backend/routes/chip.py
+index da8f30c..b92b347 100644
+--- a/backend/routes/chip.py
++++ b/backend/routes/chip.py
+@@ -111,6 +111,25 @@ async def get_chip_brokers_window(
+     )
+ 
+ 
++@router.get("/api/chip/{symbol}/bubble_window")
++async def get_chip_bubble_window(
++    symbol: str,
++    request: Request,
++    date: str = Query(default=""),
++    days: int = Query(default=5, ge=2, le=20),
++    refresh: bool = Query(default=False),
++) -> dict:
++    """近 N 個交易日的 (分點, 價位) 累計泡泡資料。
++
++    `ge=2`:單日視圖走既有 `/bubble`,前端不打此端點(days=1 路徑保持 bit-for-bit
++    不變);`le=20` 是 payload 上限。越界由 FastAPI 自動 422。
++    """
++    d = date or _today()
++    return await run_with_disconnect(
++        request, get_finmind().fetch_bubble_window(symbol, d, days, refresh)
++    )
++
++
+ @router.get("/api/chip/{symbol}/broker_history")
+ async def get_chip_broker_history(
+     symbol: str,
+diff --git a/backend/services/finmind.py b/backend/services/finmind.py
+index 03099ff..f073741 100644
+--- a/backend/services/finmind.py
++++ b/backend/services/finmind.py
+@@ -24,6 +24,10 @@ _CACHE_VERSION = 3
+ # (symbol, date, days). Independent of _CACHE_VERSION so bumping one
+ # doesn't invalidate the other.
+ _CACHE_VERSION_BW = 1
++# Aggregate-payload cache for fetch_bubble_window — 獨立 bump 面,跟 _CACHE_VERSION_BW
++# 互不影響(兩者聚合語意不同:brokers_window 是 summary.top_brokers,
++# bubble_window 是 (broker, price) 逐筆)。
++_CACHE_VERSION_BUBBLE_W = 1
+ 
+ # ---------------------------------------------------------------------------
+ # Singleton
+@@ -794,6 +798,84 @@ class FinMindClient:
+             logger.warning("brokers_window cache write failed for %s: %s", cache_key, exc)
+         return result
+ 
++    # -- bubble window (N-day aggregate of the per-day bubble payload) ------
++
++    async def fetch_bubble_window(
++        self,
++        symbol: str,
++        date_str: str,
++        days: int,
++        refresh: bool = False,
++    ) -> dict:
++        """Aggregate the last `days` trading days of (broker, price) bubble rows
++        ending at `date_str` (inclusive). Same shape as fetch_brokers_window:
++        trading dates from ``services.trading_calendar`` (shared 12h cache),
++        fan-out over the already-cached per-day ``fetch_chip_bubble``, pure
++        aggregation, then self-cache the aggregate under
++        ``{symbol}_{date}_w{days}_bubblew``.
++
++        Payload is a superset of the single-day /bubble payload so the frontend
++        bubble/detail/stats pipeline needs no changes (SC-1).
++        """
++        cache_key = f"{symbol}_{date_str}_w{days}_bubblew"
++        if not refresh:
++            cached = self._read_cache_v(cache_key, _CACHE_VERSION_BUBBLE_W)
++            if cached is not None:
++                if not self._is_today(date_str) or not self._is_stale(cached):
++                    return cached
++
++        # refresh 進 dedup key:並發的 refresh=True caller 不得 await 一個
++        # in-flight refresh=False task(那會讓 refresh 語意失效回舊資料)。
++        return await self._run_once(
++            f"bubble_window_{cache_key}_r{int(refresh)}",
++            lambda: self._do_fetch_bubble_window(symbol, date_str, days, refresh, cache_key),
++        )
++
++    async def _do_fetch_bubble_window(
++        self,
++        symbol: str,
++        date_str: str,
++        days: int,
++        refresh: bool,
++        cache_key: str,
++    ) -> dict:
++        from services.trading_calendar import get_trading_days
++
++        end = date.fromisoformat(date_str)
++        recent = await get_trading_days(end, n=days)
++        if not recent:
++            raise ValueError("bubble_window_unavailable")
++        # get_trading_days returns newest-first; ascending 讓聚合的
++        # 「後日名稱蓋前日」語意成立
++        trading_dates = [d.isoformat() for d in reversed(recent)]
++
++        # gather(不是 TaskGroup):語意是「部分日失敗仍出貨」,與
++        # brokers_window 一致;TaskGroup 的 fail-fast 適用於「任一失敗整包
++        # 放棄」的場景,這裡不是。
++        results = await asyncio.gather(
++            *[self.fetch_chip_bubble(symbol, d, refresh) for d in trading_dates],
++            return_exceptions=True,
++        )
++        bubbles = [b for b in results if not isinstance(b, BaseException) and isinstance(b, dict)]
++        # 全日失敗 = upstream 不可達,不是「這幾天沒人交易」。靜默回空 payload
++        # 會被讀成正常的冷清日 — 一律 503 bubble_window_unavailable。
++        if not bubbles:
++            raise ValueError("bubble_window_unavailable")
++        result = _aggregate_bubble_window(
++            symbol=symbol,
++            date_str=date_str,
++            days=days,
++            trading_dates=trading_dates,
++            bubbles=bubbles,
++        )
++        # Cache write 是最佳化不是正確性需求:磁碟滿 / 唯讀時聚合結果仍有效,
++        # 沒有這層 guard 會讓 atomic_write_json 的 OSError 把請求變成 500。
++        try:
++            self._write_cache_v(cache_key, result, _CACHE_VERSION_BUBBLE_W)
++        except OSError as exc:
++            logger.warning("bubble_window cache write failed for %s: %s", cache_key, exc)
++        return result
++
+     async def fetch_broker_history(
+         self,
+         symbol: str,
+@@ -2384,6 +2466,60 @@ def _aggregate_brokers_window(
+     }
+ 
+ 
++def _aggregate_bubble_window(
++    symbol: str,
++    date_str: str,
++    days: int,
++    trading_dates: list[str],
++    bubbles: list[dict],
++) -> dict:
++    """Aggregate per-day bubble payloads into one N-day window payload.
++
++    - key = (broker_id, price);buy/sell 跨日加總,分點名稱取最後一日
++      (分點改名時顯示最新名)
++    - broker_id 可能為空字串(fetch_chip_bubble 的 `r.get(..., "")`)。同一個
++      分點「某日缺 id、另日有 id」不得分裂成兩列 → 先掃一輪建 name → 最新非空
++      id 的對映,第二輪用正規化後的 id 當 key;id 全程缺席才退回 name。
++    - actual_days = 有資料的日數:fetch 失敗**或空 trades** 皆不計。停牌 /
++      無成交日 FinMind 回 200 + trades:[](不 raise),比 HTTP 失敗常見得多,
++      算進去會讓前端「近 N 日累計」的實際樣本數失真。顯式偏離
++      _aggregate_brokers_window 的 len(trading_dates) 語意;trading_dates 仍是
++      calendar 嘗試日(除錯可對照)。
++    - trades 排序 (price, -(buy+sell)) — deterministic,前端自行重排不依賴此序。
++    """
++    # pass 1:name → 最新非空 broker_id(ascending 掃,後日蓋前日)
++    name_to_id: dict[str, str] = {}
++    for b in bubbles:
++        for t in b.get("trades", []):
++            if t["broker_id"]:
++                name_to_id[t["broker"]] = t["broker_id"]
++
++    # pass 2:key = (正規化 id, price);id 全程缺席才退 name
++    acc: dict[tuple[str, float], dict] = {}
++    for b in bubbles:
++        for t in b.get("trades", []):
++            norm_id = t["broker_id"] or name_to_id.get(t["broker"], "")
++            key = (norm_id or t["broker"], t["price"])
++            slot = acc.get(key)
++            if slot is None:
++                acc[key] = {**t, "broker_id": norm_id}
++            else:
++                slot["buy"] += t["buy"]
++                slot["sell"] += t["sell"]
++                slot["broker"] = t["broker"]
++
++    trades = sorted(acc.values(), key=lambda t: (t["price"], -(t["buy"] + t["sell"])))
++    return {
++        "symbol": symbol,
++        "date": date_str,
++        "window_days": days,
++        "trading_dates": trading_dates,
++        "actual_days": sum(1 for b in bubbles if b.get("trades")),
++        "fetched_at": clock.now().isoformat(timespec="seconds"),
++        "trades": trades,
++    }
++
++
+ def _filter_broker_history(payload: dict, ids: list[str]) -> dict:
+     """Return a copy of payload with brokers narrowed to requested broker_ids.
+ 
+diff --git a/backend/tests/test_bubble_window.py b/backend/tests/test_bubble_window.py
+new file mode 100644
+index 0000000..37a4772
+--- /dev/null
++++ b/backend/tests/test_bubble_window.py
+@@ -0,0 +1,444 @@
++"""Tests for the N-day bubble aggregate window (bubble-streak-screenshot SC-1/SC-2).
++
++Endpoint:  GET /api/chip/{symbol}/bubble_window?date=...&days=N
++Service:   FinMindClient.fetch_bubble_window + _aggregate_bubble_window
++
++Strategy(結構抄 test_brokers_window.py):
++- _aggregate_bubble_window 是純函式 → 直接餵 fixture bubbles,assert 輸出
++- fetch_bubble_window 是 orchestration → mock services.trading_calendar.get_trading_days
++  + mock fetch_chip_bubble,verify 取最後 N 個 trading days、fan-out 與 aggregate 正確
++"""
++from __future__ import annotations
++
++from datetime import date
++from unittest.mock import AsyncMock, patch
++
++from fastapi.testclient import TestClient
++
++from main import app
++
++
++# ---------------------------------------------------------------------------
++# Fixtures — fetch_chip_bubble payload shape(finmind.py:254-268)
++# ---------------------------------------------------------------------------
++
++
++def _trade(broker: str, broker_id: str, price: float, buy: int, sell: int) -> dict:
++    return {"broker": broker, "broker_id": broker_id, "price": price, "buy": buy, "sell": sell}
++
++
++def _bubble(date_str: str, trades: list[dict]) -> dict:
++    return {
++        "symbol": "2330",
++        "date": date_str,
++        "fetched_at": f"{date_str}T20:00:00",
++        "trades": trades,
++    }
++
++
++def _mock_trading_calendar(dates_iso: list[str]):
++    """Mimic services.trading_calendar.get_trading_days:filter ≤ end_date,
++    取最後 n 個,newest-first 回傳。"""
++    available = [date.fromisoformat(d) for d in dates_iso]
++
++    async def fake(end_date: date, n: int) -> list[date]:
++        eligible = [d for d in available if d <= end_date]
++        return list(reversed(eligible[-n:]))
++
++    return AsyncMock(side_effect=fake)
++
++
++# ---------------------------------------------------------------------------
++# 1-5:純函式 _aggregate_bubble_window
++# ---------------------------------------------------------------------------
++
++
++def test_aggregate_sums_same_broker_price_across_days():
++    """測試 1:兩日同 (broker_id, price) → buy/sell 加總,名稱取後日(分點改名)。"""
++    from services.finmind import _aggregate_bubble_window
++
++    bubbles = [
++        _bubble("2026-06-25", [_trade("元大舊名", "9600", 1100.0, 100, 80)]),
++        _bubble("2026-06-26", [_trade("元大新名", "9600", 1100.0, 50, 30)]),
++    ]
++    out = _aggregate_bubble_window(
++        symbol="2330",
++        date_str="2026-06-26",
++        days=2,
++        trading_dates=["2026-06-25", "2026-06-26"],
++        bubbles=bubbles,
++    )
++    assert len(out["trades"]) == 1
++    t = out["trades"][0]
++    assert t["broker_id"] == "9600"
++    assert t["price"] == 1100.0
++    assert t["buy"] == 150
++    assert t["sell"] == 110
++    assert t["broker"] == "元大新名"
++
++
++def test_aggregate_empty_broker_id_falls_back_to_name():
++    """測試 2:broker_id 全程缺席 → 以 name 當 key;不同名不誤併。"""
++    from services.finmind import _aggregate_bubble_window
++
++    bubbles = [
++        _bubble(
++            "2026-06-25",
++            [_trade("甲分點", "", 1100.0, 10, 5), _trade("乙分點", "", 1100.0, 20, 7)],
++        ),
++        _bubble("2026-06-26", [_trade("甲分點", "", 1100.0, 3, 1)]),
++    ]
++    out = _aggregate_bubble_window(
++        symbol="2330",
++        date_str="2026-06-26",
++        days=2,
++        trading_dates=["2026-06-25", "2026-06-26"],
++        bubbles=bubbles,
++    )
++    by_name = {t["broker"]: t for t in out["trades"]}
++    assert len(out["trades"]) == 2
++    assert by_name["甲分點"]["buy"] == 13
++    assert by_name["甲分點"]["sell"] == 6
++    assert by_name["乙分點"]["buy"] == 20
++
++
++def test_aggregate_mixed_broker_id_merges_to_single_row():
++    """測試 3 [R8]:同名分點 day1 id=""、day2 id="9600" → 單一列不分裂。"""
++    from services.finmind import _aggregate_bubble_window
++
++    bubbles = [
++        _bubble("2026-06-25", [_trade("元大", "", 1100.0, 100, 80)]),
++        _bubble("2026-06-26", [_trade("元大", "9600", 1100.0, 50, 30)]),
++    ]
++    out = _aggregate_bubble_window(
++        symbol="2330",
++        date_str="2026-06-26",
++        days=2,
++        trading_dates=["2026-06-25", "2026-06-26"],
++        bubbles=bubbles,
++    )
++    assert len(out["trades"]) == 1
++    t = out["trades"][0]
++    assert t["broker_id"] == "9600"
++    assert t["buy"] == 150
++    assert t["sell"] == 110
++
++
++def test_aggregate_single_day_is_passthrough():
++    """測試 4:單日輸入 → 值原樣不變(只是換 payload 外殼)。"""
++    from services.finmind import _aggregate_bubble_window
++
++    trades = [
++        _trade("甲分點", "A", 1100.0, 10, 5),
++        _trade("乙分點", "B", 1101.0, 20, 7),
++    ]
++    out = _aggregate_bubble_window(
++        symbol="2330",
++        date_str="2026-06-26",
++        days=5,
++        trading_dates=["2026-06-26"],
++        bubbles=[_bubble("2026-06-26", trades)],
++    )
++    assert sorted(out["trades"], key=lambda t: t["price"]) == trades
++
++
++def test_aggregate_output_shape():
++    """測試 5:top-level 欄位齊(ChipBubbleData 超集)。"""
++    from services.finmind import _aggregate_bubble_window
++
++    out = _aggregate_bubble_window(
++        symbol="2330",
++        date_str="2026-06-26",
++        days=5,
++        trading_dates=["2026-06-25", "2026-06-26"],
++        bubbles=[
++            _bubble("2026-06-25", [_trade("甲", "A", 1100.0, 1, 0)]),
++            _bubble("2026-06-26", [_trade("甲", "A", 1100.0, 1, 0)]),
++        ],
++    )
++    assert out["symbol"] == "2330"
++    assert out["date"] == "2026-06-26"
++    assert out["window_days"] == 5
++    assert out["trading_dates"] == ["2026-06-25", "2026-06-26"]
++    assert out["actual_days"] == 2
++    assert out["fetched_at"]
++    assert isinstance(out["trades"], list)
++
++
++def test_aggregate_actual_days_excludes_empty_trade_days():
++    """[R17] 空 trades 日不計入 actual_days(停牌 / 無成交日 FinMind 回 200 + [])。"""
++    from services.finmind import _aggregate_bubble_window
++
++    out = _aggregate_bubble_window(
++        symbol="2330",
++        date_str="2026-06-26",
++        days=3,
++        trading_dates=["2026-06-24", "2026-06-25", "2026-06-26"],
++        bubbles=[
++            _bubble("2026-06-24", [_trade("甲", "A", 1100.0, 1, 0)]),
++            _bubble("2026-06-25", []),
++            _bubble("2026-06-26", [_trade("甲", "A", 1100.0, 2, 0)]),
++        ],
++    )
++    assert out["actual_days"] == 2
++    assert out["trades"][0]["buy"] == 3
++
++
++# ---------------------------------------------------------------------------
++# 6, 8-11:fetch_bubble_window orchestration
++# ---------------------------------------------------------------------------
++
++
++async def test_fetch_bubble_window_picks_last_n_trading_days(monkeypatch):
++    """測試 6:happy path — 取最後 N 個交易日、逐日 fan-out、聚合輸出。"""
++    from services.finmind import FinMindClient
++    import services.trading_calendar as tc
++
++    dates = [f"2026-06-{i:02d}" for i in range(10, 20)]
++    monkeypatch.setattr(tc, "get_trading_days", _mock_trading_calendar(dates))
++
++    client = FinMindClient()
++
++    async def fake_bubble(symbol: str, d: str, refresh: bool) -> dict:
++        return _bubble(d, [_trade("甲", "A", 1100.0, 10, 8)])
++
++    client.fetch_chip_bubble = AsyncMock(side_effect=fake_bubble)
++
++    out = await client.fetch_bubble_window("2330", "2026-06-19", days=3)
++    assert out["trading_dates"] == ["2026-06-17", "2026-06-18", "2026-06-19"]
++    assert client.fetch_chip_bubble.await_count == 3
++    called_dates = [c.args[1] for c in client.fetch_chip_bubble.await_args_list]
++    assert called_dates == ["2026-06-17", "2026-06-18", "2026-06-19"]
++    assert out["window_days"] == 3
++    assert out["actual_days"] == 3
++    assert out["trades"] == [_trade("甲", "A", 1100.0, 30, 24)]
++
++
++async def test_fetch_bubble_window_raises_when_calendar_empty(monkeypatch):
++    """測試 8(前半):calendar 無任何 ≤ anchor 的交易日 → ValueError。"""
++    from services.finmind import FinMindClient
++    import services.trading_calendar as tc
++
++    monkeypatch.setattr(
++        tc, "get_trading_days", _mock_trading_calendar(["2026-06-20", "2026-06-21"])
++    )
++
++    client = FinMindClient()
++    client.fetch_chip_bubble = AsyncMock()
++
++    try:
++        await client.fetch_bubble_window("2330", "2026-06-15", days=5)
++    except ValueError as exc:
++        assert str(exc) == "bubble_window_unavailable"
++    else:
++        raise AssertionError("expected ValueError bubble_window_unavailable")
++    client.fetch_chip_bubble.assert_not_called()
++
++
++async def test_fetch_bubble_window_raises_when_all_days_fail(monkeypatch):
++    """測試 8(後半):所有日 fetch 都拋 → ValueError(不能靜默回空 payload,
++    那會被使用者讀成「這幾天沒人交易」)。"""
++    from services.finmind import FinMindClient
++    import services.trading_calendar as tc
++
++    monkeypatch.setattr(
++        tc, "get_trading_days", _mock_trading_calendar(["2026-06-25", "2026-06-26"])
++    )
++
++    client = FinMindClient()
++    client.fetch_chip_bubble = AsyncMock(side_effect=RuntimeError("upstream down"))
++
++    try:
++        await client.fetch_bubble_window("2330", "2026-06-26", days=2)
++    except ValueError as exc:
++        assert str(exc) == "bubble_window_unavailable"
++    else:
++        raise AssertionError("expected ValueError bubble_window_unavailable")
++
++
++async def test_fetch_bubble_window_partial_failure_actual_days_4(monkeypatch):
++    """測試 9 [R2]:5 日中 1 日 fetch 失敗 → 200,聚合只含成功日,actual_days == 4。"""
++    from services.finmind import FinMindClient
++    import services.trading_calendar as tc
++
++    dates = ["2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26"]
++    monkeypatch.setattr(tc, "get_trading_days", _mock_trading_calendar(dates))
++
++    client = FinMindClient()
++
++    async def fake_bubble(symbol: str, d: str, refresh: bool) -> dict:
++        if d == "2026-06-24":
++            raise RuntimeError("upstream blip")
++        return _bubble(d, [_trade("甲", "A", 1100.0, 10, 8)])
++
++    client.fetch_chip_bubble = AsyncMock(side_effect=fake_bubble)
++
++    out = await client.fetch_bubble_window("2330", "2026-06-26", days=5)
++    assert out["actual_days"] == 4
++    assert out["trading_dates"] == dates
++    assert out["trades"][0]["buy"] == 40
++    assert out["trades"][0]["sell"] == 32
++
++
++async def test_fetch_bubble_window_empty_trade_days_actual_days_3(monkeypatch):
++    """測試 9b [R17]:5 日中 2 日回 {"trades": []} → 200,actual_days == 3。"""
++    from services.finmind import FinMindClient
++    import services.trading_calendar as tc
++
++    dates = ["2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26"]
++    monkeypatch.setattr(tc, "get_trading_days", _mock_trading_calendar(dates))
++
++    client = FinMindClient()
++
++    async def fake_bubble(symbol: str, d: str, refresh: bool) -> dict:
++        if d in ("2026-06-23", "2026-06-25"):
++            return _bubble(d, [])
++        return _bubble(d, [_trade("甲", "A", 1100.0, 10, 8)])
++
++    client.fetch_chip_bubble = AsyncMock(side_effect=fake_bubble)
++
++    out = await client.fetch_bubble_window("2330", "2026-06-26", days=5)
++    assert out["actual_days"] == 3
++    assert out["trades"][0]["buy"] == 30
++
++
++async def test_fetch_bubble_window_caches_aggregate_payload(monkeypatch):
++    """測試 10(前半):過去日第二次呼叫吃 self-cache → 不再 fan-out。"""
++    from services.finmind import FinMindClient
++    import services.trading_calendar as tc
++
++    calendar_mock = _mock_trading_calendar(["2026-06-25", "2026-06-26"])
++    monkeypatch.setattr(tc, "get_trading_days", calendar_mock)
++
++    client = FinMindClient()
++    client.fetch_chip_bubble = AsyncMock(
++        side_effect=lambda symbol, d, refresh: _bubble(d, [_trade("甲", "A", 1100.0, 10, 8)])
++    )
++
++    out1 = await client.fetch_bubble_window("2330", "2026-06-26", days=2)
++    out2 = await client.fetch_bubble_window("2330", "2026-06-26", days=2)
++    assert out1 == out2
++    assert client.fetch_chip_bubble.await_count == 2
++    assert calendar_mock.await_count == 1
++
++
++async def test_fetch_bubble_window_refresh_bypasses_cache(monkeypatch):
++    """測試 10(後半):refresh=True 跳過 self-cache 重新 fan-out,且 refresh
++    傳進逐日 fetch_chip_bubble。"""
++    from services.finmind import FinMindClient
++    import services.trading_calendar as tc
++
++    monkeypatch.setattr(
++        tc, "get_trading_days", _mock_trading_calendar(["2026-06-25", "2026-06-26"])
++    )
++
++    client = FinMindClient()
++    seen_refresh: list[bool] = []
++
++    async def fake_bubble(symbol: str, d: str, refresh: bool) -> dict:
++        seen_refresh.append(refresh)
++        return _bubble(d, [_trade("甲", "A", 1100.0, 10, 8)])
++
++    client.fetch_chip_bubble = AsyncMock(side_effect=fake_bubble)
++
++    await client.fetch_bubble_window("2330", "2026-06-26", days=2)
++    await client.fetch_bubble_window("2330", "2026-06-26", days=2, refresh=True)
++    assert client.fetch_chip_bubble.await_count == 4
++    assert seen_refresh == [False, False, True, True]
++
++
++async def test_fetch_bubble_window_cache_write_failure_still_returns_result(monkeypatch):
++    """測試 11:cache 寫失敗(磁碟滿 / 唯讀)→ 仍回聚合結果,不 500。"""
++    from services.finmind import FinMindClient
++    import services.finmind as fm_mod
++    import services.trading_calendar as tc
++
++    monkeypatch.setattr(tc, "get_trading_days", _mock_trading_calendar(["2026-06-26"]))
++
++    def boom(*_a, **_kw):
++        raise OSError("simulated disk full")
++
++    monkeypatch.setattr(fm_mod, "atomic_write_json", boom)
++
++    client = FinMindClient()
++    client.fetch_chip_bubble = AsyncMock(
++        return_value=_bubble("2026-06-26", [_trade("甲", "A", 1100.0, 10, 8)])
++    )
++
++    out = await client.fetch_bubble_window("2330", "2026-06-26", days=2)
++    assert out["symbol"] == "2330"
++    assert out["actual_days"] == 1
++
++
++# ---------------------------------------------------------------------------
++# 7-8:route 層
++# ---------------------------------------------------------------------------
++
++
++WINDOW_PAYLOAD = {
++    "symbol": "2330",
++    "date": "2026-06-26",
++    "window_days": 5,
++    "trading_dates": ["2026-06-26"],
++    "actual_days": 1,
++    "fetched_at": "2026-06-26T20:00:00",
++    "trades": [],
++}
++
++
++def test_route_bubble_window_default_days_is_5():
++    mock = AsyncMock(return_value=WINDOW_PAYLOAD)
++    with patch("routes.chip.get_finmind") as gf:
++        gf.return_value.fetch_bubble_window = mock
++        r = TestClient(app).get("/api/chip/2330/bubble_window?date=2026-06-26")
++    assert r.status_code == 200
++    mock.assert_awaited_once_with("2330", "2026-06-26", 5, False)
++
++
++def test_route_bubble_window_with_refresh():
++    mock = AsyncMock(return_value=WINDOW_PAYLOAD)
++    with patch("routes.chip.get_finmind") as gf:
++        gf.return_value.fetch_bubble_window = mock
++        r = TestClient(app).get(
++            "/api/chip/2330/bubble_window?date=2026-06-26&days=10&refresh=true"
++        )
++    assert r.status_code == 200
++    mock.assert_awaited_once_with("2330", "2026-06-26", 10, True)
++
++
++def test_route_bubble_window_days_out_of_range_422():
++    """測試 7:days=1 → 422(單日走既有 /bubble 端點);days=21 → 422(payload 上限)。"""
++    with patch("routes.chip.get_finmind"):
++        r1 = TestClient(app).get("/api/chip/2330/bubble_window?date=2026-06-26&days=1")
++        r21 = TestClient(app).get("/api/chip/2330/bubble_window?date=2026-06-26&days=21")
++    assert r1.status_code == 422
++    assert r21.status_code == 422
++
++
++def test_route_bubble_window_days_boundaries_ok():
++    mock = AsyncMock(return_value=WINDOW_PAYLOAD)
++    with patch("routes.chip.get_finmind") as gf:
++        gf.return_value.fetch_bubble_window = mock
++        r2 = TestClient(app).get("/api/chip/2330/bubble_window?date=2026-06-26&days=2")
++        r20 = TestClient(app).get("/api/chip/2330/bubble_window?date=2026-06-26&days=20")
++    assert r2.status_code == 200
++    assert r20.status_code == 200
++
++
++def test_route_bubble_window_default_date_is_today():
++    mock = AsyncMock(return_value=WINDOW_PAYLOAD)
++    with patch("routes.chip.get_finmind") as gf:
++        gf.return_value.fetch_bubble_window = mock
++        r = TestClient(app).get("/api/chip/2330/bubble_window")
++    assert r.status_code == 200
++    assert mock.await_args.args[1] != ""
++
++
++def test_route_bubble_window_503_when_unavailable():
++    """測試 8:service ValueError → 503 + detail.error 契約(main.py 全域 handler)。"""
++    mock = AsyncMock(side_effect=ValueError("bubble_window_unavailable"))
++    with patch("routes.chip.get_finmind") as gf:
++        gf.return_value.fetch_bubble_window = mock
++        r = TestClient(app).get("/api/chip/2330/bubble_window?date=2026-06-26")
++    assert r.status_code == 503
++    assert r.json()["detail"]["error"] == "bubble_window_unavailable"
+diff --git a/backend/tests_e2e/test_api_chip.py b/backend/tests_e2e/test_api_chip.py
+index 4f45881..27de079 100644
+--- a/backend/tests_e2e/test_api_chip.py
++++ b/backend/tests_e2e/test_api_chip.py
+@@ -50,3 +50,65 @@ async def test_chip_history_shape(client):
+     body = r.json()
+     candles = body.get("candles", [])
+     assert len(candles) >= 50, f"K-line history too short: {len(candles)} rows"
++
++
++async def test_chip_bubble_window_shape(client):
++    """SC-1 contract:bubble_window payload = ChipBubbleData 超集。
++    痛點:前端 ChipBubbleWindowData extends ChipBubbleData —— 少任一欄
++    (trades 元素的 broker_id / price)前端泡泡圖直接空白。"""
++    r = await client.get("/api/chip/2330/bubble_window?date=2026-06-26&days=5")
++    assert r.status_code == 200
++    body = r.json()
++    for key in ("symbol", "date", "fetched_at", "trades",
++                "window_days", "trading_dates", "actual_days"):
++        assert key in body, f"bubble_window payload missing {key}: {sorted(body)}"
++    assert body["window_days"] == 5
++    assert body["trades"], "fixture 應有 3 個分點,空 trades = fake fixture 沒接到"
++    for key in ("broker", "broker_id", "price", "buy", "sell"):
++        assert key in body["trades"][0], f"trade row missing {key}: {body['trades'][0]}"
++
++
++async def test_chip_bubble_window_aggregates_five_days(client):
++    """[R1] 聚合倍數 —— fixture 11 個交易日每日同值(BROKER00x / 1100.0 /
++    買 100 張 / 賣 80 張),5 日窗口全落在覆蓋內 → 同 (broker_id, price) 列
++    的 buy 必為單日 ×5。
++
++    痛點:badge 出現 + 有泡泡在「沒真的切端點」「聚合寫成覆寫而非加總」兩種
++    壞法下都會偽綠;倍數關係是唯一能分辨「真的加總了」的訊號。"""
++    single = await client.get("/api/chip/2330/bubble?date=2026-06-26")
++    assert single.status_code == 200
++    day_row = single.json()["trades"][0]
++
++    r = await client.get("/api/chip/2330/bubble_window?date=2026-06-26&days=5")
++    assert r.status_code == 200
++    body = r.json()
++    win_row = next(
++        t for t in body["trades"]
++        if t["broker_id"] == day_row["broker_id"] and t["price"] == day_row["price"]
++    )
++    assert win_row["buy"] == day_row["buy"] * 5
++    assert win_row["sell"] == day_row["sell"] * 5
++
++
++async def test_chip_bubble_window_trading_dates_and_days_are_honoured(client):
++    """[R21] 同質 fixture 下 ×5 分不出「取錯窗口日」「days 被寫死」——
++    釘 trading_dates 實際日期 + 換 days=3 驗倍數同步變。"""
++    r5 = await client.get("/api/chip/2330/bubble_window?date=2026-06-26&days=5")
++    assert r5.status_code == 200
++    body5 = r5.json()
++    assert body5["trading_dates"] == [
++        "2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26",
++    ]
++    assert body5["actual_days"] == 5
++
++    single = (await client.get("/api/chip/2330/bubble?date=2026-06-26")).json()["trades"][0]
++    r3 = await client.get("/api/chip/2330/bubble_window?date=2026-06-26&days=3")
++    assert r3.status_code == 200
++    body3 = r3.json()
++    assert body3["window_days"] == 3
++    assert body3["trading_dates"] == ["2026-06-24", "2026-06-25", "2026-06-26"]
++    row3 = next(
++        t for t in body3["trades"]
++        if t["broker_id"] == single["broker_id"] and t["price"] == single["price"]
++    )
++    assert row3["buy"] == single["buy"] * 3
+diff --git a/e2e/helpers/selectors.ts b/e2e/helpers/selectors.ts
+index f5da8c2..01a88ae 100644
+--- a/e2e/helpers/selectors.ts
++++ b/e2e/helpers/selectors.ts
+@@ -114,7 +114,10 @@ export const ROLES = {
+   modeSwitchFlows: { role: "button" as const, name: /^分點反查$/ },
+   // active 用 aria-current='page'(F10 — 不是 data-state,Radix Tabs 已 drop)
+   refresh: { role: "button" as const, name: "重新整理" },
+-  // RangeSelector.tsx:141 真實 aria-label(F15)
+-  windowDays10: { role: "button" as const, name: "設為 10 日" },
+-  windowDays60: { role: "button" as const, name: "設為 60 日" },
++  // RangeSelector.tsx:141 真實 aria-label(F15)。
++  // 泡泡圖天數 preset 的 aria-label「泡泡圖設為 10 日」**包含**本字串,
++  // Playwright name 預設 substring → 會撞成 strict-mode violation;比照上方
++  // mode switch 用 exact RegExp 鎖死(呼叫端零改動)。
++  windowDays10: { role: "button" as const, name: /^設為 10 日$/ },
++  windowDays60: { role: "button" as const, name: /^設為 60 日$/ },
+ };
+diff --git a/e2e/specs/equity.spec.ts b/e2e/specs/equity.spec.ts
+index 8171275..8f8bccd 100644
+--- a/e2e/specs/equity.spec.ts
++++ b/e2e/specs/equity.spec.ts
+@@ -1,6 +1,7 @@
+ /**
+  * SC-3 equity mode golden paths(5 case)。設計來源 design.md v6 §3 SC-3。
+  */
++import { statSync } from "node:fs";
+ import { test, expect } from "@playwright/test";
+ import { TESTIDS, ROLES } from "../helpers/selectors.ts";
+ import { installFixtureClock } from "../helpers/clock.ts";
+@@ -430,6 +431,62 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
+     expect(w).toBeCloseTo((svgW - 72) * 0.2, 3);
+   });
+ 
++  test("E43: 泡泡圖多日聚合 — 切 5 日後明細張數 = 單日 ×5 + 累計 badge(feat/bubble-streak-screenshot SC-6)", async ({ page }) => {
++    // 痛點:倍數 assertion 鎖住「前端真的切到 /bubble_window 端點 **且** 後端
++    // 真的逐日累加」。badge 有字 + circle > 0 這兩條在「沒切端點(還是單日
++    // 資料)」與「聚合覆寫而非加總」兩種壞法下都會偽綠(options-page-v2 事故
++    // 同型:visibility-only assertion 蓋住整條空/錯資料路徑)。
++    // Fixture 事實(design §5):2330 覆蓋 06-12〜06-26 共 11 個交易日,每日
++    // 同 3 分點各買 100 張 / 賣 80 張 @1100 → 5 日窗(06-22〜06-26)全落在
++    // 覆蓋內 → 買 500 張。partial-window / actual_days 路徑 e2e 蓋不到,由
++    // pytest test_bubble_window 承擔。
++    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
++    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
++    // 單日基準:買側明細「分點001」列的張數欄(fmtVol → 純數字,無「張」後綴)
++    const buyVol = page
++      .locator("button:has(span.text-left)")
++      .filter({ hasText: "分點001" })
++      .first()
++      .locator("span.tabular-nums")
++      .first();
++    await expect(buyVol).toHaveText("100");
++    await expect(page.getByTestId("bubble-window-badge")).toHaveCount(0);
++
++    // 切 5 日 —— 定位一律先 scope 到 bubble-days-selector:RangeSelector 的
++    // 「設為 N 日」在 hidden 的籌碼總覽分頁仍留在 DOM(design §3 R3)。
++    await page
++      .getByTestId("bubble-days-selector")
++      .getByRole("button", { name: "泡泡圖設為 5 日" })
++      .click();
++
++    // (a) 累計 badge
++    await expect(page.getByTestId("bubble-window-badge")).toContainText(
++      "近 5 個交易日累計",
++    );
++    // (b) 倍數:同一列張數 = 單日 ×5(核心鑑別訊號)
++    await expect(buyVol).toHaveText("500");
++    // (c) 聚合資料仍流進圖表管線(泡泡有畫出來)
++    expect(await page.locator("svg circle").count()).toBeGreaterThan(0);
++  });
++
++  test("E44: 泡泡圖截圖鈕 → 真實下載 PNG(feat/bubble-streak-screenshot SC-8)", async ({ page }) => {
++    // 痛點:jsdom 無 canvas / Image,svgToPngBlob 全鏈(serialize → blob URL →
++    // Image decode → canvas 2x → toBlob → a[download])在 vitest 是零覆蓋 ——
++    // 這條 spec 是該鏈唯一的自動化覆蓋。只驗檔名會放過 toBlob 回 null 或
++    // objectURL 過早 revoke 造成的 0-byte 檔,故檔案 size 一起鎖;截圖失敗
++    // 提示(catch 分支)也不得出現 = 不准靜默降級。
++    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
++    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
++    const downloadPromise = page.waitForEvent("download");
++    await page.getByTestId("bubble-screenshot").click();
++    const download = await downloadPromise;
++    expect(download.suggestedFilename()).toBe("bubble_2330_2026-06-26.png");
++    const file = await download.path();
++    expect(file).toBeTruthy();
++    expect(statSync(file!).size).toBeGreaterThan(0);
++    await expect(page.getByTestId("bubble-screenshot-notice")).toHaveCount(0);
++  });
++
+   test("E24: 泡泡圖選分點 → 總買/賣張與金額資料級 assertion(A3)", async ({ page }) => {
+     // 痛點:computeBrokerTotals 全鏈(trades → 聚合 → fmtVol/fmtAmount)。
+     // visibility-only 會被「顯示 0 張」蓋住 — 鎖 fixture 手算值:
+diff --git a/frontend/src/App.test.tsx b/frontend/src/App.test.tsx
+index a6829c7..433faab 100644
+--- a/frontend/src/App.test.tsx
++++ b/frontend/src/App.test.tsx
+@@ -10,8 +10,28 @@
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+ 
++// feat/bubble-streak-screenshot(impl-review R4):bubbleDays 接線與 intraday
++// gate 需要觀察 hook 收到的參數 → hoisted 記錄器(vi.mock factory 提升到
++// import 之上,不能引用一般 module-scope const)。
++const spies = vi.hoisted(() => ({
++  bubbleCalls: [] as { symbol: string; date: string; days: number | undefined }[],
++  intradayCalls: [] as { symbol: string; date: string }[],
++  bubbleRefresh: vi.fn(),
++  intradayRefresh: vi.fn(),
++}));
++
+ vi.mock("./components/ChipBubbleView", () => ({
+-  ChipBubbleView: () => <div data-testid="chip-bubble">bubble</div>,
++  ChipBubbleView: ({
++    days,
++    onDaysChange,
++  }: {
++    days?: number;
++    onDaysChange?: (d: number) => void;
++  }) => (
++    <div data-testid="chip-bubble" data-days={String(days)}>
++      <button onClick={() => onDaysChange?.(5)}>stub-days-5</button>
++    </div>
++  ),
+ }));
+ vi.mock("./components/OptionsPage", () => ({
+   OptionsPage: () => <div data-testid="options-page">options</div>,
+@@ -44,7 +64,12 @@ vi.mock("./components/BrokerFlowsPanel", () => ({
+   ),
+ }));
+ vi.mock("./components/SymbolSearch", () => ({
+-  SymbolSearch: () => <div data-testid="symbol-search">search</div>,
++  SymbolSearch: ({ onPick }: { onPick: (sid: string, name: string | null) => void }) => (
++    <div data-testid="symbol-search">
++      <button onClick={() => onPick("2330", "台積電")}>sym-pick-2330</button>
++      <button onClick={() => onPick("2454", "聯發科")}>sym-pick-2454</button>
++    </div>
++  ),
+ }));
+ vi.mock("./components/ChipBrokersPanel", () => ({
+   ChipBrokersPanel: () => <div data-testid="brokers-panel">brokers</div>,
+@@ -68,10 +93,19 @@ vi.mock("./hooks/useChipData", () => ({
+   }),
+ }));
+ vi.mock("./hooks/useChipBubble", () => ({
+-  useChipBubble: () => ({ data: null, loading: false, error: null, refresh: vi.fn() }),
++  useChipBubble: (symbol: string, date: string, days?: number) => {
++    spies.bubbleCalls.push({ symbol, date, days });
++    return {
++      data: null, windowMeta: null, loading: false, error: null,
++      refresh: spies.bubbleRefresh,
++    };
++  },
+ }));
+ vi.mock("./hooks/useChipIntraday", () => ({
+-  useChipIntraday: () => ({ data: null, loading: false, error: null, refresh: vi.fn() }),
++  useChipIntraday: (symbol: string, date: string) => {
++    spies.intradayCalls.push({ symbol, date });
++    return { data: null, loading: false, error: null, refresh: spies.intradayRefresh };
++  },
+ }));
+ vi.mock("./hooks/useBrokerHistory", () => ({
+   useBrokerHistory: () => ({ series: {}, loading: false, error: null, refresh: vi.fn() }),
+@@ -86,6 +120,10 @@ import App from "./App";
+ 
+ beforeEach(() => {
+   localStorage.clear();
++  spies.bubbleCalls.length = 0;
++  spies.intradayCalls.length = 0;
++  spies.bubbleRefresh.mockClear();
++  spies.intradayRefresh.mockClear();
+ });
+ afterEach(() => {
+   cleanup();
+@@ -199,6 +237,72 @@ describe("App mode persistence (SC-4)", () => {
+     expect(screen.queryByTestId("broker-flows-panel")).toBeNull();
+   });
+ 
++  // feat/bubble-streak-screenshot SC-4(impl-review R4):bubbleDays 接線。
++  // 痛點:多日聚合下分時線(當日 1 分 K)與畫面語意不符且白花一次請求 —
++  // gate 沒接上時 useChipIntraday 仍收到 symbol,此測試即紅。
++  it("bubbleDays > 1 → useChipIntraday 收到 symbol \"\"(不 fetch 分時線),bubble hook 收 days", async () => {
++    render(<App />);
++    fireEvent.click(screen.getByRole("button", { name: "sym-pick-2330" }));
++    fireEvent.click(screen.getByRole("button", { name: "泡泡圖" }));
++    await waitFor(() => {
++      expect(screen.queryByTestId("chip-bubble")).toBeTruthy();
++    });
++    // 基準:單日模式下分時線照抓
++    expect(spies.intradayCalls[spies.intradayCalls.length - 1]!.symbol).toBe("2330");
++
++    fireEvent.click(screen.getByRole("button", { name: "stub-days-5" }));
++    await waitFor(() => {
++      expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
++    });
++    expect(spies.intradayCalls[spies.intradayCalls.length - 1]!.symbol).toBe("");
++    const lastBubble = spies.bubbleCalls[spies.bubbleCalls.length - 1]!;
++    expect(lastBubble.symbol).toBe("2330");
++    expect(lastBubble.days).toBe(5);
++  });
++
++  // [impl-review R8]:refresh() 也要 gate — days>1 時對 disabled query 發
++  // refresh 會打出 GET /api/chip//intraday 無效請求。
++  it("bubbleDays > 1 時按重新整理 → bubble refresh 有、intraday refresh 無(R8)", async () => {
++    render(<App />);
++    fireEvent.click(screen.getByRole("button", { name: "sym-pick-2330" }));
++    fireEvent.click(screen.getByRole("button", { name: "泡泡圖" }));
++    await waitFor(() => {
++      expect(screen.queryByTestId("chip-bubble")).toBeTruthy();
++    });
++    // 單日模式:兩者都刷
++    fireEvent.click(screen.getByRole("button", { name: "重新整理" }));
++    expect(spies.bubbleRefresh).toHaveBeenCalledTimes(1);
++    expect(spies.intradayRefresh).toHaveBeenCalledTimes(1);
++
++    fireEvent.click(screen.getByRole("button", { name: "stub-days-5" }));
++    await waitFor(() => {
++      expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
++    });
++    fireEvent.click(screen.getByRole("button", { name: "重新整理" }));
++    expect(spies.bubbleRefresh).toHaveBeenCalledTimes(2);
++    expect(spies.intradayRefresh).toHaveBeenCalledTimes(1);
++  });
++
++  // 視角偏好非資料 state:換股保留(對齊 windowDays 不隨 symbol 重置的現況)。
++  it("換 symbol → bubbleDays 不重置", async () => {
++    render(<App />);
++    fireEvent.click(screen.getByRole("button", { name: "sym-pick-2330" }));
++    fireEvent.click(screen.getByRole("button", { name: "泡泡圖" }));
++    await waitFor(() => {
++      expect(screen.queryByTestId("chip-bubble")).toBeTruthy();
++    });
++    fireEvent.click(screen.getByRole("button", { name: "stub-days-5" }));
++    await waitFor(() => {
++      expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
++    });
++    fireEvent.click(screen.getByRole("button", { name: "sym-pick-2454" }));
++    await waitFor(() => {
++      expect(spies.bubbleCalls[spies.bubbleCalls.length - 1]!.symbol).toBe("2454");
++    });
++    expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
++    expect(spies.bubbleCalls[spies.bubbleCalls.length - 1]!.days).toBe(5);
++  });
++
+   it("invalid localStorage mode value falls back to equity(R5 白名單)", async () => {
+     localStorage.setItem("mode", "INVALID" as string);
+     render(<App />);
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index af65cbb..30ac496 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -116,6 +116,8 @@ export default function App() {
+   const [symbolName, setSymbolName] = useState<string | null>(null);
+   const [date, setDate] = useState(todayStr);
+   const [tab, setTab] = useState<Tab>("overview");
++  // SC-4:泡泡圖天數視窗(1 = 當日 /bubble;>1 = /bubble_window N 日聚合)。
++  const [bubbleDays, setBubbleDays] = useState<number>(1);
+   const [windowDays, setWindowDays] = useState<WindowDays>(readStoredWindowDays);
+   useEffect(() => {
+     localStorage.setItem("chip_window_days", String(windowDays));
+@@ -192,8 +194,14 @@ export default function App() {
+   } = useChipData(symbol, date);
+   // Gate bubble + intraday by bubble tab — overview 不需要泡泡圖也不需要
+   // 1 分 K,tab 切回 bubble 時 queryKey 變化會自動觸發 fetch。
+-  const bubbleHook = useChipBubble(tab === "bubble" ? symbol : "", date);
+-  const intradayHook = useChipIntraday(tab === "bubble" ? symbol : "", date);
++  // SC-4:bubbleDays > 1 走 N 日聚合端點;分時線是「當日」語意,多日模式
++  // 直接不 fetch(symbol 傳 "" → hook enabled=false),view 端 intradayPoints
++  // 自然為 null。換 symbol 不重置 bubbleDays(視角偏好非資料 state)。
++  const bubbleHook = useChipBubble(tab === "bubble" ? symbol : "", date, bubbleDays);
++  const intradayHook = useChipIntraday(
++    tab === "bubble" && bubbleDays === 1 ? symbol : "",
++    date,
++  );
+   const brokerHistoryHook = useBrokerHistory(symbol, selectedBrokerIds);
+   const brokersWindow = useChipBrokersWindow(symbol, date, windowDays);
+ 
+@@ -285,7 +293,9 @@ export default function App() {
+     if (selectedBrokerIds.size > 0) brokerHistoryHook.refresh();
+     if (tab === "bubble") {
+       bubbleHook.refresh();
+-      intradayHook.refresh();
++      // 多日模式 intraday query 已 disabled(symbol "")— 仍呼 refresh 會打出
++      // GET /api/chip//intraday 無效請求(impl-review R8)。
++      if (bubbleDays === 1) intradayHook.refresh();
+     }
+   };
+   const isLoading = loading || bubbleHook.loading || brokersWindow.loading;
+@@ -562,6 +572,9 @@ export default function App() {
+               onJumpToOverview={handleJumpToOverview}
+               loading={bubbleHook.loading && !!symbol}
+               focusRequest={bubbleFocus}
++              days={bubbleDays}
++              onDaysChange={setBubbleDays}
++              windowMeta={bubbleHook.windowMeta}
+             />
+           </Suspense>
+         </div>
+diff --git a/frontend/src/components/BubbleBlocklistPopover.test.tsx b/frontend/src/components/BubbleBlocklistPopover.test.tsx
+new file mode 100644
+index 0000000..4a361f4
+--- /dev/null
++++ b/frontend/src/components/BubbleBlocklistPopover.test.tsx
+@@ -0,0 +1,72 @@
++/**
++ * @vitest-environment jsdom
++ *
++ * feat/bubble-streak-screenshot(design §3 R26):泡泡圖多日聚合後,過濾清單
++ * popover 的搜尋空態文案不能再綁「當日」— popover 不知道 days,文案必須中性。
++ * 痛點:字串目前無測試鎖 → 改文案沒有安全網;這裡把「中性文案」變成合約。
++ *
++ * Popover 互動樣板同 ChipBubbleView.test.tsx BB-1 節(Radix Portal 掛
++ * document.body,開啟後用 document 查)。
++ */
++import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
++import { cleanup, fireEvent, render } from "@testing-library/react";
++import { BubbleBlocklistPopover } from "./BubbleBlocklistPopover";
++import type { BrokerTrade } from "../lib/chip-data";
++
++afterEach(() => cleanup());
++
++beforeEach(() => {
++  // jsdom 無 ResizeObserver;Radix popper 內部會建構。
++  globalThis.ResizeObserver = class {
++    observe() {}
++    disconnect() {}
++    unobserve() {}
++  } as unknown as typeof ResizeObserver;
++});
++
++const trades: BrokerTrade[] = [
++  { broker: "Alpha", broker_id: "AL1", price: 100, buy: 10, sell: 0 },
++];
++
++function openPopover() {
++  const utils = render(
++    <BubbleBlocklistPopover
++      trades={trades}
++      blocked={[]}
++      onAdd={vi.fn()}
++      onRemove={vi.fn()}
++      onClearAll={vi.fn()}
++    />,
++  );
++  fireEvent.click(
++    utils.container.querySelector(
++      "[data-testid=bubble-blocklist-trigger]",
++    ) as HTMLButtonElement,
++  );
++  const popover = document.querySelector(
++    "[data-testid=bubble-blocklist-popover]",
++  ) as HTMLElement | null;
++  expect(popover).toBeTruthy();
++  const input = popover!.querySelector("input[type=text]") as HTMLInputElement;
++  return { ...utils, popover: popover!, input };
++}
++
++describe("BubbleBlocklistPopover — 搜尋空態文案", () => {
++  it("查無候選 → 顯中性「無符合的分點」,不綁「當日」(多日聚合模式同樣正確)", () => {
++    const { popover, input } = openPopover();
++    fireEvent.change(input, { target: { value: "ZZZ" } });
++    const text = popover.textContent ?? "";
++    expect(text.includes("無符合的分點")).toBe(true);
++    expect(text.includes("無符合的當日分點")).toBe(false);
++  });
++
++  it("有候選時不顯空態文案(空態只在查無結果出現)", () => {
++    const { popover, input } = openPopover();
++    fireEvent.change(input, { target: { value: "Alpha" } });
++    const text = popover.textContent ?? "";
++    expect(
++      document.querySelector("[data-testid=bubble-blocklist-candidate]"),
++    ).toBeTruthy();
++    expect(text.includes("無符合的分點")).toBe(false);
++  });
++});
+diff --git a/frontend/src/components/BubbleBlocklistPopover.tsx b/frontend/src/components/BubbleBlocklistPopover.tsx
+index 3fe65af..8094369 100644
+--- a/frontend/src/components/BubbleBlocklistPopover.tsx
++++ b/frontend/src/components/BubbleBlocklistPopover.tsx
+@@ -109,7 +109,7 @@ export function BubbleBlocklistPopover({
+         <div>
+           {candidates.length === 0 ? (
+             <div className="px-3 py-3 text-xs text-ink-dim italic">
+-              無符合的當日分點
++              無符合的分點
+             </div>
+           ) : (
+             candidates.map((c) => (
+diff --git a/frontend/src/components/ChipBubbleView.test.tsx b/frontend/src/components/ChipBubbleView.test.tsx
+index 2f9d191..bf65b34 100644
+--- a/frontend/src/components/ChipBubbleView.test.tsx
++++ b/frontend/src/components/ChipBubbleView.test.tsx
+@@ -7,14 +7,18 @@
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+ import { ChipBubbleView } from "./ChipBubbleView";
++import * as screenshotLib from "../lib/bubble-screenshot";
+ import { BROKER_PALETTE } from "../lib/chip-bubble-svg";
+ import type { BrokerTrade, ChipBubbleData } from "../lib/chip-data";
+ 
+ // C7 A1 test 需要 BubbleChartSvg 真正 render(Y-axis brush overlay 從裡面出)。
+ // jsdom 沒 layout → useContainerSize 回 {0,0} → svg gate 掉。mock 讓 A1 tests
+ // 能 exercise brush 路徑。既有 F2 sort header tests 不依賴 svg render,不受影響。
++// SC-7 [R3]:尺寸改可控 —— 「容器尺寸尚未回報 → 圖表 svg 不存在」是截圖
++// no-op 分支的唯一觸發面,預設值不變(既有測試零影響)。
++const sizeState = vi.hoisted(() => ({ width: 400, height: 300 }));
+ vi.mock("../hooks/useContainerSize", () => ({
+-  useContainerSize: () => ({ width: 400, height: 300 }),
++  useContainerSize: () => ({ width: sizeState.width, height: sizeState.height }),
+ }));
+ 
+ // bubble-multi-broker:mobile sheet 標題測試需要可控 isMobile(真 hook 在
+@@ -33,6 +37,8 @@ beforeEach(() => {
+   // BB-1 blocklist 走 localStorage 全域持久化 — 測試間必清,避免跨 describe 污染。
+   localStorage.clear();
+   mediaState.isMobile = false;
++  sizeState.width = 400;
++  sizeState.height = 300;
+   globalThis.ResizeObserver = class {
+     observe() {}
+     disconnect() {}
+@@ -1790,3 +1796,427 @@ describe("ChipBubbleView — header 空間預留 (SC-1/SC-2)", () => {
+     expect((container.textContent ?? "").includes("點泡泡或搜尋分點加入比較")).toBe(false);
+   });
+ });
++
++// feat/bubble-streak-screenshot SC-4 / SC-5(design §3 測試 1-6):天數選擇器 +
++// 累計 badge + 文案 days 分流。
++// selector 定位一律先 scope 到 data-testid="bubble-days-selector"(R3):
++// RangeSelector 已占用 aria-label「設為 N 日」,equity 總覽分頁以 hidden 留在
++// DOM,1/10/20 三值會在 e2e strict mode 撞名。
++describe("ChipBubbleView — SC-4 天數選擇器 + 累計 badge", () => {
++  const selectorEl = (c: HTMLElement) =>
++    c.querySelector('[data-testid="bubble-days-selector"]') as HTMLElement | null;
++  const dayButtons = (c: HTMLElement) =>
++    Array.from(selectorEl(c)?.querySelectorAll("button") ?? []);
++  const dayButton = (c: HTMLElement, n: number) => {
++    const btn = dayButtons(c).find(
++      (b) => b.getAttribute("aria-label") === `泡泡圖設為 ${n} 日`,
++    );
++    if (!btn) throw new Error(`day button not found: ${n}`);
++    return btn;
++  };
++  const badge = (c: HTMLElement) =>
++    c.querySelector('[data-testid="bubble-window-badge"]');
++
++  // 測試 1
++  it("渲染 5 個 preset(1/3/5/10/20),目前值 aria-pressed=true 其餘 false", () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={5}
++        onDaysChange={vi.fn()}
++      />,
++    );
++    const group = selectorEl(container);
++    expect(group).toBeTruthy();
++    expect(group!.getAttribute("role")).toBe("group");
++    expect(group!.getAttribute("aria-label")).toBe("泡泡圖天數視窗");
++    const btns = dayButtons(container);
++    expect(btns.map((b) => b.textContent)).toEqual(["1", "3", "5", "10", "20"]);
++    expect(dayButton(container, 5).getAttribute("aria-pressed")).toBe("true");
++    for (const n of [1, 3, 10, 20]) {
++      expect(dayButton(container, n).getAttribute("aria-pressed")).toBe("false");
++    }
++  });
++
++  // [impl-review R1] props 全 optional:onDaysChange 未提供 → 不渲染 selector
++  // (既有 30+ 測試 render 不需改,且無 handler 的選擇器等於死鈕)。
++  it("未提供 onDaysChange → 不渲染 selector(既有 caller 零回歸)", () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    expect(selectorEl(container)).toBeNull();
++  });
++
++  // 測試 2
++  it("點「泡泡圖設為 5 日」→ onDaysChange(5)", () => {
++    const onDaysChange = vi.fn();
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={1}
++        onDaysChange={onDaysChange}
++      />,
++    );
++    fireEvent.click(dayButton(container, 5));
++    expect(onDaysChange).toHaveBeenCalledWith(5);
++  });
++
++  // 測試 3(badge 三態 + 載入視窗期)
++  it("windowMeta 齊全 → badge 顯「近 5 個交易日累計(實際 3 日)」", () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={5}
++        onDaysChange={vi.fn()}
++        windowMeta={{ windowDays: 5, actualDays: 3 }}
++      />,
++    );
++    const el = badge(container);
++    expect(el).toBeTruthy();
++    expect(el!.textContent ?? "").toContain("近 5 個交易日累計");
++    expect(el!.textContent ?? "").toContain("實際 3 日");
++  });
++
++  it("actualDays === windowDays → badge 無「實際」字樣", () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={5}
++        onDaysChange={vi.fn()}
++        windowMeta={{ windowDays: 5, actualDays: 5 }}
++      />,
++    );
++    const el = badge(container);
++    expect(el).toBeTruthy();
++    expect(el!.textContent ?? "").toContain("近 5 個交易日累計");
++    expect(el!.textContent ?? "").not.toContain("實際");
++  });
++
++  it("windowMeta null(單日模式)→ 無 badge", () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={1}
++        onDaysChange={vi.fn()}
++      />,
++    );
++    expect(badge(container)).toBeNull();
++  });
++
++  // [R22] 載入視窗期:days 已切到 5、資料與 windowMeta 尚未回 — 不得 crash,
++  // 也不得先畫出「近 5 個交易日累計」badge(資料還是舊的/空的)。
++  it("days=5 + windowMeta null + bubbleData null(載入視窗期)→ 無 badge 且不 crash", () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={null}
++        loading
++        days={5}
++        onDaysChange={vi.fn()}
++        windowMeta={null}
++      />,
++    );
++    expect(badge(container)).toBeNull();
++    expect(container.querySelector('[data-testid="bubble-loading-badge"]')).toBeTruthy();
++    // selector 在無資料時仍可操作(使用者可先選天數)
++    expect(selectorEl(container)).toBeTruthy();
++  });
++
++  // 測試 4:白名單 4 — days 切換不清 selected(symbol reset effect deps 僅 [symbol])
++  it("days 切換不清空已選分點", async () => {
++    const { container, rerender } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={1}
++        onDaysChange={vi.fn()}
++      />,
++    );
++    await selectBrokerViaSearch("Alpha");
++    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
++    rerender(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={5}
++        onDaysChange={vi.fn()}
++        windowMeta={{ windowDays: 5, actualDays: 5 }}
++      />,
++    );
++    expect(chipEls(container)).toHaveLength(1);
++    expect(badge(container)).toBeTruthy();
++  });
++});
++
++// [impl-review R4 / design §3 測試 5-6]:聚合資料經既有管線 + 文案 days 分流。
++describe("ChipBubbleView — SC-5 聚合資料流 + 文案分流", () => {
++  // 3 分點各 1 價位,量 = 單日(100/80)的 5 倍
++  const windowTrades: BrokerTrade[] = [
++    { broker: "Alpha", broker_id: "AL1", price: 100, buy: 500, sell: 400 },
++    { broker: "Bravo", broker_id: "BR1", price: 102, buy: 500, sell: 400 },
++    { broker: "Charlie", broker_id: "CH1", price: 101, buy: 500, sell: 400 },
++  ];
++
++  it("聚合 trades → 明細列數 = 聚合列數,列上張數顯聚合值(500)", async () => {
++    const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
++    const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
++    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
++      configurable: true, get: () => 400,
++    });
++    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
++      configurable: true, get: () => 400,
++    });
++    try {
++      const { container } = render(
++        <ChipBubbleView
++          symbol="2330"
++          bubbleData={mkData(windowTrades)}
++          days={5}
++          onDaysChange={vi.fn()}
++          windowMeta={{ windowDays: 5, actualDays: 5 }}
++        />,
++      );
++      await waitFor(() => {
++        const names = Array.from(
++          container.querySelectorAll("button span.text-left"),
++        ).map((s) => s.textContent ?? "");
++        if (!names.includes("Alpha")) throw new Error("rows not rendered yet");
++      });
++      // 買 / 賣 兩張列表各 3 列(每分點 1 價位)
++      const rows = Array.from(container.querySelectorAll("button span.text-left"));
++      expect(rows).toHaveLength(6);
++      const vols = Array.from(
++        container.querySelectorAll("button span.text-right.tabular-nums"),
++      ).map((s) => s.textContent ?? "");
++      expect(vols.filter((v) => v === "500")).toHaveLength(3);
++      expect(vols.filter((v) => v === "400")).toHaveLength(3);
++    } finally {
++      if (origH) Object.defineProperty(HTMLElement.prototype, "offsetHeight", origH);
++      if (origW) Object.defineProperty(HTMLElement.prototype, "offsetWidth", origW);
++    }
++  });
++
++  it("選取單一分點 → totals 買/賣張顯聚合量(500 / 400)", async () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(windowTrades)}
++        days={5}
++        onDaysChange={vi.fn()}
++        windowMeta={{ windowDays: 5, actualDays: 5 }}
++      />,
++    );
++    await selectBrokerViaSearch("Alpha");
++    await waitFor(() => {
++      if (!container.querySelector('[data-testid="bubble-broker-totals"]')) {
++        throw new Error("totals not shown");
++      }
++    });
++    const totals =
++      container.querySelector('[data-testid="bubble-broker-totals"]')!.textContent ?? "";
++    expect(totals).toContain("買 500 張");
++    expect(totals).toContain("賣 400 張");
++  });
++
++  // [R7][R22] 文案單一來源 = days prop
++  it("days=5 → 未選取計數顯「近 5 日共 3 個分點」(days=1 維持「今日共」)", () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(windowTrades)}
++        days={5}
++        onDaysChange={vi.fn()}
++        windowMeta={{ windowDays: 5, actualDays: 5 }}
++      />,
++    );
++    const row = container.querySelector('[data-testid="bubble-stats-row"]')!;
++    expect(row.textContent ?? "").toContain("近 5 日共");
++    expect(row.textContent ?? "").not.toContain("今日共");
++  });
++
++  it("days=5 + 聚焦無成交分點 → 「該分點近 5 日無成交」", async () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(windowTrades)}
++        days={5}
++        onDaysChange={vi.fn()}
++        windowMeta={{ windowDays: 5, actualDays: 5 }}
++        focusRequest={{ brokerId: "ZZ9", name: "無成交分點", seq: 1 }}
++      />,
++    );
++    await waitFor(() => {
++      if (!container.querySelector('[data-testid="bubble-focus-no-trades"]')) {
++        throw new Error("no-trades badge not shown");
++      }
++    });
++    const text =
++      container.querySelector('[data-testid="bubble-focus-no-trades"]')!.textContent ?? "";
++    expect(text).toContain("該分點近 5 日無成交");
++    expect(text).not.toContain("當日無成交");
++  });
++});
++
++// feat/bubble-streak-screenshot SC-7(design §4):截圖鈕 + handleScreenshot。
++// svgToPngBlob 的 canvas 全鏈 jsdom 測不到(e2e E44 承擔),這裡鎖的是
++// 「什麼時候呼叫、帶什麼檔名/標註、失敗與 no-op 分支怎麼回饋」。
++describe("ChipBubbleView — SC-7 截圖", () => {
++  const shotBtn = (c: HTMLElement) =>
++    c.querySelector('[data-testid="bubble-screenshot"]') as HTMLButtonElement | null;
++  const shotNotice = (c: HTMLElement) =>
++    c.querySelector('[data-testid="bubble-screenshot-notice"]');
++
++  const mkPngBlob = () => new Blob(["png"], { type: "image/png" });
++
++  afterEach(() => {
++    vi.restoreAllMocks();
++  });
++
++  it("bubbleData null → 不渲染截圖鈕", () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={null} loading />,
++    );
++    expect(shotBtn(container)).toBeNull();
++  });
++
++  it("bubbleData 有值 → 渲染截圖鈕", () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    const btn = shotBtn(container);
++    expect(btn).toBeTruthy();
++    expect(btn!.textContent).toBe("截圖");
++  });
++
++  it("點擊(days=1)→ svgToPngBlob + downloadBlob 被呼叫,檔名無 w 後綴、無 annotation", async () => {
++    const toPng = vi
++      .spyOn(screenshotLib, "svgToPngBlob")
++      .mockResolvedValue(mkPngBlob());
++    const dl = vi
++      .spyOn(screenshotLib, "downloadBlob")
++      .mockImplementation(() => {});
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    fireEvent.click(shotBtn(container)!);
++    await waitFor(() => expect(dl).toHaveBeenCalledTimes(1));
++    expect(toPng).toHaveBeenCalledTimes(1);
++    expect(toPng.mock.calls[0]![1].scale).toBe(2);
++    expect(toPng.mock.calls[0]![1].annotation).toBeUndefined();
++    expect(dl.mock.calls[0]![1]).toBe("bubble_2330_2026-06-25.png");
++    expect(shotNotice(container)).toBeNull();
++  });
++
++  it("點擊(days=5)→ 檔名帶 _w5,annotation 與 badge 同源", async () => {
++    const toPng = vi
++      .spyOn(screenshotLib, "svgToPngBlob")
++      .mockResolvedValue(mkPngBlob());
++    const dl = vi
++      .spyOn(screenshotLib, "downloadBlob")
++      .mockImplementation(() => {});
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={5}
++        onDaysChange={vi.fn()}
++        windowMeta={{ windowDays: 5, actualDays: 5 }}
++      />,
++    );
++    fireEvent.click(shotBtn(container)!);
++    await waitFor(() => expect(dl).toHaveBeenCalledTimes(1));
++    expect(toPng.mock.calls[0]![1].annotation).toBe("近 5 個交易日累計");
++    expect(dl.mock.calls[0]![1]).toBe("bubble_2330_2026-06-25_w5.png");
++  });
++
++  it("actualDays < windowDays → annotation 追加「(實際 X 日)」", async () => {
++    const toPng = vi
++      .spyOn(screenshotLib, "svgToPngBlob")
++      .mockResolvedValue(mkPngBlob());
++    const dl = vi
++      .spyOn(screenshotLib, "downloadBlob")
++      .mockImplementation(() => {});
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={5}
++        onDaysChange={vi.fn()}
++        windowMeta={{ windowDays: 5, actualDays: 3 }}
++      />,
++    );
++    fireEvent.click(shotBtn(container)!);
++    await waitFor(() => expect(dl).toHaveBeenCalledTimes(1));
++    expect(toPng.mock.calls[0]![1].annotation).toBe("近 5 個交易日累計(實際 3 日)");
++  });
++
++  it("svgToPngBlob reject → 顯「截圖失敗,請重試」role=status 提示", async () => {
++    vi.spyOn(console, "error").mockImplementation(() => {});
++    vi.spyOn(screenshotLib, "svgToPngBlob").mockRejectedValue(
++      new Error("toBlob returned null"),
++    );
++    const dl = vi
++      .spyOn(screenshotLib, "downloadBlob")
++      .mockImplementation(() => {});
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    fireEvent.click(shotBtn(container)!);
++    await waitFor(() => {
++      if (!shotNotice(container)) throw new Error("notice not shown yet");
++    });
++    const el = shotNotice(container)!;
++    expect(el.getAttribute("role")).toBe("status");
++    expect(el.textContent).toBe("截圖失敗,請重試");
++    expect(dl).not.toHaveBeenCalled();
++  });
++
++  // [impl-review R3] 容器尺寸尚未回報(ResizeObserver 視窗期)→ BubbleChartSvg
++  // 不渲染,容器內只剩無 width/height 的 loading spinner svg。選擇器若寫成
++  // querySelector("svg") 會誤抓 spinner 送去 canvas;這條鎖 no-op + 提示。
++  it("容器內無合格 svg → 顯「圖表尚未就緒」且 svgToPngBlob 未被呼叫", async () => {
++    sizeState.width = 0;
++    sizeState.height = 0;
++    const toPng = vi
++      .spyOn(screenshotLib, "svgToPngBlob")
++      .mockResolvedValue(mkPngBlob());
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} loading />,
++    );
++    expect(
++      container.querySelector('[data-testid="bubble-loading-badge"]'),
++    ).toBeTruthy();
++    fireEvent.click(shotBtn(container)!);
++    await waitFor(() => {
++      if (!shotNotice(container)) throw new Error("notice not shown yet");
++    });
++    expect(shotNotice(container)!.textContent).toBe("圖表尚未就緒,請稍候再試");
++    expect(toPng).not.toHaveBeenCalled();
++  });
++
++  it("成功截圖 → 清除既有失敗提示", async () => {
++    vi.spyOn(console, "error").mockImplementation(() => {});
++    const toPng = vi
++      .spyOn(screenshotLib, "svgToPngBlob")
++      .mockRejectedValueOnce(new Error("boom"))
++      .mockResolvedValue(mkPngBlob());
++    vi.spyOn(screenshotLib, "downloadBlob").mockImplementation(() => {});
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    fireEvent.click(shotBtn(container)!);
++    await waitFor(() => {
++      if (!shotNotice(container)) throw new Error("notice not shown yet");
++    });
++    fireEvent.click(shotBtn(container)!);
++    await waitFor(() => {
++      if (shotNotice(container)) throw new Error("notice not cleared yet");
++    });
++    expect(toPng).toHaveBeenCalledTimes(2);
++  });
++});
+diff --git a/frontend/src/components/ChipBubbleView.tsx b/frontend/src/components/ChipBubbleView.tsx
+index 6e89284..3f04ff4 100644
+--- a/frontend/src/components/ChipBubbleView.tsx
++++ b/frontend/src/components/ChipBubbleView.tsx
+@@ -14,6 +14,11 @@ import {
+   type BubbleSelectedBroker,
+ } from "../lib/chip-bubble-svg";
+ import { formatBrokerName } from "../lib/broker-name";
++import {
++  bubbleScreenshotFilename,
++  downloadBlob,
++  svgToPngBlob,
++} from "../lib/bubble-screenshot";
+ import { PriceBarSvg } from "../lib/chip-price-bar-svg";
+ import { useContainerSize } from "../hooks/useContainerSize";
+ import { useMediaQuery } from "../hooks/useMediaQuery";
+@@ -49,6 +54,16 @@ interface Props {
+    *  (顯式意圖優先於舊設定,持久生效)+ R10 提示;當日無成交 → 維持選中 +
+    *  空狀態。name 由 caller 帶入 — 無成交時 trades 內查不到名稱。 */
+   focusRequest?: { brokerId: string; name: string; seq: number } | null;
++  /** SC-4:目前天數視窗(1 = 當日,>1 = 近 N 個交易日累計)。**「幾日」呈現的
++   *  單一來源**(design §3 R22)— badge 的「實際 X 日」註記才看 windowMeta。
++   *  未提供 → 1(既有 caller 行為 bit-for-bit)。 */
++  days?: number;
++  /** SC-4:天數切換 callback。未提供 → 不渲染 BubbleDaysSelector
++   *  (impl-review R1:無 handler 的選擇器等於死鈕)。 */
++  onDaysChange?: (d: number) => void;
++  /** SC-4:多日聚合的視窗 meta(來自 useChipBubble)。null = 單日模式或視窗
++   *  資料尚未回(載入視窗期)→ 不顯 badge。 */
++  windowMeta?: { windowDays: number; actualDays: number } | null;
+ }
+ 
+ // F12: surface every broker who traded today, including 1-張 ones. The
+@@ -70,6 +85,9 @@ export function ChipBubbleView({
+   onJumpToOverview,
+   loading,
+   focusRequest,
++  days = 1,
++  onDaysChange,
++  windowMeta = null,
+ }: Props) {
+   // bubble-multi-broker(SC-1):有序多選(≤6),id = broker_id 對齊 App.tsx
+   // selectedBrokerIds 契約;name 存 state(分點自 trades 消失時 chip 不失效);
+@@ -102,6 +120,9 @@ export function ChipBubbleView({
+   // CH-1: focusRequest 聚焦狀態 — focusedBroker 記住「聚焦目標」讓當日無
+   // 成交的分點也有名稱可顯示;blockRemovalNotice = R10 提示(下一次聚焦或
+   // 換股時清)。
++  // SC-7:截圖提示(role=status 黃字)。null = 無提示;成功截圖與換股清除。
++  const [screenshotNotice, setScreenshotNotice] = useState<string | null>(null);
++
+   const [focusedBroker, setFocusedBroker] = useState<{ id: string; name: string } | null>(null);
+   const [blockRemovalNotice, setBlockRemovalNotice] = useState<string | null>(null);
+   const lastFocusSeq = useRef(0);
+@@ -123,6 +144,8 @@ export function ChipBubbleView({
+     setFocusedBroker(null);
+     setBlockRemovalNotice(null);
+     setSolo(null);
++    // SC-7 [R24]:換股清截圖提示(deps 仍僅 [symbol],白名單 4 不動)。
++    setScreenshotNotice(null);
+   }, [symbol]);
+ 
+   // SC-1 toggle 核心(搜尋 / chip × 入口;泡泡與明細列的已選半邊已改走單看):
+@@ -394,6 +417,40 @@ export function ChipBubbleView({
+     setManualInputOpen(false);
+   }, []);
+ 
++  // SC-7(design §4):圖表區 SVG → PNG 下載。
++  const handleScreenshot = useCallback(async () => {
++    // [impl-review R3] 選擇器帶 [width][height]:同容器內的 loading spinner
++    // 也是 svg(無 width/height attr),裸 querySelector("svg") 在載入視窗期
++    // 會誤抓 spinner 去轉圖。
++    const svg = bubbleRef.current?.querySelector<SVGSVGElement>("svg[width][height]");
++    if (!svg || !bubbleData) {
++      // [R24] 有資料但容器尺寸未回報(ResizeObserver 視窗期)也不靜默。
++      setScreenshotNotice("圖表尚未就緒,請稍候再試");
++      return;
++    }
++    try {
++      // 底色取 body computed(頁面深色底單一來源,不 hardcode hex)。
++      const background = getComputedStyle(document.body).backgroundColor;
++      const blob = await svgToPngBlob(svg, {
++        scale: 2,
++        background,
++        // [R22+R23] 標註字串與 badge 同源:days prop 主導,windowMeta 補實際日。
++        annotation:
++          days > 1
++            ? `近 ${days} 個交易日累計` +
++              (windowMeta && windowMeta.actualDays < windowMeta.windowDays
++                ? `(實際 ${windowMeta.actualDays} 日)`
++                : "")
++            : undefined,
++      });
++      downloadBlob(blob, bubbleScreenshotFilename(symbol, bubbleData.date, days));
++      setScreenshotNotice(null);
++    } catch (err) {
++      console.error("bubble screenshot failed", err);
++      setScreenshotNotice("截圖失敗,請重試");
++    }
++  }, [bubbleData, symbol, days, windowMeta]);
++
+   const brushSummary = useMemo(() => {
+     if (!brushRange || !bubbleData) return null;
+     return summarizeTradesByPriceRange(visibleTrades, brushRange.min, brushRange.max);
+@@ -521,6 +578,15 @@ export function ChipBubbleView({
+                   {blockRemovalNotice}
+                 </span>
+               )}
++              {screenshotNotice && (
++                <span
++                  data-testid="bubble-screenshot-notice"
++                  role="status"
++                  className="text-xs text-[#f0b429]"
++                >
++                  {screenshotNotice}
++                </span>
++              )}
+               {selected.length === 0 && !blockRemovalNotice && (
+                 <span className="text-xs text-ink-dim">
+                   點泡泡或搜尋分點加入比較
+@@ -567,7 +633,8 @@ export function ChipBubbleView({
+                 )
+               ) : (
+                 <span className="text-xs text-ink-dim">
+-                  {brushRange ? "此區間" : "今日共"} <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
++                  {/* SC-5 R22:「幾日」單一來源 = days prop(即時反映選擇)。 */}
++                  {brushRange ? "此區間" : days > 1 ? `近 ${days} 日共` : "今日共"} <span className="text-[#b794f4] font-medium">{uniqueBrokerCount}</span> 個分點
+                 </span>
+               )}
+               {selected.length > 0 && (
+@@ -600,6 +667,16 @@ export function ChipBubbleView({
+                   回整組 ×
+                 </button>
+               )}
++              {/* SC-4 [design §3 R15 fallback]:天數 selector 原放右工具欄,
++                  1280px 下第三 grid 欄 +170px 把中欄 minmax(0,1fr) 壓成一字寬
++                  (header 撐高 2.6 倍 → 圖區 397→125px,e2e E39 因 circle 座標
++                  位移而紅)。改掛統計行右端:中欄本來就是 minmax(0,1fr) 可伸縮,
++                  ml-auto 推到行尾(mobile flex-col 自然堆疊)。 */}
++              {onDaysChange && (
++                <div className="ml-auto">
++                  <BubbleDaysSelector value={days} onChange={onDaysChange} />
++                </div>
++              )}
+             </div>
+           </div>
+           {/* C10 (🟢 Item 4 + 5):手動輸入區間 trigger + Help '?' icon 靠右
+@@ -612,6 +689,17 @@ export function ChipBubbleView({
+               onRemove={handleBlockRemove}
+               onClearAll={handleBlockClearAll}
+             />
++            {/* SC-7:截圖鈕在「輸入區間」左側;無資料時不渲染(沒東西可截)。 */}
++            {bubbleData && (
++              <button
++                type="button"
++                data-testid="bubble-screenshot"
++                onClick={() => void handleScreenshot()}
++                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer"
++              >
++                截圖
++              </button>
++            )}
+             {bubbleData && (
+               <button
+                 type="button"
+@@ -674,10 +762,23 @@ export function ChipBubbleView({
+                 className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none"
+               >
+                 <div className="bg-bg-deep/90 border border-line-strong px-4 py-2 rounded shadow text-sm text-ink-muted">
+-                  〈{focusedBroker.name}〉該分點當日無成交
++                  〈{focusedBroker.name}〉該分點{days > 1 ? `近 ${days} 日` : "當日"}無成交
+                 </div>
+               </div>
+             )}
++          {/* SC-4 累計 badge:windowMeta 有值(= 多日資料已回)才顯;
++              pointer-events-none 不擋泡泡互動。「實際 X 日」= 部分日 fetch
++              失敗 / 空成交 / 歷史不足。 */}
++          {windowMeta !== null && (
++            <div
++              data-testid="bubble-window-badge"
++              className="absolute top-2 left-2 z-30 text-xs text-ink-muted bg-bg-deep/90 px-2 py-1 border border-line-strong rounded shadow pointer-events-none"
++            >
++              近 {windowMeta.windowDays} 個交易日累計
++              {windowMeta.actualDays < windowMeta.windowDays &&
++                `(實際 ${windowMeta.actualDays} 日)`}
++            </div>
++          )}
+           {loading && symbol && (
+             <div
+               data-testid="bubble-loading-badge"
+@@ -901,6 +1002,50 @@ function DetailPanel({
+   );
+ }
+ 
++// SC-4(feat/bubble-streak-screenshot):泡泡圖天數視窗 preset。上限 20 對齊
++// 後端 `days: int = Query(ge=2, le=20)`;不共用 ui/RangeSelector —— 那顆帶
++// 1-60 自由輸入面(不適用)且被籌碼總覽以 hidden 留在 DOM,改共用元件會擴大
++// 白名單風險。aria-label 冠「泡泡圖」前綴 + data-testid scope:RangeSelector
++// 已占用「設為 N 日」,1/10/20 三值否則會撞名(design §3 R3)。
++const BUBBLE_DAYS_PRESETS: readonly number[] = [1, 3, 5, 10, 20] as const;
++
++function BubbleDaysSelector({
++  value,
++  onChange,
++}: {
++  value: number;
++  onChange: (d: number) => void;
++}) {
++  return (
++    <div
++      role="group"
++      aria-label="泡泡圖天數視窗"
++      data-testid="bubble-days-selector"
++      className="shrink-0 inline-flex items-stretch border border-line-strong rounded overflow-hidden"
++    >
++      {BUBBLE_DAYS_PRESETS.map((n) => {
++        const active = n === value;
++        return (
++          <button
++            key={n}
++            type="button"
++            aria-pressed={active}
++            aria-label={`泡泡圖設為 ${n} 日`}
++            onClick={() => onChange(n)}
++            className={`px-2 py-0.5 text-xs tabular-nums cursor-pointer transition-colors border-r border-line-strong last:border-r-0 pointer-coarse:min-h-11 ${
++              active
++                ? "text-ink border-accent bg-accent/[0.08]"
++                : "text-ink-dim hover:text-ink"
++            }`}
++          >
++            {n}
++          </button>
++        );
++      })}
++    </div>
++  );
++}
++
+ // C10 (🟢 Item 4): 手動輸入價位區間 mini form。onApply 只在兩個值 finite +
+ // min < max 時觸發(在 parent handleManualApply 檢查)。空值 / NaN 由 parent
+ // 靜默 reject,不彈錯誤(輸入中間態很常見)。
+diff --git a/frontend/src/hooks/useChipBubble.test.ts b/frontend/src/hooks/useChipBubble.test.ts
+index 008d373..3b939dc 100644
+--- a/frontend/src/hooks/useChipBubble.test.ts
++++ b/frontend/src/hooks/useChipBubble.test.ts
+@@ -7,13 +7,21 @@
+ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+ import { api } from "../lib/api";
+-import type { ChipBubbleData } from "../lib/chip-data";
++import type { ChipBubbleData, ChipBubbleWindowData } from "../lib/chip-data";
+ import { useChipBubble } from "./useChipBubble";
+ import { makeQueryWrapper } from "../test-utils/query-wrapper";
+ 
+ const mk = (symbol: string): ChipBubbleData =>
+   ({ symbol, fetched_at: "", brokers: [] }) as unknown as ChipBubbleData;
+ 
++const mkWindow = (
++  symbol: string, windowDays: number, actualDays: number,
++): ChipBubbleWindowData =>
++  ({
++    symbol, date: "2026-06-22", fetched_at: "", trades: [],
++    window_days: windowDays, trading_dates: [], actual_days: actualDays,
++  }) as unknown as ChipBubbleWindowData;
++
+ beforeEach(() => vi.restoreAllMocks());
+ afterEach(() => cleanup());
+ 
+@@ -56,3 +64,71 @@ describe("useChipBubble", () => {
+     await waitFor(() => expect(result.current.error).toBe("boom"));
+   });
+ });
++
++// SC-3:days 參數分流端點。days 省略 / =1 走既有 /bubble(白名單:行為
++// bit-for-bit),days>1 走 /bubble_window 並曝光 windowMeta。
++describe("useChipBubble — days 分流(SC-3)", () => {
++  it("days 省略 → 走 api.chipBubble,windowMeta 為 null", async () => {
++    const single = vi.spyOn(api, "chipBubble").mockResolvedValue(mk("2330"));
++    const window = vi.spyOn(api, "chipBubbleWindow").mockResolvedValue(mkWindow("2330", 5, 5));
++    const { result } = renderHook(() => useChipBubble("2330", "2026-06-22"), {
++      wrapper: makeQueryWrapper(),
++    });
++    await waitFor(() => expect(result.current.data?.symbol).toBe("2330"));
++    expect(single).toHaveBeenCalledTimes(1);
++    expect(window).not.toHaveBeenCalled();
++    expect(result.current.windowMeta).toBeNull();
++  });
++
++  it("days=1 → 走 api.chipBubble,windowMeta 為 null", async () => {
++    const single = vi.spyOn(api, "chipBubble").mockResolvedValue(mk("2330"));
++    const window = vi.spyOn(api, "chipBubbleWindow").mockResolvedValue(mkWindow("2330", 5, 5));
++    const { result } = renderHook(() => useChipBubble("2330", "2026-06-22", 1), {
++      wrapper: makeQueryWrapper(),
++    });
++    await waitFor(() => expect(result.current.data?.symbol).toBe("2330"));
++    expect(single).toHaveBeenCalledTimes(1);
++    expect(window).not.toHaveBeenCalled();
++    expect(result.current.windowMeta).toBeNull();
++  });
++
++  it("days=5 → 走 api.chipBubbleWindow 並曝光 windowMeta", async () => {
++    const single = vi.spyOn(api, "chipBubble").mockResolvedValue(mk("2330"));
++    const window = vi.spyOn(api, "chipBubbleWindow").mockResolvedValue(mkWindow("2330", 5, 3));
++    const { result } = renderHook(() => useChipBubble("2330", "2026-06-22", 5), {
++      wrapper: makeQueryWrapper(),
++    });
++    await waitFor(() => expect(result.current.data?.symbol).toBe("2330"));
++    expect(single).not.toHaveBeenCalled();
++    expect(window).toHaveBeenCalledWith(
++      "2330", "2026-06-22", 5, false,
++      expect.objectContaining({ signal: expect.any(AbortSignal) }),
++    );
++    expect(result.current.windowMeta).toEqual({ windowDays: 5, actualDays: 3 });
++  });
++
++  it("days=5 時 refresh() 帶 refresh=true 打 window 端點", async () => {
++    const window = vi.spyOn(api, "chipBubbleWindow").mockResolvedValue(mkWindow("2330", 5, 5));
++    const { result } = renderHook(() => useChipBubble("2330", "2026-06-22", 5), {
++      wrapper: makeQueryWrapper(),
++    });
++    await waitFor(() => expect(window).toHaveBeenCalledTimes(1));
++    act(() => { result.current.refresh(); });
++    await waitFor(() => expect(window).toHaveBeenCalledTimes(2));
++    expect(window.mock.calls[1]?.[3]).toBe(true);
++  });
++
++  it("days 改變 → queryKey 變動觸發重新 fetch", async () => {
++    const single = vi.spyOn(api, "chipBubble").mockResolvedValue(mk("2330"));
++    const window = vi.spyOn(api, "chipBubbleWindow").mockResolvedValue(mkWindow("2330", 5, 5));
++    const { result, rerender } = renderHook(
++      ({ days }: { days: number }) => useChipBubble("2330", "2026-06-22", days),
++      { wrapper: makeQueryWrapper(), initialProps: { days: 1 } },
++    );
++    await waitFor(() => expect(single).toHaveBeenCalledTimes(1));
++
++    rerender({ days: 5 });
++    await waitFor(() => expect(window).toHaveBeenCalledTimes(1));
++    await waitFor(() => expect(result.current.windowMeta).toEqual({ windowDays: 5, actualDays: 5 }));
++  });
++});
+diff --git a/frontend/src/hooks/useChipBubble.ts b/frontend/src/hooks/useChipBubble.ts
+index ea3cf27..5c026af 100644
+--- a/frontend/src/hooks/useChipBubble.ts
++++ b/frontend/src/hooks/useChipBubble.ts
+@@ -1,16 +1,29 @@
+ import { api } from "../lib/api";
+-import type { ChipBubbleData } from "../lib/chip-data";
++import type { ChipBubbleData, ChipBubbleWindowData } from "../lib/chip-data";
+ import { useForceRefreshQuery } from "./useForceRefreshQuery";
+ 
+-export function useChipBubble(symbol: string, date: string) {
+-  const { data, isFetching, error, refresh } = useForceRefreshQuery<ChipBubbleData>({
+-    queryKey: ["chip-bubble", symbol, date],
+-    queryFn: async (force, { signal }) => api.chipBubble(symbol, date, force, { signal }),
++/**
++ * days = 1(預設)走既有 /bubble;days > 1 走 /bubble_window 的 N 日聚合。
++ * days 進 queryKey → 切天數自動 refetch,且各天數獨立 cache。
++ */
++export function useChipBubble(symbol: string, date: string, days: number = 1) {
++  const { data, isFetching, error, refresh } = useForceRefreshQuery<
++    ChipBubbleData | ChipBubbleWindowData
++  >({
++    queryKey: ["chip-bubble", symbol, date, days],
++    queryFn: async (force, { signal }) =>
++      days > 1
++        ? api.chipBubbleWindow(symbol, date, days, force, { signal })
++        : api.chipBubble(symbol, date, force, { signal }),
+     enabled: symbol !== "",
+   });
+ 
+   return {
+     data: data ?? null,
++    windowMeta:
++      data && days > 1 && "window_days" in data
++        ? { windowDays: data.window_days, actualDays: data.actual_days }
++        : null,
+     loading: isFetching,
+     error: error ? error.message : null,
+     refresh,
+diff --git a/frontend/src/lib/api.test.ts b/frontend/src/lib/api.test.ts
+index 82b1082..d86d58b 100644
+--- a/frontend/src/lib/api.test.ts
++++ b/frontend/src/lib/api.test.ts
+@@ -206,6 +206,35 @@ describe("api cache", () => {
+     expect(url).not.toContain("refresh=");
+   });
+ 
++  it("chipBubbleWindow URL contains date + days + refresh", async () => {
++    const fetchMock = mockFetch({
++      symbol: "2330", date: "2026-06-26", window_days: 5,
++      trading_dates: [], actual_days: 5, fetched_at: "", trades: [],
++    });
++    vi.stubGlobal("fetch", fetchMock);
++
++    await api.chipBubbleWindow("2330", "2026-06-26", 5, true);
++    const url = (fetchMock.mock.calls[0]![0] as URL).toString();
++    expect(url).toContain("/api/chip/2330/bubble_window");
++    expect(url).toContain("date=2026-06-26");
++    expect(url).toContain("days=5");
++    expect(url).toContain("refresh=true");
++  });
++
++  it("chipBubbleWindow URL omits refresh when not given", async () => {
++    const fetchMock = mockFetch({
++      symbol: "2330", date: "2026-06-26", window_days: 10,
++      trading_dates: [], actual_days: 10, fetched_at: "", trades: [],
++    });
++    vi.stubGlobal("fetch", fetchMock);
++
++    await api.chipBubbleWindow("2330", "2026-06-26", 10);
++    const url = (fetchMock.mock.calls[0]![0] as URL).toString();
++    expect(url).toContain("/api/chip/2330/bubble_window");
++    expect(url).toContain("days=10");
++    expect(url).not.toContain("refresh=");
++  });
++
+   it("clearApiCache empties the cache", async () => {
+     const fetchMock = mockFetch(MOCK_HISTORY);
+     vi.stubGlobal("fetch", fetchMock);
+diff --git a/frontend/src/lib/api.ts b/frontend/src/lib/api.ts
+index a086068..43a6c50 100644
+--- a/frontend/src/lib/api.ts
++++ b/frontend/src/lib/api.ts
+@@ -1,6 +1,6 @@
+ import type {
+-  ChipSummary, ChipBubbleData, ChipHistory, ChipBrokerHistory, ChipBrokersWindow,
+-  ChipIntraday,
++  ChipSummary, ChipBubbleData, ChipBubbleWindowData, ChipHistory, ChipBrokerHistory,
++  ChipBrokersWindow, ChipIntraday,
+ } from "./chip-data";
+ import type { BorrowFeeData } from "./borrow-fee";
+ import type { WarrantQuotesPayload, WarrantsPayload } from "./warrant-data";
+@@ -197,6 +197,13 @@ export const api = {
+     if (refresh) params.refresh = "true";
+     return get(`${BASE}/chip/${symbol}/bubble`, params, options);
+   },
++  chipBubbleWindow(
++    symbol: string, date: string, days: number, refresh?: boolean, options?: RequestOptions,
++  ): Promise<ChipBubbleWindowData> {
++    const params: Record<string, string> = { date, days: String(days) };
++    if (refresh) params.refresh = "true";
++    return get(`${BASE}/chip/${symbol}/bubble_window`, params, options);
++  },
+   chipIntraday(
+     symbol: string, date?: string, refresh?: boolean, options?: RequestOptions,
+   ): Promise<ChipIntraday> {
+diff --git a/frontend/src/lib/bubble-screenshot.test.ts b/frontend/src/lib/bubble-screenshot.test.ts
+new file mode 100644
+index 0000000..41a0ebb
+--- /dev/null
++++ b/frontend/src/lib/bubble-screenshot.test.ts
+@@ -0,0 +1,90 @@
++/**
++ * @vitest-environment jsdom
++ *
++ * feat/bubble-streak-screenshot SC-7:截圖工具函式(design §4)。
++ * svgToPngBlob 走 canvas / Image,jsdom 無法覆蓋 —— 由 e2e E44(真實下載檔
++ * size > 0)承擔;本檔只測純 DOM 可驗的 filename / serializeSvg。
++ */
++import { afterEach, describe, expect, it } from "vitest";
++import { bubbleScreenshotFilename, serializeSvg } from "./bubble-screenshot";
++
++const SVG_NS = "http://www.w3.org/2000/svg";
++
++function mkSvg(width = 400, height = 300): SVGSVGElement {
++  const svg = document.createElementNS(SVG_NS, "svg") as SVGSVGElement;
++  svg.setAttribute("width", String(width));
++  svg.setAttribute("height", String(height));
++  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
++  const circle = document.createElementNS(SVG_NS, "circle");
++  circle.setAttribute("cx", "120");
++  circle.setAttribute("cy", "80");
++  circle.setAttribute("r", "12");
++  svg.appendChild(circle);
++  return svg;
++}
++
++afterEach(() => {
++  document.documentElement.style.fontSize = "";
++});
++
++describe("bubbleScreenshotFilename", () => {
++  it("days=1 → bubble_{symbol}_{date}.png(無 w 後綴)", () => {
++    expect(bubbleScreenshotFilename("2330", "2026-08-13", 1)).toBe(
++      "bubble_2330_2026-08-13.png",
++    );
++  });
++
++  it("days>1 → bubble_{symbol}_{date}_w{days}.png", () => {
++    expect(bubbleScreenshotFilename("2330", "2026-08-13", 5)).toBe(
++      "bubble_2330_2026-08-13_w5.png",
++    );
++    expect(bubbleScreenshotFilename("3481", "2026-06-26", 20)).toBe(
++      "bubble_3481_2026-06-26_w20.png",
++    );
++  });
++});
++
++describe("serializeSvg", () => {
++  it("輸出 standalone markup:xmlns + width/height attr + 子節點", () => {
++    const out = serializeSvg(mkSvg(640, 480));
++    expect(out).toContain('xmlns="http://www.w3.org/2000/svg"');
++    expect(out).toContain('width="640"');
++    expect(out).toContain('height="480"');
++    expect(out).toContain("<circle");
++  });
++
++  // [R5/R9] chip-bubble-svg 的 fontSize 全是 rem 字串;standalone 文件的 rem
++  // 基準是預設 16px,不寫入 root font-size 會在 ≥1920px 螢幕(root 112.5%/
++  // 125%)產出字級不一致的 PNG。
++  it("寫入 document root 的 computed font-size(px)到 clone 根 svg", () => {
++    document.documentElement.style.fontSize = "20px";
++    const out = serializeSvg(mkSvg());
++    expect(out).toContain("font-size: 20px");
++  });
++
++  it("未傳 annotation → 不插 <text>", () => {
++    const out = serializeSvg(mkSvg());
++    expect(out).not.toContain("<text");
++  });
++
++  it("傳 annotation → 插 <text> 且含該文字", () => {
++    const out = serializeSvg(mkSvg(), { annotation: "近 5 個交易日累計" });
++    expect(out).toContain("<text");
++    expect(out).toContain("近 5 個交易日累計");
++  });
++
++  // [R23] annotation 字串與 badge 同源,含「(實際 X 日)」variant。
++  it("annotation 帶「(實際 X 日)」variant → 原字串完整出現", () => {
++    const out = serializeSvg(mkSvg(), {
++      annotation: "近 5 個交易日累計(實際 3 日)",
++    });
++    expect(out).toContain("近 5 個交易日累計(實際 3 日)");
++  });
++
++  it("不動原 svg(clone 操作)", () => {
++    const svg = mkSvg();
++    serializeSvg(svg, { annotation: "近 5 個交易日累計" });
++    expect(svg.getAttribute("xmlns")).toBeNull();
++    expect(svg.querySelector("text")).toBeNull();
++  });
++});
+diff --git a/frontend/src/lib/bubble-screenshot.ts b/frontend/src/lib/bubble-screenshot.ts
+new file mode 100644
+index 0000000..5c4b8ed
+--- /dev/null
++++ b/frontend/src/lib/bubble-screenshot.ts
+@@ -0,0 +1,123 @@
++// feat/bubble-streak-screenshot SC-7(design §4):泡泡圖 SVG → PNG 下載。
++// 零新依賴:XMLSerializer → blob URL → Image → canvas → toBlob。
++import { CHIP } from "./chip-theme";
++
++const SVG_NS = "http://www.w3.org/2000/svg";
++
++// 窗口標註座標。來源 = chip-bubble-svg.tsx 的 `PADDING = { top: 12, left: 56 }`
++// (未 export,故此處用字面值):x = PADDING.left + 8 = 64、
++// y = PADDING.top + 14 = 26 —— 落在 chart 內區左上,避開 x <= PADDING.left 的
++// 價位 label 帶與第一條 grid 線(design §4 R14/R23)。chip-bubble-svg 的
++// PADDING 若改,這兩個值要跟著改。
++const ANNOTATION_X = 64;
++const ANNOTATION_Y = 26;
++const ANNOTATION_FONT_SIZE = "0.75rem";
++
++/** 檔名:單日 `bubble_{symbol}_{date}.png`;多日 `bubble_{symbol}_{date}_w{days}.png`。 */
++export function bubbleScreenshotFilename(
++  symbol: string,
++  date: string,
++  days: number,
++): string {
++  const suffix = days > 1 ? `_w${days}` : "";
++  return `bubble_${symbol}_${date}${suffix}.png`;
++}
++
++/** SVG element → standalone markup。
++ *  [R5] clone 根 svg 顯式寫入 document root 的 computed font-size(px)—
++ *  chip-bubble-svg 的 fontSize 全是 rem 字串(rem 隨大螢幕 root font-size
++ *  縮放),standalone 文件的 rem 基準是預設 16px,不寫入會在 ≥1920px 螢幕
++ *  (root 112.5%/125%)產出字級不一致的 PNG。
++ *  [R14+R23] opts.annotation(days>1 時傳,字串與 badge 同源)→ 在 clone 內
++ *  補一個 <text>,PNG 自帶窗口資訊,不與檔名脫鉤。 */
++export function serializeSvg(
++  svg: SVGSVGElement,
++  opts?: { annotation?: string },
++): string {
++  const clone = svg.cloneNode(true) as SVGSVGElement;
++  clone.setAttribute("xmlns", SVG_NS);
++  // BubbleChartSvg 收 px width/height props → attr 恆在;保險起見缺席才不寫。
++  const width = svg.getAttribute("width");
++  const height = svg.getAttribute("height");
++  if (width !== null) clone.setAttribute("width", width);
++  if (height !== null) clone.setAttribute("height", height);
++  // [impl-review R9] jsdom 下 computed fontSize 可能是空字串 → fallback 16px。
++  const rootFont = getComputedStyle(document.documentElement).fontSize || "16px";
++  clone.style.fontSize = rootFont;
++  if (opts?.annotation) {
++    const text = document.createElementNS(SVG_NS, "text");
++    text.setAttribute("x", String(ANNOTATION_X));
++    text.setAttribute("y", String(ANNOTATION_Y));
++    text.setAttribute("fill", CHIP.inkMuted);
++    text.setAttribute("font-family", CHIP.font);
++    text.setAttribute("font-size", ANNOTATION_FONT_SIZE);
++    text.textContent = opts.annotation;
++    clone.appendChild(text);
++  }
++  return new XMLSerializer().serializeToString(clone);
++}
++
++/** serialize → blob URL → Image → canvas(預設 2x、先鋪不透明 background)→ PNG Blob。
++ *  jsdom 無 canvas/Image → 本函式 vitest 不覆蓋,由 e2e download + 真實下載檔驗。
++ *  Image error / 取不到 2d context / toBlob null 一律 reject(caller catch 後顯提示)。 */
++export async function svgToPngBlob(
++  svg: SVGSVGElement,
++  opts: { scale?: number; background: string; annotation?: string },
++): Promise<Blob> {
++  const scale = opts.scale ?? 2;
++  const width = Number(svg.getAttribute("width"));
++  const height = Number(svg.getAttribute("height"));
++  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
++    throw new Error("svg 缺少有效的 width/height");
++  }
++  const markup = serializeSvg(svg, { annotation: opts.annotation });
++  const url = URL.createObjectURL(
++    new Blob([markup], { type: "image/svg+xml;charset=utf-8" }),
++  );
++  try {
++    const img = await loadImage(url);
++    const canvas = document.createElement("canvas");
++    canvas.width = Math.round(width * scale);
++    canvas.height = Math.round(height * scale);
++    const ctx = canvas.getContext("2d");
++    if (!ctx) throw new Error("取不到 canvas 2d context");
++    // 先鋪底 —— SVG 本身透明,PNG 直接貼到白底文件會看不到淺色文字。
++    ctx.fillStyle = opts.background;
++    ctx.fillRect(0, 0, canvas.width, canvas.height);
++    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
++    return await new Promise<Blob>((resolve, reject) => {
++      canvas.toBlob((blob) => {
++        if (blob) resolve(blob);
++        else reject(new Error("canvas.toBlob 回傳 null"));
++      }, "image/png");
++    });
++  } finally {
++    // 此處是「餵給 Image 的 SVG blob URL」,drawImage 已完成 → 可同步 revoke;
++    // 延後 revoke 條款(R13)只針對 downloadBlob 的下載 URL。
++    URL.revokeObjectURL(url);
++  }
++}
++
++/** a[download] click 觸發下載。
++ *  [R13] revoke 延後 1000ms + 移除 anchor —— 同步 revoke 會在部分瀏覽器讓
++ *  下載中止 / 產出 0 byte 檔。 */
++export function downloadBlob(blob: Blob, filename: string): void {
++  const url = URL.createObjectURL(blob);
++  const a = document.createElement("a");
++  a.href = url;
++  a.download = filename;
++  a.style.display = "none";
++  document.body.appendChild(a);
++  a.click();
++  a.remove();
++  setTimeout(() => URL.revokeObjectURL(url), 1000);
++}
++
++function loadImage(url: string): Promise<HTMLImageElement> {
++  return new Promise<HTMLImageElement>((resolve, reject) => {
++    const img = new Image();
++    img.onload = () => resolve(img);
++    img.onerror = () => reject(new Error("SVG 轉圖失敗(Image 載入錯誤)"));
++    img.src = url;
++  });
++}
+diff --git a/frontend/src/lib/changelog.test.ts b/frontend/src/lib/changelog.test.ts
+index 174f06d..87dbda7 100644
+--- a/frontend/src/lib/changelog.test.ts
++++ b/frontend/src/lib/changelog.test.ts
+@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
+     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
+   });
+ 
+-  it("最新版本是 v0.47.0(泡泡圖每價位量能分布)", () => {
+-    expect(CHANGELOG[0]?.version).toBe("0.47.0");
++  it("最新版本是 v0.48.0(泡泡圖多日累計視圖 + 圖片下載)", () => {
++    expect(CHANGELOG[0]?.version).toBe("0.48.0");
+   });
+ 
+   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
+diff --git a/frontend/src/lib/changelog.ts b/frontend/src/lib/changelog.ts
+index 77f75b3..90811e0 100644
+--- a/frontend/src/lib/changelog.ts
++++ b/frontend/src/lib/changelog.ts
+@@ -39,6 +39,22 @@ export function semverGt(a: string, b: string): boolean {
+ // 版本字串遵循 SemVer 2.0.0 三段式 MAJOR.MINOR.PATCH;pre-1.0 階段 breaking change 也只 bump MINOR
+ // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
+ export const CHANGELOG: VersionEntry[] = [
++  {
++    version: "0.48.0",
++    date: "2026-08-13",
++    changes: [
++      {
++        kind: "feature",
++        scope: "equity",
++        text: "泡泡圖新增多日累計視圖:可切 1 / 3 / 5 / 10 / 20 個交易日,分點買賣張數依所選天數累計呈現,圖上並標示目前累計的交易日數",
++      },
++      {
++        kind: "feature",
++        scope: "equity",
++        text: "泡泡圖可一鍵下載圖表圖片,檔名自帶股票代號與日期;多日累計視圖下載的圖片會一併標註累計天數",
++      },
++    ],
++  },
+   {
+     version: "0.47.0",
+     date: "2026-08-11",
+diff --git a/frontend/src/lib/chip-data.ts b/frontend/src/lib/chip-data.ts
+index 9c9e9bc..9fad10d 100644
+--- a/frontend/src/lib/chip-data.ts
++++ b/frontend/src/lib/chip-data.ts
+@@ -79,6 +79,14 @@ export interface ChipBubbleData {
+   trades: BrokerTrade[];
+ }
+ 
++/** N 交易日聚合的泡泡資料 — trades shape 與單日相同(ChipBubbleData 超集)。 */
++export interface ChipBubbleWindowData extends ChipBubbleData {
++  window_days: number;
++  trading_dates: string[];
++  /** 實際有資料的日數(fetch 失敗或空 trades 日不計)。 */
++  actual_days: number;
++}
++
+ export interface IntradayPoint {
+   t: string;
+   price: number;

@@ -1,0 +1,14 @@
+{
+  "round": 1,
+  "date": "2026-08-13",
+  "head": "281fe84d7ff251338533cd24fa391480fdf31ebc",
+  "source": ".claude/harness.json verify 陣列 + e2e(條件 gate,本輪必跑)",
+  "steps": [
+    { "step": "backend", "command": "python -m pytest -q && ruff check .", "cwd": "backend", "exit_code": 0, "stderr_tail": "", "result": "721 passed, 1 skipped;ruff All checks passed" },
+    { "step": "frontend", "command": "npm test && npm run build", "cwd": "frontend", "exit_code": 0, "stderr_tail": "", "result": "vitest 1091 passed(101 files);build 綠(tsc -b + vite 1.79s)" },
+    { "step": "e2e", "command": "rm -rf .cache && NEIGUI_FRONTEND_PORT=5199 npm test", "cwd": "e2e", "exit_code": 0, "stderr_tail": "", "result": "70 passed(1.0m,@live/@visual 跳過;含新 E43/E44/E45 + E39 回綠)" }
+  ],
+  "hypothesis": null,
+  "strategy_tried": null,
+  "all_green": true
+}

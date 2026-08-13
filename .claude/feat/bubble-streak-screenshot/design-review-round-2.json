@@ -1,0 +1,23 @@
+{
+  "review": "design-review",
+  "round": 2,
+  "scope": "限縮輪 — 只審 v2 changelog 段落 + cross-round",
+  "reviewer": "design-reviewer (opus)",
+  "date": "2026-08-13",
+  "findings_total": 11,
+  "accepted_p0": 0,
+  "dispositions": {
+    "R16": {"severity": "P1", "disposition": "accepted", "note": "量法改 UTF8.GetByteCount + 釘 anchor 日(Content.Length 是 UTF-16 char 數)"},
+    "R17": {"severity": "P1", "disposition": "accepted", "note": "actual_days 排除空 trades 日;補測試 9b"},
+    "R18": {"severity": "P1", "disposition": "accepted", "note": "brainstorm e2e 歸屬節補 amendment 對齊 fixture 實證"},
+    "R19": {"severity": "P1", "disposition": "accepted", "note": "效能量測步驟寫死(固定操作序列 + 最長 long task < 1000ms + trace evidence)"},
+    "R20": {"severity": "P2", "disposition": "accepted", "note": "降檔完整 checklist(preset / le / 測試 7 邊界 / 量測值 / brainstorm amendment / progress.md)"},
+    "R21": {"severity": "P2", "disposition": "accepted", "note": "contract test 補 trading_dates 釘窗口 + days=3 鑑別"},
+    "R22": {"severity": "P2", "disposition": "accepted", "note": "「幾日」單一來源 = days prop;windowMeta 只補實際日;補載入視窗期測試"},
+    "R23": {"severity": "P2", "disposition": "accepted", "note": "annotation 座標釘死 (PADDING.left+8, PADDING.top+14) + 字串同 badge 源"},
+    "R24": {"severity": "P2", "disposition": "accepted", "note": "no-op 路徑也給 role=status 提示;screenshotNotice 清除點 = symbol reset effect body"},
+    "R25": {"severity": "P2", "disposition": "accepted", "note": "selectors.ts windowDays* 加 exact:true(test-infra fix);preset 鈕補 pointer-coarse:min-h-11;窄視窗截圖"},
+    "R26": {"severity": "P2", "disposition": "accepted", "note": "brainstorm SC-5 文案例外 amendment;popover 文案測試落點 = 新建 BubbleBlocklistPopover.test.tsx"}
+  },
+  "exit": "0 P0 → 不加輪;design v3 為 Phase 2 輸入"
+}
