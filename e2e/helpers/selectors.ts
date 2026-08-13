@@ -114,7 +114,10 @@ export const ROLES = {
   modeSwitchFlows: { role: "button" as const, name: /^分點反查$/ },
   // active 用 aria-current='page'(F10 — 不是 data-state,Radix Tabs 已 drop)
   refresh: { role: "button" as const, name: "重新整理" },
-  // RangeSelector.tsx:141 真實 aria-label(F15)
-  windowDays10: { role: "button" as const, name: "設為 10 日" },
-  windowDays60: { role: "button" as const, name: "設為 60 日" },
+  // RangeSelector.tsx:141 真實 aria-label(F15)。
+  // 泡泡圖天數 preset 的 aria-label「泡泡圖設為 10 日」**包含**本字串,
+  // Playwright name 預設 substring → 會撞成 strict-mode violation;比照上方
+  // mode switch 用 exact RegExp 鎖死(呼叫端零改動)。
+  windowDays10: { role: "button" as const, name: /^設為 10 日$/ },
+  windowDays60: { role: "button" as const, name: /^設為 60 日$/ },
 };
