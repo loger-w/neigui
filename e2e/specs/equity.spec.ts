@@ -1,6 +1,7 @@
 /**
  * SC-3 equity mode golden paths(5 case)。設計來源 design.md v6 §3 SC-3。
  */
+import { statSync } from "node:fs";
 import { test, expect } from "@playwright/test";
 import { TESTIDS, ROLES } from "../helpers/selectors.ts";
 import { installFixtureClock } from "../helpers/clock.ts";
@@ -428,6 +429,62 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
       .evaluate((g) => Number(g.closest("svg")!.getAttribute("width")));
     expect(svgW).toBeGreaterThan(0);
     expect(w).toBeCloseTo((svgW - 72) * 0.2, 3);
+  });
+
+  test("E43: 泡泡圖多日聚合 — 切 5 日後明細張數 = 單日 ×5 + 累計 badge(feat/bubble-streak-screenshot SC-6)", async ({ page }) => {
+    // 痛點:倍數 assertion 鎖住「前端真的切到 /bubble_window 端點 **且** 後端
+    // 真的逐日累加」。badge 有字 + circle > 0 這兩條在「沒切端點(還是單日
+    // 資料)」與「聚合覆寫而非加總」兩種壞法下都會偽綠(options-page-v2 事故
+    // 同型:visibility-only assertion 蓋住整條空/錯資料路徑)。
+    // Fixture 事實(design §5):2330 覆蓋 06-12〜06-26 共 11 個交易日,每日
+    // 同 3 分點各買 100 張 / 賣 80 張 @1100 → 5 日窗(06-22〜06-26)全落在
+    // 覆蓋內 → 買 500 張。partial-window / actual_days 路徑 e2e 蓋不到,由
+    // pytest test_bubble_window 承擔。
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    // 單日基準:買側明細「分點001」列的張數欄(fmtVol → 純數字,無「張」後綴)
+    const buyVol = page
+      .locator("button:has(span.text-left)")
+      .filter({ hasText: "分點001" })
+      .first()
+      .locator("span.tabular-nums")
+      .first();
+    await expect(buyVol).toHaveText("100");
+    await expect(page.getByTestId("bubble-window-badge")).toHaveCount(0);
+
+    // 切 5 日 —— 定位一律先 scope 到 bubble-days-selector:RangeSelector 的
+    // 「設為 N 日」在 hidden 的籌碼總覽分頁仍留在 DOM(design §3 R3)。
+    await page
+      .getByTestId("bubble-days-selector")
+      .getByRole("button", { name: "泡泡圖設為 5 日" })
+      .click();
+
+    // (a) 累計 badge
+    await expect(page.getByTestId("bubble-window-badge")).toContainText(
+      "近 5 個交易日累計",
+    );
+    // (b) 倍數:同一列張數 = 單日 ×5(核心鑑別訊號)
+    await expect(buyVol).toHaveText("500");
+    // (c) 聚合資料仍流進圖表管線(泡泡有畫出來)
+    expect(await page.locator("svg circle").count()).toBeGreaterThan(0);
+  });
+
+  test("E44: 泡泡圖截圖鈕 → 真實下載 PNG(feat/bubble-streak-screenshot SC-8)", async ({ page }) => {
+    // 痛點:jsdom 無 canvas / Image,svgToPngBlob 全鏈(serialize → blob URL →
+    // Image decode → canvas 2x → toBlob → a[download])在 vitest 是零覆蓋 ——
+    // 這條 spec 是該鏈唯一的自動化覆蓋。只驗檔名會放過 toBlob 回 null 或
+    // objectURL 過早 revoke 造成的 0-byte 檔,故檔案 size 一起鎖;截圖失敗
+    // 提示(catch 分支)也不得出現 = 不准靜默降級。
+    await page.getByRole("button", { name: /^泡泡圖$/ }).click();
+    await expect(page.getByTestId(TESTIDS.bubbleYaxisBrush)).toBeVisible();
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByTestId("bubble-screenshot").click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe("bubble_2330_2026-06-26.png");
+    const file = await download.path();
+    expect(file).toBeTruthy();
+    expect(statSync(file!).size).toBeGreaterThan(0);
+    await expect(page.getByTestId("bubble-screenshot-notice")).toHaveCount(0);
   });
 
   test("E24: 泡泡圖選分點 → 總買/賣張與金額資料級 assertion(A3)", async ({ page }) => {
