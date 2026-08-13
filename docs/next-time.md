@@ -6,6 +6,14 @@
 
 ---
 
+## From /feat bubble-streak-screenshot(2026-08-13)
+
+- **bubble_window payload slim 化**:高量股(3481)days=20 未壓縮 18.1MB / 206k rows、
+  days=10 仍 12.8MB — 超過 design 門檻 10MB(gzip 後 wire ~2MB 級,當下可用)。
+  preset 降檔救不了(10 日仍超標),正解 = payload slim(候選:trades 改 columnar
+  arrays(欄名不逐 row 重複,估 -60%)/ 後端依 (price) 截 top-N broker)。
+  觸發重評估:user 抱怨多日切換慢、或行動網路場景反映、或第二個大 payload 端點出現時。
+
 ## From 🔴 fix(backend) clock 時區修復(2026-08-11)
 
 - **+08:00 時區常數兩份**(`services/clock.py::TAIPEI` 新增 vs `services/trading_session.py:17::TPE_TZ` 既有,值相同):realtime / trading_session 改吃 `clock.TAIPEI` 即可收斂,純 refactor。觸發:下次動 trading_session 或 finmind_realtime 時順手;或第三份 +08:00 常數出現時必收。
