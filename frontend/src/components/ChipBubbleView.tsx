@@ -14,6 +14,11 @@ import {
   type BubbleSelectedBroker,
 } from "../lib/chip-bubble-svg";
 import { formatBrokerName } from "../lib/broker-name";
+import {
+  bubbleScreenshotFilename,
+  downloadBlob,
+  svgToPngBlob,
+} from "../lib/bubble-screenshot";
 import { PriceBarSvg } from "../lib/chip-price-bar-svg";
 import { useContainerSize } from "../hooks/useContainerSize";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -115,6 +120,9 @@ export function ChipBubbleView({
   // CH-1: focusRequest 聚焦狀態 — focusedBroker 記住「聚焦目標」讓當日無
   // 成交的分點也有名稱可顯示;blockRemovalNotice = R10 提示(下一次聚焦或
   // 換股時清)。
+  // SC-7:截圖提示(role=status 黃字)。null = 無提示;成功截圖與換股清除。
+  const [screenshotNotice, setScreenshotNotice] = useState<string | null>(null);
+
   const [focusedBroker, setFocusedBroker] = useState<{ id: string; name: string } | null>(null);
   const [blockRemovalNotice, setBlockRemovalNotice] = useState<string | null>(null);
   const lastFocusSeq = useRef(0);
@@ -136,6 +144,8 @@ export function ChipBubbleView({
     setFocusedBroker(null);
     setBlockRemovalNotice(null);
     setSolo(null);
+    // SC-7 [R24]:換股清截圖提示(deps 仍僅 [symbol],白名單 4 不動)。
+    setScreenshotNotice(null);
   }, [symbol]);
 
   // SC-1 toggle 核心(搜尋 / chip × 入口;泡泡與明細列的已選半邊已改走單看):
@@ -407,6 +417,40 @@ export function ChipBubbleView({
     setManualInputOpen(false);
   }, []);
 
+  // SC-7(design §4):圖表區 SVG → PNG 下載。
+  const handleScreenshot = useCallback(async () => {
+    // [impl-review R3] 選擇器帶 [width][height]:同容器內的 loading spinner
+    // 也是 svg(無 width/height attr),裸 querySelector("svg") 在載入視窗期
+    // 會誤抓 spinner 去轉圖。
+    const svg = bubbleRef.current?.querySelector<SVGSVGElement>("svg[width][height]");
+    if (!svg || !bubbleData) {
+      // [R24] 有資料但容器尺寸未回報(ResizeObserver 視窗期)也不靜默。
+      setScreenshotNotice("圖表尚未就緒,請稍候再試");
+      return;
+    }
+    try {
+      // 底色取 body computed(頁面深色底單一來源,不 hardcode hex)。
+      const background = getComputedStyle(document.body).backgroundColor;
+      const blob = await svgToPngBlob(svg, {
+        scale: 2,
+        background,
+        // [R22+R23] 標註字串與 badge 同源:days prop 主導,windowMeta 補實際日。
+        annotation:
+          days > 1
+            ? `近 ${days} 個交易日累計` +
+              (windowMeta && windowMeta.actualDays < windowMeta.windowDays
+                ? `(實際 ${windowMeta.actualDays} 日)`
+                : "")
+            : undefined,
+      });
+      downloadBlob(blob, bubbleScreenshotFilename(symbol, bubbleData.date, days));
+      setScreenshotNotice(null);
+    } catch (err) {
+      console.error("bubble screenshot failed", err);
+      setScreenshotNotice("截圖失敗,請重試");
+    }
+  }, [bubbleData, symbol, days, windowMeta]);
+
   const brushSummary = useMemo(() => {
     if (!brushRange || !bubbleData) return null;
     return summarizeTradesByPriceRange(visibleTrades, brushRange.min, brushRange.max);
@@ -534,6 +578,15 @@ export function ChipBubbleView({
                   {blockRemovalNotice}
                 </span>
               )}
+              {screenshotNotice && (
+                <span
+                  data-testid="bubble-screenshot-notice"
+                  role="status"
+                  className="text-xs text-[#f0b429]"
+                >
+                  {screenshotNotice}
+                </span>
+              )}
               {selected.length === 0 && !blockRemovalNotice && (
                 <span className="text-xs text-ink-dim">
                   點泡泡或搜尋分點加入比較
@@ -630,6 +683,17 @@ export function ChipBubbleView({
               onRemove={handleBlockRemove}
               onClearAll={handleBlockClearAll}
             />
+            {/* SC-7:截圖鈕在「輸入區間」左側;無資料時不渲染(沒東西可截)。 */}
+            {bubbleData && (
+              <button
+                type="button"
+                data-testid="bubble-screenshot"
+                onClick={() => void handleScreenshot()}
+                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer"
+              >
+                截圖
+              </button>
+            )}
             {bubbleData && (
               <button
                 type="button"
