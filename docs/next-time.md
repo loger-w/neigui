@@ -13,6 +13,10 @@
   preset 降檔救不了(10 日仍超標),正解 = payload slim(候選:trades 改 columnar
   arrays(欄名不逐 row 重複,估 -60%)/ 後端依 (price) 截 top-N broker)。
   觸發重評估:user 抱怨多日切換慢、或行動網路場景反映、或第二個大 payload 端點出現時。
+- **1280px 泡泡圖 header 中欄文字折行**(P2 視覺,功能無損):lg grid 中欄在 1280 寬
+  只剩 ~79px,「點泡泡或搜尋分點加入比較」與「近 N 日共 X 個分點」各折 2 行,header
+  106px(vs 1440 的 82px);圖區仍有 63% 視高。候選 = 中欄文字在窄寬時縮短 / preset
+  鈕再緊湊。觸發重評估:user 在 1280 級螢幕反映 header 佔高、或下次動 bubble header 佈局時。
 
 ## From 🔴 fix(backend) clock 時區修復(2026-08-11)
 
