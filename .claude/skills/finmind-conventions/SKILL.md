@@ -33,6 +33,7 @@ description: FinMind 接入慣例與配額真相。接新 FinMind dataset、寫 
 
 ## 共用 window 設計
 
+- **N 日聚合 self-cache:部分日失敗的降級結果不寫永久 cache**(2026-08-13 bubble-streak-screenshot review 抓出):過去日 cache 讀取無 TTL(`not _is_today` 即無條件回),上游一次 blip 產生的少算聚合會被永久釘住、不自癒 — 寫入前 guard `len(成功日) == len(trading_dates)` 才落 cache(降級結果照回呼叫端不落盤)。樣板 `fetch_bubble_window`;既有 `fetch_brokers_window` 未套此 guard(觸發:該端點少算被質疑時比照補)。Trigger:任何「逐日 fan-out → 聚合 → self-cache」設計時。
 - `services/finmind.py::fetch_taiwan_option_daily_window` 是「一份 250-day window 給三個 endpoint 共用」的範本。新 chip endpoint 跟著:
   - 用 `_run_once(f"window_{cache_key}", ...)` inflight dedup
   - Invalidation 必須在 `_run_once` coroutine 內、dedup 之後、實際 fetch 之前

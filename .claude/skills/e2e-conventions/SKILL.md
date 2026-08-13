@@ -44,6 +44,7 @@ description: Playwright E2E 框架慣例(FAKE_FINMIND 三層架構、clock 凍�
 ## Spec 撰寫紀律
 
 - **痛點註解強制**:每個 `test('...')` 上方必 `// 痛點: <design rationale>` 註解,連回 design round 或 SC edge case。沒寫 = wrong reason 過綠。Trigger:寫任何 e2e spec 時。
+- **元素計數 assertion 必 scope 到目標容器,禁全頁計數**(2026-08-13 bubble-streak-screenshot review 抓出):equity 各分頁以 `hidden` 保留 DOM,`page.locator("svg circle").count() > 0` 會數到隱藏 overview 的 icon circle 而恆真 — 泡泡沒畫出來照樣綠。給目標 group 加 data-testid(如 `bubble-circles`)再計數,並盡量斷可預期的具體量(fixture 手算)而非 `> 0`。Trigger:任何「圖上元素數量 / 存在性」assertion 時。
 - **Selector 必對 page snapshot,不准憑記憶**:第一次 run failure trace 帶 page snapshot,真實 placeholder / aria-label / role 全在。**真實值範例(已校齊)**:SymbolSearch placeholder = `搜尋代號或名稱...`;Mode buttons = `個股 / 選擇權 / 大盤`;Active state = `aria-current="page"`;RangeSelector = `aria-label="設為 N 日"`;ChipBrokersPanel / ChipKlineChart 早期 return path 也要 root testid。Trigger:寫 Playwright spec 任 selector 時。
 - e2e 量測 viewport 幾何一律 `test.use({ viewport })` 在導航前固定 — `setViewportSize` 後立即量測會撞 resize relayout race(實測假綠)。Trigger:寫 viewport 量測 spec 時。
 - **loading 態 assertion 用 route gate 事件同步,不用固定 delay**(2026-07-21 E25 收割):`page.route` 固定 `setTimeout` delay 給 loading UI 的可見窗是上限不是下限 — 高負載下前置步驟吃光窗口,`toBeVisible` 撲空偶紅。改 gate promise:route handler `await gate`,assertion 完成後才 `release()` 放行 response,時序 race 消除且更快(E25 樣板,repeat×5 19.2s→9.1s)。Trigger:任何「loading 指示出現後消失」型 spec。

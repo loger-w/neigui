@@ -44,6 +44,8 @@ description: 前端 stack / 元件 / 版面與響應式慣例。寫改任何 fro
 ## 驗證截圖
 
 - **devtools MCP 截圖 close-up 用 PIL crop 整頁截圖,不用 `body.style.zoom`**:zoom 會污染 useContainerSize 量測(ResizeObserver 以 zoom 後幾何重排,拍完 reset 也可能留下爆版 layout)。Trigger:real-env 要 panel 級 close-up 證據時。
+- **<500px 窄視窗驗證用 `emulate` viewport,且 emulate 會整頁重載**(2026-08-13 bubble-streak-screenshot):`resize_page` 下限 = Chrome 視窗 500px,拍 430px 手機寬必走 `emulate`;emulate 重載會清掉 symbol / tab / 天數等全部 state,呼叫後要重走選股流程再驗。Trigger:real-env 拍行動版截圖時。
+- **long task 效能量測必用真實 input 派送,禁在 `evaluate_script` 內 `.click()`**(2026-08-13 實測):注入 script 的 click 會把「注入函式續段 + React 同步渲染 + GC」併成同一個 task,量出 1129ms 假 long task;改真實 input 事件後同互動實為 17ms 級。Trigger:任何以 DevTools trace 量互動 blocking time 時。
 
 ## 色彩語意(2026-07-11 /feat warrant-selector 沉澱)
 
