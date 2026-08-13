@@ -1790,3 +1790,268 @@ describe("ChipBubbleView — header 空間預留 (SC-1/SC-2)", () => {
     expect((container.textContent ?? "").includes("點泡泡或搜尋分點加入比較")).toBe(false);
   });
 });
+
+// feat/bubble-streak-screenshot SC-4 / SC-5(design §3 測試 1-6):天數選擇器 +
+// 累計 badge + 文案 days 分流。
+// selector 定位一律先 scope 到 data-testid="bubble-days-selector"(R3):
+// RangeSelector 已占用 aria-label「設為 N 日」,equity 總覽分頁以 hidden 留在
+// DOM,1/10/20 三值會在 e2e strict mode 撞名。
+describe("ChipBubbleView — SC-4 天數選擇器 + 累計 badge", () => {
+  const selectorEl = (c: HTMLElement) =>
+    c.querySelector('[data-testid="bubble-days-selector"]') as HTMLElement | null;
+  const dayButtons = (c: HTMLElement) =>
+    Array.from(selectorEl(c)?.querySelectorAll("button") ?? []);
+  const dayButton = (c: HTMLElement, n: number) => {
+    const btn = dayButtons(c).find(
+      (b) => b.getAttribute("aria-label") === `泡泡圖設為 ${n} 日`,
+    );
+    if (!btn) throw new Error(`day button not found: ${n}`);
+    return btn;
+  };
+  const badge = (c: HTMLElement) =>
+    c.querySelector('[data-testid="bubble-window-badge"]');
+
+  // 測試 1
+  it("渲染 5 個 preset(1/3/5/10/20),目前值 aria-pressed=true 其餘 false", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+      />,
+    );
+    const group = selectorEl(container);
+    expect(group).toBeTruthy();
+    expect(group!.getAttribute("role")).toBe("group");
+    expect(group!.getAttribute("aria-label")).toBe("泡泡圖天數視窗");
+    const btns = dayButtons(container);
+    expect(btns.map((b) => b.textContent)).toEqual(["1", "3", "5", "10", "20"]);
+    expect(dayButton(container, 5).getAttribute("aria-pressed")).toBe("true");
+    for (const n of [1, 3, 10, 20]) {
+      expect(dayButton(container, n).getAttribute("aria-pressed")).toBe("false");
+    }
+  });
+
+  // [impl-review R1] props 全 optional:onDaysChange 未提供 → 不渲染 selector
+  // (既有 30+ 測試 render 不需改,且無 handler 的選擇器等於死鈕)。
+  it("未提供 onDaysChange → 不渲染 selector(既有 caller 零回歸)", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    expect(selectorEl(container)).toBeNull();
+  });
+
+  // 測試 2
+  it("點「泡泡圖設為 5 日」→ onDaysChange(5)", () => {
+    const onDaysChange = vi.fn();
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={1}
+        onDaysChange={onDaysChange}
+      />,
+    );
+    fireEvent.click(dayButton(container, 5));
+    expect(onDaysChange).toHaveBeenCalledWith(5);
+  });
+
+  // 測試 3(badge 三態 + 載入視窗期)
+  it("windowMeta 齊全 → badge 顯「近 5 個交易日累計(實際 3 日)」", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+        windowMeta={{ windowDays: 5, actualDays: 3 }}
+      />,
+    );
+    const el = badge(container);
+    expect(el).toBeTruthy();
+    expect(el!.textContent ?? "").toContain("近 5 個交易日累計");
+    expect(el!.textContent ?? "").toContain("實際 3 日");
+  });
+
+  it("actualDays === windowDays → badge 無「實際」字樣", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+        windowMeta={{ windowDays: 5, actualDays: 5 }}
+      />,
+    );
+    const el = badge(container);
+    expect(el).toBeTruthy();
+    expect(el!.textContent ?? "").toContain("近 5 個交易日累計");
+    expect(el!.textContent ?? "").not.toContain("實際");
+  });
+
+  it("windowMeta null(單日模式)→ 無 badge", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={1}
+        onDaysChange={vi.fn()}
+      />,
+    );
+    expect(badge(container)).toBeNull();
+  });
+
+  // [R22] 載入視窗期:days 已切到 5、資料與 windowMeta 尚未回 — 不得 crash,
+  // 也不得先畫出「近 5 個交易日累計」badge(資料還是舊的/空的)。
+  it("days=5 + windowMeta null + bubbleData null(載入視窗期)→ 無 badge 且不 crash", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={null}
+        loading
+        days={5}
+        onDaysChange={vi.fn()}
+        windowMeta={null}
+      />,
+    );
+    expect(badge(container)).toBeNull();
+    expect(container.querySelector('[data-testid="bubble-loading-badge"]')).toBeTruthy();
+    // selector 在無資料時仍可操作(使用者可先選天數)
+    expect(selectorEl(container)).toBeTruthy();
+  });
+
+  // 測試 4:白名單 4 — days 切換不清 selected(symbol reset effect deps 僅 [symbol])
+  it("days 切換不清空已選分點", async () => {
+    const { container, rerender } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={1}
+        onDaysChange={vi.fn()}
+      />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => expect(chipEls(container)).toHaveLength(1));
+    rerender(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+        windowMeta={{ windowDays: 5, actualDays: 5 }}
+      />,
+    );
+    expect(chipEls(container)).toHaveLength(1);
+    expect(badge(container)).toBeTruthy();
+  });
+});
+
+// [impl-review R4 / design §3 測試 5-6]:聚合資料經既有管線 + 文案 days 分流。
+describe("ChipBubbleView — SC-5 聚合資料流 + 文案分流", () => {
+  // 3 分點各 1 價位,量 = 單日(100/80)的 5 倍
+  const windowTrades: BrokerTrade[] = [
+    { broker: "Alpha", broker_id: "AL1", price: 100, buy: 500, sell: 400 },
+    { broker: "Bravo", broker_id: "BR1", price: 102, buy: 500, sell: 400 },
+    { broker: "Charlie", broker_id: "CH1", price: 101, buy: 500, sell: 400 },
+  ];
+
+  it("聚合 trades → 明細列數 = 聚合列數,列上張數顯聚合值(500)", async () => {
+    const origH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    const origW = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true, get: () => 400,
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true, get: () => 400,
+    });
+    try {
+      const { container } = render(
+        <ChipBubbleView
+          symbol="2330"
+          bubbleData={mkData(windowTrades)}
+          days={5}
+          onDaysChange={vi.fn()}
+          windowMeta={{ windowDays: 5, actualDays: 5 }}
+        />,
+      );
+      await waitFor(() => {
+        const names = Array.from(
+          container.querySelectorAll("button span.text-left"),
+        ).map((s) => s.textContent ?? "");
+        if (!names.includes("Alpha")) throw new Error("rows not rendered yet");
+      });
+      // 買 / 賣 兩張列表各 3 列(每分點 1 價位)
+      const rows = Array.from(container.querySelectorAll("button span.text-left"));
+      expect(rows).toHaveLength(6);
+      const vols = Array.from(
+        container.querySelectorAll("button span.text-right.tabular-nums"),
+      ).map((s) => s.textContent ?? "");
+      expect(vols.filter((v) => v === "500")).toHaveLength(3);
+      expect(vols.filter((v) => v === "400")).toHaveLength(3);
+    } finally {
+      if (origH) Object.defineProperty(HTMLElement.prototype, "offsetHeight", origH);
+      if (origW) Object.defineProperty(HTMLElement.prototype, "offsetWidth", origW);
+    }
+  });
+
+  it("選取單一分點 → totals 買/賣張顯聚合量(500 / 400)", async () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(windowTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+        windowMeta={{ windowDays: 5, actualDays: 5 }}
+      />,
+    );
+    await selectBrokerViaSearch("Alpha");
+    await waitFor(() => {
+      if (!container.querySelector('[data-testid="bubble-broker-totals"]')) {
+        throw new Error("totals not shown");
+      }
+    });
+    const totals =
+      container.querySelector('[data-testid="bubble-broker-totals"]')!.textContent ?? "";
+    expect(totals).toContain("買 500 張");
+    expect(totals).toContain("賣 400 張");
+  });
+
+  // [R7][R22] 文案單一來源 = days prop
+  it("days=5 → 未選取計數顯「近 5 日共 3 個分點」(days=1 維持「今日共」)", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(windowTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+        windowMeta={{ windowDays: 5, actualDays: 5 }}
+      />,
+    );
+    const row = container.querySelector('[data-testid="bubble-stats-row"]')!;
+    expect(row.textContent ?? "").toContain("近 5 日共");
+    expect(row.textContent ?? "").not.toContain("今日共");
+  });
+
+  it("days=5 + 聚焦無成交分點 → 「該分點近 5 日無成交」", async () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(windowTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+        windowMeta={{ windowDays: 5, actualDays: 5 }}
+        focusRequest={{ brokerId: "ZZ9", name: "無成交分點", seq: 1 }}
+      />,
+    );
+    await waitFor(() => {
+      if (!container.querySelector('[data-testid="bubble-focus-no-trades"]')) {
+        throw new Error("no-trades badge not shown");
+      }
+    });
+    const text =
+      container.querySelector('[data-testid="bubble-focus-no-trades"]')!.textContent ?? "";
+    expect(text).toContain("該分點近 5 日無成交");
+    expect(text).not.toContain("當日無成交");
+  });
+});

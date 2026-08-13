@@ -10,8 +10,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+// feat/bubble-streak-screenshot(impl-review R4):bubbleDays 接線與 intraday
+// gate 需要觀察 hook 收到的參數 → hoisted 記錄器(vi.mock factory 提升到
+// import 之上,不能引用一般 module-scope const)。
+const spies = vi.hoisted(() => ({
+  bubbleCalls: [] as { symbol: string; date: string; days: number | undefined }[],
+  intradayCalls: [] as { symbol: string; date: string }[],
+  bubbleRefresh: vi.fn(),
+  intradayRefresh: vi.fn(),
+}));
+
 vi.mock("./components/ChipBubbleView", () => ({
-  ChipBubbleView: () => <div data-testid="chip-bubble">bubble</div>,
+  ChipBubbleView: ({
+    days,
+    onDaysChange,
+  }: {
+    days?: number;
+    onDaysChange?: (d: number) => void;
+  }) => (
+    <div data-testid="chip-bubble" data-days={String(days)}>
+      <button onClick={() => onDaysChange?.(5)}>stub-days-5</button>
+    </div>
+  ),
 }));
 vi.mock("./components/OptionsPage", () => ({
   OptionsPage: () => <div data-testid="options-page">options</div>,
@@ -44,7 +64,12 @@ vi.mock("./components/BrokerFlowsPanel", () => ({
   ),
 }));
 vi.mock("./components/SymbolSearch", () => ({
-  SymbolSearch: () => <div data-testid="symbol-search">search</div>,
+  SymbolSearch: ({ onPick }: { onPick: (sid: string, name: string | null) => void }) => (
+    <div data-testid="symbol-search">
+      <button onClick={() => onPick("2330", "台積電")}>sym-pick-2330</button>
+      <button onClick={() => onPick("2454", "聯發科")}>sym-pick-2454</button>
+    </div>
+  ),
 }));
 vi.mock("./components/ChipBrokersPanel", () => ({
   ChipBrokersPanel: () => <div data-testid="brokers-panel">brokers</div>,
@@ -68,10 +93,19 @@ vi.mock("./hooks/useChipData", () => ({
   }),
 }));
 vi.mock("./hooks/useChipBubble", () => ({
-  useChipBubble: () => ({ data: null, loading: false, error: null, refresh: vi.fn() }),
+  useChipBubble: (symbol: string, date: string, days?: number) => {
+    spies.bubbleCalls.push({ symbol, date, days });
+    return {
+      data: null, windowMeta: null, loading: false, error: null,
+      refresh: spies.bubbleRefresh,
+    };
+  },
 }));
 vi.mock("./hooks/useChipIntraday", () => ({
-  useChipIntraday: () => ({ data: null, loading: false, error: null, refresh: vi.fn() }),
+  useChipIntraday: (symbol: string, date: string) => {
+    spies.intradayCalls.push({ symbol, date });
+    return { data: null, loading: false, error: null, refresh: spies.intradayRefresh };
+  },
 }));
 vi.mock("./hooks/useBrokerHistory", () => ({
   useBrokerHistory: () => ({ series: {}, loading: false, error: null, refresh: vi.fn() }),
@@ -86,6 +120,10 @@ import App from "./App";
 
 beforeEach(() => {
   localStorage.clear();
+  spies.bubbleCalls.length = 0;
+  spies.intradayCalls.length = 0;
+  spies.bubbleRefresh.mockClear();
+  spies.intradayRefresh.mockClear();
 });
 afterEach(() => {
   cleanup();
@@ -197,6 +235,72 @@ describe("App mode persistence (SC-4)", () => {
       expect(screen.getByTestId("kline-chart").getAttribute("data-selected")).toBe("9600");
     });
     expect(screen.queryByTestId("broker-flows-panel")).toBeNull();
+  });
+
+  // feat/bubble-streak-screenshot SC-4(impl-review R4):bubbleDays 接線。
+  // 痛點:多日聚合下分時線(當日 1 分 K)與畫面語意不符且白花一次請求 —
+  // gate 沒接上時 useChipIntraday 仍收到 symbol,此測試即紅。
+  it("bubbleDays > 1 → useChipIntraday 收到 symbol \"\"(不 fetch 分時線),bubble hook 收 days", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "sym-pick-2330" }));
+    fireEvent.click(screen.getByRole("button", { name: "泡泡圖" }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("chip-bubble")).toBeTruthy();
+    });
+    // 基準:單日模式下分時線照抓
+    expect(spies.intradayCalls[spies.intradayCalls.length - 1]!.symbol).toBe("2330");
+
+    fireEvent.click(screen.getByRole("button", { name: "stub-days-5" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
+    });
+    expect(spies.intradayCalls[spies.intradayCalls.length - 1]!.symbol).toBe("");
+    const lastBubble = spies.bubbleCalls[spies.bubbleCalls.length - 1]!;
+    expect(lastBubble.symbol).toBe("2330");
+    expect(lastBubble.days).toBe(5);
+  });
+
+  // [impl-review R8]:refresh() 也要 gate — days>1 時對 disabled query 發
+  // refresh 會打出 GET /api/chip//intraday 無效請求。
+  it("bubbleDays > 1 時按重新整理 → bubble refresh 有、intraday refresh 無(R8)", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "sym-pick-2330" }));
+    fireEvent.click(screen.getByRole("button", { name: "泡泡圖" }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("chip-bubble")).toBeTruthy();
+    });
+    // 單日模式:兩者都刷
+    fireEvent.click(screen.getByRole("button", { name: "重新整理" }));
+    expect(spies.bubbleRefresh).toHaveBeenCalledTimes(1);
+    expect(spies.intradayRefresh).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "stub-days-5" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "重新整理" }));
+    expect(spies.bubbleRefresh).toHaveBeenCalledTimes(2);
+    expect(spies.intradayRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  // 視角偏好非資料 state:換股保留(對齊 windowDays 不隨 symbol 重置的現況)。
+  it("換 symbol → bubbleDays 不重置", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "sym-pick-2330" }));
+    fireEvent.click(screen.getByRole("button", { name: "泡泡圖" }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("chip-bubble")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "stub-days-5" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "sym-pick-2454" }));
+    await waitFor(() => {
+      expect(spies.bubbleCalls[spies.bubbleCalls.length - 1]!.symbol).toBe("2454");
+    });
+    expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
+    expect(spies.bubbleCalls[spies.bubbleCalls.length - 1]!.days).toBe(5);
   });
 
   it("invalid localStorage mode value falls back to equity(R5 白名單)", async () => {
