@@ -116,6 +116,8 @@ export default function App() {
   const [symbolName, setSymbolName] = useState<string | null>(null);
   const [date, setDate] = useState(todayStr);
   const [tab, setTab] = useState<Tab>("overview");
+  // SC-4:泡泡圖天數視窗(1 = 當日 /bubble;>1 = /bubble_window N 日聚合)。
+  const [bubbleDays, setBubbleDays] = useState<number>(1);
   const [windowDays, setWindowDays] = useState<WindowDays>(readStoredWindowDays);
   useEffect(() => {
     localStorage.setItem("chip_window_days", String(windowDays));
@@ -192,8 +194,14 @@ export default function App() {
   } = useChipData(symbol, date);
   // Gate bubble + intraday by bubble tab — overview 不需要泡泡圖也不需要
   // 1 分 K,tab 切回 bubble 時 queryKey 變化會自動觸發 fetch。
-  const bubbleHook = useChipBubble(tab === "bubble" ? symbol : "", date);
-  const intradayHook = useChipIntraday(tab === "bubble" ? symbol : "", date);
+  // SC-4:bubbleDays > 1 走 N 日聚合端點;分時線是「當日」語意,多日模式
+  // 直接不 fetch(symbol 傳 "" → hook enabled=false),view 端 intradayPoints
+  // 自然為 null。換 symbol 不重置 bubbleDays(視角偏好非資料 state)。
+  const bubbleHook = useChipBubble(tab === "bubble" ? symbol : "", date, bubbleDays);
+  const intradayHook = useChipIntraday(
+    tab === "bubble" && bubbleDays === 1 ? symbol : "",
+    date,
+  );
   const brokerHistoryHook = useBrokerHistory(symbol, selectedBrokerIds);
   const brokersWindow = useChipBrokersWindow(symbol, date, windowDays);
 
@@ -285,7 +293,9 @@ export default function App() {
     if (selectedBrokerIds.size > 0) brokerHistoryHook.refresh();
     if (tab === "bubble") {
       bubbleHook.refresh();
-      intradayHook.refresh();
+      // 多日模式 intraday query 已 disabled(symbol "")— 仍呼 refresh 會打出
+      // GET /api/chip//intraday 無效請求(impl-review R8)。
+      if (bubbleDays === 1) intradayHook.refresh();
     }
   };
   const isLoading = loading || bubbleHook.loading || brokersWindow.loading;
@@ -562,6 +572,9 @@ export default function App() {
               onJumpToOverview={handleJumpToOverview}
               loading={bubbleHook.loading && !!symbol}
               focusRequest={bubbleFocus}
+              days={bubbleDays}
+              onDaysChange={setBubbleDays}
+              windowMeta={bubbleHook.windowMeta}
             />
           </Suspense>
         </div>
