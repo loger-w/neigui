@@ -910,8 +910,8 @@ class FinMindClient:
                 return _filter_broker_history(cached, ids)
 
         payload = await self._run_once(
-            f"broker_history_{cache_key}_{','.join(sorted(set(ids)))}",
-            lambda: self._do_fetch_broker_history(symbol, cache_key, ids, days),
+            f"broker_history_{cache_key}_{','.join(sorted(set(ids)))}_r{int(refresh)}",
+            lambda: self._do_fetch_broker_history(symbol, cache_key, ids, days, refresh),
         )
         return _filter_broker_history(payload, ids)
 
@@ -932,7 +932,10 @@ class FinMindClient:
         cache_key: str,
         ids: list[str],
         days: int = 90,
+        refresh: bool = False,
     ) -> dict:
+        # 保序去重:重複 id 會讓補列 append 兩筆同日列(前端 brokerDateNet 是累加)。
+        ids = list(dict.fromkeys(ids))
         existing = self._read_cache(cache_key) or {
             "symbol": symbol,
             "fetched_at": "",
@@ -969,7 +972,7 @@ class FinMindClient:
         if not any_success and not existing.get("last_date"):
             raise ValueError("secid_agg_unavailable")
 
-        await self._fill_today_from_summary(symbol, ids, existing_brokers)
+        await self._fill_today_from_summary(symbol, ids, existing_brokers, end, refresh)
 
         payload = {
             "symbol": symbol,
@@ -985,6 +988,8 @@ class FinMindClient:
         symbol: str,
         ids: list[str],
         brokers: dict[str, list],
+        today_date: date,
+        refresh: bool = False,
     ) -> None:
         """SecIdAgg(逐分點聚合表)比 taiwan_stock_trading_daily_report(逐筆表)
         晚一天發布(2026-08-18 17:31 實測:daily_report 已有當天 4,920 rows、
@@ -994,7 +999,8 @@ class FinMindClient:
         回全部分點非只前 15)補當天 buy/sell/net(張)。summary 沒該分點(當天沒
         交易 / 未發布 / 非交易日)→ 不補,語意與 secid_agg 一致(只列有交易日)。
         secid_agg 之後補齊當天 → 下次重抓整段覆寫,補列自然被上游值取代。"""
-        today = clock.today().isoformat()
+        # `today_date` 由 caller 傳入(= secid_agg 的 end),同一請求單一時間來源。
+        today = today_date.isoformat()
         missing = [
             bid for bid in ids
             if not any(d.get("date") == today for d in brokers.get(bid, []))
@@ -1002,10 +1008,11 @@ class FinMindClient:
         if not missing:
             return
         try:
-            summary = await self.fetch_chip_summary(symbol, today)
-        except httpx.HTTPError as exc:
-            # 補列是加值不是主資料:summary 抽風時降級為不補(等同修前行為),
-            # 不讓 secid_agg 已成功的整包變 502 — 與 _safe_get_secid_agg 同策略。
+            summary = await self.fetch_chip_summary(symbol, today, refresh)
+        except Exception as exc:
+            # 補列是加值不是主資料:summary 抽風(HTTP 5xx / 非 JSON / 無關 dataset
+            # 的 parse ValueError)時降級為不補(等同修前行為),不讓 secid_agg 已成功
+            # 的整包變 502 — 與 _safe_get_secid_agg 同策略(catch 後有具體處理:降級)。
             logger.warning("broker_history today-fill skipped for %s: %s", symbol, exc)
             return
         by_id = {b.get("broker_id"): b for b in summary.get("top_brokers", [])}
