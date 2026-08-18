@@ -479,21 +479,22 @@ async def test_fetch_broker_history_skips_fill_when_summary_lacks_broker(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "exc", [httpx.HTTPError("502 upstream"), ValueError("bad int in margin row")],
+)
 async def test_fetch_broker_history_summary_failure_degrades_to_no_fill(
-    client, monkeypatch,
+    client, monkeypatch, exc,
 ):
-    """review P1:summary 抽風(FinMind 5xx)不得炸掉 secid_agg 已成功的整包 —
-    降級為不補(等同修前行為),與 _safe_get_secid_agg 同一「可用性優先」策略。"""
+    """review P1:summary 抽風(FinMind 5xx / 非 JSON / 無關 dataset schema 漂移的
+    parse ValueError)不得炸掉 secid_agg 已成功的整包 — 降級為不補(等同修前行為),
+    與 _safe_get_secid_agg 同一「可用性優先」策略。"""
     yesterday = (clock.today() - timedelta(days=1)).isoformat()
 
     async def fake_secid(symbol, start, end, trader_id):
         return [_row(trader_id, yesterday, 1000)]
 
     monkeypatch.setattr(client, "_safe_get_secid_agg", fake_secid)
-    monkeypatch.setattr(
-        client, "fetch_chip_summary",
-        AsyncMock(side_effect=httpx.HTTPError("502 upstream")),
-    )
+    monkeypatch.setattr(client, "fetch_chip_summary", AsyncMock(side_effect=exc))
 
     result = await client.fetch_broker_history("2330", ["1440"])
     assert result["brokers"]["1440"] == [
@@ -534,3 +535,37 @@ async def test_fetch_broker_history_fill_is_idempotent_and_skips_sticky_brokers(
     cached = json.loads((tmp_path / "2330_broker_history.json").read_text(encoding="utf-8"))
     assert sum(d["date"] == today for d in cached["brokers"]["1440"]) == 1
     assert [d["date"] for d in cached["brokers"]["9800"]] == [yesterday]
+
+
+@pytest.mark.asyncio
+async def test_fetch_broker_history_duplicate_ids_fill_once(client, monkeypatch, tmp_path):
+    """review P2:?ids=1440,1440 只補一列(前端 brokerDateNet 是累加,重複列會讓柱翻倍)。"""
+    yesterday = (clock.today() - timedelta(days=1)).isoformat()
+    today = clock.today().isoformat()
+
+    async def fake_secid(symbol, start, end, trader_id):
+        return [_row(trader_id, yesterday, 1000)]
+
+    monkeypatch.setattr(client, "_safe_get_secid_agg", fake_secid)
+    monkeypatch.setattr(client, "fetch_chip_summary", _summary_with([
+        {"broker_id": "1440", "name": "美林", "buy": 10, "sell": 2, "net": 8},
+    ]))
+    result = await client.fetch_broker_history("2330", ["1440", "1440"])
+    assert sum(d["date"] == today for d in result["brokers"]["1440"]) == 1
+    cached = json.loads((tmp_path / "2330_broker_history.json").read_text(encoding="utf-8"))
+    assert sum(d["date"] == today for d in cached["brokers"]["1440"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_broker_history_refresh_propagates_to_summary_fill(client, monkeypatch):
+    """review P2:refresh=true 一路帶到補列用的 fetch_chip_summary(CLAUDE.md §4 refresh 契約)。"""
+    yesterday = (clock.today() - timedelta(days=1)).isoformat()
+
+    async def fake_secid(symbol, start, end, trader_id):
+        return [_row(trader_id, yesterday, 1000)]
+
+    monkeypatch.setattr(client, "_safe_get_secid_agg", fake_secid)
+    summary_mock = _summary_with([])
+    monkeypatch.setattr(client, "fetch_chip_summary", summary_mock)
+    await client.fetch_broker_history("2330", ["1440"], refresh=True)
+    assert summary_mock.await_args.args == ("2330", clock.today().isoformat(), True)
