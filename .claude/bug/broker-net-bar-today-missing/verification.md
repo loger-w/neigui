@@ -4,7 +4,7 @@
 
 | step | command | cwd | result | exit |
 |---|---|---|---|---|
-| pytest | `python -m pytest -q` | backend/ | 729 passed, 1 skipped(baseline 721;+8 新測試,含 review round 1/2 補強;最終 HEAD a953915) | 0 |
+| pytest | `python -m pytest -q` | backend/ | 729 passed, 1 skipped(baseline 721;+8 新測試,含 review round 1/2 補強;最終 HEAD 8ae899d) | 0 |
 | ruff | `ruff check .` | backend/ | All checks passed | 0 |
 | vitest | `npm test` | frontend/ | 101 files / 1091 passed(changelog 版本 pin 更新後 14/14) | 0 |
 | build | `npm run build` | frontend/ | tsc -b + vite build ✓ | 0 |
@@ -27,7 +27,7 @@
 第一輪:`git revert --no-commit 28c56dc` → `pytest tests/test_broker_history.py` →
 **1 failed(test_fetch_broker_history_fills_today_from_daily_report_when_secid_agg_lags)/ 22 passed**
 → `git revert --abort` → 23 passed。
-最終(review 兩輪修完後):`git revert --no-commit a953915 ac86bda 28c56dc` → **3 failed
+最終(review 兩輪修完後):`git revert --no-commit 8ae899d ac86bda 28c56dc` → **3 failed
 (SC-1 補列 / dup ids / refresh 透傳)/ 25 passed** → abort → 28 passed。紅測試確實抓到 bug。
 
 ## Review 後 real-env 複測(backend 以最終 HEAD 重啟)
