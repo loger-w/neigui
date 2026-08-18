@@ -1001,7 +1001,13 @@ class FinMindClient:
         ]
         if not missing:
             return
-        summary = await self.fetch_chip_summary(symbol, today)
+        try:
+            summary = await self.fetch_chip_summary(symbol, today)
+        except httpx.HTTPError as exc:
+            # 補列是加值不是主資料:summary 抽風時降級為不補(等同修前行為),
+            # 不讓 secid_agg 已成功的整包變 502 — 與 _safe_get_secid_agg 同策略。
+            logger.warning("broker_history today-fill skipped for %s: %s", symbol, exc)
+            return
         by_id = {b.get("broker_id"): b for b in summary.get("top_brokers", [])}
         for bid in missing:
             b = by_id.get(bid)
