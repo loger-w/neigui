@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.48.1",
+    date: "2026-08-18",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "籌碼總覽 K 線圖下方「分點買賣超」柱狀圖現在收盤後當天就會出現當日資料,不再需要等到隔天",
+      },
+    ],
+  },
+  {
     version: "0.48.0",
     date: "2026-08-13",
     changes: [
