@@ -223,3 +223,11 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 - **單看時「查看於籌碼總覽」鈕暫隱** — 若要補「單看單跳」(查看該分點於籌碼總覽),入口與 payload(activeSolo.id)已就緒,只差 UI 決策。觸發:user 在單看中找跳轉鈕時
 - **hover tooltip 補該分點當日總買賣超**(brainstorm 拍板未採選項 B,單看模式已覆蓋主需求)。觸發:user 反映 hover 就想看總量、不想點擊時
 - **solo 空集時 price bar 回落全體聚合**(自評 BF-3,窄 edge):單看分點在 refetch 後自 trades 消失 → priceAggs `filtered.length===0` fallback 回 allPriceAggs,badge 仍顯「單看」、totals 顯 0 — 三者退化方向不一致。修法 = activeSolo 時不走 fallback(顯零值 aggs)。觸發:refresh 後單看畫面被反映怪異時
+
+## From /bug broker-net-bar-today-missing(2026-08-18)
+
+- **secid_agg 缺「最後交易日」的非當天情境**:修復只補 `clock.today()`;若 FinMind
+  `taiwan_stock_trading_daily_report_secid_agg` 的發布是「T+1 交易日」而非「隔日早上」,
+  週末 / 假日看盤時前一交易日的分點柱仍會缺(當天 summary 為空、不會補)。需先 probe 上游
+  發布時程(週六早上跑 `probe_secid.py`,看週五是否已入 secid_agg)再決定要不要改成
+  「補最後 candle 日」。觸發:user 反映週末看不到週五的分點柱、或下次動 broker_history。

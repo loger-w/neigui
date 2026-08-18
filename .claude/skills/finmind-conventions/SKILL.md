@@ -29,6 +29,7 @@ description: FinMind 接入慣例與配額真相。接新 FinMind dataset、寫 
 ## 分點反查(TradingDailyReport)
 
 - **trader-only 反查只有專用 path 支援**:`GET {base}/taiwan_stock_trading_daily_report?securities_trader_id=X&date=D` 一發回該分點單日全部 price-level rows(2026-07-21 probe:9600 → 13,079 rows / 1,136 檔);`/api/v4/data` 入口與 SecIdAgg 變體(含專用 path)都強制 `data_id`,**不支援** broker reverse(probe 400 ×3)。資料週一至五 **21:00 上料** → 「當日」在 21:00 前必然回退前一交易日,候選日自適應處理。樣板 `services/broker_flows.py::get_daily_flows`。Trigger:接任何「分點 → 股票」反查需求時。
+- **SecIdAgg(`taiwan_stock_trading_daily_report_secid_agg`)比逐筆 `taiwan_stock_trading_daily_report` 晚一天**(2026-08-18 17:31 實測:同股同分點,逐筆表已有當天 4,920 rows,SecIdAgg `end_date=today` 最後一天仍是前一交易日;上游當晚是否補齊未測)。任何吃 SecIdAgg 的「含當天」序列都要用 summary / 逐筆表補當天(樣板 `finmind.py::_fill_today_from_summary`,fix/broker-net-bar-today-missing);週末缺「最後交易日」情境見 next-time。Trigger:新端點吃 SecIdAgg 或 user 反映「當天資料隔天才有」。
 - **分點目錄 = `TaiwanSecuritiesTraderInfo`**(/data,無 data_id/日期參數,一發 ~1,011 筆 `{securities_trader_id, securities_trader, date(開業日), address, phone}`);變動極低頻,24h cache 足夠。樣板 `broker_flows.py::_get_directory_or_none`(上游故障回 None 降級,不拖垮 caller)。Trigger:需要分點 id↔名稱對映 / 搜尋時。
 
 ## 共用 window 設計
