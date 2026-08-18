@@ -969,6 +969,8 @@ class FinMindClient:
         if not any_success and not existing.get("last_date"):
             raise ValueError("secid_agg_unavailable")
 
+        await self._fill_today_from_summary(symbol, ids, existing_brokers)
+
         payload = {
             "symbol": symbol,
             "fetched_at": clock.now().isoformat(timespec="seconds"),
@@ -977,6 +979,37 @@ class FinMindClient:
         }
         self._write_cache(cache_key, payload)
         return payload
+
+    async def _fill_today_from_summary(
+        self,
+        symbol: str,
+        ids: list[str],
+        brokers: dict[str, list],
+    ) -> None:
+        """SecIdAgg(逐分點聚合表)比 taiwan_stock_trading_daily_report(逐筆表)
+        晚一天發布(2026-08-18 17:31 實測:daily_report 已有當天 4,920 rows、
+        secid_agg end_date=today 仍停在前一交易日),右側面板有當天、左圖柱狀圖
+        當天為 0。這裡對缺當天的 requested id,用 summary(同一天 daily_report
+        聚合,per-day cache 前端早已抓過 → 通常零額外請求;`_parse_top_brokers`
+        回全部分點非只前 15)補當天 buy/sell/net(張)。summary 沒該分點(當天沒
+        交易 / 未發布 / 非交易日)→ 不補,語意與 secid_agg 一致(只列有交易日)。
+        secid_agg 之後補齊當天 → 下次重抓整段覆寫,補列自然被上游值取代。"""
+        today = clock.today().isoformat()
+        missing = [
+            bid for bid in ids
+            if not any(d.get("date") == today for d in brokers.get(bid, []))
+        ]
+        if not missing:
+            return
+        summary = await self.fetch_chip_summary(symbol, today)
+        by_id = {b.get("broker_id"): b for b in summary.get("top_brokers", [])}
+        for bid in missing:
+            b = by_id.get(bid)
+            if b is None:
+                continue
+            brokers.setdefault(bid, []).append(
+                {"date": today, "buy": b["buy"], "sell": b["sell"], "net": b["net"]},
+            )
 
     # -- options: large traders OI ----------------------------------------
 
