@@ -135,7 +135,13 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setattr(
         "services.finmind.chip_cache_dir", lambda: tmp_path,
     )
-    return FinMindClient()
+    c = FinMindClient()
+    # broker_history 會用 summary(daily_report)補 secid_agg 缺的當天;
+    # 預設 stub 成「當天無資料」讓既有測試不打網路,補列行為由專節測試覆寫。
+    monkeypatch.setattr(
+        c, "fetch_chip_summary", AsyncMock(return_value={"top_brokers": []}),
+    )
+    return c
 
 
 @pytest.mark.asyncio
@@ -385,3 +391,85 @@ async def test_fetch_broker_history_days_separates_cache(
     )
     assert "9800" in c60["brokers"] and "8440" not in c60["brokers"]
     assert "8440" in c90["brokers"] and "9800" not in c90["brokers"]
+
+
+# ---------------------------------------------------------------------------
+# fix/broker-net-bar-today-missing — secid_agg 比 daily_report 晚一天發布,
+# 當天缺列時用 summary(daily_report,已 per-day cache)補該分點當天 buy/sell/net。
+# ---------------------------------------------------------------------------
+
+
+def _summary_with(brokers: list[dict]) -> AsyncMock:
+    return AsyncMock(return_value={"top_brokers": brokers})
+
+
+@pytest.mark.asyncio
+async def test_fetch_broker_history_fills_today_from_daily_report_when_secid_agg_lags(
+    client, monkeypatch,
+):
+    """SC-1:secid_agg 最後一天是昨天、summary 有該分點當天 → series 末尾補當天列,
+    值取自 summary(單位張,net = buy - sell)。"""
+    today = date.today()
+    yesterday = (today - timedelta(days=1)).isoformat()
+
+    async def fake_secid(symbol, start, end, trader_id):
+        return [_row(trader_id, yesterday, 1000)]
+
+    monkeypatch.setattr(client, "_safe_get_secid_agg", fake_secid)
+    summary_mock = _summary_with([
+        {"broker_id": "1440", "name": "美林", "buy": 2143, "sell": 0, "net": 2143},
+        {"broker_id": "9999", "name": "other", "buy": 1, "sell": 5, "net": -4},
+    ])
+    monkeypatch.setattr(client, "fetch_chip_summary", summary_mock)
+
+    result = await client.fetch_broker_history("2330", ["1440"])
+    series = result["brokers"]["1440"]
+    assert [d["date"] for d in series] == [yesterday, today.isoformat()]
+    assert series[-1] == {
+        "date": today.isoformat(), "buy": 2143, "sell": 0, "net": 2143,
+    }
+    summary_mock.assert_awaited_once()
+    assert summary_mock.await_args.args[:2] == ("2330", today.isoformat())
+
+
+@pytest.mark.asyncio
+async def test_fetch_broker_history_does_not_fill_when_secid_agg_has_today(
+    client, monkeypatch,
+):
+    """SC-2:secid_agg 已含當天 → 不重複、不用 summary 覆寫。"""
+    today = date.today().isoformat()
+
+    async def fake_secid(symbol, start, end, trader_id):
+        return [_row(trader_id, today, 5000)]
+
+    monkeypatch.setattr(client, "_safe_get_secid_agg", fake_secid)
+    summary_mock = _summary_with([
+        {"broker_id": "1440", "name": "美林", "buy": 999, "sell": 0, "net": 999},
+    ])
+    monkeypatch.setattr(client, "fetch_chip_summary", summary_mock)
+
+    result = await client.fetch_broker_history("2330", ["1440"])
+    series = result["brokers"]["1440"]
+    assert len(series) == 1
+    assert series[0] == {"date": today, "buy": 5, "sell": 0, "net": 5}
+
+
+@pytest.mark.asyncio
+async def test_fetch_broker_history_skips_fill_when_summary_lacks_broker(
+    client, monkeypatch,
+):
+    """SC-3:summary 沒有該分點(當天沒交易 / 尚未發布 / 非交易日)→ series 不變。"""
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+    async def fake_secid(symbol, start, end, trader_id):
+        return [_row(trader_id, yesterday, 1000)]
+
+    monkeypatch.setattr(client, "_safe_get_secid_agg", fake_secid)
+    monkeypatch.setattr(client, "fetch_chip_summary", _summary_with([
+        {"broker_id": "9999", "name": "other", "buy": 1, "sell": 5, "net": -4},
+    ]))
+
+    result = await client.fetch_broker_history("2330", ["1440"])
+    assert result["brokers"]["1440"] == [
+        {"date": yesterday, "buy": 1, "sell": 0, "net": 1},
+    ]
