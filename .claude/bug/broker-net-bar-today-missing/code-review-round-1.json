@@ -1,0 +1,19 @@
+{
+  "round": 1,
+  "reviewed_head_initial": "18721b3",
+  "lenses": ["runtime-correctness+edge+cache (opus)", "test-coverage+spec-conformance (opus)"],
+  "findings": [
+    {"id": "R1-P1", "severity": "P1", "lens": "test-coverage", "file": "backend/services/finmind.py", "claim": "fetch_chip_summary 例外會炸掉 secid_agg 已成功的整包(修前不依賴 daily_report)", "disposition": "accepted", "fix": "34d3d4d red / ac86bda green:except + warning + 不補(降級);round-2 放寬為 Exception(a953915)"},
+    {"id": "R1-P2-a", "severity": "P2", "lens": "test-coverage", "claim": "edge 3/4(secid_agg 失敗沿用舊 cache 仍補列 / 二次呼叫不重複)無測試", "disposition": "accepted", "fix": "34d3d4d test_fetch_broker_history_fill_is_idempotent_and_skips_sticky_brokers(lock)"},
+    {"id": "R1-P2-b", "severity": "P2", "lens": "test-coverage", "claim": "SC-1 斷言值退化(sell=0、net==buy)", "disposition": "accepted", "fix": "34d3d4d SC-1 改 buy 500 / sell 2143 / net -1643"},
+    {"id": "R1-P2-c", "severity": "P2", "lens": "test-coverage", "claim": "mutation:改成迭代 sticky brokers 全測試存活", "disposition": "accepted", "fix": "併入 idempotent 測試(9800 sticky 不補)"},
+    {"id": "R1-P2-d", "severity": "P2", "lens": "test-coverage", "claim": "新測試裸 date.today() vs 實作 clock.today()", "disposition": "accepted", "fix": "34d3d4d 改 clock.today()"},
+    {"id": "R2-P2-a", "severity": "P2", "lens": "correctness", "claim": "重複 ids 補兩筆同日列(前端累加 → 柱翻倍)", "disposition": "accepted", "fix": "4a1c0e1 red / a953915 green:ids 保序去重"},
+    {"id": "R2-P2-b", "severity": "P2", "lens": "correctness", "claim": "refresh 未透傳 fetch_chip_summary(§4 refresh 契約)", "disposition": "accepted", "fix": "a953915:refresh 一路帶下 + _run_once key _r{refresh}"},
+    {"id": "R2-P2-c", "severity": "P2", "lens": "correctness", "claim": "降級只 catch httpx.HTTPError,parse ValueError 仍炸整包", "disposition": "accepted", "fix": "a953915:except Exception(warning + 不補);測試 parametrize ValueError"},
+    {"id": "R2-P2-d", "severity": "P2", "lens": "correctness", "claim": "補列序列往返推高冷路徑延遲(30s 預算)", "disposition": "rejected", "rationale": "runtime 實測(curl):summary 冷 0.58s / 命中 0.21s;broker_history refresh 2 ids 0.33s。summary per-day cache 前端早已抓過,常態零額外請求"},
+    {"id": "R2-P2-e", "severity": "P2", "lens": "correctness", "claim": "同請求 clock.today() 呼叫兩次,跨午夜日期不一致", "disposition": "accepted", "fix": "a953915:_fill_today_from_summary 收 caller 的 end"}
+  ],
+  "p2_summary": "9 P2(8 accepted / 1 rejected 附 runtime 證據);P0 0;P1 1 accepted 已修。",
+  "self_review_head": "a953915"
+}
