@@ -85,6 +85,31 @@ test.describe("equity mode", () => {
     await expect(page.getByTestId(TESTIDS.subCrosshair).first()).toBeAttached();
     expect(await page.getByTestId(TESTIDS.subCrosshair).count()).toBeGreaterThanOrEqual(5);
   });
+
+  test("E46: K 線疊圖底部日期軸 — 稀疏 M/D 刻度 + hover 日期 chip(mod/kline-date-bubble-days-ux SC-1)", async ({ page }) => {
+    // 痛點:日期軸是疊圖新增的一列(高度配平後才放得下),vitest 鎖幾何,
+    // 這裡鎖真瀏覽器「看得到 + 刻度對到 fixture 末根 06-26 + hover 出完整日期」。
+    // E31 的「不得斜線年月日」契約仍覆蓋本容器(刻度 M/D、chip YYYY-MM-DD)。
+    await page.getByPlaceholder(/搜尋代號/).fill("2330");
+    await page.getByRole("option").first().click();
+    const chart = page.getByTestId(TESTIDS.chipKlineChart);
+    await expect(chart).toBeVisible();
+    const axis = page.getByTestId("kline-date-axis");
+    await expect(axis).toBeVisible();
+    const ticks = page.getByTestId("kline-date-axis-tick");
+    expect(await ticks.count()).toBeGreaterThanOrEqual(2);
+    await expect(ticks.last()).toHaveText("6/26");
+    // 軸列必須在容器可視範圍內(高度配平 review R1:餘數列吃掉會把軸推出 overflow)
+    const chartBox = (await chart.boundingBox())!;
+    const axisBox = (await axis.boundingBox())!;
+    expect(axisBox.y + axisBox.height).toBeLessThanOrEqual(chartBox.y + chartBox.height + 0.5);
+    // hover 疊圖中段 → 軸列出現該根日期 chip
+    await page.mouse.move(chartBox.x + chartBox.width / 2, chartBox.y + chartBox.height * 0.5);
+    const hover = page.getByTestId("kline-date-axis-hover");
+    await expect(hover).toBeAttached();
+    expect(await hover.textContent()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(await chart.textContent()).not.toMatch(/\d{4}\/\d{2}\/\d{2}/);
+  });
 });
 
 // responsive spec SC2/SC4:手機 viewport smoke。viewport 一律 test.use 導航前固定
@@ -452,17 +477,42 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(buyVol).toHaveText("100");
     await expect(page.getByTestId("bubble-window-badge")).toHaveCount(0);
 
+    // mod/kline-date-bubble-days-ux SC-3:載入期工具列三鈕常駐 disabled、不跑版。
+    // 舊 code 在 data→null 的載入視窗期會卸載三鈕(資料回來又長回),所以要用
+    // route 延遲把視窗期拉長到可取樣(review R3)。
+    const shotBtn = page.getByTestId("bubble-screenshot");
+    await expect(shotBtn).toBeEnabled();
+    const shotBoxBefore = (await shotBtn.boundingBox())!;
+    await page.route("**/bubble_window*", async (route) => {
+      await new Promise((r) => setTimeout(r, 800));
+      await route.continue();
+    });
+
     // 切 5 日 —— 定位一律先 scope 到 bubble-days-selector:RangeSelector 的
     // 「設為 N 日」在 hidden 的籌碼總覽分頁仍留在 DOM(design §3 R3)。
     await page
       .getByTestId("bubble-days-selector")
       .getByRole("button", { name: "泡泡圖設為 5 日" })
       .click();
+    await expect(shotBtn).toBeAttached();
+    await expect(shotBtn).toBeDisabled();
+    const shotBoxLoading = (await shotBtn.boundingBox())!;
+    expect(Math.abs(shotBoxLoading.x - shotBoxBefore.x)).toBeLessThan(1);
+    expect(Math.abs(shotBoxLoading.y - shotBoxBefore.y)).toBeLessThan(1);
+    await expect(page.getByTestId("bubble-manual-range-trigger")).toBeDisabled();
 
     // (a) 累計 badge
     await expect(page.getByTestId("bubble-window-badge")).toContainText(
       "近 5 個交易日累計",
     );
+    await expect(shotBtn).toBeEnabled();
+    // SC-4:每日開收標示 5 欄;fixture 事實 = trades 單一價位 1100、candle 收 1105
+    // → 開 / 收必越界 → 5 欄皆 data-oob(K 身 / 標籤鑑別歸 vitest,review R13)。
+    const dayCols = page.getByTestId("bubble-day-marks").locator("[data-date]");
+    await expect(dayCols).toHaveCount(5);
+    await expect(
+      page.getByTestId("bubble-day-marks").locator('[data-date][data-oob="true"]'),
+    ).toHaveCount(5);
     // (b) 倍數:同一列張數 = 單日 ×5(核心鑑別訊號)
     await expect(buyVol).toHaveText("500");
     // (c) 聚合資料仍流進圖表管線(泡泡有畫出來)。
@@ -575,6 +625,15 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(page.getByTestId(TESTIDS.bubbleJumpToOverview)).toContainText(
       "查看 2 個分點於籌碼總覽",
     );
+    // mod/kline-date-bubble-days-ux SC-2 / W6:統計行最寬(2 分點 totals + 跳轉文案)
+    // 且 1280 + sidebar 下中欄僅 ~90px 時,「連續天數」標籤不得逐字直排,且與
+    // selector 同一行(標籤自身不撐高 header;中欄既有多行換行屬 pre-existing)。
+    const label = page.getByText("連續天數");
+    await expect(label).toBeVisible();
+    const labelBox = (await label.boundingBox())!;
+    const selBox = (await page.getByTestId("bubble-days-selector").boundingBox())!;
+    expect(labelBox.height).toBeLessThan(24);
+    expect(Math.abs((labelBox.y + labelBox.height / 2) - (selBox.y + selBox.height / 2))).toBeLessThan(8);
   });
 
   test("E39: 泡泡圖單看模式 — 點已選泡泡切單分點統計、組合不動;點空白兩段式(mod/bubble-chart-ux-polish SC-3/5)", async ({ page }) => {
