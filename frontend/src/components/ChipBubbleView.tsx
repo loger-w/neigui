@@ -700,33 +700,35 @@ export function ChipBubbleView({
               onRemove={handleBlockRemove}
               onClearAll={handleBlockClearAll}
             />
-            {/* SC-7:截圖鈕在「輸入區間」左側;無資料時不渲染(沒東西可截)。 */}
-            {bubbleData && (
-              <button
-                type="button"
-                data-testid="bubble-screenshot"
-                onClick={() => void handleScreenshot()}
-                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer"
-              >
-                截圖
-              </button>
-            )}
-            {bubbleData && (
-              <button
-                type="button"
-                data-testid="bubble-manual-range-trigger"
-                onClick={() => setManualInputOpen(true)}
-                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer"
-              >
-                輸入區間
-              </button>
-            )}
-            {isMobile && bubbleData && (
+            {/* SC-7:截圖鈕在「輸入區間」左側。
+                SC-3(mod/kline-date-bubble-days-ux):三鈕改常駐 + disabled —
+                切天數期間 bubbleData 短暫為 null,舊的條件渲染會讓它們卸載、
+                `?` 鈕左移(跑版)。改 disabled 保位,行為與全站 disabled 慣例一致。 */}
+            <button
+              type="button"
+              data-testid="bubble-screenshot"
+              disabled={!bubbleData}
+              onClick={() => void handleScreenshot()}
+              className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer disabled:opacity-50 disabled:cursor-default"
+            >
+              截圖
+            </button>
+            <button
+              type="button"
+              data-testid="bubble-manual-range-trigger"
+              disabled={!bubbleData}
+              onClick={() => setManualInputOpen(true)}
+              className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer disabled:opacity-50 disabled:cursor-default"
+            >
+              輸入區間
+            </button>
+            {isMobile && (
               <button
                 type="button"
                 data-testid="bubble-open-sheet"
+                disabled={!bubbleData}
                 onClick={() => setSheetOpen(true)}
-                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer pointer-coarse:min-h-11"
+                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer pointer-coarse:min-h-11 disabled:opacity-50 disabled:cursor-default"
               >
                 明細
               </button>
