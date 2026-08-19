@@ -41,6 +41,10 @@ description: 前端 stack / 元件 / 版面與響應式慣例。寫改任何 fro
 - **`useContainerSize` 的 ref 必掛「恆存 wrapper」**(loading / unavailable / data 三態都 mount 的元素):hook null-ref 時 early-return 且永不重跑,ref 若只掛 data 分支,冷載入會永遠 0×0 空白。regression lock 寫法見 skill `frontend-testing`。Trigger:元件用 useContainerSize 且有多態渲染時。
 - **延遲 mount 的容器(bottom sheet / modal)內用 useContainerSize,ref + hook 必須宣告在「隨容器 mount 的元件」內部**(掛 parent 的 ref 會踩 null-ref 永不重跑陷阱)。ChipBubbleView 的 DetailPanel 是樣板。Trigger:sheet / dialog 內放需量測的 SVG 圖表。
 
+- **條件 render 的 loading spinner 會改按鈕寬度 → `flex-wrap` 列整顆換行 → 頁面下方全部位移**(2026-08-19 mod/kline-date-bubble-days-ux,user 體感「整個頁面按鈕重排」):`{loading && <svg>}` 在 `inline-flex gap` 鈕內載入時多 ~20px,1280 + 側欄下頂欄 `flex flex-wrap` 把「重新整理」推到第二行,tabs / 圖區下移 42px。樣板 = `App.tsx` `refresh-spinner-slot`:`<span className="inline-flex size-3.5 shrink-0">` 常駐、svg 條件放裡面,鈕寬載入前後相同。同理工具列鈕「有資料才 render」改「常駐 + `disabled`」(ChipBubbleView 截圖 / 輸入區間)。Trigger:任何鈕在 loading / 無資料態會增減子元素時。
+- **疊圖高度「餘數配平」的最後一列會靜默吸收沒扣乾淨的高度**(`ChipKlineChart` klineH/subH/lastSubH):新增固定高度列(掃描條 / 日期軸)必須顯式從 `availH` 扣除並以「各列 style.height 加總 === 容器高」vitest 鎖住 — jsdom / e2e `toBeVisible` 都抓不到被 `overflow-hidden` 推出視窗的列。Trigger:動 K 線疊圖列數或任何 flex-col 固定高配平時。
+- **SVG 軸刻度首末 tick 用 `textAnchor` start / end,中間 middle**(`chip-kline-svg.tsx` DateAxisSvg):430px 實測首刻度 middle anchor 半截切邊;座標級測試對中間 tick 鎖等式、首末只鎖 anchor + 在 [0,width] 內。Trigger:新增任何 SVG 軸刻度文字。
+
 ## 驗證截圖
 
 - **devtools MCP 截圖 close-up 用 PIL crop 整頁截圖,不用 `body.style.zoom`**:zoom 會污染 useContainerSize 量測(ResizeObserver 以 zoom 後幾何重排,拍完 reset 也可能留下爆版 layout)。Trigger:real-env 要 panel 級 close-up 證據時。

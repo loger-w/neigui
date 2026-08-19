@@ -478,13 +478,16 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     await expect(page.getByTestId("bubble-window-badge")).toHaveCount(0);
 
     // mod/kline-date-bubble-days-ux SC-3:載入期工具列三鈕常駐 disabled、不跑版。
-    // 舊 code 在 data→null 的載入視窗期會卸載三鈕(資料回來又長回),所以要用
-    // route 延遲把視窗期拉長到可取樣(review R3)。
+    // 舊 code 在 data→null 的載入視窗期會卸載三鈕(資料回來又長回),所以用
+    // route gate 扣住 /bubble_window 直到取樣完成才放行(E25 同款事件同步,
+    // 不用固定 delay — e2e-conventions「loading 態 assertion」條)。
     const shotBtn = page.getByTestId("bubble-screenshot");
     await expect(shotBtn).toBeEnabled();
     const shotBoxBefore = (await shotBtn.boundingBox())!;
+    let releaseWindow!: () => void;
+    const windowGate = new Promise<void>((r) => (releaseWindow = r));
     await page.route("**/bubble_window*", async (route) => {
-      await new Promise((r) => setTimeout(r, 800));
+      await windowGate;
       await route.continue();
     });
 
@@ -500,13 +503,14 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
     expect(Math.abs(shotBoxLoading.x - shotBoxBefore.x)).toBeLessThan(1);
     expect(Math.abs(shotBoxLoading.y - shotBoxBefore.y)).toBeLessThan(1);
     await expect(page.getByTestId("bubble-manual-range-trigger")).toBeDisabled();
+    releaseWindow();
 
     // (a) 累計 badge
     await expect(page.getByTestId("bubble-window-badge")).toContainText(
       "近 5 個交易日累計",
     );
     await expect(shotBtn).toBeEnabled();
-    await page.unroute("**/bubble_window*"); // 延遲窗只服務上面那段取樣
+    await page.unroute("**/bubble_window*"); // gate 只服務上面那段取樣
     // SC-4:每日開收標示 5 欄;fixture 事實 = trades 單一價位 1100、candle 收 1105
     // → 開 / 收必越界 → 5 欄皆 data-oob(K 身 / 標籤鑑別歸 vitest,review R13);
     // 日期文字層(畫在泡泡之後)必含窗末日 6/26 與窗首日 6/22。
