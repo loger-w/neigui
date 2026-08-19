@@ -18,6 +18,137 @@ export const KLINE_PAD_R = 58;
 /** 價格軸格線刻度的「好看倍數」候選(乘上 10 的冪次)。靜態表,module scope。 */
 const GRID_STEP_CANDIDATES = [1, 2, 5, 10, 20, 50];
 
+// ── SC-1 日期軸(疊圖底部共用一條時間軸) ──────────────────────────────────
+
+/** 稀疏日期刻度的 index 挑選。
+ *
+ *  - `step = max(1, ceil(minGapPx / slotW))`,自 0 起每 step 取一個;
+ *  - 首(0)與末(n-1)永遠保留 — 交易員要看得到視窗兩端;
+ *  - 末根與前一個 tick 的像素距離 < minGapPx 時刪掉「前一個」(不刪末根、
+ *    也不刪 0),避免 zoom 到任意天數時右端兩個標籤黏在一起。
+ */
+export function pickDateTicks(n: number, slotW: number, minGapPx = 70): number[] {
+  if (n <= 0) return [];
+  if (n === 1) return [0];
+  // 容器尚未量到寬度(slotW <= 0)→ 沒有可靠的像素距離,只標首末。
+  if (!(slotW > 0)) return [0, n - 1];
+
+  const step = Math.max(1, Math.ceil(minGapPx / slotW));
+  const ticks: number[] = [];
+  for (let i = 0; i < n - 1; i += step) ticks.push(i);
+
+  const last = n - 1;
+  const prev = ticks[ticks.length - 1];
+  if (prev !== undefined && prev > 0 && (last - prev) * slotW < minGapPx) {
+    ticks.pop();
+  }
+  ticks.push(last);
+  return ticks;
+}
+
+/** `"YYYY-MM-DD"` → `"M/D"`(去前導零)。視窗 30–360 日,年份由 hover chip 補。 */
+export function formatTickDate(date: string): string {
+  const parts = date.split("-");
+  if (parts.length !== 3) return date;
+  return `${Number(parts[1])}/${Number(parts[2])}`;
+}
+
+interface DateAxisProps {
+  /** 目前可見視窗的 candle 日期(`YYYY-MM-DD`),順序 = 疊圖槽位順序。 */
+  dates: string[];
+  width: number;
+  height: number;
+  /** 疊圖容器回報的 hover 槽位;null / 越界 = 不畫 hover chip。 */
+  hoverIndex: number | null;
+}
+
+const AXIS_TICK_FONT = "0.6875rem";
+const HOVER_CHIP_W = 72;
+const HOVER_CHIP_H = 15;
+
+function DateAxisSvgImpl({ dates, width, height, hoverIndex }: DateAxisProps) {
+  const n = dates.length;
+  if (n === 0 || width <= 0 || height <= 0) return null;
+
+  const t = CHIP_THEME;
+  // ChipKlineChart.handleStackMouseMove 的逐字同式 — 兩邊必須一致,
+  // 否則刻度 / hover chip 與 candle 中心對不上。
+  const slotW = (width - KLINE_PAD_L - KLINE_PAD_R) / n;
+  const centerX = (i: number) => KLINE_PAD_L + slotW * i + slotW / 2;
+  const clampX = (v: number) =>
+    Math.min(Math.max(v, KLINE_PAD_L), width - KLINE_PAD_R);
+
+  const tickIdxs = pickDateTicks(n, slotW);
+  const hovered =
+    hoverIndex !== null && hoverIndex >= 0 && hoverIndex < n ? hoverIndex : null;
+
+  const hoverChip = (() => {
+    if (hovered === null) return null;
+    const cx = centerX(hovered);
+    const left = Math.min(Math.max(cx - HOVER_CHIP_W / 2, 0), width - HOVER_CHIP_W);
+    return { left, cx: left + HOVER_CHIP_W / 2 };
+  })();
+
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      data-testid="kline-date-axis"
+      viewBox={`0 0 ${width} ${height}`}
+      width={width}
+      height={height}
+      pointerEvents="none"
+      style={{ background: t.bg }}
+    >
+      <line
+        x1={0} y1={0.5} x2={width} y2={0.5}
+        stroke={t.line} strokeWidth={1}
+      />
+      {tickIdxs.map((i) => (
+        <text
+          key={i}
+          data-testid="kline-date-axis-tick"
+          x={clampX(centerX(i))}
+          y={12}
+          textAnchor="middle"
+          fill={t.inkDim}
+          fontSize={AXIS_TICK_FONT}
+          fontFamily={t.font}
+          style={{ fontVariantNumeric: "tabular-nums" }}
+        >
+          {formatTickDate(dates[i]!)}
+        </text>
+      ))}
+      {hoverChip && (
+        <g data-testid="kline-date-axis-hover">
+          <rect
+            x={hoverChip.left}
+            y={(height - HOVER_CHIP_H) / 2}
+            width={HOVER_CHIP_W}
+            height={HOVER_CHIP_H}
+            fill="rgba(15,12,8,0.85)"
+            stroke={t.lineStrong}
+            strokeWidth={1}
+          />
+          <text
+            x={hoverChip.cx}
+            y={height / 2 + 4}
+            textAnchor="middle"
+            fill={t.ink}
+            fontSize={AXIS_TICK_FONT}
+            fontFamily={t.font}
+            style={{ fontVariantNumeric: "tabular-nums" }}
+          >
+            {dates[hovered!]}
+          </text>
+        </g>
+      )}
+    </svg>
+  );
+}
+
+/** 疊圖底部共用日期軸(SC-1)。刻度 `M/D`,hover 時在該槽位顯 `YYYY-MM-DD`。 */
+export const DateAxisSvg = memo(DateAxisSvgImpl);
+
 // ── pure geometry (可單獨測試) ──────────────────────────────────────────────
 
 /** 回傳 price→y 映射函式。padTop = chart area 頂部留白 px。 */
