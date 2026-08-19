@@ -44,6 +44,7 @@ vi.mock("./components/MarketPage", () => ({
   MarketPage: ({ onSymbolPick }: { onSymbolPick: (sid: string) => void }) => (
     <div data-testid="market-page">
       <button onClick={() => onSymbolPick("2330")}>market-pick-2330</button>
+      <button onClick={() => onSymbolPick("9999")}>market-pick-9999</button>
     </div>
   ),
 }));
@@ -57,8 +58,9 @@ vi.mock("./components/BorrowFeePage", () => ({
 // fix/cross-mode-symbol-name:App 以全股票目錄補跨 mode 跳轉缺的股名
 vi.mock("./hooks/useAllSymbols", () => ({
   useAllSymbols: () => ({
+    // 目錄名故意與 SymbolSearch mock 不同(哨兵),鎖「搜尋 name 優先於目錄」
     symbols: [
-      { symbol: "2330", name: "台積電" },
+      { symbol: "2330", name: "目錄-台積電" },
       { symbol: "2454", name: "聯發科" },
     ],
     loading: false,
@@ -83,6 +85,7 @@ vi.mock("./components/BrokerFlowsPanel", () => ({
   }) => (
     <div data-testid="broker-flows-panel" data-active={String(active)}>
       <button onClick={() => onPickStock("2330", "台積電", "9600")}>pick-2330</button>
+      <button onClick={() => onPickStock("2454", null, "9600")}>pick-2454-noname</button>
     </div>
   ),
 }));
@@ -200,7 +203,41 @@ describe("App mode persistence (SC-4)", () => {
     fireEvent.click(screen.getByText("market-pick-2330"));
     expect(localStorage.getItem("mode")).toBe("equity");
     expect(screen.getByText("2330")).toBeTruthy();
+    expect(screen.getByText("目錄-台積電")).toBeTruthy();
+  });
+
+  it("搜尋帶來的 name 優先於目錄名;換股後舊名不殘留", () => {
+    render(<App />);
+    fireEvent.click(screen.getByText("sym-pick-2330"));
     expect(screen.getByText("台積電")).toBeTruthy();
+    expect(screen.queryByText("目錄-台積電")).toBeNull();
+    fireEvent.click(screen.getByText("sym-pick-2454"));
+    expect(screen.getByText("聯發科")).toBeTruthy();
+    expect(screen.queryByText("台積電")).toBeNull();
+  });
+
+  it("跨 mode:代號不在目錄 → 只顯代號、不 crash、不誤借他股名", async () => {
+    localStorage.setItem("mode", "market");
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.queryByTestId("market-page")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("market-pick-9999"));
+    expect(screen.getByText("9999")).toBeTruthy();
+    expect(screen.queryByText("目錄-台積電")).toBeNull();
+    expect(screen.queryByText("聯發科")).toBeNull();
+  });
+
+  it("跨 mode:分點反查 null name → header 以目錄補名,且分點預選保留", async () => {
+    localStorage.setItem("mode", "flows");
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.queryByTestId("broker-flows-panel")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("pick-2454-noname"));
+    expect(screen.getByText("2454")).toBeTruthy();
+    expect(screen.getByText("聯發科")).toBeTruthy();
+    expect(screen.getByTestId("kline-chart").getAttribute("data-selected")).toBe("9600");
   });
 
   it("跨 mode:borrow → equity 跳轉後 header 顯示股名而非只有代號", async () => {

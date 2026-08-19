@@ -46,7 +46,7 @@ export const CHANGELOG: VersionEntry[] = [
       {
         kind: "fix",
         scope: "equity",
-        text: "從大盤或券差頁點股票跳到籌碼分析後,頂部現在會顯示股票名稱,不再只有代號",
+        text: "從大盤、券差或分點反查跳到個股頁後,頂部現在會顯示股票名稱(不再只有代號),此時加入自選清單也會一併帶入名稱",
       },
     ],
   },
