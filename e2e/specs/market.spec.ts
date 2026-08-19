@@ -138,6 +138,9 @@ test.describe("market mode", () => {
     await page.getByTestId("sub-row-半導體業-晶圓代工").click();
     await page.getByTestId("sector-member-2330").click();
     await expect(page.locator("header")).toContainText("2330");
+    // fix/cross-mode-symbol-name:跨 mode 跳轉只帶 stock_id,header 股名由
+    // App 以股票目錄補上 — 鎖「名稱也在」,不只代號。
+    await expect(page.locator("header")).toContainText("台積電");
     await expect(page.getByTestId("chip-brokers-panel")).toBeVisible();
   });
 
