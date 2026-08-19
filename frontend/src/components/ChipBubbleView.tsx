@@ -683,8 +683,15 @@ export function ChipBubbleView({
                   (header 撐高 2.6 倍 → 圖區 397→125px,e2e E39 因 circle 座標
                   位移而紅)。改掛統計行右端:中欄本來就是 minmax(0,1fr) 可伸縮,
                   ml-auto 推到行尾(mobile flex-col 自然堆疊)。 */}
+              {/* SC-2(mod/kline-date-bubble-days-ux):光禿的 1/2/3/4/5/10/20 不自明,
+                  左側加「連續天數」標籤、整組帶動態 title 補完整語意。標籤與 selector
+                  同一 inline-flex,只加寬統計行的 ml-auto 區,不動 header 三欄 grid(W6)。 */}
               {onDaysChange && (
-                <div className="ml-auto">
+                <div
+                  className="ml-auto inline-flex items-center gap-1.5"
+                  title={`累計最近 ${days} 個交易日的分點成交(1 = 僅當日)`}
+                >
+                  <span className="text-xs text-ink-dim">連續天數</span>
                   <BubbleDaysSelector value={days} onChange={onDaysChange} />
                 </div>
               )}
