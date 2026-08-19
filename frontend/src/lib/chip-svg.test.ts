@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { klineScaleY } from "./chip-kline-svg";
+import { klineScaleY, pickDateTicks, formatTickDate } from "./chip-kline-svg";
 import { bubbleRadius } from "./chip-bubble-svg";
 import { instBarHeight } from "./chip-inst-bar-svg";
 import { splitBrokers, aggregateByPrice, aggregateByBroker } from "./chip-data";
@@ -117,5 +117,58 @@ describe("aggregateByBroker", () => {
 
   it("returns empty array for empty input", () => {
     expect(aggregateByBroker([])).toEqual([]);
+  });
+});
+
+// SC-1(pack D 🟢):疊圖底部日期軸的稀疏刻度挑選 + M/D 格式化。
+describe("pickDateTicks", () => {
+  it("n=90 / slotW=8 → step 9,首末必含,相鄰間距 >= 70px", () => {
+    const ticks = pickDateTicks(90, 8);
+    expect(ticks[0]).toBe(0);
+    expect(ticks[ticks.length - 1]).toBe(89);
+    expect(ticks[1]).toBe(9); // step = ceil(70 / 8) = 9
+    for (let i = 1; i < ticks.length; i++) {
+      expect((ticks[i]! - ticks[i - 1]!) * 8).toBeGreaterThanOrEqual(70);
+    }
+  });
+
+  it("末根與前一 tick 距離 < minGap → 刪掉前一個(末根永遠保留)", () => {
+    // 0,9,…,81 之後接 89:(89 - 81) * 8 = 64px < 70 → 81 出局,72 留下
+    const ticks = pickDateTicks(90, 8);
+    expect(ticks).not.toContain(81);
+    expect(ticks).toContain(72);
+  });
+
+  it("slotW 寬到 step = 1 → 每根都是 tick", () => {
+    expect(pickDateTicks(4, 100)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("首末永遠保留:n=2 且極窄槽位仍回 [0, 1]", () => {
+    expect(pickDateTicks(2, 4)).toEqual([0, 1]);
+  });
+
+  it("n = 1 → [0];n = 0 → []", () => {
+    expect(pickDateTicks(1, 8)).toEqual([0]);
+    expect(pickDateTicks(0, 8)).toEqual([]);
+  });
+
+  it("slotW <= 0(容器尚未量到)→ 只回首末", () => {
+    expect(pickDateTicks(30, 0)).toEqual([0, 29]);
+  });
+
+  it("minGapPx 可覆寫", () => {
+    expect(pickDateTicks(30, 10, 30)[1]).toBe(3); // ceil(30 / 10) = 3
+  });
+});
+
+describe("formatTickDate", () => {
+  it("去前導零回 M/D", () => {
+    expect(formatTickDate("2026-06-05")).toBe("6/5");
+    expect(formatTickDate("2026-12-26")).toBe("12/26");
+    expect(formatTickDate("2026-01-01")).toBe("1/1");
+  });
+
+  it("不含年份 / 不用斜線年月日(E5 契約)", () => {
+    expect(formatTickDate("2026-06-26")).not.toMatch(/\d{4}/);
   });
 });
