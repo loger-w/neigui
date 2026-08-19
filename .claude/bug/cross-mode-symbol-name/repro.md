@@ -25,3 +25,13 @@ flows),不動 5 檔 caller 簽名;資料同源 SymbolSearch,不多一個請求]`
 ## 3. 反向驗證
 
 (見下方追加)
+
+## 3. 反向驗證(2026-08-19)
+
+`git revert --no-commit da7a011` → `vitest run src/App.test.tsx` → 兩條「跨 mode」case 紅
+(2 failed / 15 passed)→ `git revert --abort` → 17 passed。測試確實抓到 bug。
+
+## 4. 真實環境重走重現步驟
+
+- 大盤 → 量比排行點 5314 → header「5314 世紀*」(evidence/market-to-equity-name.png)
+- 券差 → 本日借券統計點 3498 → 看籌碼 → header「3498 陽程」(evidence/borrow-to-equity-name.png)

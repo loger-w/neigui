@@ -231,3 +231,10 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
   週末 / 假日看盤時前一交易日的分點柱仍會缺(當天 summary 為空、不會補)。需先 probe 上游
   發布時程(週六早上跑 `probe_secid.py`,看週五是否已入 secid_agg)再決定要不要改成
   「補最後 candle 日」。觸發:user 反映週末看不到週五的分點柱、或下次動 broker_history。
+
+## From /bug cross-mode-symbol-name(2026-08-19)
+
+- **market / borrow 的 `onSymbolPick(stockId)` 簽名沒有 name 通道**:App 已用股票目錄補名
+  (單點修),但 MarketBreadthPanel / MarketSectorRotation / MarketVolumeRatioPanel /
+  BorrowFeePage 的列資料其實都帶 name;若日後目錄端點(/api/symbols/all)不可用或要省那一
+  次請求,可改為五個 caller 直接透傳 name。觸發:目錄請求被反映多餘、或非 equity 冷啟動要瘦身時。
