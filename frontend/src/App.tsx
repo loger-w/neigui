@@ -464,18 +464,28 @@ export default function App() {
             aria-busy={isLoading || undefined}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 pointer-coarse:min-h-11 text-sm border border-line text-ink-muted hover:text-ink hover:border-accent disabled:opacity-50 disabled:cursor-default transition-colors cursor-pointer"
           >
-            {isLoading && (
-              <svg
-                data-testid="refresh-spinner"
-                viewBox="0 0 24 24"
-                fill="none"
-                aria-hidden="true"
-                className="size-3.5 animate-spin text-accent motion-reduce:animate-none"
-              >
-                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
-                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-              </svg>
-            )}
+            {/* SC-3 [mod/kline-date-bubble-days-ux, Phase 6 real-env finding]:
+                spinner 原本條件 render → 載入時鈕變寬 → 頂欄 flex-wrap 把整顆鈕
+                擠到第二行 → tabs 與整個圖區下移 42px。插槽常駐固定寬,載入時才
+                填 svg,鈕寬載入前後恆等。 */}
+            <span
+              data-testid="refresh-spinner-slot"
+              aria-hidden="true"
+              className="inline-flex size-3.5 shrink-0 items-center justify-center"
+            >
+              {isLoading && (
+                <svg
+                  data-testid="refresh-spinner"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  aria-hidden="true"
+                  className="size-3.5 animate-spin text-accent motion-reduce:animate-none"
+                >
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+                  <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+              )}
+            </span>
             重新整理
           </button>
         </div>
