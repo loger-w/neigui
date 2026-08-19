@@ -15,11 +15,11 @@ const mk = (symbol: string): ChipBubbleData =>
   ({ symbol, fetched_at: "", brokers: [] }) as unknown as ChipBubbleData;
 
 const mkWindow = (
-  symbol: string, windowDays: number, actualDays: number,
+  symbol: string, windowDays: number, actualDays: number, tradingDates: string[] = [],
 ): ChipBubbleWindowData =>
   ({
     symbol, date: "2026-06-22", fetched_at: "", trades: [],
-    window_days: windowDays, trading_dates: [], actual_days: actualDays,
+    window_days: windowDays, trading_dates: tradingDates, actual_days: actualDays,
   }) as unknown as ChipBubbleWindowData;
 
 beforeEach(() => vi.restoreAllMocks());
@@ -104,7 +104,7 @@ describe("useChipBubble — days 分流(SC-3)", () => {
       "2330", "2026-06-22", 5, false,
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
-    expect(result.current.windowMeta).toEqual({ windowDays: 5, actualDays: 3 });
+    expect(result.current.windowMeta).toEqual({ windowDays: 5, actualDays: 3, tradingDates: [] });
   });
 
   it("days=5 時 refresh() 帶 refresh=true 打 window 端點", async () => {
@@ -129,6 +129,33 @@ describe("useChipBubble — days 分流(SC-3)", () => {
 
     rerender({ days: 5 });
     await waitFor(() => expect(window).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(result.current.windowMeta).toEqual({ windowDays: 5, actualDays: 5 }));
+    await waitFor(() =>
+      expect(result.current.windowMeta).toEqual({ windowDays: 5, actualDays: 5, tradingDates: [] }),
+    );
+  });
+});
+
+// SC-4:每日開收標示需要「這個視窗涵蓋哪幾個交易日」— payload 的 trading_dates
+// 直接曝光成 windowMeta.tradingDates(additive,windowDays / actualDays 不變)。
+describe("useChipBubble — windowMeta.tradingDates(SC-4)", () => {
+  it("days>1 → tradingDates 直通 payload 的 trading_dates", async () => {
+    const dates = ["2026-06-18", "2026-06-19", "2026-06-20"];
+    vi.spyOn(api, "chipBubbleWindow").mockResolvedValue(mkWindow("2330", 5, 3, dates));
+    const { result } = renderHook(() => useChipBubble("2330", "2026-06-22", 5), {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(result.current.windowMeta).not.toBeNull());
+    expect(result.current.windowMeta).toEqual({
+      windowDays: 5, actualDays: 3, tradingDates: dates,
+    });
+  });
+
+  it("days=1 → windowMeta 仍為 null(不冒出空 tradingDates)", async () => {
+    vi.spyOn(api, "chipBubble").mockResolvedValue(mk("2330"));
+    const { result } = renderHook(() => useChipBubble("2330", "2026-06-22", 1), {
+      wrapper: makeQueryWrapper(),
+    });
+    await waitFor(() => expect(result.current.data?.symbol).toBe("2330"));
+    expect(result.current.windowMeta).toBeNull();
   });
 });

@@ -1095,3 +1095,93 @@ describe("BubbleChartSvg — days-scoped 空狀態文案", () => {
     expect(container.textContent).not.toContain("今日");
   });
 });
+
+// ---------------------------------------------------------------------------
+// SC-4(mod/kline-date-bubble-days-ux):多日每欄開 / 收標示 — additive optional prop
+// ---------------------------------------------------------------------------
+
+describe("BubbleChartSvg dayMarks 每日開收層(SC-4)", () => {
+  const baseTrades: BrokerTrade[] = [
+    mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 50, sell: 0 }),
+    mkTrade({ broker: "B", broker_id: "B1", price: 110, buy: 0, sell: 30 }),
+  ];
+  const dates = ["2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26"];
+  const candles = dates.map((date, i) => ({
+    date, open: 102 + i * 0.5, high: 108, low: 100, close: 104 + i * 0.5, volume: 1000,
+  }));
+  const marks = { dates, candles };
+
+  it("未傳 dayMarks → 不畫日期欄(向下相容 W2)", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} />,
+    );
+    expect(container.querySelector('[data-testid="bubble-day-marks"]')).toBeNull();
+  });
+
+  it("dayMarks=null → 不畫(history 尚未回)", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} dayMarks={null} />,
+    );
+    expect(container.querySelector('[data-testid="bubble-day-marks"]')).toBeNull();
+  });
+
+  it("days=1 + dayMarks 有值 → 完全不畫(W2 單日行為 bit-for-bit)", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={1} dayMarks={marks} />,
+    );
+    expect(container.querySelector('[data-testid="bubble-day-marks"]')).toBeNull();
+  });
+
+  it("dates 為空陣列 → 不畫", () => {
+    const { container } = render(
+      <BubbleChartSvg
+        trades={baseTrades} width={600} height={400} days={5}
+        dayMarks={{ dates: [], candles: [] }}
+      />,
+    );
+    expect(container.querySelector('[data-testid="bubble-day-marks"]')).toBeNull();
+  });
+
+  it("days=5 + dayMarks → group 內 5 個 [data-date]", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} dayMarks={marks} />,
+    );
+    const g = container.querySelector('[data-testid="bubble-day-marks"]');
+    expect(g).not.toBeNull();
+    expect(g!.querySelectorAll("[data-date]")).toHaveLength(5);
+    expect(g!.getAttribute("pointer-events")).toBe("none");
+  });
+
+  it("z-order:volume profile 之後、bubble 泡泡之前", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} dayMarks={marks} />,
+    );
+    const profile = container.querySelector('[data-testid="bubble-volume-profile"]')!;
+    const marksG = container.querySelector('[data-testid="bubble-day-marks"]')!;
+    const circles = container.querySelector('[data-testid="bubble-circles"]')!;
+    expect(profile).not.toBeNull();
+    // DOCUMENT_POSITION_FOLLOWING = 4:後者在 DOM 順序上位於前者之後
+    expect(profile.compareDocumentPosition(marksG) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(marksG.compareDocumentPosition(circles) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("bubble 像素位置不因 dayMarks 有無而改變(W2)", () => {
+    const { container: without } = render(
+      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} />,
+    );
+    const withoutPositions = Array.from(without.querySelectorAll('[data-testid="bubble-circles"] circle'))
+      .map((c) => `${c.getAttribute("cx")},${c.getAttribute("cy")},${c.getAttribute("r")}`)
+      .sort();
+    expect(withoutPositions.length).toBeGreaterThan(0);
+
+    cleanup();
+
+    const { container: withMarks } = render(
+      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} dayMarks={marks} />,
+    );
+    const withPositions = Array.from(withMarks.querySelectorAll('[data-testid="bubble-circles"] circle'))
+      .map((c) => `${c.getAttribute("cx")},${c.getAttribute("cy")},${c.getAttribute("r")}`)
+      .sort();
+    expect(withPositions).toEqual(withoutPositions);
+  });
+});
