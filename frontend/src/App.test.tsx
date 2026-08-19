@@ -40,10 +40,30 @@ vi.mock("./components/OptionsPage", () => ({
   OptionsPage: () => <div data-testid="options-page">options</div>,
 }));
 vi.mock("./components/MarketPage", () => ({
-  MarketPage: () => <div data-testid="market-page">market</div>,
+  // fix/cross-mode-symbol-name:市場頁只帶 stock_id 跳轉(無 name 通道)
+  MarketPage: ({ onSymbolPick }: { onSymbolPick: (sid: string) => void }) => (
+    <div data-testid="market-page">
+      <button onClick={() => onSymbolPick("2330")}>market-pick-2330</button>
+    </div>
+  ),
 }));
 vi.mock("./components/BorrowFeePage", () => ({
-  BorrowFeePage: () => <div data-testid="borrow-fee-page">borrow</div>,
+  BorrowFeePage: ({ onSymbolPick }: { onSymbolPick?: (sid: string) => void }) => (
+    <div data-testid="borrow-fee-page">
+      <button onClick={() => onSymbolPick?.("2454")}>borrow-pick-2454</button>
+    </div>
+  ),
+}));
+// fix/cross-mode-symbol-name:App 以全股票目錄補跨 mode 跳轉缺的股名
+vi.mock("./hooks/useAllSymbols", () => ({
+  useAllSymbols: () => ({
+    symbols: [
+      { symbol: "2330", name: "台積電" },
+      { symbol: "2454", name: "聯發科" },
+    ],
+    loading: false,
+    error: null,
+  }),
 }));
 vi.mock("./components/WarrantSelector", () => ({
   WarrantSelector: () => <div data-testid="warrant-selector">warrants</div>,
@@ -169,6 +189,29 @@ describe("App mode persistence (SC-4)", () => {
     // equity view mount → market view 不在
     expect(screen.queryByTestId("kline-chart")).toBeTruthy();
     expect(screen.queryByTestId("market-page")).toBeNull();
+  });
+
+  it("跨 mode:market → equity 跳轉後 header 顯示股名而非只有代號", async () => {
+    localStorage.setItem("mode", "market");
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.queryByTestId("market-page")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("market-pick-2330"));
+    expect(localStorage.getItem("mode")).toBe("equity");
+    expect(screen.getByText("2330")).toBeTruthy();
+    expect(screen.getByText("台積電")).toBeTruthy();
+  });
+
+  it("跨 mode:borrow → equity 跳轉後 header 顯示股名而非只有代號", async () => {
+    localStorage.setItem("mode", "borrow");
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.queryByTestId("borrow-fee-page")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("borrow-pick-2454"));
+    expect(screen.getByText("2454")).toBeTruthy();
+    expect(screen.getByText("聯發科")).toBeTruthy();
   });
 
   it("mounts BorrowFeePage when localStorage mode=borrow on cold start", async () => {
