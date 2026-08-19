@@ -16,6 +16,7 @@ import { useChipBubble } from "./hooks/useChipBubble";
 import { useChipIntraday } from "./hooks/useChipIntraday";
 import { useBrokerHistory } from "./hooks/useBrokerHistory";
 import { useChipBrokersWindow } from "./hooks/useChipBrokersWindow";
+import { useAllSymbols } from "./hooks/useAllSymbols";
 import { ModeSwitch, type Mode } from "./components/ModeSwitch";
 import { VersionBadge } from "./components/VersionBadge";
 import { WatchlistSidebar } from "./components/WatchlistSidebar";
@@ -114,6 +115,15 @@ export default function App() {
 
   const [symbol, setSymbol] = useState("");
   const [symbolName, setSymbolName] = useState<string | null>(null);
+  // fix/cross-mode-symbol-name:market / borrow / flows 的 onSymbolPick 只帶
+  // stock_id(handlePick(sid, null)),header 因而只剩代號。用全股票目錄補名 —
+  // SymbolSearch 已在 equity mount 時打同一 queryKey(staleTime Infinity),
+  // 這裡不多一個請求;搜尋路徑帶來的 name 仍優先。
+  const { symbols: allSymbols } = useAllSymbols();
+  const resolvedSymbolName = useMemo(
+    () => symbolName ?? allSymbols.find((s) => s.symbol === symbol)?.name ?? null,
+    [symbolName, allSymbols, symbol],
+  );
   const [date, setDate] = useState(todayStr);
   const [tab, setTab] = useState<Tab>("overview");
   // SC-4:泡泡圖天數視窗(1 = 當日 /bubble;>1 = /bubble_window N 日聚合)。
@@ -386,7 +396,7 @@ export default function App() {
       {!isMobile && (
         <WatchlistSidebar
           currentSymbol={symbol}
-          currentSymbolName={symbolName}
+          currentSymbolName={resolvedSymbolName}
           onPick={handlePick}
         />
       )}
@@ -404,7 +414,7 @@ export default function App() {
             {symbol && (
               <div className="flex items-baseline gap-1.5 text-sm shrink-0">
                 <span className="text-ink font-medium">{symbol}</span>
-                {symbolName && <span className="text-ink-muted">{symbolName}</span>}
+                {resolvedSymbolName && <span className="text-ink-muted">{resolvedSymbolName}</span>}
               </div>
             )}
           </div>
@@ -476,7 +486,7 @@ export default function App() {
         <WatchlistSidebar
           mobile
           currentSymbol={symbol}
-          currentSymbolName={symbolName}
+          currentSymbolName={resolvedSymbolName}
           onPick={handlePick}
         />
       )}
