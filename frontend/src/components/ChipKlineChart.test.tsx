@@ -709,3 +709,68 @@ describe("ChipKlineChart — SC-1 疊圖高度顯式配平", () => {
     expect(bar.className).toContain("h-0.5");
   });
 });
+
+// SC-1(pack D 🟢):日期軸掛進疊圖底部 — 刻度存在、hover 顯 YYYY-MM-DD。
+describe("ChipKlineChart — SC-1 底部日期軸", () => {
+  const W = 800;
+  const H = 600;
+  const N = 120;
+  const VISIBLE = 90; // KLINE_ZOOM_DEFAULT
+
+  beforeEach(() => {
+    sizeState.width = W;
+    sizeState.height = H;
+  });
+  afterEach(() => {
+    sizeState.width = 0;
+    sizeState.height = 0;
+  });
+
+  const renderChart = (history: ChipHistory) =>
+    render(
+      <ChipKlineChart
+        history={history}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+
+  it("有 history → 日期軸列內有 kline-date-axis + 至少一個刻度", () => {
+    const { container } = renderChart(mkHistory(N));
+    const axisRow = container.querySelector("[data-testid=kline-date-axis-row]")!;
+    const axis = axisRow.querySelector("[data-testid=kline-date-axis]");
+    expect(axis).toBeTruthy();
+    expect(
+      axisRow.querySelectorAll("[data-testid=kline-date-axis-tick]").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("hover 疊圖 → 日期軸 chip 顯示該 candle 的 YYYY-MM-DD;離開後消失", () => {
+    const history = mkHistory(N);
+    const { container } = renderChart(history);
+    const root = container.querySelector("[data-testid=chip-kline-chart]")!;
+    expect(container.querySelector("[data-testid=kline-date-axis-hover]")).toBeNull();
+
+    // handleStackMouseMove 的同式:jsdom rect 全 0 → w fallback 到 width(800)
+    const clientX = 300;
+    const slotW = (W - 12 - 58) / VISIBLE; // KLINE_PAD_L / KLINE_PAD_R
+    const idx = Math.floor((clientX - 12) / slotW);
+    const expected = history.candles[N - VISIBLE + idx]!.date;
+
+    fireEvent.mouseMove(root, { clientX, clientY: 200 });
+    const hover = container.querySelector("[data-testid=kline-date-axis-hover]")!;
+    expect(hover).toBeTruthy();
+    expect(hover.textContent).toBe(expected);
+
+    fireEvent.mouseLeave(root);
+    expect(container.querySelector("[data-testid=kline-date-axis-hover]")).toBeNull();
+  });
+
+  it("HUD 仍無日期,日期軸不出現斜線年月日(W1 / E5)", () => {
+    const { container } = renderChart(mkHistory(N));
+    expect(container.textContent ?? "").not.toMatch(/\d{4}\/\d{2}\/\d{2}/);
+  });
+});

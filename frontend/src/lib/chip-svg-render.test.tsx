@@ -9,7 +9,14 @@ import { render, fireEvent, cleanup } from "@testing-library/react";
 
 afterEach(() => cleanup());
 import { BrokerAggBarSvg } from "./chip-broker-agg-svg";
-import { KlineChartSvg } from "./chip-kline-svg";
+import {
+  KlineChartSvg,
+  DateAxisSvg,
+  KLINE_PAD_L,
+  KLINE_PAD_R,
+  pickDateTicks,
+  formatTickDate,
+} from "./chip-kline-svg";
 import { InstBarSvg, MarginLineSvg } from "./chip-inst-bar-svg";
 import type { DailyCandle } from "./chip-data";
 
@@ -390,5 +397,85 @@ describe("CH-2b — subchart windowText", () => {
       />,
     );
     expect(container.textContent).toContain("5日 +60 張");
+  });
+});
+
+// SC-1(pack D 🟢):疊圖底部共用日期軸。x 座標必須與 ChipKlineChart
+// handleStackMouseMove 逐字同式,否則刻度與 candle 中心對不上。
+describe("DateAxisSvg", () => {
+  const mkDates = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10));
+
+  it("第 i 個 tick 的 x = KLINE_PAD_L + slotW * i + slotW / 2", () => {
+    const dates = mkDates(90);
+    const width = 800;
+    const { container } = render(
+      <DateAxisSvg dates={dates} width={width} height={18} hoverIndex={null} />,
+    );
+    const slotW = (width - KLINE_PAD_L - KLINE_PAD_R) / dates.length;
+    const idxs = pickDateTicks(dates.length, slotW);
+    const ticks = Array.from(
+      container.querySelectorAll("[data-testid=kline-date-axis-tick]"),
+    );
+    expect(ticks.length).toBe(idxs.length);
+    expect(ticks.length).toBeGreaterThan(0);
+    ticks.forEach((t, k) => {
+      expect(Number(t.getAttribute("x"))).toBeCloseTo(
+        KLINE_PAD_L + slotW * idxs[k]! + slotW / 2,
+        6,
+      );
+    });
+  });
+
+  it("刻度文字是 M/D(不帶年,且不出現斜線年月日 — E5 契約)", () => {
+    const dates = mkDates(90);
+    const { container } = render(
+      <DateAxisSvg dates={dates} width={800} height={18} hoverIndex={null} />,
+    );
+    const first = container.querySelector("[data-testid=kline-date-axis-tick]")!;
+    expect(first.textContent).toBe(formatTickDate(dates[0]!));
+    expect(container.textContent ?? "").not.toMatch(/\d{4}\/\d{2}\/\d{2}/);
+  });
+
+  it("hoverIndex = null → 無 hover chip", () => {
+    const { container } = render(
+      <DateAxisSvg dates={mkDates(30)} width={800} height={18} hoverIndex={null} />,
+    );
+    expect(container.querySelector("[data-testid=kline-date-axis]")).toBeTruthy();
+    expect(container.querySelector("[data-testid=kline-date-axis-hover]")).toBeNull();
+  });
+
+  it("hoverIndex = 3 → hover chip 顯示 dates[3] 的 YYYY-MM-DD", () => {
+    const dates = mkDates(30);
+    const { container } = render(
+      <DateAxisSvg dates={dates} width={800} height={18} hoverIndex={3} />,
+    );
+    const hover = container.querySelector("[data-testid=kline-date-axis-hover]")!;
+    expect(hover).toBeTruthy();
+    expect(hover.textContent).toContain(dates[3]!);
+    expect(hover.textContent).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("hoverIndex 越界 → 不畫 hover chip", () => {
+    const { container } = render(
+      <DateAxisSvg dates={mkDates(5)} width={800} height={18} hoverIndex={99} />,
+    );
+    expect(container.querySelector("[data-testid=kline-date-axis-hover]")).toBeNull();
+  });
+
+  it("dates 為空 → render null", () => {
+    const { container } = render(
+      <DateAxisSvg dates={[]} width={800} height={18} hoverIndex={null} />,
+    );
+    expect(container.querySelector("[data-testid=kline-date-axis]")).toBeNull();
+  });
+
+  it("svg 不吃事件(pointerEvents=none),不擋疊圖 hover", () => {
+    const { container } = render(
+      <DateAxisSvg dates={mkDates(30)} width={800} height={18} hoverIndex={null} />,
+    );
+    const svg = container.querySelector("[data-testid=kline-date-axis]")!;
+    expect(svg.getAttribute("pointer-events")).toBe("none");
   });
 });
