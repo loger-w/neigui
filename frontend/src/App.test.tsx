@@ -27,6 +27,10 @@ const spies = vi.hoisted(() => ({
     | { windowDays: number; actualDays: number; tradingDates: string[] }
     | null,
   chipHistory: null as { candles: { date: string; open: number; high: number; low: number; close: number; volume: number }[] } | null,
+  // SC-3(mod/kline-date-bubble-days-ux,Phase 6 real-env finding):頂欄
+  // 「重新整理」鈕的 isLoading 由 useChipBubble.loading 併出來 → 可控旗標才能
+  // 驗載入態的 spinner 插槽。
+  bubbleLoading: false,
 }));
 
 vi.mock("./components/ChipBubbleView", () => ({
@@ -135,7 +139,7 @@ vi.mock("./hooks/useChipBubble", () => ({
   useChipBubble: (symbol: string, date: string, days?: number) => {
     spies.bubbleCalls.push({ symbol, date, days });
     return {
-      data: null, windowMeta: spies.bubbleWindowMeta, loading: false, error: null,
+      data: null, windowMeta: spies.bubbleWindowMeta, loading: spies.bubbleLoading, error: null,
       refresh: spies.bubbleRefresh,
     };
   },
@@ -167,6 +171,7 @@ beforeEach(() => {
   spies.intradayRefresh.mockClear();
   spies.bubbleWindowMeta = null;
   spies.chipHistory = null;
+  spies.bubbleLoading = false;
 });
 afterEach(() => {
   cleanup();
@@ -521,5 +526,29 @@ describe("App — SC-4 bubbleDayMarks 組裝", () => {
     spies.chipHistory = { candles: [mkCandle("2026-06-23")] };
     await openBubbleTab();
     expect(screen.getByTestId("chip-bubble").getAttribute("data-daymarks")).toBe("null");
+  });
+});
+
+// mod/kline-date-bubble-days-ux SC-3 `[amendment: Phase 6 real-env finding]`:
+// 載入時「重新整理」鈕多長出 spinner → 鈕變寬 → 頂欄 flex-wrap 把整顆鈕擠到
+// 第二行 → tabs 與整個泡泡圖下移 42px(user 看到的「按鈕重新排列」)。
+// 修法 = spinner 插槽常駐(固定寬 span),載入時才填 svg,鈕寬前後不變。
+describe("SC-3 頂欄「重新整理」鈕 spinner 插槽常駐", () => {
+  it("idle:鈕內常駐 refresh-spinner-slot,且無 refresh-spinner", () => {
+    render(<App />);
+    const btn = screen.getByRole("button", { name: "重新整理" });
+    expect(btn.querySelector('[data-testid="refresh-spinner-slot"]')).toBeTruthy();
+    expect(btn.querySelector('[data-testid="refresh-spinner"]')).toBeNull();
+  });
+
+  it("loading:spinner 掛在同一插槽內,accessible name 轉「資料載入中」", () => {
+    spies.bubbleLoading = true;
+    render(<App />);
+    expect(screen.queryByRole("button", { name: "重新整理" })).toBeNull();
+    const btn = screen.getByRole("button", { name: "資料載入中" });
+    const slot = btn.querySelector('[data-testid="refresh-spinner-slot"]');
+    expect(slot).toBeTruthy();
+    expect(slot!.querySelector('[data-testid="refresh-spinner"]')).toBeTruthy();
+    expect(btn.getAttribute("aria-busy")).toBe("true");
   });
 });

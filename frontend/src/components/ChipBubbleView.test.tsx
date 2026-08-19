@@ -1867,6 +1867,23 @@ describe("ChipBubbleView — SC-4 天數選擇器 + 累計 badge", () => {
     expect(label.className).toContain("text-ink-dim");
   });
 
+  // SC-3 `[amendment: Phase 6 real-env finding]`:1280px + 自選股側欄下中欄僅
+  // ~90px,標籤曾被逐字折成直排 → 標籤 nowrap、wrapper 不被 flex 壓縮。
+  it("SC-3:標籤 whitespace-nowrap 且 wrapper shrink-0(窄中欄不逐字直排)", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+      />,
+    );
+    const label = screen.getByText("連續天數");
+    expect(label.className).toContain("whitespace-nowrap");
+    const wrapper = selectorEl(container)!.parentElement!;
+    expect(wrapper.className).toContain("shrink-0");
+  });
+
   it("SC-2:wrapper title 依當前 days 動態帶「累計最近 5 個交易日」", () => {
     const { container } = render(
       <ChipBubbleView
