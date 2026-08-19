@@ -14,8 +14,8 @@ chip-bubble-svg / useChipBubble),無對外 API / migration / 風險面 → 輪�
 | SC | 表述 | 驗證方式 |
 |---|---|---|
 | SC-1 K 線日期軸 | 籌碼總覽 K 線疊圖**最底部**多一列日期軸(高 18px):稀疏刻度 `M/D`(ink-dim,約每 70px 一個,對齊 candle 中心,不加年 — R1),hover 任一根時該列在 hover x 顯示 `YYYY-MM-DD` 深底 chip;HUD 仍無日期(白名單 W1)。疊圖高度顯式配平:`availH = totalH − LOADING_BAR_H(2) − gap − DATE_AXIS_H(18)`,`klineH = round(availH·3.5/9.5)`、`subH = floor((availH − klineH)/6)`、`lastSubH = availH − klineH − subH·5`(順帶修正既有 2px 掃描條未入帳的溢出)`[amendment 2026-08-19: review R1]`。 | vitest `ChipKlineChart.test.tsx` 新 describe(mock useContainerSize 給定 height,斷言 `LOADING_BAR_H + klineH + gap + subH·5 + lastSubH + DATE_AXIS_H === 容器高`(讀各 row 的 style.height);`kline-date-axis` 存在、tick 數 > 0、hover 後 `kline-date-axis-hover` 文字 = 該 candle date);e2e equity E46(軸可見 + tick 含 fixture 月日);截圖 `evidence/SC-1-*.png` |
-| SC-2 天數標籤 | 泡泡圖統計行右端 selector **左側**出現文字「連續天數」(text-xs ink-dim),整組 `title` = `累計最近 ${days} 個交易日的分點成交(1 = 僅當日)`(動態模板,無佔位符 `[amendment 2026-08-19: R11]`),群組 `aria-label` 維持「泡泡圖天數視窗」。 | vitest:`getByText("連續天數")` 在 `bubble-days-selector` 同一容器、title 內容含當前 days、`getByRole("group",{name:"泡泡圖天數視窗"})` 仍在;e2e E38 追加:選 2 分點後 `bubble-days-selector` bbox.y === `bubble-stats-row` bbox.y(未換行,R7);截圖 `evidence/SC-2-*.png` |
-| SC-3 工具列不跑版 | 點任一天數後:右工具欄 `截圖` / `輸入區間` /(mobile)`明細` 三鈕**位置與寬度不變**,無資料時 `disabled` + `opacity-50`;過濾清單鈕 / `?` 鈕位置不動;圖區顯 loading badge。 | vitest:`bubbleData=null` 時三鈕存在且 `disabled`;有資料時 enabled;守門責任在 vitest;e2e E43 以 `page.route('**/bubble_window*', 延遲 800ms 再 continue)` 在載入期取樣:點 5 日後立即斷言 `bubble-screenshot` attached + `toBeDisabled()` + bbox.x 與切換前相等,badge 出現後再斷言 enabled `[amendment 2026-08-19: R3]`;截圖 before/after `evidence/SC-3-*.png` |
+| SC-2 天數標籤 | 泡泡圖統計行右端 selector **左側**出現文字「連續天數」(text-xs ink-dim),整組 `title` = `累計最近 ${days} 個交易日的分點成交(1 = 僅當日)`(動態模板,無佔位符 `[amendment 2026-08-19: R11]`),群組 `aria-label` 維持「泡泡圖天數視窗」。 | vitest:`getByText("連續天數")` 在 `bubble-days-selector` 同一容器、title 內容含當前 days、`getByRole("group",{name:"泡泡圖天數視窗"})` 仍在;e2e E38 追加:選 2 分點後「連續天數」標籤 bbox.height < 24(未逐字直排)且不在 `bubble-days-selector` 下方(wrapper flex-wrap,同行或正上方 `[amendment: review F10]`)`[amendment: Phase 6 — 原「stats row 單行」斷言在 1280+sidebar 的既有窄中欄下本就不成立,改鎖本次可控項]`;截圖 `evidence/SC-2-*.png` |
+| SC-3 工具列不跑版 | 點任一天數後:**App 頂欄「重新整理」鈕寬度不變(spinner 插槽常駐,載入時才填 svg)、tabs 列 y 不變 `[amendment: Phase 6 real-env finding]`**;右工具欄 `截圖` / `輸入區間` /(mobile)`明細` 三鈕**位置與寬度不變**,無資料時 `disabled` + `opacity-50`;過濾清單鈕 / `?` 鈕位置不動;圖區顯 loading badge。 | vitest:`bubbleData=null` 時三鈕存在且 `disabled`;有資料時 enabled;守門責任在 vitest(App.test:refresh 鈕內 `refresh-spinner-slot` 常駐;ChipBubbleView.test:標籤 `whitespace-nowrap`);e2e E43 以 `page.route('**/bubble_window*', 延遲 800ms 再 continue)` 在載入期取樣:點 5 日後立即斷言 `bubble-screenshot` attached + `toBeDisabled()` + bbox.x 與切換前相等,badge 出現後再斷言 enabled `[amendment 2026-08-19: R3]`;截圖 before/after `evidence/SC-3-*.png` |
 | SC-4 每日開收標示 | days>1 且資料已回:圖區背景依 `trading_dates`(槽位定義,N = trading_dates.length)由左至右均分 N 欄 `[amendment 2026-08-19: R2 — prop 帶 dates + candles 兩者]`,每欄:**底部**日期 `M/D`(y = height − PADDING.bottom − 4,避開左上 window badge / brush hint / PNG annotation `[amendment: R6]`);開→收迷你 K 身(收>開 bull 紅、收<開 bear 綠、相等 ink-dim,opacity 0.6,寬 ≤ 10px);欄寬 ≥ 96px 時「開 X」貼在開盤 y 左側、「收 Y」貼在收盤 y 右側;50–96px 時兩標籤改堆疊在底部日期上方;<50px 只畫 K 身 + 日期(每 k 欄一個,k=ceil(50/slotW))。缺 candle 的欄留空、開或收越界(yLow..yHigh 外)的欄只畫日期,不畫 K 身**與價格標籤**,該欄 `<g data-date data-oob="true">`(對齊 volume profile 跳過慣例 `[amendment: R9/R15]`)。days=1 完全不畫(W2)。 | K 身 / 顏色 / 標籤分級 / 越界的鑑別責任在 vitest `chip-bubble-daymarks-svg.test.tsx` + `chip-bubble-svg.test.tsx`(`data-testid="bubble-day-marks"` 內 N 個 `[data-date]` group、5 日僅 4 日有 candle → 仍 5 欄且其餘欄 x 不變、越界 → 無 K 身無價格標籤只有日期且 `data-oob=true`、顏色對應、標籤分級三態、bubble 像素位置不變);e2e fixture(trades 單一價位 1100、candle close 1105)下五欄**必為越界**,E43 只鎖「5 欄 + 5 欄 `data-oob=true` + 日期文字」把 fixture 事實釘死 `[amendment 2026-08-19: R13]`;視覺 evidence 一律真實環境 devtools 截圖(evidence/SC-4-*.png,含一張多日截圖 PNG 實檔);e2e E43 加斷言 `bubble-day-marks [data-date]` 5 個;截圖 `evidence/SC-4-*.png` |
 
 ## 2. 不能破壞的既有行為白名單
@@ -39,7 +39,7 @@ chip-bubble-svg / useChipBubble),無對外 API / migration / 風險面 → 輪�
 - HUD 重新加回日期(CH-3b 拍板保留)。
 - 多日泡泡圖每日**成交量 / 高低**標示(只做開 / 收;高低留 next-time)。
 - 天數 selector 改成下拉或自由輸入。
-- App 頂欄「重新整理」spinner 出現造成的 1-2px 寬度變化(全站既有,非本次「跑版」主因)。
+- ~~App 頂欄「重新整理」spinner 出現造成的 1-2px 寬度變化(全站既有,非本次「跑版」主因)~~ `[amendment 2026-08-19: Phase 6 real-env finding — 撤回]`:e2e E43 載入期取樣實測 `bubble-screenshot` **y 位移 42px**,root cause = 頂欄 `重新整理` 鈕載入時多出 spinner 變寬 → flex-wrap 整顆鈕掉到第二行 → tabs 與整個泡泡圖下移;這正是 user 看到的「整個頁面按鈕重新排列」。納入 SC-3(包 F 🔴):spinner 插槽常駐固定寬(`size-3.5` span 內條件放 svg),鈕寬載入前後不變。
 
 ## 5. 設計決策(bencium 候選 + 取捨;全部 `[auto-default]`)
 
@@ -64,6 +64,7 @@ chip-bubble-svg / useChipBubble),無對外 API / migration / 風險面 → 輪�
 | E | `lib/chip-bubble-daymarks-svg.tsx`(新) | 🟢 | 純函式 `layoutDayMarks({dates, candles, yLow, yHigh, paddingLeft, paddingTop, chartWidth, chartHeight, bottomY}) → DayMarkSlot[]`(slotW = cW/dates.length、i = dates.indexOf、缺 candle 空欄、越界不畫 K 身、標籤分級三態)+ `DayMarksLayer` memo 元件(`data-testid="bubble-day-marks"`,每欄 `<g data-date>`,`pointerEvents="none"`) |
 | E | `lib/chip-bubble-svg.tsx` | 🟢 | `BubbleChartProps.dayMarks?: { dates: string[]; candles: DailyCandle[] } | null`;插在 volume profile 之後、close 虛線之前;`days<=1` 或 null 不畫 |
 | E | `components/ChipBubbleView.tsx` | 🟢 | 透傳 `dayMarks` 給 BubbleChartSvg |
+| F | `App.tsx` / `components/ChipBubbleView.tsx` | 🔴 | `[amendment: Phase 6 real-env finding]` 頂欄 refresh 鈕 spinner 插槽常駐(`<span data-testid="refresh-spinner-slot" className="inline-flex size-3.5 shrink-0">{isLoading && <svg…/>}</span>`,既有 `refresh-spinner` testid 語意不變);「連續天數」span 加 `whitespace-nowrap`、wrapper `shrink-0`(1280 + sidebar 下中欄僅 ~90px,標籤曾逐字直排) |
 
 既有測試:
 - **該紅**:`ChipBubbleView.test.tsx` L2080「bubbleData null → 不渲染截圖鈕」→ 改「渲染但 disabled」(包 A);visual V1(equity-2330.png)+ V4(equity-2330-mobile.png)baseline 重生(包 B/D 幾何)`[amendment: R4]`。
@@ -92,3 +93,7 @@ chip-bubble-svg / useChipBubble),無對外 API / migration / 風險面 → 輪�
 - 前端慣例:semantic token / rem 字級 / `pointerEvents="none"` 背景層 / 純幾何函式抽 lib 可測(frontend-conventions)。
 - 三類分離 commit,包順序 A🔴(工具列常駐)→ B🔴(疊圖高度配平)→ C🟢(連續天數標籤)→ D🟢(日期軸)→ E🟢(每日開收);每包 red→green。
 - 觸及範圍測試:各包只跑相關 vitest 檔;全套 + build + e2e(equity E43/E46)由 main session 波尾親跑。
+
+## self_review_head
+
+`self_review_head`: 見 progress.md 末列(fix 波後 HEAD),收尾增量 review 以此為基準。

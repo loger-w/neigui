@@ -1,0 +1,2166 @@
+diff --git a/e2e/specs/equity.spec.ts b/e2e/specs/equity.spec.ts
+index 0453bfc..35a6c30 100644
+--- a/e2e/specs/equity.spec.ts
++++ b/e2e/specs/equity.spec.ts
+@@ -85,6 +85,31 @@ test.describe("equity mode", () => {
+     await expect(page.getByTestId(TESTIDS.subCrosshair).first()).toBeAttached();
+     expect(await page.getByTestId(TESTIDS.subCrosshair).count()).toBeGreaterThanOrEqual(5);
+   });
++
++  test("E46: K 線疊圖底部日期軸 — 稀疏 M/D 刻度 + hover 日期 chip(mod/kline-date-bubble-days-ux SC-1)", async ({ page }) => {
++    // 痛點:日期軸是疊圖新增的一列(高度配平後才放得下),vitest 鎖幾何,
++    // 這裡鎖真瀏覽器「看得到 + 刻度對到 fixture 末根 06-26 + hover 出完整日期」。
++    // E31 的「不得斜線年月日」契約仍覆蓋本容器(刻度 M/D、chip YYYY-MM-DD)。
++    await page.getByPlaceholder(/搜尋代號/).fill("2330");
++    await page.getByRole("option").first().click();
++    const chart = page.getByTestId(TESTIDS.chipKlineChart);
++    await expect(chart).toBeVisible();
++    const axis = page.getByTestId("kline-date-axis");
++    await expect(axis).toBeVisible();
++    const ticks = page.getByTestId("kline-date-axis-tick");
++    expect(await ticks.count()).toBeGreaterThanOrEqual(2);
++    await expect(ticks.last()).toHaveText("6/26");
++    // 軸列必須在容器可視範圍內(高度配平 review R1:餘數列吃掉會把軸推出 overflow)
++    const chartBox = (await chart.boundingBox())!;
++    const axisBox = (await axis.boundingBox())!;
++    expect(axisBox.y + axisBox.height).toBeLessThanOrEqual(chartBox.y + chartBox.height + 0.5);
++    // hover 疊圖中段 → 軸列出現該根日期 chip
++    await page.mouse.move(chartBox.x + chartBox.width / 2, chartBox.y + chartBox.height * 0.5);
++    const hover = page.getByTestId("kline-date-axis-hover");
++    await expect(hover).toBeAttached();
++    expect(await hover.textContent()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
++    expect(await chart.textContent()).not.toMatch(/\d{4}\/\d{2}\/\d{2}/);
++  });
+ });
+ 
+ // responsive spec SC2/SC4:手機 viewport smoke。viewport 一律 test.use 導航前固定
+@@ -452,17 +477,42 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
+     await expect(buyVol).toHaveText("100");
+     await expect(page.getByTestId("bubble-window-badge")).toHaveCount(0);
+ 
++    // mod/kline-date-bubble-days-ux SC-3:載入期工具列三鈕常駐 disabled、不跑版。
++    // 舊 code 在 data→null 的載入視窗期會卸載三鈕(資料回來又長回),所以要用
++    // route 延遲把視窗期拉長到可取樣(review R3)。
++    const shotBtn = page.getByTestId("bubble-screenshot");
++    await expect(shotBtn).toBeEnabled();
++    const shotBoxBefore = (await shotBtn.boundingBox())!;
++    await page.route("**/bubble_window*", async (route) => {
++      await new Promise((r) => setTimeout(r, 800));
++      await route.continue();
++    });
++
+     // 切 5 日 —— 定位一律先 scope 到 bubble-days-selector:RangeSelector 的
+     // 「設為 N 日」在 hidden 的籌碼總覽分頁仍留在 DOM(design §3 R3)。
+     await page
+       .getByTestId("bubble-days-selector")
+       .getByRole("button", { name: "泡泡圖設為 5 日" })
+       .click();
++    await expect(shotBtn).toBeAttached();
++    await expect(shotBtn).toBeDisabled();
++    const shotBoxLoading = (await shotBtn.boundingBox())!;
++    expect(Math.abs(shotBoxLoading.x - shotBoxBefore.x)).toBeLessThan(1);
++    expect(Math.abs(shotBoxLoading.y - shotBoxBefore.y)).toBeLessThan(1);
++    await expect(page.getByTestId("bubble-manual-range-trigger")).toBeDisabled();
+ 
+     // (a) 累計 badge
+     await expect(page.getByTestId("bubble-window-badge")).toContainText(
+       "近 5 個交易日累計",
+     );
++    await expect(shotBtn).toBeEnabled();
++    // SC-4:每日開收標示 5 欄;fixture 事實 = trades 單一價位 1100、candle 收 1105
++    // → 開 / 收必越界 → 5 欄皆 data-oob(K 身 / 標籤鑑別歸 vitest,review R13)。
++    const dayCols = page.getByTestId("bubble-day-marks").locator("[data-date]");
++    await expect(dayCols).toHaveCount(5);
++    await expect(
++      page.getByTestId("bubble-day-marks").locator('[data-date][data-oob="true"]'),
++    ).toHaveCount(5);
+     // (b) 倍數:同一列張數 = 單日 ×5(核心鑑別訊號)
+     await expect(buyVol).toHaveText("500");
+     // (c) 聚合資料仍流進圖表管線(泡泡有畫出來)。
+@@ -575,6 +625,15 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
+     await expect(page.getByTestId(TESTIDS.bubbleJumpToOverview)).toContainText(
+       "查看 2 個分點於籌碼總覽",
+     );
++    // mod/kline-date-bubble-days-ux SC-2 / W6:統計行最寬(2 分點 totals + 跳轉文案)
++    // 且 1280 + sidebar 下中欄僅 ~90px 時,「連續天數」標籤不得逐字直排,且與
++    // selector 同一行(標籤自身不撐高 header;中欄既有多行換行屬 pre-existing)。
++    const label = page.getByText("連續天數");
++    await expect(label).toBeVisible();
++    const labelBox = (await label.boundingBox())!;
++    const selBox = (await page.getByTestId("bubble-days-selector").boundingBox())!;
++    expect(labelBox.height).toBeLessThan(24);
++    expect(Math.abs((labelBox.y + labelBox.height / 2) - (selBox.y + selBox.height / 2))).toBeLessThan(8);
+   });
+ 
+   test("E39: 泡泡圖單看模式 — 點已選泡泡切單分點統計、組合不動;點空白兩段式(mod/bubble-chart-ux-polish SC-3/5)", async ({ page }) => {
+diff --git a/frontend/src/App.test.tsx b/frontend/src/App.test.tsx
+index 6d5f851..35fcb99 100644
+--- a/frontend/src/App.test.tsx
++++ b/frontend/src/App.test.tsx
+@@ -21,17 +21,34 @@ const spies = vi.hoisted(() => ({
+   brokersWindowCalls: [] as { symbol: string; date: string; days: number }[],
+   bubbleRefresh: vi.fn(),
+   intradayRefresh: vi.fn(),
++  // SC-4:dayMarks 組裝要看得到「windowMeta.tradingDates × history.candles」兩個
++  // 輸入的交集結果 → 兩個來源都做成可控 state(預設值 = 既有 mock 行為)。
++  bubbleWindowMeta: null as
++    | { windowDays: number; actualDays: number; tradingDates: string[] }
++    | null,
++  chipHistory: null as { candles: { date: string; open: number; high: number; low: number; close: number; volume: number }[] } | null,
++  // SC-3(mod/kline-date-bubble-days-ux,Phase 6 real-env finding):頂欄
++  // 「重新整理」鈕的 isLoading 由 useChipBubble.loading 併出來 → 可控旗標才能
++  // 驗載入態的 spinner 插槽。
++  bubbleLoading: false,
+ }));
+ 
+ vi.mock("./components/ChipBubbleView", () => ({
+   ChipBubbleView: ({
+     days,
+     onDaysChange,
++    dayMarks,
+   }: {
+     days?: number;
+     onDaysChange?: (d: number) => void;
++    dayMarks?: { dates: string[]; candles: { date: string }[] } | null;
+   }) => (
+-    <div data-testid="chip-bubble" data-days={String(days)}>
++    <div
++      data-testid="chip-bubble"
++      data-days={String(days)}
++      data-daymarks={dayMarks ? String(dayMarks.dates.length) : "null"}
++      data-daymark-candles={dayMarks ? dayMarks.candles.map((c) => c.date).join(",") : ""}
++    >
+       <button onClick={() => onDaysChange?.(5)}>stub-days-5</button>
+     </div>
+   ),
+@@ -113,7 +130,7 @@ vi.mock("./components/VersionBadge", () => ({
+ }));
+ vi.mock("./hooks/useChipData", () => ({
+   useChipData: () => ({
+-    history: null, loading: false, majorLoading: false,
++    history: spies.chipHistory, loading: false, majorLoading: false,
+     majorFetching: false, majorCoverageStart: null, ensureMajorCoverage: vi.fn(),
+     error: null, refresh: vi.fn(),
+   }),
+@@ -122,7 +139,7 @@ vi.mock("./hooks/useChipBubble", () => ({
+   useChipBubble: (symbol: string, date: string, days?: number) => {
+     spies.bubbleCalls.push({ symbol, date, days });
+     return {
+-      data: null, windowMeta: null, loading: false, error: null,
++      data: null, windowMeta: spies.bubbleWindowMeta, loading: spies.bubbleLoading, error: null,
+       refresh: spies.bubbleRefresh,
+     };
+   },
+@@ -152,6 +169,9 @@ beforeEach(() => {
+   spies.brokersWindowCalls.length = 0;
+   spies.bubbleRefresh.mockClear();
+   spies.intradayRefresh.mockClear();
++  spies.bubbleWindowMeta = null;
++  spies.chipHistory = null;
++  spies.bubbleLoading = false;
+ });
+ afterEach(() => {
+   cleanup();
+@@ -446,3 +466,89 @@ describe("App mode persistence (SC-4)", () => {
+     });
+   });
+ });
++
++// SC-4(mod/kline-date-bubble-days-ux):每日開收標示的資料組裝在 App —— 視窗的
++// trading_dates 與 K 線 history.candles 的交集。兩個來源缺一(尤其 history 尚未
++// 回)一律退回 null,ChipBubbleView 端等同現行為(W2/R18)。
++describe("App — SC-4 bubbleDayMarks 組裝", () => {
++  const mkCandle = (date: string) => ({
++    date, open: 100, high: 102, low: 99, close: 101, volume: 1000,
++  });
++
++  async function openBubbleTab() {
++    render(<App />);
++    fireEvent.click(screen.getByRole("button", { name: "sym-pick-2330" }));
++    fireEvent.click(screen.getByRole("button", { name: "泡泡圖" }));
++    await waitFor(() => {
++      expect(screen.queryByTestId("chip-bubble")).toBeTruthy();
++    });
++  }
++
++  it("windowMeta + history 皆有 → dates 全帶、candles 只留 trading_dates 命中的日", async () => {
++    spies.bubbleWindowMeta = {
++      windowDays: 5, actualDays: 3,
++      tradingDates: ["2026-06-23", "2026-06-24", "2026-06-25"],
++    };
++    spies.chipHistory = {
++      candles: [
++        mkCandle("2026-06-22"),
++        mkCandle("2026-06-23"),
++        mkCandle("2026-06-25"),
++      ],
++    };
++    await openBubbleTab();
++    fireEvent.click(screen.getByRole("button", { name: "stub-days-5" }));
++    await waitFor(() => {
++      expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
++    });
++    const el = screen.getByTestId("chip-bubble");
++    // 欄位數 = trading_dates(缺 candle 的 6/24 仍算一欄)
++    expect(el.getAttribute("data-daymarks")).toBe("3");
++    // candles 濾掉視窗外的 6/22,缺的 6/24 不補
++    expect(el.getAttribute("data-daymark-candles")).toBe("2026-06-23,2026-06-25");
++  });
++
++  it("history 尚未回 → dayMarks 為 null(退回現行為)", async () => {
++    spies.bubbleWindowMeta = {
++      windowDays: 5, actualDays: 5, tradingDates: ["2026-06-23", "2026-06-24"],
++    };
++    spies.chipHistory = null;
++    await openBubbleTab();
++    fireEvent.click(screen.getByRole("button", { name: "stub-days-5" }));
++    await waitFor(() => {
++      expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
++    });
++    expect(screen.getByTestId("chip-bubble").getAttribute("data-daymarks")).toBe("null");
++  });
++
++  it("windowMeta 為 null(單日 / 視窗未回)→ dayMarks 為 null", async () => {
++    spies.bubbleWindowMeta = null;
++    spies.chipHistory = { candles: [mkCandle("2026-06-23")] };
++    await openBubbleTab();
++    expect(screen.getByTestId("chip-bubble").getAttribute("data-daymarks")).toBe("null");
++  });
++});
++
++// mod/kline-date-bubble-days-ux SC-3 `[amendment: Phase 6 real-env finding]`:
++// 載入時「重新整理」鈕多長出 spinner → 鈕變寬 → 頂欄 flex-wrap 把整顆鈕擠到
++// 第二行 → tabs 與整個泡泡圖下移 42px(user 看到的「按鈕重新排列」)。
++// 修法 = spinner 插槽常駐(固定寬 span),載入時才填 svg,鈕寬前後不變。
++describe("SC-3 頂欄「重新整理」鈕 spinner 插槽常駐", () => {
++  it("idle:鈕內常駐 refresh-spinner-slot,且無 refresh-spinner", () => {
++    render(<App />);
++    const btn = screen.getByRole("button", { name: "重新整理" });
++    expect(btn.querySelector('[data-testid="refresh-spinner-slot"]')).toBeTruthy();
++    expect(btn.querySelector('[data-testid="refresh-spinner"]')).toBeNull();
++  });
++
++  it("loading:spinner 掛在同一插槽內,accessible name 轉「資料載入中」", () => {
++    spies.bubbleLoading = true;
++    render(<App />);
++    expect(screen.queryByRole("button", { name: "重新整理" })).toBeNull();
++    const btn = screen.getByRole("button", { name: "資料載入中" });
++    const slot = btn.querySelector('[data-testid="refresh-spinner-slot"]');
++    expect(slot).toBeTruthy();
++    expect(slot!.querySelector('[data-testid="refresh-spinner"]')).toBeTruthy();
++    expect(btn.getAttribute("aria-busy")).toBe("true");
++  });
++});
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index c87f40a..46ea9b3 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -341,6 +341,19 @@ export default function App() {
+     [],
+   );
+ 
++  // SC-4:每日開 / 收標示的資料組裝 —— 槽位由視窗的 trading_dates 定義,
++  // candles 只留視窗命中的日(缺 candle 的日仍佔一欄,由 svg 層留空)。
++  // history 尚未回 → null,泡泡圖等同現行為(W2/R18)。
++  const bubbleDayMarks = useMemo(() => {
++    const meta = bubbleHook.windowMeta;
++    if (!meta || !history) return null;
++    const set = new Set(meta.tradingDates);
++    return {
++      dates: meta.tradingDates,
++      candles: history.candles.filter((c) => set.has(c.date)),
++    };
++  }, [bubbleHook.windowMeta, history]);
++
+   const closePrice = useMemo(() => {
+     const c = history?.candles.find((c) => c.date === date);
+     return c?.close ?? history?.candles?.[history.candles.length - 1]?.close;
+@@ -451,18 +464,28 @@ export default function App() {
+             aria-busy={isLoading || undefined}
+             className="inline-flex items-center gap-1.5 px-3 py-1.5 pointer-coarse:min-h-11 text-sm border border-line text-ink-muted hover:text-ink hover:border-accent disabled:opacity-50 disabled:cursor-default transition-colors cursor-pointer"
+           >
+-            {isLoading && (
+-              <svg
+-                data-testid="refresh-spinner"
+-                viewBox="0 0 24 24"
+-                fill="none"
+-                aria-hidden="true"
+-                className="size-3.5 animate-spin text-accent motion-reduce:animate-none"
+-              >
+-                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
+-                <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+-              </svg>
+-            )}
++            {/* SC-3 [mod/kline-date-bubble-days-ux, Phase 6 real-env finding]:
++                spinner 原本條件 render → 載入時鈕變寬 → 頂欄 flex-wrap 把整顆鈕
++                擠到第二行 → tabs 與整個圖區下移 42px。插槽常駐固定寬,載入時才
++                填 svg,鈕寬載入前後恆等。 */}
++            <span
++              data-testid="refresh-spinner-slot"
++              aria-hidden="true"
++              className="inline-flex size-3.5 shrink-0 items-center justify-center"
++            >
++              {isLoading && (
++                <svg
++                  data-testid="refresh-spinner"
++                  viewBox="0 0 24 24"
++                  fill="none"
++                  aria-hidden="true"
++                  className="size-3.5 animate-spin text-accent motion-reduce:animate-none"
++                >
++                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
++                  <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
++                </svg>
++              )}
++            </span>
+             重新整理
+           </button>
+         </div>
+@@ -587,6 +610,7 @@ export default function App() {
+               days={bubbleDays}
+               onDaysChange={setBubbleDays}
+               windowMeta={bubbleHook.windowMeta}
++              dayMarks={bubbleDayMarks}
+             />
+           </Suspense>
+         </div>
+diff --git a/frontend/src/components/ChipBubbleView.test.tsx b/frontend/src/components/ChipBubbleView.test.tsx
+index 9cdb887..fc7d5b9 100644
+--- a/frontend/src/components/ChipBubbleView.test.tsx
++++ b/frontend/src/components/ChipBubbleView.test.tsx
+@@ -1848,6 +1848,74 @@ describe("ChipBubbleView — SC-4 天數選擇器 + 累計 badge", () => {
+     expect(selectorEl(container)).toBeNull();
+   });
+ 
++  // mod/kline-date-bubble-days-ux SC-2:光禿的 1/2/3/4/5/10/20 沒說明是什麼,
++  // selector 左側加「連續天數」標籤 + 整組動態 title 補「累計最近 N 個交易日」。
++  it("SC-2:selector 左側有「連續天數」標籤,同一 wrapper 且為 selector 前一個兄弟", () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={5}
++        onDaysChange={vi.fn()}
++      />,
++    );
++    const sel = selectorEl(container);
++    expect(sel).toBeTruthy();
++    const label = screen.getByText("連續天數");
++    expect(label.nextElementSibling).toBe(sel);
++    expect(label.parentElement).toBe(sel!.parentElement);
++    expect(label.className).toContain("text-ink-dim");
++  });
++
++  // SC-3 `[amendment: Phase 6 real-env finding]`:1280px + 自選股側欄下中欄僅
++  // ~90px,標籤曾被逐字折成直排 → 標籤 nowrap、wrapper 不被 flex 壓縮。
++  it("SC-3:標籤 whitespace-nowrap 且 wrapper shrink-0(窄中欄不逐字直排)", () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={5}
++        onDaysChange={vi.fn()}
++      />,
++    );
++    const label = screen.getByText("連續天數");
++    expect(label.className).toContain("whitespace-nowrap");
++    const wrapper = selectorEl(container)!.parentElement!;
++    expect(wrapper.className).toContain("shrink-0");
++  });
++
++  it("SC-2:wrapper title 依當前 days 動態帶「累計最近 5 個交易日」", () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={5}
++        onDaysChange={vi.fn()}
++      />,
++    );
++    const wrapper = selectorEl(container)!.parentElement!;
++    const title = wrapper.getAttribute("title") ?? "";
++    expect(title).toContain("累計最近 5 個交易日");
++    expect(title).toContain("1 = 僅當日");
++  });
++
++  it("SC-2:標籤加入後 group role / aria-label 不變(W3)", () => {
++    render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(namedTrades)}
++        days={2}
++        onDaysChange={vi.fn()}
++      />,
++    );
++    expect(screen.getByRole("group", { name: "泡泡圖天數視窗" })).toBeTruthy();
++  });
++
++  it("SC-2:未提供 onDaysChange → 標籤也不渲染", () => {
++    render(<ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />);
++    expect(screen.queryByText("連續天數")).toBeNull();
++  });
++
+   // 測試 2
+   it("點「泡泡圖設為 5 日」→ onDaysChange(5)", () => {
+     const onDaysChange = vi.fn();
+@@ -2077,20 +2145,36 @@ describe("ChipBubbleView — SC-7 截圖", () => {
+     vi.restoreAllMocks();
+   });
+ 
+-  it("bubbleData null → 不渲染截圖鈕", () => {
++  // mod/kline-date-bubble-days-ux SC-3:切天數時 bubbleData 短暫為 null,
++  // 舊行為(不渲染)會讓右工具欄三鈕消失、`?` 鈕左移 = 跑版。改常駐 + disabled。
++  it("bubbleData null → 截圖鈕仍渲染但 disabled", () => {
+     const { container } = render(
+       <ChipBubbleView symbol="2330" bubbleData={null} loading />,
+     );
+-    expect(shotBtn(container)).toBeNull();
++    const btn = shotBtn(container);
++    expect(btn).toBeTruthy();
++    expect(btn!.disabled).toBe(true);
+   });
+ 
+-  it("bubbleData 有值 → 渲染截圖鈕", () => {
++  it("bubbleData 有值 → 渲染截圖鈕且 enabled", () => {
+     const { container } = render(
+       <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+     );
+     const btn = shotBtn(container);
+     expect(btn).toBeTruthy();
+     expect(btn!.textContent).toBe("截圖");
++    expect(btn!.disabled).toBe(false);
++  });
++
++  it("bubbleData null → 點 disabled 截圖鈕不呼叫 svgToPngBlob", () => {
++    const toPng = vi
++      .spyOn(screenshotLib, "svgToPngBlob")
++      .mockResolvedValue(mkPngBlob());
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={null} loading />,
++    );
++    fireEvent.click(shotBtn(container)!);
++    expect(toPng).not.toHaveBeenCalled();
+   });
+ 
+   it("點擊(days=1)→ svgToPngBlob + downloadBlob 被呼叫,檔名無 w 後綴、無 annotation", async () => {
+@@ -2347,3 +2431,92 @@ describe("ChipBubbleView — days 透傳給圖面空狀態文案(review-1)", ()
+     expect(svgText).toContain("無成交分點 今日無顯著成交量");
+   });
+ });
++
++// mod/kline-date-bubble-days-ux SC-3:右工具欄「輸入區間」/(mobile)「明細」
++// 與截圖鈕同樣改常駐 + disabled — 切天數的載入空窗不再讓三鈕卸載跑版。
++// 截圖鈕本身的三態在上方 SC-7 describe。
++describe("ChipBubbleView — SC-3 工具列三鈕常駐 disabled", () => {
++  const rangeBtn = (c: HTMLElement) =>
++    c.querySelector('[data-testid="bubble-manual-range-trigger"]') as HTMLButtonElement | null;
++  const sheetBtn = (c: HTMLElement) =>
++    c.querySelector('[data-testid="bubble-open-sheet"]') as HTMLButtonElement | null;
++
++  it("bubbleData null → 輸入區間鈕仍渲染但 disabled", () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={null} loading />,
++    );
++    const btn = rangeBtn(container);
++    expect(btn).toBeTruthy();
++    expect(btn!.textContent).toBe("輸入區間");
++    expect(btn!.disabled).toBe(true);
++  });
++
++  it("bubbleData 有值 → 輸入區間鈕 enabled", () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
++    );
++    const btn = rangeBtn(container);
++    expect(btn).toBeTruthy();
++    expect(btn!.disabled).toBe(false);
++  });
++
++  it("mobile + bubbleData null → 明細鈕仍渲染但 disabled", () => {
++    mediaState.isMobile = true;
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={null} loading />,
++    );
++    const btn = sheetBtn(container);
++    expect(btn).toBeTruthy();
++    expect(btn!.textContent).toBe("明細");
++    expect(btn!.disabled).toBe(true);
++  });
++
++  it("桌面 + bubbleData null → 不渲染明細鈕(mobile-only 不變)", () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={null} loading />,
++    );
++    expect(sheetBtn(container)).toBeNull();
++  });
++});
++
++// SC-4:dayMarks 透傳 — View 只負責把 App 算好的 dates + candles 交給 svg,
++// 「畫不畫」的判準(days>1)在 svg 層,不在這裡重複實作。
++describe("ChipBubbleView — SC-4 dayMarks 透傳", () => {
++  const dates = ["2026-06-23", "2026-06-24", "2026-06-25"];
++  const candles = dates.map((date) => ({
++    date, open: 100.5, high: 102, low: 100, close: 101.5, volume: 1000,
++  }));
++
++  it("days=5 + dayMarks → 圖面出現 bubble-day-marks 且欄數 = dates 長度", () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(trades)}
++        days={5}
++        dayMarks={{ dates, candles }}
++      />,
++    );
++    const g = container.querySelector('[data-testid="bubble-day-marks"]');
++    expect(g).not.toBeNull();
++    expect(g!.querySelectorAll("[data-date]")).toHaveLength(3);
++  });
++
++  it("days=1 + dayMarks → 不畫(W2)", () => {
++    const { container } = render(
++      <ChipBubbleView
++        symbol="2330"
++        bubbleData={mkData(trades)}
++        days={1}
++        dayMarks={{ dates, candles }}
++      />,
++    );
++    expect(container.querySelector('[data-testid="bubble-day-marks"]')).toBeNull();
++  });
++
++  it("未傳 dayMarks → 不畫(現行為)", () => {
++    const { container } = render(
++      <ChipBubbleView symbol="2330" bubbleData={mkData(trades)} days={5} />,
++    );
++    expect(container.querySelector('[data-testid="bubble-day-marks"]')).toBeNull();
++  });
++});
+diff --git a/frontend/src/components/ChipBubbleView.tsx b/frontend/src/components/ChipBubbleView.tsx
+index b1ea8a2..eb066b1 100644
+--- a/frontend/src/components/ChipBubbleView.tsx
++++ b/frontend/src/components/ChipBubbleView.tsx
+@@ -1,7 +1,7 @@
+ import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
+ import { useVirtualizer } from "@tanstack/react-virtual";
+ import type {
+-  ChipBubbleData, IntradayPoint, SortDir, SortSpec, TradeRow, TradeSortKey,
++  ChipBubbleData, DailyCandle, IntradayPoint, SortDir, SortSpec, TradeRow, TradeSortKey,
+ } from "../lib/chip-data";
+ import {
+   DEFAULT_TRADE_SORT, aggregateByPrice, buildTradeRows, computeBrokerTotals,
+@@ -64,6 +64,10 @@ interface Props {
+   /** SC-4:多日聚合的視窗 meta(來自 useChipBubble)。null = 單日模式或視窗
+    *  資料尚未回(載入視窗期)→ 不顯 badge。 */
+   windowMeta?: { windowDays: number; actualDays: number } | null;
++  /** SC-4:每日開 / 收標示的資料(App 以 trading_dates ∩ history.candles 組)。
++   *  本元件只透傳,「畫不畫」的判準(days>1 / 空 dates)在 BubbleChartSvg,
++   *  不在這裡重複一份。null / 未傳 = 現行為。 */
++  dayMarks?: { dates: string[]; candles: DailyCandle[] } | null;
+ }
+ 
+ // F12: surface every broker who traded today, including 1-張 ones. The
+@@ -88,6 +92,7 @@ export function ChipBubbleView({
+   days = 1,
+   onDaysChange,
+   windowMeta = null,
++  dayMarks = null,
+ }: Props) {
+   // bubble-multi-broker(SC-1):有序多選(≤6),id = broker_id 對齊 App.tsx
+   // selectedBrokerIds 契約;name 存 state(分點自 trades 消失時 chip 不失效);
+@@ -683,8 +688,15 @@ export function ChipBubbleView({
+                   (header 撐高 2.6 倍 → 圖區 397→125px,e2e E39 因 circle 座標
+                   位移而紅)。改掛統計行右端:中欄本來就是 minmax(0,1fr) 可伸縮,
+                   ml-auto 推到行尾(mobile flex-col 自然堆疊)。 */}
++              {/* SC-2(mod/kline-date-bubble-days-ux):光禿的 1/2/3/4/5/10/20 不自明,
++                  左側加「連續天數」標籤、整組帶動態 title 補完整語意。標籤與 selector
++                  同一 inline-flex,只加寬統計行的 ml-auto 區,不動 header 三欄 grid(W6)。 */}
+               {onDaysChange && (
+-                <div className="ml-auto">
++                <div
++                  className="ml-auto inline-flex shrink-0 items-center gap-1.5"
++                  title={`累計最近 ${days} 個交易日的分點成交(1 = 僅當日)`}
++                >
++                  <span className="text-xs text-ink-dim whitespace-nowrap">連續天數</span>
+                   <BubbleDaysSelector value={days} onChange={onDaysChange} />
+                 </div>
+               )}
+@@ -700,33 +712,35 @@ export function ChipBubbleView({
+               onRemove={handleBlockRemove}
+               onClearAll={handleBlockClearAll}
+             />
+-            {/* SC-7:截圖鈕在「輸入區間」左側;無資料時不渲染(沒東西可截)。 */}
+-            {bubbleData && (
+-              <button
+-                type="button"
+-                data-testid="bubble-screenshot"
+-                onClick={() => void handleScreenshot()}
+-                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer"
+-              >
+-                截圖
+-              </button>
+-            )}
+-            {bubbleData && (
+-              <button
+-                type="button"
+-                data-testid="bubble-manual-range-trigger"
+-                onClick={() => setManualInputOpen(true)}
+-                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer"
+-              >
+-                輸入區間
+-              </button>
+-            )}
+-            {isMobile && bubbleData && (
++            {/* SC-7:截圖鈕在「輸入區間」左側。
++                SC-3(mod/kline-date-bubble-days-ux):三鈕改常駐 + disabled —
++                切天數期間 bubbleData 短暫為 null,舊的條件渲染會讓它們卸載、
++                `?` 鈕左移(跑版)。改 disabled 保位,行為與全站 disabled 慣例一致。 */}
++            <button
++              type="button"
++              data-testid="bubble-screenshot"
++              disabled={!bubbleData}
++              onClick={() => void handleScreenshot()}
++              className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer disabled:opacity-50 disabled:cursor-default"
++            >
++              截圖
++            </button>
++            <button
++              type="button"
++              data-testid="bubble-manual-range-trigger"
++              disabled={!bubbleData}
++              onClick={() => setManualInputOpen(true)}
++              className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer disabled:opacity-50 disabled:cursor-default"
++            >
++              輸入區間
++            </button>
++            {isMobile && (
+               <button
+                 type="button"
+                 data-testid="bubble-open-sheet"
++                disabled={!bubbleData}
+                 onClick={() => setSheetOpen(true)}
+-                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer pointer-coarse:min-h-11"
++                className="text-xs text-ink-dim hover:text-accent underline underline-offset-2 cursor-pointer pointer-coarse:min-h-11 disabled:opacity-50 disabled:cursor-default"
+               >
+                 明細
+               </button>
+@@ -759,6 +773,7 @@ export function ChipBubbleView({
+               priceRange={rangeActiveForFilter ? brushRange : null}
+               days={days}
+               soloBrokerId={activeSolo?.id ?? null}
++              dayMarks={dayMarks}
+             />
+           ) : null}
+           {/* CH-1 R6 case 2: 聚焦分點當日無成交 — 維持選中,泡泡圖照常
+diff --git a/frontend/src/components/ChipKlineChart.test.tsx b/frontend/src/components/ChipKlineChart.test.tsx
+index e790bc6..7fac386 100644
+--- a/frontend/src/components/ChipKlineChart.test.tsx
++++ b/frontend/src/components/ChipKlineChart.test.tsx
+@@ -1,9 +1,17 @@
+ /** @vitest-environment jsdom */
+-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
++import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+ import { act, cleanup, fireEvent, render } from "@testing-library/react";
+ import { ChipKlineChart } from "./ChipKlineChart";
+ import type { ChipHistory } from "../lib/chip-data";
+ 
++// SC-1(pack B):高度配平斷言需要可控的容器尺寸。jsdom 無 layout → 真 hook 回
++// {0,0},元件走 `width || 600` / `height || 500` fallback。預設保持 0/0 讓既有
++// describe 行為 bit-for-bit 不變,只有日期軸 / 配平 describe 才改值。
++const sizeState = vi.hoisted(() => ({ width: 0, height: 0 }));
++vi.mock("../hooks/useContainerSize", () => ({
++  useContainerSize: () => ({ width: sizeState.width, height: sizeState.height }),
++}));
++
+ beforeAll(() => {
+   // jsdom lacks ResizeObserver; useContainerSize relies on it. Stub a no-op.
+   if (typeof globalThis.ResizeObserver === "undefined") {
+@@ -606,3 +614,163 @@ describe("ChipKlineChart — major gap overlay + visible-range report (chip-majo
+     expect(queryByTestId("major-gap-overlay")).toBeNull();
+   });
+ });
++
++// SC-1(pack B 🔴):疊圖高度顯式配平 — 2px 掃描條與 18px 日期軸列都要入帳,
++// 各 row 的 style.height 加總必須等於容器高(既有公式漏算掃描條 → 溢出 2px)。
++describe("ChipKlineChart — SC-1 疊圖高度顯式配平", () => {
++  const H = 600;
++  const W = 800;
++  const GAP = 6;
++  const LOADING_BAR_H = 2;
++  const DATE_AXIS_H = 18;
++
++  beforeEach(() => {
++    sizeState.width = W;
++    sizeState.height = H;
++  });
++  afterEach(() => {
++    sizeState.width = 0;
++    sizeState.height = 0;
++  });
++
++  const pxHeight = (el: Element): number =>
++    parseFloat((el as HTMLElement).style.height);
++
++  const renderChart = () =>
++    render(
++      <ChipKlineChart
++        history={mkHistory(120)}
++        selectedDate=""
++        selectedBrokerIds={new Set()}
++        brokerSeries={new Map()}
++        onPickDate={noop}
++        onClearAllBrokers={noop}
++      />,
++    );
++
++  it("掃描條 + K 線 + gap + 5 子圖 + 分點列 + 日期軸列 加總 === 容器高", () => {
++    const { container } = renderChart();
++
++    // K 線 row 的高度只寫在 KlineChartSvg 的 height 屬性上(overlay rect 是
++    // 該 svg 獨有的 testid,用它反查 svg root)。
++    const klineSvg = container
++      .querySelector("[data-testid=overlay]")!
++      .closest("svg")!;
++    const klineH = Number(klineSvg.getAttribute("height"));
++
++    const subRows = Array.from(
++      container.querySelectorAll("[data-testid=kline-sub-row]"),
++    );
++    expect(subRows.length).toBe(5);
++    const brokerRow = container.querySelector("[data-testid=chip-broker-row]")!;
++    const axisRow = container.querySelector("[data-testid=kline-date-axis-row]")!;
++
++    const sum =
++      LOADING_BAR_H +
++      klineH +
++      GAP +
++      subRows.reduce((acc, r) => acc + pxHeight(r), 0) +
++      pxHeight(brokerRow) +
++      pxHeight(axisRow);
++    expect(sum).toBe(H);
++  });
++
++  it("klineH / subH / lastSubH 依 availH(扣掉掃描條 + gap + 日期軸)分配", () => {
++    const { container } = renderChart();
++    const availH = H - LOADING_BAR_H - GAP - DATE_AXIS_H;
++    const expectedKlineH = Math.round((availH * 3.5) / 9.5);
++    const expectedSubH = Math.floor((availH - expectedKlineH) / 6);
++    const expectedLastSubH = availH - expectedKlineH - expectedSubH * 5;
++
++    const klineSvg = container
++      .querySelector("[data-testid=overlay]")!
++      .closest("svg")!;
++    expect(Number(klineSvg.getAttribute("height"))).toBe(expectedKlineH);
++
++    const subRows = Array.from(
++      container.querySelectorAll("[data-testid=kline-sub-row]"),
++    );
++    for (const r of subRows) expect(pxHeight(r)).toBe(expectedSubH);
++    expect(pxHeight(container.querySelector("[data-testid=chip-broker-row]")!))
++      .toBe(expectedLastSubH);
++  });
++
++  it("日期軸列高度 = 18px", () => {
++    const { container } = renderChart();
++    const axisRow = container.querySelector("[data-testid=kline-date-axis-row]")!;
++    expect(pxHeight(axisRow)).toBe(DATE_AXIS_H);
++  });
++
++  it("掃描條容器仍是 h-0.5(2px 常駐,不因 loading 切換而位移)", () => {
++    const { container } = renderChart();
++    const bar = container.querySelector(
++      "[data-testid=chip-kline-chart] > div[aria-hidden=true]",
++    )!;
++    expect(bar.className).toContain("h-0.5");
++  });
++});
++
++// SC-1(pack D 🟢):日期軸掛進疊圖底部 — 刻度存在、hover 顯 YYYY-MM-DD。
++describe("ChipKlineChart — SC-1 底部日期軸", () => {
++  const W = 800;
++  const H = 600;
++  const N = 120;
++  const VISIBLE = 90; // KLINE_ZOOM_DEFAULT
++
++  beforeEach(() => {
++    sizeState.width = W;
++    sizeState.height = H;
++  });
++  afterEach(() => {
++    sizeState.width = 0;
++    sizeState.height = 0;
++  });
++
++  const renderChart = (history: ChipHistory) =>
++    render(
++      <ChipKlineChart
++        history={history}
++        selectedDate=""
++        selectedBrokerIds={new Set()}
++        brokerSeries={new Map()}
++        onPickDate={noop}
++        onClearAllBrokers={noop}
++      />,
++    );
++
++  it("有 history → 日期軸列內有 kline-date-axis + 至少一個刻度", () => {
++    const { container } = renderChart(mkHistory(N));
++    const axisRow = container.querySelector("[data-testid=kline-date-axis-row]")!;
++    const axis = axisRow.querySelector("[data-testid=kline-date-axis]");
++    expect(axis).toBeTruthy();
++    expect(
++      axisRow.querySelectorAll("[data-testid=kline-date-axis-tick]").length,
++    ).toBeGreaterThan(0);
++  });
++
++  it("hover 疊圖 → 日期軸 chip 顯示該 candle 的 YYYY-MM-DD;離開後消失", () => {
++    const history = mkHistory(N);
++    const { container } = renderChart(history);
++    const root = container.querySelector("[data-testid=chip-kline-chart]")!;
++    expect(container.querySelector("[data-testid=kline-date-axis-hover]")).toBeNull();
++
++    // handleStackMouseMove 的同式:jsdom rect 全 0 → w fallback 到 width(800)
++    const clientX = 300;
++    const slotW = (W - 12 - 58) / VISIBLE; // KLINE_PAD_L / KLINE_PAD_R
++    const idx = Math.floor((clientX - 12) / slotW);
++    const expected = history.candles[N - VISIBLE + idx]!.date;
++
++    fireEvent.mouseMove(root, { clientX, clientY: 200 });
++    const hover = container.querySelector("[data-testid=kline-date-axis-hover]")!;
++    expect(hover).toBeTruthy();
++    expect(hover.textContent).toBe(expected);
++
++    fireEvent.mouseLeave(root);
++    expect(container.querySelector("[data-testid=kline-date-axis-hover]")).toBeNull();
++  });
++
++  it("HUD 仍無日期,日期軸不出現斜線年月日(W1 / E5)", () => {
++    const { container } = renderChart(mkHistory(N));
++    expect(container.textContent ?? "").not.toMatch(/\d{4}\/\d{2}\/\d{2}/);
++  });
++});
+diff --git a/frontend/src/components/ChipKlineChart.tsx b/frontend/src/components/ChipKlineChart.tsx
+index b07f897..cdc831d 100644
+--- a/frontend/src/components/ChipKlineChart.tsx
++++ b/frontend/src/components/ChipKlineChart.tsx
+@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+ import type { BrokerDaily, ChipHistory } from "../lib/chip-data";
+ import {
+   KlineChartSvg,
++  DateAxisSvg,
+   rollingMean,
+   calcBollinger,
+   KLINE_PAD_L,
+@@ -65,6 +66,10 @@ const KLINE_ZOOM_DEFAULT = 90;
+ const KLINE_ZOOM_STEP = 10;    // 每次滾輪 ±10 個 trading days
+ const PAN_THRESHOLD = 5;       // 拖曳超過 5px 才算 pan(避免吃掉點擊選日)
+ const PAN_CLICK_SUPPRESS_MS = 200;
++/** 頂端常駐掃描條(`h-0.5`)的實際高度。常駐 = 必須入高度配平。 */
++const LOADING_BAR_H = 2;
++/** 底部日期軸列(SC-1)。整疊共用一條時間軸,佔獨立一列。 */
++const DATE_AXIS_H = 18;
+ 
+ export function ChipKlineChart({
+   history, selectedDate, selectedBrokerIds, brokerSeries,
+@@ -291,6 +296,13 @@ export function ChipKlineChart({
+     };
+   }, [fullDerived, windowRange]);
+ 
++  // SC-1:底部日期軸的槽位日期。抽 useMemo(必須在 early return 之前)讓
++  // DateAxisSvg 的 memo 在只有 hoverIndex 變動時仍能只重算 hover chip。
++  const axisDates = useMemo(
++    () => derived?.candles.map((c) => c.date) ?? [],
++    [derived],
++  );
++
+   // BB / MA 用 FULL history 算,再切到視窗範圍 — 這樣 zoom 視窗左邊界已是有
+   // 足夠 history 的 candle 時,MA20 / BB(20,2) 就能延伸到第一根 candle,
+   // 不會像 "前 19 個 null" 那樣斷開。
+@@ -425,13 +437,16 @@ export function ChipKlineChart({
+   // B3 (C4 🔴): grid 幾何固定 6 subchart(即使未選 broker 也保留 broker row
+   // 容器),讓選 / 未選狀態下所有 subchart 高度完全一致,徹底消除 CLS。
+   // 未選狀態下 K 線本身高度從 41.2% 縮至 36.8%(見 change-spec.md §C4 白名單)。
++  // SC-1 🔴:配平顯式扣掉「常駐 2px 掃描條」與「底部 18px 日期軸列」,
++  // 兩者都是 flex column 的實體 row。舊式只扣 gap → 整疊比容器高 2px。
+   const showBrokerData = selectedBrokerIds.size > 0;
+   const gap = 6;
+   const totalParts = 3.5 + 6; // K 線 + 6 subchart 常數
+-  const klineH = Math.round((totalH - gap) * (3.5 / totalParts));
+   const subCount = 6;
+-  const subH = Math.floor((totalH - gap - klineH) / subCount);
+-  const lastSubH = totalH - gap - klineH - subH * (subCount - 1);
++  const availH = totalH - LOADING_BAR_H - gap - DATE_AXIS_H;
++  const klineH = Math.round(availH * (3.5 / totalParts));
++  const subH = Math.floor((availH - klineH) / subCount);
++  const lastSubH = availH - klineH - subH * (subCount - 1);
+ 
+   return (
+     <div
+@@ -509,6 +524,7 @@ export function ChipKlineChart({
+         }}
+       />
+       <div
++        data-testid="kline-sub-row"
+         className="relative border-t border-line/50"
+         style={{ height: subH, minHeight: 0 }}
+       >
+@@ -543,7 +559,11 @@ export function ChipKlineChart({
+           </div>
+         )}
+       </div>
+-      <div className="border-t border-line/50" style={{ height: subH, minHeight: 0 }}>
++      <div
++        data-testid="kline-sub-row"
++        className="border-t border-line/50"
++        style={{ height: subH, minHeight: 0 }}
++      >
+         {subH > 0 && (
+           <InstBarSvg
+             data={foreignNet} width={w} height={subH}
+@@ -553,7 +573,11 @@ export function ChipKlineChart({
+           />
+         )}
+       </div>
+-      <div className="border-t border-line/50" style={{ height: subH, minHeight: 0 }}>
++      <div
++        data-testid="kline-sub-row"
++        className="border-t border-line/50"
++        style={{ height: subH, minHeight: 0 }}
++      >
+         {subH > 0 && (
+           <InstBarSvg
+             data={trustNet} width={w} height={subH}
+@@ -563,7 +587,11 @@ export function ChipKlineChart({
+           />
+         )}
+       </div>
+-      <div className="border-t border-line/50" style={{ height: subH, minHeight: 0 }}>
++      <div
++        data-testid="kline-sub-row"
++        className="border-t border-line/50"
++        style={{ height: subH, minHeight: 0 }}
++      >
+         {subH > 0 && (
+           <InstBarSvg
+             data={dealerNet} width={w} height={subH}
+@@ -574,6 +602,7 @@ export function ChipKlineChart({
+         )}
+       </div>
+       <div
++        data-testid="kline-sub-row"
+         className="border-t border-line/50"
+         style={{ height: subH, minHeight: 0 }}
+       >
+@@ -594,7 +623,8 @@ export function ChipKlineChart({
+       </div>
+       {/* Broker row — B3 (C4 🔴): 容器常駐,避免選 broker 前後 CLS。
+           有資料時 render BrokerAggBarSvg + 「清除」button;
+-          無資料且高度足夠時 render 「未選擇分點」placeholder。 */}
++          無資料且高度足夠時 render 「未選擇分點」placeholder。
++          其下還有 SC-1 的 kline-date-axis-row(固定 18px,已入 availH)。 */}
+       <div
+         data-testid="chip-broker-row"
+         className="border-t border-line/50 relative"
+@@ -624,6 +654,20 @@ export function ChipKlineChart({
+           >清除</button>
+         )}
+       </div>
++      {/* SC-1:整疊共用的底部日期軸列。留在 stack 容器內(hover 幾何掛在
++          容器上,獨立出去會讓 mousemove 座標基準改變)。 */}
++      <div
++        data-testid="kline-date-axis-row"
++        className="shrink-0"
++        style={{ height: DATE_AXIS_H }}
++      >
++        <DateAxisSvg
++          dates={axisDates}
++          width={w}
++          height={DATE_AXIS_H}
++          hoverIndex={hoverIndex}
++        />
++      </div>
+     </div>
+   );
+ }
+diff --git a/frontend/src/hooks/useChipBubble.test.ts b/frontend/src/hooks/useChipBubble.test.ts
+index 3b939dc..8dd285f 100644
+--- a/frontend/src/hooks/useChipBubble.test.ts
++++ b/frontend/src/hooks/useChipBubble.test.ts
+@@ -15,11 +15,11 @@ const mk = (symbol: string): ChipBubbleData =>
+   ({ symbol, fetched_at: "", brokers: [] }) as unknown as ChipBubbleData;
+ 
+ const mkWindow = (
+-  symbol: string, windowDays: number, actualDays: number,
++  symbol: string, windowDays: number, actualDays: number, tradingDates: string[] = [],
+ ): ChipBubbleWindowData =>
+   ({
+     symbol, date: "2026-06-22", fetched_at: "", trades: [],
+-    window_days: windowDays, trading_dates: [], actual_days: actualDays,
++    window_days: windowDays, trading_dates: tradingDates, actual_days: actualDays,
+   }) as unknown as ChipBubbleWindowData;
+ 
+ beforeEach(() => vi.restoreAllMocks());
+@@ -104,7 +104,7 @@ describe("useChipBubble — days 分流(SC-3)", () => {
+       "2330", "2026-06-22", 5, false,
+       expect.objectContaining({ signal: expect.any(AbortSignal) }),
+     );
+-    expect(result.current.windowMeta).toEqual({ windowDays: 5, actualDays: 3 });
++    expect(result.current.windowMeta).toEqual({ windowDays: 5, actualDays: 3, tradingDates: [] });
+   });
+ 
+   it("days=5 時 refresh() 帶 refresh=true 打 window 端點", async () => {
+@@ -129,6 +129,33 @@ describe("useChipBubble — days 分流(SC-3)", () => {
+ 
+     rerender({ days: 5 });
+     await waitFor(() => expect(window).toHaveBeenCalledTimes(1));
+-    await waitFor(() => expect(result.current.windowMeta).toEqual({ windowDays: 5, actualDays: 5 }));
++    await waitFor(() =>
++      expect(result.current.windowMeta).toEqual({ windowDays: 5, actualDays: 5, tradingDates: [] }),
++    );
++  });
++});
++
++// SC-4:每日開收標示需要「這個視窗涵蓋哪幾個交易日」— payload 的 trading_dates
++// 直接曝光成 windowMeta.tradingDates(additive,windowDays / actualDays 不變)。
++describe("useChipBubble — windowMeta.tradingDates(SC-4)", () => {
++  it("days>1 → tradingDates 直通 payload 的 trading_dates", async () => {
++    const dates = ["2026-06-18", "2026-06-19", "2026-06-20"];
++    vi.spyOn(api, "chipBubbleWindow").mockResolvedValue(mkWindow("2330", 5, 3, dates));
++    const { result } = renderHook(() => useChipBubble("2330", "2026-06-22", 5), {
++      wrapper: makeQueryWrapper(),
++    });
++    await waitFor(() => expect(result.current.windowMeta).not.toBeNull());
++    expect(result.current.windowMeta).toEqual({
++      windowDays: 5, actualDays: 3, tradingDates: dates,
++    });
++  });
++
++  it("days=1 → windowMeta 仍為 null(不冒出空 tradingDates)", async () => {
++    vi.spyOn(api, "chipBubble").mockResolvedValue(mk("2330"));
++    const { result } = renderHook(() => useChipBubble("2330", "2026-06-22", 1), {
++      wrapper: makeQueryWrapper(),
++    });
++    await waitFor(() => expect(result.current.data?.symbol).toBe("2330"));
++    expect(result.current.windowMeta).toBeNull();
+   });
+ });
+diff --git a/frontend/src/hooks/useChipBubble.ts b/frontend/src/hooks/useChipBubble.ts
+index 5c026af..9a122e1 100644
+--- a/frontend/src/hooks/useChipBubble.ts
++++ b/frontend/src/hooks/useChipBubble.ts
+@@ -22,7 +22,12 @@ export function useChipBubble(symbol: string, date: string, days: number = 1) {
+     data: data ?? null,
+     windowMeta:
+       data && days > 1 && "window_days" in data
+-        ? { windowDays: data.window_days, actualDays: data.actual_days }
++        ? {
++            windowDays: data.window_days,
++            actualDays: data.actual_days,
++            // SC-4:每日開 / 收標示的槽位定義(App 用它與 history.candles 取交集)。
++            tradingDates: data.trading_dates,
++          }
+         : null,
+     loading: isFetching,
+     error: error ? error.message : null,
+diff --git a/frontend/src/lib/changelog.test.ts b/frontend/src/lib/changelog.test.ts
+index 37de0f8..7cd0b8c 100644
+--- a/frontend/src/lib/changelog.test.ts
++++ b/frontend/src/lib/changelog.test.ts
+@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
+     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
+   });
+ 
+-  it("最新版本是 v0.48.2(跨頁跳轉股名顯示修復)", () => {
+-    expect(CHANGELOG[0]?.version).toBe("0.48.2");
++  it("最新版本是 v0.49.0(K 線日期軸 / 多日泡泡圖每日開收)", () => {
++    expect(CHANGELOG[0]?.version).toBe("0.49.0");
+   });
+ 
+   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
+diff --git a/frontend/src/lib/changelog.ts b/frontend/src/lib/changelog.ts
+index e89263a..e8e90b0 100644
+--- a/frontend/src/lib/changelog.ts
++++ b/frontend/src/lib/changelog.ts
+@@ -39,6 +39,32 @@ export function semverGt(a: string, b: string): boolean {
+ // 版本字串遵循 SemVer 2.0.0 三段式 MAJOR.MINOR.PATCH;pre-1.0 階段 breaking change 也只 bump MINOR
+ // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
+ export const CHANGELOG: VersionEntry[] = [
++  {
++    version: "0.49.0",
++    date: "2026-08-19",
++    changes: [
++      {
++        kind: "feature",
++        scope: "equity",
++        text: "籌碼總覽 K 線圖下方新增日期軸:可直接看到各根 K 線對應的月/日,滑鼠移到任一根會顯示完整日期",
++      },
++      {
++        kind: "feature",
++        scope: "equity",
++        text: "泡泡圖切到多日累計時,圖上會依日期由左至右標出每一天的開盤價與收盤價(紅漲綠跌),一眼看出各日價格走向",
++      },
++      {
++        kind: "feature",
++        scope: "equity",
++        text: "泡泡圖天數切換鈕左側加上「連續天數」說明,滑鼠停留會提示累計範圍",
++      },
++      {
++        kind: "fix",
++        scope: "equity",
++        text: "泡泡圖切換天數時,頂部「重新整理」鈕與圖上方的截圖 / 輸入區間等按鈕不再短暫消失或跳動,載入中維持原位",
++      },
++    ],
++  },
+   {
+     version: "0.48.2",
+     date: "2026-08-19",
+diff --git a/frontend/src/lib/chip-bubble-daymarks-svg.test.tsx b/frontend/src/lib/chip-bubble-daymarks-svg.test.tsx
+new file mode 100644
+index 0000000..42d0079
+--- /dev/null
++++ b/frontend/src/lib/chip-bubble-daymarks-svg.test.tsx
+@@ -0,0 +1,314 @@
++/**
++ * @vitest-environment jsdom
++ *
++ * SC-4(mod/kline-date-bubble-days-ux):多日泡泡圖每欄的每日開 / 收標示。
++ * 幾何全在純函式 layoutDayMarks,render 層只負責把 slot 畫出來 —— 座標判定
++ * 不靠 querySelector 取屬性反推。
++ */
++import { afterEach, describe, expect, it } from "vitest";
++import { cleanup, render } from "@testing-library/react";
++import { CHIP } from "./chip-theme";
++import type { DailyCandle } from "./chip-data";
++import {
++  DayMarksLayer, formatDayMarkLabel, layoutDayMarks, type DayMarksLayerProps,
++} from "./chip-bubble-daymarks-svg";
++
++afterEach(() => cleanup());
++
++const mkCandle = (
++  date: string, open: number, close: number,
++): DailyCandle => ({
++  date, open, high: Math.max(open, close), low: Math.min(open, close), close, volume: 1000,
++});
++
++// yLow 90 / yHigh 110 / paddingTop 10 / chartHeight 200
++//   → y(price) = 10 + ((110 - price) / 20) * 200 = 10 + (110 - price) * 10
++const base = {
++  yLow: 90,
++  yHigh: 110,
++  paddingLeft: 56,
++  paddingTop: 10,
++  chartWidth: 500,
++  chartHeight: 200,
++};
++const yOf = (price: number): number => 10 + (110 - price) * 10;
++
++const dates5 = ["2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26"];
++const full5: DailyCandle[] = [
++  mkCandle("2026-06-22", 100, 105),
++  mkCandle("2026-06-23", 105, 101),
++  mkCandle("2026-06-24", 101, 101),
++  mkCandle("2026-06-25", 101, 103),
++  mkCandle("2026-06-26", 103, 99),
++];
++
++describe("layoutDayMarks — 槽位幾何", () => {
++  it("N 個 trading_dates → N 欄,x 為欄中心、slotW = chartWidth / N", () => {
++    const slots = layoutDayMarks({ ...base, dates: dates5, candles: full5 });
++    expect(slots).toHaveLength(5);
++    for (const [i, s] of slots.entries()) {
++      expect(s.slotW).toBe(100);
++      expect(s.x).toBe(56 + 100 * i + 50);
++      expect(s.date).toBe(dates5[i]);
++    }
++  });
++
++  it("開 / 收 y 用與泡泡同一條 price scale", () => {
++    const slots = layoutDayMarks({ ...base, dates: dates5, candles: full5 });
++    expect(slots[0]!.openY).toBeCloseTo(yOf(100), 6);
++    expect(slots[0]!.closeY).toBeCloseTo(yOf(105), 6);
++    expect(slots[0]!.oob).toBe(false);
++  });
++
++  it("5 日僅 4 日有 candle → 仍 5 欄,缺的那欄 candle=null 且其餘欄 x 不變(edge 1)", () => {
++    const missing = full5.filter((c) => c.date !== "2026-06-24");
++    const withAll = layoutDayMarks({ ...base, dates: dates5, candles: full5 });
++    const slots = layoutDayMarks({ ...base, dates: dates5, candles: missing });
++    expect(slots).toHaveLength(5);
++    expect(slots[2]!.candle).toBeNull();
++    expect(slots[2]!.openY).toBeNull();
++    expect(slots[2]!.closeY).toBeNull();
++    expect(slots[2]!.dir).toBeNull();
++    // 缺 candle ≠ 越界:oob 專指開 / 收落在 yLow..yHigh 外
++    expect(slots[2]!.oob).toBe(false);
++    // 日期仍要標
++    expect(slots[2]!.showDate).toBe(true);
++    expect(slots[2]!.label).toBe("6/24");
++    expect(slots.map((s) => s.x)).toEqual(withAll.map((s) => s.x));
++  });
++
++  it("開或收越界(yLow..yHigh 外)→ oob=true 且 openY / closeY / dir 皆 null(edge 4)", () => {
++    const slots = layoutDayMarks({
++      ...base,
++      dates: ["2026-06-22", "2026-06-23", "2026-06-24"],
++      candles: [
++        mkCandle("2026-06-22", 100, 200), // 收越上界
++        mkCandle("2026-06-23", 50, 100),  // 開越下界
++        mkCandle("2026-06-24", 100, 102), // 界內
++      ],
++    });
++    expect(slots[0]!.oob).toBe(true);
++    expect(slots[0]!.openY).toBeNull();
++    expect(slots[0]!.closeY).toBeNull();
++    expect(slots[0]!.dir).toBeNull();
++    expect(slots[1]!.oob).toBe(true);
++    expect(slots[1]!.openY).toBeNull();
++    expect(slots[2]!.oob).toBe(false);
++    expect(slots[2]!.openY).not.toBeNull();
++  });
++
++  it("dir:收>開 up、收<開 down、相等 flat(edge 3)", () => {
++    const slots = layoutDayMarks({ ...base, dates: dates5, candles: full5 });
++    expect(slots[0]!.dir).toBe("up");
++    expect(slots[1]!.dir).toBe("down");
++    expect(slots[2]!.dir).toBe("flat");
++  });
++
++  it("dates 為空 → 空陣列", () => {
++    expect(layoutDayMarks({ ...base, dates: [], candles: full5 })).toEqual([]);
++  });
++});
++
++describe("layoutDayMarks — 標籤分級(SC-4 三態)", () => {
++  const tierAt = (slotW: number, n: number = 1): string => {
++    const slots = layoutDayMarks({
++      ...base,
++      chartWidth: slotW * n,
++      dates: dates5.slice(0, n),
++      candles: full5,
++    });
++    return slots[0]!.labelMode;
++  };
++
++  it("欄寬 120(≥96)→ beside(開 / 收貼在各自 y 兩側)", () => {
++    expect(tierAt(120)).toBe("beside");
++  });
++
++  it("欄寬 60(50–96)→ stacked(堆疊在底部日期上方)", () => {
++    expect(tierAt(60)).toBe("stacked");
++  });
++
++  it("欄寬 30(<50)→ none(只畫 K 身 + 稀疏日期,edge 2)", () => {
++    expect(tierAt(30)).toBe("none");
++  });
++
++  it("邊界:96 → beside、95.9 → stacked、50 → stacked、49.9 → none", () => {
++    expect(tierAt(96)).toBe("beside");
++    expect(tierAt(95.9)).toBe("stacked");
++    expect(tierAt(50)).toBe("stacked");
++    expect(tierAt(49.9)).toBe("none");
++  });
++});
++
++describe("layoutDayMarks — showDate 稀疏步長", () => {
++  const dates10 = Array.from({ length: 10 }, (_, i) => `2026-06-${String(i + 10)}`);
++
++  it("欄寬 ≥ 50 → 每欄都標日期(k=1)", () => {
++    const slots = layoutDayMarks({
++      ...base, chartWidth: 600, dates: dates10, candles: [],
++    });
++    expect(slots.every((s) => s.showDate)).toBe(true);
++  });
++
++  it("欄寬 30 → k = ceil(50/30) = 2,標 index 0,2,4…", () => {
++    const slots = layoutDayMarks({
++      ...base, chartWidth: 300, dates: dates10, candles: [],
++    });
++    expect(slots.map((s) => s.showDate)).toEqual([
++      true, false, true, false, true, false, true, false, true, false,
++    ]);
++  });
++
++  it("欄寬 12 → k = ceil(50/12) = 5,首欄必標", () => {
++    const slots = layoutDayMarks({
++      ...base, chartWidth: 120, dates: dates10, candles: [],
++    });
++    expect(slots[0]!.showDate).toBe(true);
++    expect(slots.filter((s) => s.showDate)).toHaveLength(2);
++  });
++});
++
++describe("formatDayMarkLabel", () => {
++  it("YYYY-MM-DD → M/D(去前導零)", () => {
++    expect(formatDayMarkLabel("2026-06-26")).toBe("6/26");
++    expect(formatDayMarkLabel("2026-01-05")).toBe("1/5");
++    expect(formatDayMarkLabel("2026-12-31")).toBe("12/31");
++  });
++});
++
++describe("DayMarksLayer — render", () => {
++  const renderLayer = (
++    over: Partial<DayMarksLayerProps> = {},
++  ) =>
++    render(
++      <svg>
++        <DayMarksLayer
++          dates={dates5}
++          candles={full5}
++          height={300}
++          paddingBottom={32}
++          {...base}
++          {...over}
++        />
++      </svg>,
++    );
++
++  it("外層 group 帶 testid 與 pointer-events none(背景層不擋 hit test)", () => {
++    const { container } = renderLayer();
++    const g = container.querySelector('[data-testid="bubble-day-marks"]');
++    expect(g).not.toBeNull();
++    expect(g!.getAttribute("pointer-events")).toBe("none");
++  });
++
++  it("每欄一個 <g data-date>,並帶 data-oob 標記", () => {
++    const { container } = renderLayer();
++    const groups = container.querySelectorAll("[data-date]");
++    expect(groups).toHaveLength(5);
++    expect(Array.from(groups).map((g) => g.getAttribute("data-date"))).toEqual(dates5);
++    expect(Array.from(groups).every((g) => g.getAttribute("data-oob") === "false")).toBe(true);
++  });
++
++  it("越界欄:data-oob=true、只有日期文字,無 K 身 rect 也無價格標籤", () => {
++    const { container } = renderLayer({
++      dates: ["2026-06-22"],
++      candles: [mkCandle("2026-06-22", 100, 200)],
++      chartWidth: 500,
++    });
++    const g = container.querySelector("[data-date]")!;
++    expect(g.getAttribute("data-oob")).toBe("true");
++    expect(g.querySelectorAll("rect")).toHaveLength(0);
++    expect(g.querySelectorAll("line")).toHaveLength(0);
++    const texts = Array.from(g.querySelectorAll("text")).map((t) => t.textContent);
++    expect(texts).toEqual(["6/22"]);
++  });
++
++  it("缺 candle 的欄:只有日期文字,不畫 K 身", () => {
++    const { container } = renderLayer({
++      dates: ["2026-06-22"], candles: [], chartWidth: 500,
++    });
++    const g = container.querySelector("[data-date]")!;
++    expect(g.getAttribute("data-oob")).toBe("false");
++    expect(g.querySelectorAll("rect")).toHaveLength(0);
++    expect(Array.from(g.querySelectorAll("text")).map((t) => t.textContent)).toEqual(["6/22"]);
++  });
++
++  it("日期文字置底(y = height − paddingBottom − 4)、置中、ink-dim", () => {
++    const { container } = renderLayer({ dates: ["2026-06-22"], chartWidth: 500 });
++    const t = Array.from(container.querySelectorAll("[data-date] text"))
++      .find((el) => /^\d+\/\d+$/.test(el.textContent ?? ""))!;
++    expect(t.getAttribute("y")).toBe(String(300 - 32 - 4));
++    expect(t.getAttribute("x")).toBe("306"); // 56 + 500/2
++    expect(t.getAttribute("text-anchor")).toBe("middle");
++    expect(t.getAttribute("fill")).toBe(CHIP.inkDim);
++    expect(t.getAttribute("font-size")).toBe("0.6875rem");
++  });
++
++  it("漲 / 跌 / 平 K 身色:bull 紅 / bear 綠 / ink-dim,opacity 0.6", () => {
++    const { container } = renderLayer({
++      dates: ["2026-06-22", "2026-06-23", "2026-06-24"],
++      chartWidth: 300,
++    });
++    const rects = container.querySelectorAll("[data-date] rect");
++    expect(rects).toHaveLength(3);
++    expect(rects[0]!.getAttribute("fill")).toBe(CHIP.bull);
++    expect(rects[1]!.getAttribute("fill")).toBe(CHIP.bear);
++    expect(rects[2]!.getAttribute("fill")).toBe(CHIP.inkDim);
++    expect(rects[0]!.getAttribute("opacity")).toBe("0.6");
++  });
++
++  it("K 身涵蓋 open→close,寬度 ≤ 10px;平盤退化為 1px", () => {
++    const { container } = renderLayer({
++      dates: ["2026-06-22", "2026-06-24"], chartWidth: 300,
++    });
++    const rects = container.querySelectorAll("[data-date] rect");
++    // 6/22:open 100 (y=110) → close 105 (y=60)
++    expect(Number(rects[0]!.getAttribute("y"))).toBeCloseTo(60, 6);
++    expect(Number(rects[0]!.getAttribute("height"))).toBeCloseTo(50, 6);
++    expect(Number(rects[0]!.getAttribute("width"))).toBeLessThanOrEqual(10);
++    // 6/24:open == close → 1px 橫線
++    expect(Number(rects[1]!.getAttribute("height"))).toBe(1);
++  });
++
++  it("beside 分級:開標籤靠右對齊在左、收標籤靠左對齊在右", () => {
++    const { container } = renderLayer({
++      dates: ["2026-06-22"], chartWidth: 500,
++    });
++    const texts = Array.from(container.querySelectorAll("[data-date] text"));
++    const open = texts.find((t) => (t.textContent ?? "").startsWith("開"))!;
++    const close = texts.find((t) => (t.textContent ?? "").startsWith("收"))!;
++    // 價格格式沿用 K 線 fmtPrice 規則(≥100 取整、≥10 一位、其餘兩位)
++    expect(open.textContent).toBe("開 100");
++    expect(close.textContent).toBe("收 105");
++    expect(open.getAttribute("text-anchor")).toBe("end");
++    expect(close.getAttribute("text-anchor")).toBe("start");
++    expect(Number(open.getAttribute("x"))).toBeLessThan(306);
++    expect(Number(close.getAttribute("x"))).toBeGreaterThan(306);
++    expect(Number(open.getAttribute("y"))).toBeCloseTo(yOf(100) + 3, 6);
++    expect(Number(close.getAttribute("y"))).toBeCloseTo(yOf(105) + 3, 6);
++    expect(open.getAttribute("fill")).toBe(CHIP.inkMuted);
++  });
++
++  it("stacked 分級:兩個價格標籤置中堆在底部日期上方", () => {
++    const { container } = renderLayer({
++      dates: ["2026-06-22"], chartWidth: 60,
++    });
++    const texts = Array.from(container.querySelectorAll("[data-date] text"));
++    const open = texts.find((t) => (t.textContent ?? "").startsWith("開"))!;
++    const close = texts.find((t) => (t.textContent ?? "").startsWith("收"))!;
++    const dateY = 300 - 32 - 4;
++    expect(close.getAttribute("y")).toBe(String(dateY - 14));
++    expect(open.getAttribute("y")).toBe(String(dateY - 26));
++    expect(open.getAttribute("text-anchor")).toBe("middle");
++    expect(close.getAttribute("text-anchor")).toBe("middle");
++  });
++
++  it("none 分級:只有 K 身 + 稀疏日期,無價格標籤(edge 2)", () => {
++    const { container } = renderLayer({
++      dates: dates5, chartWidth: 150, // slotW 30 → none + k=2
++    });
++    const texts = Array.from(container.querySelectorAll("text")).map((t) => t.textContent ?? "");
++    expect(texts.some((t) => t.startsWith("開") || t.startsWith("收"))).toBe(false);
++    expect(texts).toEqual(["6/22", "6/24", "6/26"]);
++    expect(container.querySelectorAll("[data-date] rect")).toHaveLength(5);
++  });
++});
+diff --git a/frontend/src/lib/chip-bubble-daymarks-svg.tsx b/frontend/src/lib/chip-bubble-daymarks-svg.tsx
+new file mode 100644
+index 0000000..38478e9
+--- /dev/null
++++ b/frontend/src/lib/chip-bubble-daymarks-svg.tsx
+@@ -0,0 +1,252 @@
++// 多日泡泡圖的「每日開 / 收」背景標示層(SC-4,mod/kline-date-bubble-days-ux)。
++// 與蝴蝶泡泡共用同一個 SVG canvas:Y 軸 reuse 泡泡的 price scale(由父傳
++// yLow/yHigh),X 軸獨立為 trading_dates 均分槽位。純背景脈絡層 —
++// pointer-events="none" 不參與 hit test,泡泡座標一律不受影響。
++//
++// 槽位定義來自 trading_dates(不是 candles):資料 lag 導致某日缺 candle 時,
++// 該欄仍佔位、仍標日期,只是不畫 K 身 —— 欄位對不上日期比少畫一根更難察覺。
++
++import { memo, useMemo } from "react";
++import type { DailyCandle } from "./chip-data";
++import { CHIP } from "./chip-theme";
++
++/** 價格標籤三態:欄寬夠 → 貼在開 / 收 y 兩側;中等 → 堆在底部日期上方;
++ *  太窄 → 不畫(只留 K 身 + 稀疏日期,edge 2)。 */
++export type DayMarkLabelMode = "beside" | "stacked" | "none";
++
++export interface DayMarkSlot {
++  date: string;
++  /** M/D(去前導零)。 */
++  label: string;
++  /** 欄中心 x(px)。 */
++  x: number;
++  slotW: number;
++  /** trading_dates 有日但 history 缺該日 → null(edge 1)。 */
++  candle: DailyCandle | null;
++  /** 開或收落在 yLow..yHigh 之外(broker fallback 軸)→ true,只畫日期(edge 4)。 */
++  oob: boolean;
++  /** 缺 candle 或越界 → null(該欄不畫 K 身)。 */
++  openY: number | null;
++  closeY: number | null;
++  /** 同上:可畫時才有值。 */
++  dir: "up" | "down" | "flat" | null;
++  labelMode: DayMarkLabelMode;
++  showDate: boolean;
++}
++
++// 標籤分級門檻(px)。beside 需容得下「開 xxx.xx」+ K 身 + 「收 xxx.xx」。
++const BESIDE_MIN_SLOT = 96;
++const STACKED_MIN_SLOT = 50;
++// 日期標籤最小間距 = STACKED_MIN_SLOT(同一組可讀性門檻,不另立常數)。
++const BODY_MAX_W = 10;
++const BODY_W_FRAC = 0.25;
++const TICK_LEN = 6;
++const LABEL_GAP = 3;
++const BODY_OPACITY = 0.6;
++const DATE_BASELINE_GAP = 4;
++const STACK_CLOSE_DY = 14;
++const STACK_OPEN_DY = 26;
++const FONT_SIZE = "0.6875rem";
++
++/** "YYYY-MM-DD" → "M/D"(去前導零)。年份由 K 線日期軸 / badge 補足。 */
++export function formatDayMarkLabel(date: string): string {
++  const m = Number(date.slice(5, 7));
++  const d = Number(date.slice(8, 10));
++  return `${m}/${d}`;
++}
++
++/** 價格文字格式 — 與 K 線 fmtPrice 同規則(≥100 取整 / ≥10 一位 / 其餘兩位),
++ *  同一畫面兩處價格不該有兩種小數位。 */
++function fmtPrice(v: number): string {
++  return v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
++}
++
++export interface LayoutDayMarksInput {
++  dates: string[];
++  candles: DailyCandle[];
++  yLow: number;
++  yHigh: number;
++  paddingLeft: number;
++  paddingTop: number;
++  chartWidth: number;
++  chartHeight: number;
++}
++
++export function layoutDayMarks({
++  dates, candles, yLow, yHigh, paddingLeft, paddingTop, chartWidth, chartHeight,
++}: LayoutDayMarksInput): DayMarkSlot[] {
++  if (dates.length === 0) return [];
++  const byDate = new Map<string, DailyCandle>();
++  for (const c of candles) byDate.set(c.date, c);
++
++  const slotW = chartWidth / dates.length;
++  const labelMode: DayMarkLabelMode =
++    slotW >= BESIDE_MIN_SLOT ? "beside" : slotW >= STACKED_MIN_SLOT ? "stacked" : "none";
++  const stride = slotW >= STACKED_MIN_SLOT ? 1 : Math.ceil(STACKED_MIN_SLOT / slotW);
++
++  const yRange = yHigh - yLow;
++  const yOf = (price: number): number => paddingTop + ((yHigh - price) / yRange) * chartHeight;
++
++  return dates.map((date, i) => {
++    const candle = byDate.get(date) ?? null;
++    // yRange <= 0 = 退化軸(單一價位且無 pad):畫不出縱向刻度,一律當越界處理。
++    const drawable =
++      candle !== null &&
++      yRange > 0 &&
++      candle.open >= yLow && candle.open <= yHigh &&
++      candle.close >= yLow && candle.close <= yHigh;
++    const oob = candle !== null && !drawable;
++    return {
++      date,
++      label: formatDayMarkLabel(date),
++      x: paddingLeft + slotW * i + slotW / 2,
++      slotW,
++      candle,
++      oob,
++      openY: drawable ? yOf(candle!.open) : null,
++      closeY: drawable ? yOf(candle!.close) : null,
++      dir: drawable
++        ? candle!.close > candle!.open ? "up" : candle!.close < candle!.open ? "down" : "flat"
++        : null,
++      labelMode,
++      showDate: i % stride === 0,
++    };
++  });
++}
++
++const DIR_COLOR = {
++  up: CHIP.bull,
++  down: CHIP.bear,
++  flat: CHIP.inkDim,
++} as const;
++
++export interface DayMarksLayerProps extends LayoutDayMarksInput {
++  /** SVG 全高與底部 padding — 日期標籤置底(避開左上 window badge / brush hint /
++   *  截圖 annotation,W8)。 */
++  height: number;
++  paddingBottom: number;
++}
++
++export const DayMarksLayer = memo(function DayMarksLayer({
++  dates, candles, yLow, yHigh, paddingLeft, paddingTop, chartWidth, chartHeight,
++  height, paddingBottom,
++}: DayMarksLayerProps) {
++  // brush 拖曳每幀 re-render:槽位聚合不得進 render body(recessive layer 樣板 5)。
++  const slots = useMemo(
++    () => layoutDayMarks({
++      dates, candles, yLow, yHigh, paddingLeft, paddingTop, chartWidth, chartHeight,
++    }),
++    [dates, candles, yLow, yHigh, paddingLeft, paddingTop, chartWidth, chartHeight],
++  );
++  if (slots.length === 0) return null;
++
++  const dateY = height - paddingBottom - DATE_BASELINE_GAP;
++
++  return (
++    <g data-testid="bubble-day-marks" pointerEvents="none">
++      {slots.map((s) => {
++        const drawBody = s.openY !== null && s.closeY !== null && s.dir !== null;
++        const bodyW = Math.min(BODY_MAX_W, s.slotW * BODY_W_FRAC);
++        const color = s.dir ? DIR_COLOR[s.dir] : CHIP.inkDim;
++        const top = drawBody ? Math.min(s.openY!, s.closeY!) : 0;
++        const bodyH = drawBody ? Math.max(Math.abs(s.closeY! - s.openY!), 1) : 0;
++        const showPrices = drawBody && s.labelMode !== "none";
++        return (
++          <g key={s.date} data-date={s.date} data-oob={s.oob ? "true" : "false"}>
++            {drawBody && (
++              <>
++                <rect
++                  x={s.x - bodyW / 2}
++                  y={top}
++                  width={bodyW}
++                  height={bodyH}
++                  fill={color}
++                  opacity={BODY_OPACITY}
++                />
++                {/* 開盤刻度在左、收盤刻度在右(與 K 線 OHLC bar 同語法) */}
++                <line
++                  x1={s.x - bodyW / 2 - TICK_LEN}
++                  x2={s.x - bodyW / 2}
++                  y1={s.openY!}
++                  y2={s.openY!}
++                  stroke={color}
++                  strokeWidth={1}
++                  opacity={BODY_OPACITY}
++                />
++                <line
++                  x1={s.x + bodyW / 2}
++                  x2={s.x + bodyW / 2 + TICK_LEN}
++                  y1={s.closeY!}
++                  y2={s.closeY!}
++                  stroke={color}
++                  strokeWidth={1}
++                  opacity={BODY_OPACITY}
++                />
++              </>
++            )}
++            {s.showDate && (
++              <text
++                x={s.x}
++                y={dateY}
++                textAnchor="middle"
++                fill={CHIP.inkDim}
++                fontSize={FONT_SIZE}
++                fontFamily={CHIP.font}
++              >
++                {s.label}
++              </text>
++            )}
++            {showPrices && s.labelMode === "beside" && (
++              <>
++                <text
++                  x={s.x - bodyW / 2 - TICK_LEN - LABEL_GAP}
++                  y={s.openY! + 3}
++                  textAnchor="end"
++                  fill={CHIP.inkMuted}
++                  fontSize={FONT_SIZE}
++                  fontFamily={CHIP.font}
++                >
++                  {`開 ${fmtPrice(s.candle!.open)}`}
++                </text>
++                <text
++                  x={s.x + bodyW / 2 + TICK_LEN + LABEL_GAP}
++                  y={s.closeY! + 3}
++                  textAnchor="start"
++                  fill={CHIP.inkMuted}
++                  fontSize={FONT_SIZE}
++                  fontFamily={CHIP.font}
++                >
++                  {`收 ${fmtPrice(s.candle!.close)}`}
++                </text>
++              </>
++            )}
++            {showPrices && s.labelMode === "stacked" && (
++              <>
++                <text
++                  x={s.x}
++                  y={dateY - STACK_OPEN_DY}
++                  textAnchor="middle"
++                  fill={CHIP.inkMuted}
++                  fontSize={FONT_SIZE}
++                  fontFamily={CHIP.font}
++                >
++                  {`開 ${fmtPrice(s.candle!.open)}`}
++                </text>
++                <text
++                  x={s.x}
++                  y={dateY - STACK_CLOSE_DY}
++                  textAnchor="middle"
++                  fill={CHIP.inkMuted}
++                  fontSize={FONT_SIZE}
++                  fontFamily={CHIP.font}
++                >
++                  {`收 ${fmtPrice(s.candle!.close)}`}
++                </text>
++              </>
++            )}
++          </g>
++        );
++      })}
++    </g>
++  );
++});
+diff --git a/frontend/src/lib/chip-bubble-svg.test.tsx b/frontend/src/lib/chip-bubble-svg.test.tsx
+index 16a0d58..97d8251 100644
+--- a/frontend/src/lib/chip-bubble-svg.test.tsx
++++ b/frontend/src/lib/chip-bubble-svg.test.tsx
+@@ -1095,3 +1095,93 @@ describe("BubbleChartSvg — days-scoped 空狀態文案", () => {
+     expect(container.textContent).not.toContain("今日");
+   });
+ });
++
++// ---------------------------------------------------------------------------
++// SC-4(mod/kline-date-bubble-days-ux):多日每欄開 / 收標示 — additive optional prop
++// ---------------------------------------------------------------------------
++
++describe("BubbleChartSvg dayMarks 每日開收層(SC-4)", () => {
++  const baseTrades: BrokerTrade[] = [
++    mkTrade({ broker: "A", broker_id: "A1", price: 100, buy: 50, sell: 0 }),
++    mkTrade({ broker: "B", broker_id: "B1", price: 110, buy: 0, sell: 30 }),
++  ];
++  const dates = ["2026-06-22", "2026-06-23", "2026-06-24", "2026-06-25", "2026-06-26"];
++  const candles = dates.map((date, i) => ({
++    date, open: 102 + i * 0.5, high: 108, low: 100, close: 104 + i * 0.5, volume: 1000,
++  }));
++  const marks = { dates, candles };
++
++  it("未傳 dayMarks → 不畫日期欄(向下相容 W2)", () => {
++    const { container } = render(
++      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} />,
++    );
++    expect(container.querySelector('[data-testid="bubble-day-marks"]')).toBeNull();
++  });
++
++  it("dayMarks=null → 不畫(history 尚未回)", () => {
++    const { container } = render(
++      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} dayMarks={null} />,
++    );
++    expect(container.querySelector('[data-testid="bubble-day-marks"]')).toBeNull();
++  });
++
++  it("days=1 + dayMarks 有值 → 完全不畫(W2 單日行為 bit-for-bit)", () => {
++    const { container } = render(
++      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={1} dayMarks={marks} />,
++    );
++    expect(container.querySelector('[data-testid="bubble-day-marks"]')).toBeNull();
++  });
++
++  it("dates 為空陣列 → 不畫", () => {
++    const { container } = render(
++      <BubbleChartSvg
++        trades={baseTrades} width={600} height={400} days={5}
++        dayMarks={{ dates: [], candles: [] }}
++      />,
++    );
++    expect(container.querySelector('[data-testid="bubble-day-marks"]')).toBeNull();
++  });
++
++  it("days=5 + dayMarks → group 內 5 個 [data-date]", () => {
++    const { container } = render(
++      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} dayMarks={marks} />,
++    );
++    const g = container.querySelector('[data-testid="bubble-day-marks"]');
++    expect(g).not.toBeNull();
++    expect(g!.querySelectorAll("[data-date]")).toHaveLength(5);
++    expect(g!.getAttribute("pointer-events")).toBe("none");
++  });
++
++  it("z-order:volume profile 之後、bubble 泡泡之前", () => {
++    const { container } = render(
++      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} dayMarks={marks} />,
++    );
++    const profile = container.querySelector('[data-testid="bubble-volume-profile"]')!;
++    const marksG = container.querySelector('[data-testid="bubble-day-marks"]')!;
++    const circles = container.querySelector('[data-testid="bubble-circles"]')!;
++    expect(profile).not.toBeNull();
++    // DOCUMENT_POSITION_FOLLOWING = 4:後者在 DOM 順序上位於前者之後
++    expect(profile.compareDocumentPosition(marksG) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
++    expect(marksG.compareDocumentPosition(circles) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
++  });
++
++  it("bubble 像素位置不因 dayMarks 有無而改變(W2)", () => {
++    const { container: without } = render(
++      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} />,
++    );
++    const withoutPositions = Array.from(without.querySelectorAll('[data-testid="bubble-circles"] circle'))
++      .map((c) => `${c.getAttribute("cx")},${c.getAttribute("cy")},${c.getAttribute("r")}`)
++      .sort();
++    expect(withoutPositions.length).toBeGreaterThan(0);
++
++    cleanup();
++
++    const { container: withMarks } = render(
++      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} dayMarks={marks} />,
++    );
++    const withPositions = Array.from(withMarks.querySelectorAll('[data-testid="bubble-circles"] circle'))
++      .map((c) => `${c.getAttribute("cx")},${c.getAttribute("cy")},${c.getAttribute("r")}`)
++      .sort();
++    expect(withPositions).toEqual(withoutPositions);
++  });
++});
+diff --git a/frontend/src/lib/chip-bubble-svg.tsx b/frontend/src/lib/chip-bubble-svg.tsx
+index 805e5cc..a13c789 100644
+--- a/frontend/src/lib/chip-bubble-svg.tsx
++++ b/frontend/src/lib/chip-bubble-svg.tsx
+@@ -6,9 +6,10 @@ import {
+   type MouseEvent as ReactMouseEvent,
+   type PointerEvent as ReactPointerEvent,
+ } from "react";
+-import type { BrokerTrade, IntradayPoint } from "./chip-data";
++import type { BrokerTrade, DailyCandle, IntradayPoint } from "./chip-data";
+ import { aggregateByPrice } from "./chip-data";
+ import { CHIP } from "./chip-theme";
++import { DayMarksLayer } from "./chip-bubble-daymarks-svg";
+ import { IntradayLineLayer } from "./chip-intraday-line-svg";
+ 
+ // ---------------------------------------------------------------------------
+@@ -181,6 +182,11 @@ export interface BubbleChartProps {
+    *  並 reorder 至最後 render(重合時不被其他選中框遮蓋)。hitTest 用的
+    *  bubblesRef 維持原序(平手判定不變)。不傳 / null = 現行為。 */
+   soloBrokerId?: string | null;
++  /** SC-4(mod/kline-date-bubble-days-ux):多日視窗的每日開 / 收背景標示。
++   *  `dates` = 視窗的 trading_dates(槽位定義,缺 candle 的日仍佔一欄),
++   *  `candles` = 已濾到視窗內的 K 線。null / undefined 或 days<=1 → 不畫
++   *  (單日行為 bit-for-bit)。 */
++  dayMarks?: { dates: string[]; candles: DailyCandle[] } | null;
+ }
+ 
+ // C7 A1 (🟢): Y 軸 brush drag min threshold(px)。防手誤與單擊誤觸。
+@@ -219,6 +225,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+   priceRange,
+   days = 1,
+   soloBrokerId,
++  dayMarks,
+ }: BubbleChartProps) {
+   // --- All hooks MUST be called before any conditional return ---
+ 
+@@ -795,6 +802,23 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
+         );
+       })}
+ 
++      {/* SC-4 每日開 / 收背景標示 — 多日視窗才畫。z-order:volume profile 之後、
++          分時線 / close 虛線 / 泡泡之前;pointer-events none 不參與 hit test。 */}
++      {days > 1 && dayMarks && dayMarks.dates.length > 0 && (
++        <DayMarksLayer
++          dates={dayMarks.dates}
++          candles={dayMarks.candles}
++          yLow={yLow}
++          yHigh={yHigh}
++          paddingLeft={PADDING.left}
++          paddingTop={PADDING.top}
++          chartWidth={cW}
++          chartHeight={cH}
++          height={height}
++          paddingBottom={PADDING.bottom}
++        />
++      )}
++
+       {/* Background intraday close-price line — Y reuse sY price scale,
+           X 軸獨立(時間 09:00→13:30)。pointer-events: none,不擋互動。
+           z-order:grid → time-line → close-dashed → bubbles。 */}
+diff --git a/frontend/src/lib/chip-kline-svg.tsx b/frontend/src/lib/chip-kline-svg.tsx
+index 9748241..de69024 100644
+--- a/frontend/src/lib/chip-kline-svg.tsx
++++ b/frontend/src/lib/chip-kline-svg.tsx
+@@ -18,6 +18,137 @@ export const KLINE_PAD_R = 58;
+ /** 價格軸格線刻度的「好看倍數」候選(乘上 10 的冪次)。靜態表,module scope。 */
+ const GRID_STEP_CANDIDATES = [1, 2, 5, 10, 20, 50];
+ 
++// ── SC-1 日期軸(疊圖底部共用一條時間軸) ──────────────────────────────────
++
++/** 稀疏日期刻度的 index 挑選。
++ *
++ *  - `step = max(1, ceil(minGapPx / slotW))`,自 0 起每 step 取一個;
++ *  - 首(0)與末(n-1)永遠保留 — 交易員要看得到視窗兩端;
++ *  - 末根與前一個 tick 的像素距離 < minGapPx 時刪掉「前一個」(不刪末根、
++ *    也不刪 0),避免 zoom 到任意天數時右端兩個標籤黏在一起。
++ */
++export function pickDateTicks(n: number, slotW: number, minGapPx = 70): number[] {
++  if (n <= 0) return [];
++  if (n === 1) return [0];
++  // 容器尚未量到寬度(slotW <= 0)→ 沒有可靠的像素距離,只標首末。
++  if (!(slotW > 0)) return [0, n - 1];
++
++  const step = Math.max(1, Math.ceil(minGapPx / slotW));
++  const ticks: number[] = [];
++  for (let i = 0; i < n - 1; i += step) ticks.push(i);
++
++  const last = n - 1;
++  const prev = ticks[ticks.length - 1];
++  if (prev !== undefined && prev > 0 && (last - prev) * slotW < minGapPx) {
++    ticks.pop();
++  }
++  ticks.push(last);
++  return ticks;
++}
++
++/** `"YYYY-MM-DD"` → `"M/D"`(去前導零)。視窗 30–360 日,年份由 hover chip 補。 */
++export function formatTickDate(date: string): string {
++  const parts = date.split("-");
++  if (parts.length !== 3) return date;
++  return `${Number(parts[1])}/${Number(parts[2])}`;
++}
++
++interface DateAxisProps {
++  /** 目前可見視窗的 candle 日期(`YYYY-MM-DD`),順序 = 疊圖槽位順序。 */
++  dates: string[];
++  width: number;
++  height: number;
++  /** 疊圖容器回報的 hover 槽位;null / 越界 = 不畫 hover chip。 */
++  hoverIndex: number | null;
++}
++
++const AXIS_TICK_FONT = "0.6875rem";
++const HOVER_CHIP_W = 72;
++const HOVER_CHIP_H = 15;
++
++function DateAxisSvgImpl({ dates, width, height, hoverIndex }: DateAxisProps) {
++  const n = dates.length;
++  if (n === 0 || width <= 0 || height <= 0) return null;
++
++  const t = CHIP_THEME;
++  // ChipKlineChart.handleStackMouseMove 的逐字同式 — 兩邊必須一致,
++  // 否則刻度 / hover chip 與 candle 中心對不上。
++  const slotW = (width - KLINE_PAD_L - KLINE_PAD_R) / n;
++  const centerX = (i: number) => KLINE_PAD_L + slotW * i + slotW / 2;
++  const clampX = (v: number) =>
++    Math.min(Math.max(v, KLINE_PAD_L), width - KLINE_PAD_R);
++
++  const tickIdxs = pickDateTicks(n, slotW);
++  const hovered =
++    hoverIndex !== null && hoverIndex >= 0 && hoverIndex < n ? hoverIndex : null;
++
++  const hoverChip = (() => {
++    if (hovered === null) return null;
++    const cx = centerX(hovered);
++    const left = Math.min(Math.max(cx - HOVER_CHIP_W / 2, 0), width - HOVER_CHIP_W);
++    return { left, cx: left + HOVER_CHIP_W / 2 };
++  })();
++
++  return (
++    <svg
++      xmlns="http://www.w3.org/2000/svg"
++      data-testid="kline-date-axis"
++      viewBox={`0 0 ${width} ${height}`}
++      width={width}
++      height={height}
++      pointerEvents="none"
++      style={{ background: t.bg }}
++    >
++      <line
++        x1={0} y1={0.5} x2={width} y2={0.5}
++        stroke={t.line} strokeWidth={1}
++      />
++      {tickIdxs.map((i) => (
++        <text
++          key={i}
++          data-testid="kline-date-axis-tick"
++          x={clampX(centerX(i))}
++          y={12}
++          textAnchor="middle"
++          fill={t.inkDim}
++          fontSize={AXIS_TICK_FONT}
++          fontFamily={t.font}
++          style={{ fontVariantNumeric: "tabular-nums" }}
++        >
++          {formatTickDate(dates[i]!)}
++        </text>
++      ))}
++      {hoverChip && (
++        <g data-testid="kline-date-axis-hover">
++          <rect
++            x={hoverChip.left}
++            y={(height - HOVER_CHIP_H) / 2}
++            width={HOVER_CHIP_W}
++            height={HOVER_CHIP_H}
++            fill="rgba(15,12,8,0.85)"
++            stroke={t.lineStrong}
++            strokeWidth={1}
++          />
++          <text
++            x={hoverChip.cx}
++            y={height / 2 + 4}
++            textAnchor="middle"
++            fill={t.ink}
++            fontSize={AXIS_TICK_FONT}
++            fontFamily={t.font}
++            style={{ fontVariantNumeric: "tabular-nums" }}
++          >
++            {dates[hovered!]}
++          </text>
++        </g>
++      )}
++    </svg>
++  );
++}
++
++/** 疊圖底部共用日期軸(SC-1)。刻度 `M/D`,hover 時在該槽位顯 `YYYY-MM-DD`。 */
++export const DateAxisSvg = memo(DateAxisSvgImpl);
++
+ // ── pure geometry (可單獨測試) ──────────────────────────────────────────────
+ 
+ /** 回傳 price→y 映射函式。padTop = chart area 頂部留白 px。 */
+diff --git a/frontend/src/lib/chip-svg-render.test.tsx b/frontend/src/lib/chip-svg-render.test.tsx
+index 0209b6d..8f93f42 100644
+--- a/frontend/src/lib/chip-svg-render.test.tsx
++++ b/frontend/src/lib/chip-svg-render.test.tsx
+@@ -9,7 +9,14 @@ import { render, fireEvent, cleanup } from "@testing-library/react";
+ 
+ afterEach(() => cleanup());
+ import { BrokerAggBarSvg } from "./chip-broker-agg-svg";
+-import { KlineChartSvg } from "./chip-kline-svg";
++import {
++  KlineChartSvg,
++  DateAxisSvg,
++  KLINE_PAD_L,
++  KLINE_PAD_R,
++  pickDateTicks,
++  formatTickDate,
++} from "./chip-kline-svg";
+ import { InstBarSvg, MarginLineSvg } from "./chip-inst-bar-svg";
+ import type { DailyCandle } from "./chip-data";
+ 
+@@ -392,3 +399,83 @@ describe("CH-2b — subchart windowText", () => {
+     expect(container.textContent).toContain("5日 +60 張");
+   });
+ });
++
++// SC-1(pack D 🟢):疊圖底部共用日期軸。x 座標必須與 ChipKlineChart
++// handleStackMouseMove 逐字同式,否則刻度與 candle 中心對不上。
++describe("DateAxisSvg", () => {
++  const mkDates = (n: number) =>
++    Array.from({ length: n }, (_, i) =>
++      new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10));
++
++  it("第 i 個 tick 的 x = KLINE_PAD_L + slotW * i + slotW / 2", () => {
++    const dates = mkDates(90);
++    const width = 800;
++    const { container } = render(
++      <DateAxisSvg dates={dates} width={width} height={18} hoverIndex={null} />,
++    );
++    const slotW = (width - KLINE_PAD_L - KLINE_PAD_R) / dates.length;
++    const idxs = pickDateTicks(dates.length, slotW);
++    const ticks = Array.from(
++      container.querySelectorAll("[data-testid=kline-date-axis-tick]"),
++    );
++    expect(ticks.length).toBe(idxs.length);
++    expect(ticks.length).toBeGreaterThan(0);
++    ticks.forEach((t, k) => {
++      expect(Number(t.getAttribute("x"))).toBeCloseTo(
++        KLINE_PAD_L + slotW * idxs[k]! + slotW / 2,
++        6,
++      );
++    });
++  });
++
++  it("刻度文字是 M/D(不帶年,且不出現斜線年月日 — E5 契約)", () => {
++    const dates = mkDates(90);
++    const { container } = render(
++      <DateAxisSvg dates={dates} width={800} height={18} hoverIndex={null} />,
++    );
++    const first = container.querySelector("[data-testid=kline-date-axis-tick]")!;
++    expect(first.textContent).toBe(formatTickDate(dates[0]!));
++    expect(container.textContent ?? "").not.toMatch(/\d{4}\/\d{2}\/\d{2}/);
++  });
++
++  it("hoverIndex = null → 無 hover chip", () => {
++    const { container } = render(
++      <DateAxisSvg dates={mkDates(30)} width={800} height={18} hoverIndex={null} />,
++    );
++    expect(container.querySelector("[data-testid=kline-date-axis]")).toBeTruthy();
++    expect(container.querySelector("[data-testid=kline-date-axis-hover]")).toBeNull();
++  });
++
++  it("hoverIndex = 3 → hover chip 顯示 dates[3] 的 YYYY-MM-DD", () => {
++    const dates = mkDates(30);
++    const { container } = render(
++      <DateAxisSvg dates={dates} width={800} height={18} hoverIndex={3} />,
++    );
++    const hover = container.querySelector("[data-testid=kline-date-axis-hover]")!;
++    expect(hover).toBeTruthy();
++    expect(hover.textContent).toContain(dates[3]!);
++    expect(hover.textContent).toMatch(/^\d{4}-\d{2}-\d{2}$/);
++  });
++
++  it("hoverIndex 越界 → 不畫 hover chip", () => {
++    const { container } = render(
++      <DateAxisSvg dates={mkDates(5)} width={800} height={18} hoverIndex={99} />,
++    );
++    expect(container.querySelector("[data-testid=kline-date-axis-hover]")).toBeNull();
++  });
++
++  it("dates 為空 → render null", () => {
++    const { container } = render(
++      <DateAxisSvg dates={[]} width={800} height={18} hoverIndex={null} />,
++    );
++    expect(container.querySelector("[data-testid=kline-date-axis]")).toBeNull();
++  });
++
++  it("svg 不吃事件(pointerEvents=none),不擋疊圖 hover", () => {
++    const { container } = render(
++      <DateAxisSvg dates={mkDates(30)} width={800} height={18} hoverIndex={null} />,
++    );
++    const svg = container.querySelector("[data-testid=kline-date-axis]")!;
++    expect(svg.getAttribute("pointer-events")).toBe("none");
++  });
++});
+diff --git a/frontend/src/lib/chip-svg.test.ts b/frontend/src/lib/chip-svg.test.ts
+index 80264e0..ec5efe3 100644
+--- a/frontend/src/lib/chip-svg.test.ts
++++ b/frontend/src/lib/chip-svg.test.ts
+@@ -1,5 +1,5 @@
+ import { describe, it, expect } from "vitest";
+-import { klineScaleY } from "./chip-kline-svg";
++import { klineScaleY, pickDateTicks, formatTickDate } from "./chip-kline-svg";
+ import { bubbleRadius } from "./chip-bubble-svg";
+ import { instBarHeight } from "./chip-inst-bar-svg";
+ import { splitBrokers, aggregateByPrice, aggregateByBroker } from "./chip-data";
+@@ -119,3 +119,56 @@ describe("aggregateByBroker", () => {
+     expect(aggregateByBroker([])).toEqual([]);
+   });
+ });
++
++// SC-1(pack D 🟢):疊圖底部日期軸的稀疏刻度挑選 + M/D 格式化。
++describe("pickDateTicks", () => {
++  it("n=90 / slotW=8 → step 9,首末必含,相鄰間距 >= 70px", () => {
++    const ticks = pickDateTicks(90, 8);
++    expect(ticks[0]).toBe(0);
++    expect(ticks[ticks.length - 1]).toBe(89);
++    expect(ticks[1]).toBe(9); // step = ceil(70 / 8) = 9
++    for (let i = 1; i < ticks.length; i++) {
++      expect((ticks[i]! - ticks[i - 1]!) * 8).toBeGreaterThanOrEqual(70);
++    }
++  });
++
++  it("末根與前一 tick 距離 < minGap → 刪掉前一個(末根永遠保留)", () => {
++    // 0,9,…,81 之後接 89:(89 - 81) * 8 = 64px < 70 → 81 出局,72 留下
++    const ticks = pickDateTicks(90, 8);
++    expect(ticks).not.toContain(81);
++    expect(ticks).toContain(72);
++  });
++
++  it("slotW 寬到 step = 1 → 每根都是 tick", () => {
++    expect(pickDateTicks(4, 100)).toEqual([0, 1, 2, 3]);
++  });
++
++  it("首末永遠保留:n=2 且極窄槽位仍回 [0, 1]", () => {
++    expect(pickDateTicks(2, 4)).toEqual([0, 1]);
++  });
++
++  it("n = 1 → [0];n = 0 → []", () => {
++    expect(pickDateTicks(1, 8)).toEqual([0]);
++    expect(pickDateTicks(0, 8)).toEqual([]);
++  });
++
++  it("slotW <= 0(容器尚未量到)→ 只回首末", () => {
++    expect(pickDateTicks(30, 0)).toEqual([0, 29]);
++  });
++
++  it("minGapPx 可覆寫", () => {
++    expect(pickDateTicks(30, 10, 30)[1]).toBe(3); // ceil(30 / 10) = 3
++  });
++});
++
++describe("formatTickDate", () => {
++  it("去前導零回 M/D", () => {
++    expect(formatTickDate("2026-06-05")).toBe("6/5");
++    expect(formatTickDate("2026-12-26")).toBe("12/26");
++    expect(formatTickDate("2026-01-01")).toBe("1/1");
++  });
++
++  it("不含年份 / 不用斜線年月日(E5 契約)", () => {
++    expect(formatTickDate("2026-06-26")).not.toMatch(/\d{4}/);
++  });
++});

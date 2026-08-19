@@ -1,0 +1,30 @@
+{
+  "round": 1,
+  "stage": "core-flow §5 自評(2 lens,opus,medium)",
+  "lenses": ["correctness+whitelist", "ux/a11y/responsive+test-coverage"],
+  "p0": [],
+  "p1": [
+    {"id": "F4", "claim": "BESIDE_MIN_SLOT=96 四位數股價相鄰欄「收/開」標籤水平相撞(375px days=3 命中)", "disposition": "accepted → 112 + 相鄰距離測試"}
+  ],
+  "p2_summary": {
+    "count": 13,
+    "accepted": [
+      "F1 useChipBubble windowMeta 每 render 新物件 → App memo 失效、BubbleChartSvg memo 被打穿 → useMemo 包",
+      "F2 handleScreenshot 註解仍稱 bubbleData && gate → 改寫",
+      "F3 hover chip raw rgba → CHIP.bgDeep token",
+      "F5 showDate 末欄必標(對齊 pickDateTicks 首末規則)",
+      "F6 底部日期被低價泡泡蓋住 → 日期標籤拆成 bubbles 之後的獨立層",
+      "F7 availH Math.max(0) 防極小容器負高度",
+      "F8 mobile 疊圖 min-h 260→280(軸 20px 預算後 subH 24 壓掉標籤 descender)",
+      "F9 日期軸首末刻度 anchor start/end 不裁切(真實環境 430px 實測 4/13 半截)",
+      "F10 連續天數 hint 只在 title(hover-only)→ sr-only + aria-describedby;wrapper shrink-0 改 flex-wrap",
+      "E43:route 取樣後 unroute + 日期文字斷言(main session e2e)",
+      "BorrowFeePage 重新整理鈕同型 spinner 變寬 → next-time(scope 外)"
+    ],
+    "rejected": [
+      {"claim": "refresh 插槽常駐使鈕永久 +20px → 1280+sidebar 可能恆雙行", "reason": "真實環境 1280×800 + sidebar 實測:idle refresh 鈕 x=1060..1162(寬 102)與 h1 同列 y=60,tabs y=107 單行;右側仍有 ~118px 餘裕。"},
+      {"claim": "disabled 鈕仍有 hover:text-accent", "reason": "全站同型(App / WatchlistSidebar / BorrowFeePage),單點改反成不一致;reviewer 自列為非 finding。"}
+    ]
+  },
+  "evidence": "reviewer 實跑 8 檔 323 tests 綠 + tsc 乾淨;main session 全套 vitest 1170 / build / e2e 71 passed(fix 波前)"
+}
