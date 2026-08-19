@@ -1848,6 +1848,57 @@ describe("ChipBubbleView — SC-4 天數選擇器 + 累計 badge", () => {
     expect(selectorEl(container)).toBeNull();
   });
 
+  // mod/kline-date-bubble-days-ux SC-2:光禿的 1/2/3/4/5/10/20 沒說明是什麼,
+  // selector 左側加「連續天數」標籤 + 整組動態 title 補「累計最近 N 個交易日」。
+  it("SC-2:selector 左側有「連續天數」標籤,同一 wrapper 且為 selector 前一個兄弟", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+      />,
+    );
+    const sel = selectorEl(container);
+    expect(sel).toBeTruthy();
+    const label = screen.getByText("連續天數");
+    expect(label.nextElementSibling).toBe(sel);
+    expect(label.parentElement).toBe(sel!.parentElement);
+    expect(label.className).toContain("text-ink-dim");
+  });
+
+  it("SC-2:wrapper title 依當前 days 動態帶「累計最近 5 個交易日」", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+      />,
+    );
+    const wrapper = selectorEl(container)!.parentElement!;
+    const title = wrapper.getAttribute("title") ?? "";
+    expect(title).toContain("累計最近 5 個交易日");
+    expect(title).toContain("1 = 僅當日");
+  });
+
+  it("SC-2:標籤加入後 group role / aria-label 不變(W3)", () => {
+    render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={2}
+        onDaysChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("group", { name: "泡泡圖天數視窗" })).toBeTruthy();
+  });
+
+  it("SC-2:未提供 onDaysChange → 標籤也不渲染", () => {
+    render(<ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />);
+    expect(screen.queryByText("連續天數")).toBeNull();
+  });
+
   // 測試 2
   it("點「泡泡圖設為 5 日」→ onDaysChange(5)", () => {
     const onDaysChange = vi.fn();
