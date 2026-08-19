@@ -245,3 +245,4 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 - **泡泡圖 header 中欄在 1280 + 自選側欄下僅 ~90px**:chips / 統計行多行換行、selector 溢出(pre-existing,R15 事故同型);可考慮 <1400px 時搜尋欄 360px → 280px 或把天數 selector 移右工具欄。觸發:1280 螢幕開側欄看泡泡圖被反映擠壓時。
 - **多日泡泡圖每日標示只有開 / 收**:高 / 低與成交量未標(out of scope);`/bubble_window` 無逐日成交 meta,`actual_days < window_days` 時無法淡化無成交欄(change-spec §8 edge 8)。觸發:user 要每日高低或「實際 X 日」欄位區分時。
 - **K 線 sel-cursor 日期 chip 被右上 zoom HUD 遮半截**(1600 寬實測「2026-08-19」被「90 日」HUD 蓋住,pre-existing)。觸發:動 K 線 HUD 時順手。
+- **`e2e-update-snapshots` workflow 2026-08-19 連兩次在 `npx playwright install --with-deps chromium` 步驟超過 15 分鐘被 timeout 取消**(07-21 同 workflow 成功);V1 / V4 baseline(K 線日期軸)因此尚未重生,CI e2e 的 @visual 會紅到重生為止。處置候選:`timeout-minutes` 15 → 30、或 cache key 對齊 lockfile 實際 playwright 版本(`^1.49.0` 可能已解析到更新版 → cache miss 全量下載)。觸發:下次 push 看到 visual 紅、或任何人要跑 baseline 重生時。
