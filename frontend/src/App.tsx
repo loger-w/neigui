@@ -117,11 +117,13 @@ export default function App() {
   const [symbolName, setSymbolName] = useState<string | null>(null);
   // fix/cross-mode-symbol-name:market / borrow / flows 的 onSymbolPick 只帶
   // stock_id(handlePick(sid, null)),header 因而只剩代號。用全股票目錄補名 —
-  // SymbolSearch 已在 equity mount 時打同一 queryKey(staleTime Infinity),
-  // 這裡不多一個請求;搜尋路徑帶來的 name 仍優先。
+  // 與 SymbolSearch 共用 queryKey ["symbols-all"](staleTime Infinity),equity
+  // mode 零額外請求;非 equity 冷啟動會多一次 /api/symbols/all(記憶體回應、
+  // 每 session 至多一次,刻意換取跳轉當下立即有名)。搜尋 / 自選帶來的 name
+  // 仍優先;空字串視同缺名(上游 stock_name 可為 "")。
   const { symbols: allSymbols } = useAllSymbols();
   const resolvedSymbolName = useMemo(
-    () => symbolName ?? allSymbols.find((s) => s.symbol === symbol)?.name ?? null,
+    () => symbolName || allSymbols.find((s) => s.symbol === symbol)?.name || null,
     [symbolName, allSymbols, symbol],
   );
   const [date, setDate] = useState(todayStr);
