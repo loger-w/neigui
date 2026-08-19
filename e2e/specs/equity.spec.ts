@@ -506,13 +506,18 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
       "近 5 個交易日累計",
     );
     await expect(shotBtn).toBeEnabled();
+    await page.unroute("**/bubble_window*"); // 延遲窗只服務上面那段取樣
     // SC-4:每日開收標示 5 欄;fixture 事實 = trades 單一價位 1100、candle 收 1105
-    // → 開 / 收必越界 → 5 欄皆 data-oob(K 身 / 標籤鑑別歸 vitest,review R13)。
+    // → 開 / 收必越界 → 5 欄皆 data-oob(K 身 / 標籤鑑別歸 vitest,review R13);
+    // 日期文字層(畫在泡泡之後)必含窗末日 6/26 與窗首日 6/22。
     const dayCols = page.getByTestId("bubble-day-marks").locator("[data-date]");
     await expect(dayCols).toHaveCount(5);
     await expect(
       page.getByTestId("bubble-day-marks").locator('[data-date][data-oob="true"]'),
     ).toHaveCount(5);
+    const dateLayer = page.getByTestId("bubble-day-marks-dates");
+    await expect(dateLayer).toContainText("6/22");
+    await expect(dateLayer).toContainText("6/26");
     // (b) 倍數:同一列張數 = 單日 ×5(核心鑑別訊號)
     await expect(buyVol).toHaveText("500");
     // (c) 聚合資料仍流進圖表管線(泡泡有畫出來)。
@@ -626,14 +631,15 @@ test.describe("equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux)", (
       "查看 2 個分點於籌碼總覽",
     );
     // mod/kline-date-bubble-days-ux SC-2 / W6:統計行最寬(2 分點 totals + 跳轉文案)
-    // 且 1280 + sidebar 下中欄僅 ~90px 時,「連續天數」標籤不得逐字直排,且與
-    // selector 同一行(標籤自身不撐高 header;中欄既有多行換行屬 pre-existing)。
+    // 且 1280 + sidebar 下中欄僅 ~90px 時,「連續天數」標籤不得逐字直排(單行高),
+    // 且整組 flex-wrap:標籤與 selector 同行或標籤在 selector 正上方,不得跑到其下方
+    //(review F10:wrapper 可整體換行、不得溢出;中欄既有多行換行屬 pre-existing)。
     const label = page.getByText("連續天數");
     await expect(label).toBeVisible();
     const labelBox = (await label.boundingBox())!;
     const selBox = (await page.getByTestId("bubble-days-selector").boundingBox())!;
     expect(labelBox.height).toBeLessThan(24);
-    expect(Math.abs((labelBox.y + labelBox.height / 2) - (selBox.y + selBox.height / 2))).toBeLessThan(8);
+    expect(labelBox.y + labelBox.height).toBeLessThanOrEqual(selBox.y + selBox.height + 0.5);
   });
 
   test("E39: 泡泡圖單看模式 — 點已選泡泡切單分點統計、組合不動;點空白兩段式(mod/bubble-chart-ux-polish SC-3/5)", async ({ page }) => {
