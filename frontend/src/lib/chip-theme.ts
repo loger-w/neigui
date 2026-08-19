@@ -9,6 +9,9 @@ export const CHIP = {
   ma5: "#f0b429",
   ma20: "#b794f4",
   intradayLine: "#7c6f55",
+  /** 疊在圖面上的深色 chip / tooltip 底(頁面 bg-deep 同源)。透明度由使用端
+   *  的 fillOpacity 決定,不把 alpha 焊進 token。 */
+  bgDeep: "#0e0c08",
   font: '"Inter Tight", system-ui, sans-serif',
 } as const;
 

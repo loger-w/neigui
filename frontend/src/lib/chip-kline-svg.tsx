@@ -125,7 +125,8 @@ function DateAxisSvgImpl({ dates, width, height, hoverIndex }: DateAxisProps) {
             y={(height - HOVER_CHIP_H) / 2}
             width={HOVER_CHIP_W}
             height={HOVER_CHIP_H}
-            fill="rgba(15,12,8,0.85)"
+            fill={t.bgDeep}
+            fillOpacity={0.85}
             stroke={t.lineStrong}
             strokeWidth={1}
           />

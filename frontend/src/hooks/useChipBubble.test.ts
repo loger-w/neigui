@@ -158,4 +158,19 @@ describe("useChipBubble — windowMeta.tradingDates(SC-4)", () => {
     await waitFor(() => expect(result.current.data?.symbol).toBe("2330"));
     expect(result.current.windowMeta).toBeNull();
   });
+
+  // [review F1] 消費端(App 的 bubbleDayMarks useMemo)以 windowMeta 為依賴 →
+  // 資料沒變就必須是同一個物件參考,否則下游 memo 每 render 全 miss。
+  it("資料未變的 rerender → windowMeta 物件參考不變(下游 memo 不 miss)", async () => {
+    const dates = ["2026-06-18", "2026-06-19", "2026-06-20"];
+    vi.spyOn(api, "chipBubbleWindow").mockResolvedValue(mkWindow("2330", 5, 3, dates));
+    const { result, rerender } = renderHook(
+      () => useChipBubble("2330", "2026-06-22", 5),
+      { wrapper: makeQueryWrapper() },
+    );
+    await waitFor(() => expect(result.current.windowMeta).not.toBeNull());
+    const first = result.current.windowMeta;
+    rerender();
+    expect(result.current.windowMeta).toBe(first);
+  });
 });
