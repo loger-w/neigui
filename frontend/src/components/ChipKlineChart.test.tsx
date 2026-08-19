@@ -1,8 +1,16 @@
 /** @vitest-environment jsdom */
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { ChipKlineChart } from "./ChipKlineChart";
 import type { ChipHistory } from "../lib/chip-data";
+
+// SC-1(pack B):高度配平斷言需要可控的容器尺寸。jsdom 無 layout → 真 hook 回
+// {0,0},元件走 `width || 600` / `height || 500` fallback。預設保持 0/0 讓既有
+// describe 行為 bit-for-bit 不變,只有日期軸 / 配平 describe 才改值。
+const sizeState = vi.hoisted(() => ({ width: 0, height: 0 }));
+vi.mock("../hooks/useContainerSize", () => ({
+  useContainerSize: () => ({ width: sizeState.width, height: sizeState.height }),
+}));
 
 beforeAll(() => {
   // jsdom lacks ResizeObserver; useContainerSize relies on it. Stub a no-op.
@@ -604,5 +612,100 @@ describe("ChipKlineChart — major gap overlay + visible-range report (chip-majo
       />,
     );
     expect(queryByTestId("major-gap-overlay")).toBeNull();
+  });
+});
+
+// SC-1(pack B 🔴):疊圖高度顯式配平 — 2px 掃描條與 18px 日期軸列都要入帳,
+// 各 row 的 style.height 加總必須等於容器高(既有公式漏算掃描條 → 溢出 2px)。
+describe("ChipKlineChart — SC-1 疊圖高度顯式配平", () => {
+  const H = 600;
+  const W = 800;
+  const GAP = 6;
+  const LOADING_BAR_H = 2;
+  const DATE_AXIS_H = 18;
+
+  beforeEach(() => {
+    sizeState.width = W;
+    sizeState.height = H;
+  });
+  afterEach(() => {
+    sizeState.width = 0;
+    sizeState.height = 0;
+  });
+
+  const pxHeight = (el: Element): number =>
+    parseFloat((el as HTMLElement).style.height);
+
+  const renderChart = () =>
+    render(
+      <ChipKlineChart
+        history={mkHistory(120)}
+        selectedDate=""
+        selectedBrokerIds={new Set()}
+        brokerSeries={new Map()}
+        onPickDate={noop}
+        onClearAllBrokers={noop}
+      />,
+    );
+
+  it("掃描條 + K 線 + gap + 5 子圖 + 分點列 + 日期軸列 加總 === 容器高", () => {
+    const { container } = renderChart();
+
+    // K 線 row 的高度只寫在 KlineChartSvg 的 height 屬性上(overlay rect 是
+    // 該 svg 獨有的 testid,用它反查 svg root)。
+    const klineSvg = container
+      .querySelector("[data-testid=overlay]")!
+      .closest("svg")!;
+    const klineH = Number(klineSvg.getAttribute("height"));
+
+    const subRows = Array.from(
+      container.querySelectorAll("[data-testid=kline-sub-row]"),
+    );
+    expect(subRows.length).toBe(5);
+    const brokerRow = container.querySelector("[data-testid=chip-broker-row]")!;
+    const axisRow = container.querySelector("[data-testid=kline-date-axis-row]")!;
+
+    const sum =
+      LOADING_BAR_H +
+      klineH +
+      GAP +
+      subRows.reduce((acc, r) => acc + pxHeight(r), 0) +
+      pxHeight(brokerRow) +
+      pxHeight(axisRow);
+    expect(sum).toBe(H);
+  });
+
+  it("klineH / subH / lastSubH 依 availH(扣掉掃描條 + gap + 日期軸)分配", () => {
+    const { container } = renderChart();
+    const availH = H - LOADING_BAR_H - GAP - DATE_AXIS_H;
+    const expectedKlineH = Math.round((availH * 3.5) / 9.5);
+    const expectedSubH = Math.floor((availH - expectedKlineH) / 6);
+    const expectedLastSubH = availH - expectedKlineH - expectedSubH * 5;
+
+    const klineSvg = container
+      .querySelector("[data-testid=overlay]")!
+      .closest("svg")!;
+    expect(Number(klineSvg.getAttribute("height"))).toBe(expectedKlineH);
+
+    const subRows = Array.from(
+      container.querySelectorAll("[data-testid=kline-sub-row]"),
+    );
+    for (const r of subRows) expect(pxHeight(r)).toBe(expectedSubH);
+    expect(pxHeight(container.querySelector("[data-testid=chip-broker-row]")!))
+      .toBe(expectedLastSubH);
+  });
+
+  it("日期軸列高度 = 18px", () => {
+    const { container } = renderChart();
+    const axisRow = container.querySelector("[data-testid=kline-date-axis-row]")!;
+    expect(pxHeight(axisRow)).toBe(DATE_AXIS_H);
+  });
+
+  it("掃描條容器仍是 h-0.5(2px 常駐,不因 loading 切換而位移)", () => {
+    const { container } = renderChart();
+    const bar = container.querySelector(
+      "[data-testid=chip-kline-chart] > div[aria-hidden=true]",
+    )!;
+    expect(bar.className).toContain("h-0.5");
   });
 });
