@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
   });
 
-  it("最新版本是 v0.48.2(跨頁跳轉股名顯示修復)", () => {
-    expect(CHANGELOG[0]?.version).toBe("0.48.2");
+  it("最新版本是 v0.49.0(K 線日期軸 / 多日泡泡圖每日開收)", () => {
+    expect(CHANGELOG[0]?.version).toBe("0.49.0");
   });
 
   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {

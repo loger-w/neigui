@@ -40,6 +40,32 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.49.0",
+    date: "2026-08-19",
+    changes: [
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "籌碼總覽 K 線圖下方新增日期軸:可直接看到各根 K 線對應的月/日,滑鼠移到任一根會顯示完整日期",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "泡泡圖切到多日累計時,圖上會依日期由左至右標出每一天的開盤價與收盤價(紅漲綠跌),一眼看出各日價格走向",
+      },
+      {
+        kind: "feature",
+        scope: "equity",
+        text: "泡泡圖天數切換鈕左側加上「連續天數」說明,滑鼠停留會提示累計範圍",
+      },
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "泡泡圖切換天數時,頂部「重新整理」鈕與圖上方的截圖 / 輸入區間等按鈕不再短暫消失或跳動,載入中維持原位",
+      },
+    ],
+  },
+  {
     version: "0.48.2",
     date: "2026-08-19",
     changes: [
