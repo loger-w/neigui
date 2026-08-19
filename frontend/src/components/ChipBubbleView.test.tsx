@@ -2077,20 +2077,36 @@ describe("ChipBubbleView — SC-7 截圖", () => {
     vi.restoreAllMocks();
   });
 
-  it("bubbleData null → 不渲染截圖鈕", () => {
+  // mod/kline-date-bubble-days-ux SC-3:切天數時 bubbleData 短暫為 null,
+  // 舊行為(不渲染)會讓右工具欄三鈕消失、`?` 鈕左移 = 跑版。改常駐 + disabled。
+  it("bubbleData null → 截圖鈕仍渲染但 disabled", () => {
     const { container } = render(
       <ChipBubbleView symbol="2330" bubbleData={null} loading />,
     );
-    expect(shotBtn(container)).toBeNull();
+    const btn = shotBtn(container);
+    expect(btn).toBeTruthy();
+    expect(btn!.disabled).toBe(true);
   });
 
-  it("bubbleData 有值 → 渲染截圖鈕", () => {
+  it("bubbleData 有值 → 渲染截圖鈕且 enabled", () => {
     const { container } = render(
       <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
     );
     const btn = shotBtn(container);
     expect(btn).toBeTruthy();
     expect(btn!.textContent).toBe("截圖");
+    expect(btn!.disabled).toBe(false);
+  });
+
+  it("bubbleData null → 點 disabled 截圖鈕不呼叫 svgToPngBlob", () => {
+    const toPng = vi
+      .spyOn(screenshotLib, "svgToPngBlob")
+      .mockResolvedValue(mkPngBlob());
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={null} loading />,
+    );
+    fireEvent.click(shotBtn(container)!);
+    expect(toPng).not.toHaveBeenCalled();
   });
 
   it("點擊(days=1)→ svgToPngBlob + downloadBlob 被呼叫,檔名無 w 後綴、無 annotation", async () => {
@@ -2345,5 +2361,52 @@ describe("ChipBubbleView — days 透傳給圖面空狀態文案(review-1)", () 
     });
     const svgText = container.querySelector("svg[width][height]")!.textContent ?? "";
     expect(svgText).toContain("無成交分點 今日無顯著成交量");
+  });
+});
+
+// mod/kline-date-bubble-days-ux SC-3:右工具欄「輸入區間」/(mobile)「明細」
+// 與截圖鈕同樣改常駐 + disabled — 切天數的載入空窗不再讓三鈕卸載跑版。
+// 截圖鈕本身的三態在上方 SC-7 describe。
+describe("ChipBubbleView — SC-3 工具列三鈕常駐 disabled", () => {
+  const rangeBtn = (c: HTMLElement) =>
+    c.querySelector('[data-testid="bubble-manual-range-trigger"]') as HTMLButtonElement | null;
+  const sheetBtn = (c: HTMLElement) =>
+    c.querySelector('[data-testid="bubble-open-sheet"]') as HTMLButtonElement | null;
+
+  it("bubbleData null → 輸入區間鈕仍渲染但 disabled", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={null} loading />,
+    );
+    const btn = rangeBtn(container);
+    expect(btn).toBeTruthy();
+    expect(btn!.textContent).toBe("輸入區間");
+    expect(btn!.disabled).toBe(true);
+  });
+
+  it("bubbleData 有值 → 輸入區間鈕 enabled", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(namedTrades)} />,
+    );
+    const btn = rangeBtn(container);
+    expect(btn).toBeTruthy();
+    expect(btn!.disabled).toBe(false);
+  });
+
+  it("mobile + bubbleData null → 明細鈕仍渲染但 disabled", () => {
+    mediaState.isMobile = true;
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={null} loading />,
+    );
+    const btn = sheetBtn(container);
+    expect(btn).toBeTruthy();
+    expect(btn!.textContent).toBe("明細");
+    expect(btn!.disabled).toBe(true);
+  });
+
+  it("桌面 + bubbleData null → 不渲染明細鈕(mobile-only 不變)", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={null} loading />,
+    );
+    expect(sheetBtn(container)).toBeNull();
   });
 });
