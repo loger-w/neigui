@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type {
-  ChipBubbleData, IntradayPoint, SortDir, SortSpec, TradeRow, TradeSortKey,
+  ChipBubbleData, DailyCandle, IntradayPoint, SortDir, SortSpec, TradeRow, TradeSortKey,
 } from "../lib/chip-data";
 import {
   DEFAULT_TRADE_SORT, aggregateByPrice, buildTradeRows, computeBrokerTotals,
@@ -64,6 +64,10 @@ interface Props {
   /** SC-4:多日聚合的視窗 meta(來自 useChipBubble)。null = 單日模式或視窗
    *  資料尚未回(載入視窗期)→ 不顯 badge。 */
   windowMeta?: { windowDays: number; actualDays: number } | null;
+  /** SC-4:每日開 / 收標示的資料(App 以 trading_dates ∩ history.candles 組)。
+   *  本元件只透傳,「畫不畫」的判準(days>1 / 空 dates)在 BubbleChartSvg,
+   *  不在這裡重複一份。null / 未傳 = 現行為。 */
+  dayMarks?: { dates: string[]; candles: DailyCandle[] } | null;
 }
 
 // F12: surface every broker who traded today, including 1-張 ones. The
@@ -88,6 +92,7 @@ export function ChipBubbleView({
   days = 1,
   onDaysChange,
   windowMeta = null,
+  dayMarks = null,
 }: Props) {
   // bubble-multi-broker(SC-1):有序多選(≤6),id = broker_id 對齊 App.tsx
   // selectedBrokerIds 契約;name 存 state(分點自 trades 消失時 chip 不失效);
@@ -768,6 +773,7 @@ export function ChipBubbleView({
               priceRange={rangeActiveForFilter ? brushRange : null}
               days={days}
               soloBrokerId={activeSolo?.id ?? null}
+              dayMarks={dayMarks}
             />
           ) : null}
           {/* CH-1 R6 case 2: 聚焦分點當日無成交 — 維持選中,泡泡圖照常
