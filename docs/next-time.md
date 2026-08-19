@@ -238,3 +238,10 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
   (單點修),但 MarketBreadthPanel / MarketSectorRotation / MarketVolumeRatioPanel /
   BorrowFeePage 的列資料其實都帶 name;若日後目錄端點(/api/symbols/all)不可用或要省那一
   次請求,可改為五個 caller 直接透傳 name。觸發:目錄請求被反映多餘、或非 equity 冷啟動要瘦身時。
+
+## From /mod kline-date-bubble-days-ux(2026-08-19)
+
+- **BorrowFeePage「重新整理」鈕同型 spinner 變寬**:`{loading && <svg>}` 條件 render + `ml-auto`,載入時鈕變寬會位移;沿用 App.tsx 的 `refresh-spinner-slot` 常駐插槽。觸發:券差頁載入時鈕位移被反映時。
+- **泡泡圖 header 中欄在 1280 + 自選側欄下僅 ~90px**:chips / 統計行多行換行、selector 溢出(pre-existing,R15 事故同型);可考慮 <1400px 時搜尋欄 360px → 280px 或把天數 selector 移右工具欄。觸發:1280 螢幕開側欄看泡泡圖被反映擠壓時。
+- **多日泡泡圖每日標示只有開 / 收**:高 / 低與成交量未標(out of scope);`/bubble_window` 無逐日成交 meta,`actual_days < window_days` 時無法淡化無成交欄(change-spec §8 edge 8)。觸發:user 要每日高低或「實際 X 日」欄位區分時。
+- **K 線 sel-cursor 日期 chip 被右上 zoom HUD 遮半截**(1600 寬實測「2026-08-19」被「90 日」HUD 蓋住,pre-existing)。觸發:動 K 線 HUD 時順手。
