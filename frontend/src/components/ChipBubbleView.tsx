@@ -693,10 +693,10 @@ export function ChipBubbleView({
                   同一 inline-flex,只加寬統計行的 ml-auto 區,不動 header 三欄 grid(W6)。 */}
               {onDaysChange && (
                 <div
-                  className="ml-auto inline-flex items-center gap-1.5"
+                  className="ml-auto inline-flex shrink-0 items-center gap-1.5"
                   title={`累計最近 ${days} 個交易日的分點成交(1 = 僅當日)`}
                 >
-                  <span className="text-xs text-ink-dim">連續天數</span>
+                  <span className="text-xs text-ink-dim whitespace-nowrap">連續天數</span>
                   <BubbleDaysSelector value={days} onChange={onDaysChange} />
                 </div>
               )}
