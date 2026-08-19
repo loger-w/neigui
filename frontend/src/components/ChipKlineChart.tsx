@@ -65,6 +65,10 @@ const KLINE_ZOOM_DEFAULT = 90;
 const KLINE_ZOOM_STEP = 10;    // 每次滾輪 ±10 個 trading days
 const PAN_THRESHOLD = 5;       // 拖曳超過 5px 才算 pan(避免吃掉點擊選日)
 const PAN_CLICK_SUPPRESS_MS = 200;
+/** 頂端常駐掃描條(`h-0.5`)的實際高度。常駐 = 必須入高度配平。 */
+const LOADING_BAR_H = 2;
+/** 底部日期軸列(SC-1)。整疊共用一條時間軸,佔獨立一列。 */
+const DATE_AXIS_H = 18;
 
 export function ChipKlineChart({
   history, selectedDate, selectedBrokerIds, brokerSeries,
@@ -425,13 +429,16 @@ export function ChipKlineChart({
   // B3 (C4 🔴): grid 幾何固定 6 subchart(即使未選 broker 也保留 broker row
   // 容器),讓選 / 未選狀態下所有 subchart 高度完全一致,徹底消除 CLS。
   // 未選狀態下 K 線本身高度從 41.2% 縮至 36.8%(見 change-spec.md §C4 白名單)。
+  // SC-1 🔴:配平顯式扣掉「常駐 2px 掃描條」與「底部 18px 日期軸列」,
+  // 兩者都是 flex column 的實體 row。舊式只扣 gap → 整疊比容器高 2px。
   const showBrokerData = selectedBrokerIds.size > 0;
   const gap = 6;
   const totalParts = 3.5 + 6; // K 線 + 6 subchart 常數
-  const klineH = Math.round((totalH - gap) * (3.5 / totalParts));
   const subCount = 6;
-  const subH = Math.floor((totalH - gap - klineH) / subCount);
-  const lastSubH = totalH - gap - klineH - subH * (subCount - 1);
+  const availH = totalH - LOADING_BAR_H - gap - DATE_AXIS_H;
+  const klineH = Math.round(availH * (3.5 / totalParts));
+  const subH = Math.floor((availH - klineH) / subCount);
+  const lastSubH = availH - klineH - subH * (subCount - 1);
 
   return (
     <div
@@ -509,6 +516,7 @@ export function ChipKlineChart({
         }}
       />
       <div
+        data-testid="kline-sub-row"
         className="relative border-t border-line/50"
         style={{ height: subH, minHeight: 0 }}
       >
@@ -543,7 +551,11 @@ export function ChipKlineChart({
           </div>
         )}
       </div>
-      <div className="border-t border-line/50" style={{ height: subH, minHeight: 0 }}>
+      <div
+        data-testid="kline-sub-row"
+        className="border-t border-line/50"
+        style={{ height: subH, minHeight: 0 }}
+      >
         {subH > 0 && (
           <InstBarSvg
             data={foreignNet} width={w} height={subH}
@@ -553,7 +565,11 @@ export function ChipKlineChart({
           />
         )}
       </div>
-      <div className="border-t border-line/50" style={{ height: subH, minHeight: 0 }}>
+      <div
+        data-testid="kline-sub-row"
+        className="border-t border-line/50"
+        style={{ height: subH, minHeight: 0 }}
+      >
         {subH > 0 && (
           <InstBarSvg
             data={trustNet} width={w} height={subH}
@@ -563,7 +579,11 @@ export function ChipKlineChart({
           />
         )}
       </div>
-      <div className="border-t border-line/50" style={{ height: subH, minHeight: 0 }}>
+      <div
+        data-testid="kline-sub-row"
+        className="border-t border-line/50"
+        style={{ height: subH, minHeight: 0 }}
+      >
         {subH > 0 && (
           <InstBarSvg
             data={dealerNet} width={w} height={subH}
@@ -574,6 +594,7 @@ export function ChipKlineChart({
         )}
       </div>
       <div
+        data-testid="kline-sub-row"
         className="border-t border-line/50"
         style={{ height: subH, minHeight: 0 }}
       >
@@ -594,7 +615,8 @@ export function ChipKlineChart({
       </div>
       {/* Broker row — B3 (C4 🔴): 容器常駐,避免選 broker 前後 CLS。
           有資料時 render BrokerAggBarSvg + 「清除」button;
-          無資料且高度足夠時 render 「未選擇分點」placeholder。 */}
+          無資料且高度足夠時 render 「未選擇分點」placeholder。
+          其下還有 SC-1 的 kline-date-axis-row(固定 18px,已入 availH)。 */}
       <div
         data-testid="chip-broker-row"
         className="border-t border-line/50 relative"
@@ -624,6 +646,13 @@ export function ChipKlineChart({
           >清除</button>
         )}
       </div>
+      {/* SC-1:整疊共用的底部日期軸列。留在 stack 容器內(hover 幾何掛在
+          容器上,獨立出去會讓 mousemove 座標基準改變)。 */}
+      <div
+        data-testid="kline-date-axis-row"
+        className="shrink-0"
+        style={{ height: DATE_AXIS_H }}
+      />
     </div>
   );
 }
