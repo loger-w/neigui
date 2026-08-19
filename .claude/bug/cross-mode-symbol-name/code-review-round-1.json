@@ -1,0 +1,26 @@
+{
+  "round": 1,
+  "stage": "C 節收尾補齊(/bug 一輪 medium)",
+  "lenses": ["correctness+regression", "test-coverage+data-flow"],
+  "model": "opus",
+  "p0": [],
+  "p1": [],
+  "p2_summary": {
+    "count": 9,
+    "accepted": [
+      "App.tsx 註解「零額外請求」只在 equity 成立 → 改寫成事實(兩 lens 同指)",
+      "`??` 擋掉空字串股名 fallback → 改 `||`(上游 stock_name 可為 \"\")",
+      "測試哨兵:目錄名 ≠ 搜尋名,補「搜尋 name 優先 / 換股不殘留」case",
+      "補「代號不在目錄 → 只顯代號不 crash」case",
+      "補 flows null-name 路徑 case(含 broker 預選保留)",
+      "自選清單加入會帶補出的名 → changelog 文案補述"
+    ],
+    "rejected": [
+      {"claim": "useAllSymbols 加 enabled 只在 equity 抓", "reason": "非 equity 冷啟動多一次記憶體回應、每 session 至多一次;換取跳轉當下立即有名。刻意取捨,註解已寫明。"},
+      {"claim": "review-diff.txt 未含 e2e commit", "reason": "已於本 JSON 記錄;e2e 斷言由 reviewer 自行核過(fixture 有 2330 台積電,toContainText 自帶 retry)。"},
+      {"claim": "changelog「籌碼分析」與 ModeSwitch「個股」不一致", "reason": "已採納改寫為「個股頁」。"}
+    ]
+  },
+  "fix_commit": "ce678fc",
+  "verified": "vitest 1096 passed / build ok / e2e M11 passed"
+}

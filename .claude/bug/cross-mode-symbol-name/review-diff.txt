@@ -1,0 +1,192 @@
+diff --git a/.claude/bug/cross-mode-symbol-name/repro.md b/.claude/bug/cross-mode-symbol-name/repro.md
+new file mode 100644
+index 0000000..5041766
+--- /dev/null
++++ b/.claude/bug/cross-mode-symbol-name/repro.md
+@@ -0,0 +1,27 @@
++# repro — 從大盤 / 券差跳到籌碼,股票只顯示代號不顯示名稱
++
++## 1. 重現(loop-first)
++
++- 症狀:market mode(今日三卡 / 排行)或 borrow mode 點某檔股票 → 切到 equity,header
++  `symbol` 旁沒有 `symbolName`(只有「2330」,沒有「台積電」)。
++- 紅指令:`npm test -- src/App.test.tsx -t "跨 mode"`(vitest,見 App.test.tsx 新 case
++  「market → equity 跳轉後 header 顯示股名」「borrow → equity …」)。
++- 手動:開 :5173,ModeSwitch → 大盤 → 點任一 stock → 觀察 header。
++
++## 2. Root cause
++
++`App.tsx` `handleSymbolPick(sid)` 為 MarketPage / BorrowFeePage 的 `onSymbolPick(stockId)`
++接點,直接 `handlePick(sid, null)` — 名稱通道不存在;而 header 只在 `symbolName` 非 null
++時渲染名稱。`handleFlowStockPick`(分點反查)也可能收到 null name(design v3 §3.5)。
++SymbolSearch 走 `onPick(symbol, name)` 所以只有搜尋路徑有名字。
++
++候選:(A) 五個 caller 簽名加 name(MarketBreadthPanel / MarketSectorRotation /
++MarketVolumeRatioPanel / MarketPage / BorrowFeePage 逐層透傳);(B) App 層以
++`useAllSymbols()`(SymbolSearch 已在 equity mount 時打同一 queryKey,零額外請求)補名:
++`symbolName ?? symbols.find(...)?.name`。
++採 (B) `[auto-default: B | reason: 單點修覆蓋所有 null-name 進入點(market / borrow /
++flows),不動 5 檔 caller 簽名;資料同源 SymbolSearch,不多一個請求]`。
++
++## 3. 反向驗證
++
++(見下方追加)
+diff --git a/frontend/src/App.test.tsx b/frontend/src/App.test.tsx
+index 4c7c18d..275d666 100644
+--- a/frontend/src/App.test.tsx
++++ b/frontend/src/App.test.tsx
+@@ -40,10 +40,30 @@ vi.mock("./components/OptionsPage", () => ({
+   OptionsPage: () => <div data-testid="options-page">options</div>,
+ }));
+ vi.mock("./components/MarketPage", () => ({
+-  MarketPage: () => <div data-testid="market-page">market</div>,
++  // fix/cross-mode-symbol-name:市場頁只帶 stock_id 跳轉(無 name 通道)
++  MarketPage: ({ onSymbolPick }: { onSymbolPick: (sid: string) => void }) => (
++    <div data-testid="market-page">
++      <button onClick={() => onSymbolPick("2330")}>market-pick-2330</button>
++    </div>
++  ),
+ }));
+ vi.mock("./components/BorrowFeePage", () => ({
+-  BorrowFeePage: () => <div data-testid="borrow-fee-page">borrow</div>,
++  BorrowFeePage: ({ onSymbolPick }: { onSymbolPick?: (sid: string) => void }) => (
++    <div data-testid="borrow-fee-page">
++      <button onClick={() => onSymbolPick?.("2454")}>borrow-pick-2454</button>
++    </div>
++  ),
++}));
++// fix/cross-mode-symbol-name:App 以全股票目錄補跨 mode 跳轉缺的股名
++vi.mock("./hooks/useAllSymbols", () => ({
++  useAllSymbols: () => ({
++    symbols: [
++      { symbol: "2330", name: "台積電" },
++      { symbol: "2454", name: "聯發科" },
++    ],
++    loading: false,
++    error: null,
++  }),
+ }));
+ vi.mock("./components/WarrantSelector", () => ({
+   WarrantSelector: () => <div data-testid="warrant-selector">warrants</div>,
+@@ -171,6 +191,29 @@ describe("App mode persistence (SC-4)", () => {
+     expect(screen.queryByTestId("market-page")).toBeNull();
+   });
+ 
++  it("跨 mode:market → equity 跳轉後 header 顯示股名而非只有代號", async () => {
++    localStorage.setItem("mode", "market");
++    render(<App />);
++    await waitFor(() => {
++      expect(screen.queryByTestId("market-page")).toBeTruthy();
++    });
++    fireEvent.click(screen.getByText("market-pick-2330"));
++    expect(localStorage.getItem("mode")).toBe("equity");
++    expect(screen.getByText("2330")).toBeTruthy();
++    expect(screen.getByText("台積電")).toBeTruthy();
++  });
++
++  it("跨 mode:borrow → equity 跳轉後 header 顯示股名而非只有代號", async () => {
++    localStorage.setItem("mode", "borrow");
++    render(<App />);
++    await waitFor(() => {
++      expect(screen.queryByTestId("borrow-fee-page")).toBeTruthy();
++    });
++    fireEvent.click(screen.getByText("borrow-pick-2454"));
++    expect(screen.getByText("2454")).toBeTruthy();
++    expect(screen.getByText("聯發科")).toBeTruthy();
++  });
++
+   it("mounts BorrowFeePage when localStorage mode=borrow on cold start", async () => {
+     localStorage.setItem("mode", "borrow");
+     render(<App />);
+diff --git a/frontend/src/App.tsx b/frontend/src/App.tsx
+index 30ac496..fa13124 100644
+--- a/frontend/src/App.tsx
++++ b/frontend/src/App.tsx
+@@ -16,6 +16,7 @@ import { useChipBubble } from "./hooks/useChipBubble";
+ import { useChipIntraday } from "./hooks/useChipIntraday";
+ import { useBrokerHistory } from "./hooks/useBrokerHistory";
+ import { useChipBrokersWindow } from "./hooks/useChipBrokersWindow";
++import { useAllSymbols } from "./hooks/useAllSymbols";
+ import { ModeSwitch, type Mode } from "./components/ModeSwitch";
+ import { VersionBadge } from "./components/VersionBadge";
+ import { WatchlistSidebar } from "./components/WatchlistSidebar";
+@@ -114,6 +115,15 @@ export default function App() {
+ 
+   const [symbol, setSymbol] = useState("");
+   const [symbolName, setSymbolName] = useState<string | null>(null);
++  // fix/cross-mode-symbol-name:market / borrow / flows 的 onSymbolPick 只帶
++  // stock_id(handlePick(sid, null)),header 因而只剩代號。用全股票目錄補名 —
++  // SymbolSearch 已在 equity mount 時打同一 queryKey(staleTime Infinity),
++  // 這裡不多一個請求;搜尋路徑帶來的 name 仍優先。
++  const { symbols: allSymbols } = useAllSymbols();
++  const resolvedSymbolName = useMemo(
++    () => symbolName ?? allSymbols.find((s) => s.symbol === symbol)?.name ?? null,
++    [symbolName, allSymbols, symbol],
++  );
+   const [date, setDate] = useState(todayStr);
+   const [tab, setTab] = useState<Tab>("overview");
+   // SC-4:泡泡圖天數視窗(1 = 當日 /bubble;>1 = /bubble_window N 日聚合)。
+@@ -386,7 +396,7 @@ export default function App() {
+       {!isMobile && (
+         <WatchlistSidebar
+           currentSymbol={symbol}
+-          currentSymbolName={symbolName}
++          currentSymbolName={resolvedSymbolName}
+           onPick={handlePick}
+         />
+       )}
+@@ -404,7 +414,7 @@ export default function App() {
+             {symbol && (
+               <div className="flex items-baseline gap-1.5 text-sm shrink-0">
+                 <span className="text-ink font-medium">{symbol}</span>
+-                {symbolName && <span className="text-ink-muted">{symbolName}</span>}
++                {resolvedSymbolName && <span className="text-ink-muted">{resolvedSymbolName}</span>}
+               </div>
+             )}
+           </div>
+@@ -476,7 +486,7 @@ export default function App() {
+         <WatchlistSidebar
+           mobile
+           currentSymbol={symbol}
+-          currentSymbolName={symbolName}
++          currentSymbolName={resolvedSymbolName}
+           onPick={handlePick}
+         />
+       )}
+diff --git a/frontend/src/lib/changelog.test.ts b/frontend/src/lib/changelog.test.ts
+index 737dba4..37de0f8 100644
+--- a/frontend/src/lib/changelog.test.ts
++++ b/frontend/src/lib/changelog.test.ts
+@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
+     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
+   });
+ 
+-  it("最新版本是 v0.48.1(分點買賣超柱狀圖當天資料修復)", () => {
+-    expect(CHANGELOG[0]?.version).toBe("0.48.1");
++  it("最新版本是 v0.48.2(跨頁跳轉股名顯示修復)", () => {
++    expect(CHANGELOG[0]?.version).toBe("0.48.2");
+   });
+ 
+   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
+diff --git a/frontend/src/lib/changelog.ts b/frontend/src/lib/changelog.ts
+index 31cc693..9f9a3a4 100644
+--- a/frontend/src/lib/changelog.ts
++++ b/frontend/src/lib/changelog.ts
+@@ -39,6 +39,17 @@ export function semverGt(a: string, b: string): boolean {
+ // 版本字串遵循 SemVer 2.0.0 三段式 MAJOR.MINOR.PATCH;pre-1.0 階段 breaking change 也只 bump MINOR
+ // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
+ export const CHANGELOG: VersionEntry[] = [
++  {
++    version: "0.48.2",
++    date: "2026-08-19",
++    changes: [
++      {
++        kind: "fix",
++        scope: "equity",
++        text: "從大盤或券差頁點股票跳到籌碼分析後,頂部現在會顯示股票名稱,不再只有代號",
++      },
++    ],
++  },
+   {
+     version: "0.48.1",
+     date: "2026-08-18",
