@@ -1868,8 +1868,10 @@ describe("ChipBubbleView — SC-4 天數選擇器 + 累計 badge", () => {
   });
 
   // SC-3 `[amendment: Phase 6 real-env finding]`:1280px + 自選股側欄下中欄僅
-  // ~90px,標籤曾被逐字折成直排 → 標籤 nowrap、wrapper 不被 flex 壓縮。
-  it("SC-3:標籤 whitespace-nowrap 且 wrapper shrink-0(窄中欄不逐字直排)", () => {
+  // ~90px,標籤曾被逐字折成直排 → 標籤 nowrap。
+  // [review F10(b)] wrapper 改 flex-wrap + justify-end(去掉 shrink-0):中欄
+  // 窄到裝不下時整組換行,不硬撐溢出。
+  it("SC-3:標籤 whitespace-nowrap;wrapper flex-wrap + justify-end 且不再 shrink-0", () => {
     const { container } = render(
       <ChipBubbleView
         symbol="2330"
@@ -1881,7 +1883,30 @@ describe("ChipBubbleView — SC-4 天數選擇器 + 累計 badge", () => {
     const label = screen.getByText("連續天數");
     expect(label.className).toContain("whitespace-nowrap");
     const wrapper = selectorEl(container)!.parentElement!;
-    expect(wrapper.className).toContain("shrink-0");
+    expect(wrapper.className).toContain("flex-wrap");
+    expect(wrapper.className).toContain("justify-end");
+    expect(wrapper.className).not.toContain("shrink-0");
+  });
+
+  // [review F10(a)] title 掛在不可聚焦的 wrapper 上 = 只有 hover 讀得到。
+  // 鍵盤 / 螢幕閱讀器要靠 aria-describedby 指到同一句說明。
+  it("SC-2 a11y:group 的 aria-describedby 指到含「累計最近 5 個交易日」的元素", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades)}
+        days={5}
+        onDaysChange={vi.fn()}
+      />,
+    );
+    const group = screen.getByRole("group", { name: "泡泡圖天數視窗" });
+    const id = group.getAttribute("aria-describedby");
+    expect(id).toBeTruthy();
+    const hint = container.querySelector(`#${id}`);
+    expect(hint).toBeTruthy();
+    expect(hint!.textContent).toContain("累計最近 5 個交易日");
+    // 視覺上不佔位(與 hover title 同一份文案的無障礙等價物)
+    expect((hint as HTMLElement).className).toContain("sr-only");
   });
 
   it("SC-2:wrapper title 依當前 days 動態帶「累計最近 5 個交易日」", () => {

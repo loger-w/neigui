@@ -35,7 +35,10 @@ export interface DayMarkSlot {
 }
 
 // 標籤分級門檻(px)。beside 需容得下「開 xxx.xx」+ K 身 + 「收 xxx.xx」。
-const BESIDE_MIN_SLOT = 96;
+// [review F4] 96 太鬆:四位數股價下,第 i 欄的「收 1234」右緣與第 i+1 欄的
+// 「開 1234」左緣在 96–104px 之間會相撞(兩個標籤各約 40px 半寬,欄間可用
+// 距離 = slotW − 28)。抬到 112 讓相鄰標籤留約 4px 淨空。
+const BESIDE_MIN_SLOT = 112;
 const STACKED_MIN_SLOT = 50;
 // 日期標籤最小間距 = STACKED_MIN_SLOT(同一組可讀性門檻,不另立常數)。
 const BODY_MAX_W = 10;
@@ -87,6 +90,16 @@ export function layoutDayMarks({
   const yRange = yHigh - yLow;
   const yOf = (price: number): number => paddingTop + ((yHigh - price) / yRange) * chartHeight;
 
+  // [review F5] 稀疏日期的首末規則對齊 pickDateTicks:末欄永遠標(視窗右端是
+  // 「最新交易日」,漏標等於看不出資料到哪天),且末欄與前一個標記欄距離
+  // 不足 stride 時刪掉「前一個」(不刪第 0 欄),避免右端兩個日期黏在一起。
+  const labeled = new Set<number>();
+  const last = dates.length - 1;
+  for (let i = 0; i < last; i += stride) labeled.add(i);
+  const prev = Math.max(...labeled, -1);
+  if (prev > 0 && last - prev < stride) labeled.delete(prev);
+  labeled.add(last);
+
   return dates.map((date, i) => {
     const candle = byDate.get(date) ?? null;
     // yRange <= 0 = 退化軸(單一價位且無 pad):畫不出縱向刻度,一律當越界處理。
@@ -109,7 +122,7 @@ export function layoutDayMarks({
         ? candle!.close > candle!.open ? "up" : candle!.close < candle!.open ? "down" : "flat"
         : null,
       labelMode,
-      showDate: i % stride === 0,
+      showDate: labeled.has(i),
     };
   });
 }
@@ -126,6 +139,47 @@ export interface DayMarksLayerProps extends LayoutDayMarksInput {
   height: number;
   paddingBottom: number;
 }
+
+/** [review F6] 底部日期標籤獨立成一層,由父層畫在泡泡「之後」。
+ *
+ *  原本日期與 K 身同在背景層,價格軸最低價附近的泡泡會整片蓋掉日期
+ *  (泡泡在 z-order 之後),多日視窗常見「看不到日期」。K 身 / 刻度 /
+ *  價格標籤留在背景層(它們本來就該被泡泡蓋),只有日期上浮。
+ *  每欄 `<g data-date>` 仍在背景層(e2e 以它數欄數),本層的日期文字
+ *  自帶 `data-date` 供定位。 */
+export const DayMarksDateLabels = memo(function DayMarksDateLabels({
+  dates, candles, yLow, yHigh, paddingLeft, paddingTop, chartWidth, chartHeight,
+  height, paddingBottom,
+}: DayMarksLayerProps) {
+  const slots = useMemo(
+    () => layoutDayMarks({
+      dates, candles, yLow, yHigh, paddingLeft, paddingTop, chartWidth, chartHeight,
+    }),
+    [dates, candles, yLow, yHigh, paddingLeft, paddingTop, chartWidth, chartHeight],
+  );
+  if (slots.length === 0) return null;
+
+  const dateY = height - paddingBottom - DATE_BASELINE_GAP;
+
+  return (
+    <g data-testid="bubble-day-marks-dates" pointerEvents="none">
+      {slots.filter((s) => s.showDate).map((s) => (
+        <text
+          key={s.date}
+          data-date={s.date}
+          x={s.x}
+          y={dateY}
+          textAnchor="middle"
+          fill={CHIP.inkDim}
+          fontSize={FONT_SIZE}
+          fontFamily={CHIP.font}
+        >
+          {s.label}
+        </text>
+      ))}
+    </g>
+  );
+});
 
 export const DayMarksLayer = memo(function DayMarksLayer({
   dates, candles, yLow, yHigh, paddingLeft, paddingTop, chartWidth, chartHeight,
@@ -183,18 +237,6 @@ export const DayMarksLayer = memo(function DayMarksLayer({
                   opacity={BODY_OPACITY}
                 />
               </>
-            )}
-            {s.showDate && (
-              <text
-                x={s.x}
-                y={dateY}
-                textAnchor="middle"
-                fill={CHIP.inkDim}
-                fontSize={FONT_SIZE}
-                fontFamily={CHIP.font}
-              >
-                {s.label}
-              </text>
             )}
             {showPrices && s.labelMode === "beside" && (
               <>

@@ -561,7 +561,10 @@ export default function App() {
             // 不被固定高度切掉);≥lg 維持三欄 + 拖曳調寬 + 面板內捲。
             return isMobile ? (
               <div className="h-full overflow-y-auto">
-                <div className="h-[45vh] min-h-[260px] border-b border-line">
+                {/* [review F8] min-h 260 → 280:扣掉 SC-1 新增的 18px 日期軸列
+                    後,矮螢幕在 clamp 值上的子圖只剩 ~28px,標籤下緣(descender)
+                    被切掉。多 20px 讓每個子圖回到可讀高度。 */}
+                <div className="h-[45vh] min-h-[280px] border-b border-line">
                   {klineChart}
                 </div>
                 {brokersPanel}

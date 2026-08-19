@@ -1152,17 +1152,43 @@ describe("BubbleChartSvg dayMarks 每日開收層(SC-4)", () => {
     expect(g!.getAttribute("pointer-events")).toBe("none");
   });
 
-  it("z-order:volume profile 之後、bubble 泡泡之前", () => {
+  // [review F6] 日期標籤上浮到泡泡之後:最低價附近的泡泡原本會整片蓋掉日期。
+  // 順序 profile → day-marks(K 身)→ circles → day-marks-dates。
+  it("z-order:volume profile → 每日開收 → 泡泡 → 日期標籤", () => {
     const { container } = render(
       <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} dayMarks={marks} />,
     );
     const profile = container.querySelector('[data-testid="bubble-volume-profile"]')!;
     const marksG = container.querySelector('[data-testid="bubble-day-marks"]')!;
     const circles = container.querySelector('[data-testid="bubble-circles"]')!;
+    const datesG = container.querySelector('[data-testid="bubble-day-marks-dates"]')!;
     expect(profile).not.toBeNull();
+    expect(datesG).not.toBeNull();
     // DOCUMENT_POSITION_FOLLOWING = 4:後者在 DOM 順序上位於前者之後
     expect(profile.compareDocumentPosition(marksG) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(marksG.compareDocumentPosition(circles) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(circles.compareDocumentPosition(datesG) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("[review F6] 日期標籤層帶 pointer-events none 且含每欄日期文字", () => {
+    const { container } = render(
+      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} dayMarks={marks} />,
+    );
+    const datesG = container.querySelector('[data-testid="bubble-day-marks-dates"]')!;
+    expect(datesG.getAttribute("pointer-events")).toBe("none");
+    expect(datesG.textContent).toContain("6/26");
+  });
+
+  it("[review F6] 未傳 dayMarks / days=1 → 日期標籤層也不畫", () => {
+    const { container: a } = render(
+      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={5} />,
+    );
+    expect(a.querySelector('[data-testid="bubble-day-marks-dates"]')).toBeNull();
+    cleanup();
+    const { container: b } = render(
+      <BubbleChartSvg trades={baseTrades} width={600} height={400} days={1} dayMarks={marks} />,
+    );
+    expect(b.querySelector('[data-testid="bubble-day-marks-dates"]')).toBeNull();
   });
 
   it("bubble 像素位置不因 dayMarks 有無而改變(W2)", () => {
