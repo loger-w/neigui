@@ -10,7 +10,8 @@ import { cleanup, render } from "@testing-library/react";
 import { CHIP } from "./chip-theme";
 import type { DailyCandle } from "./chip-data";
 import {
-  DayMarksLayer, formatDayMarkLabel, layoutDayMarks, type DayMarksLayerProps,
+  DayMarksDateLabels, DayMarksLayer, formatDayMarkLabel, layoutDayMarks,
+  type DayMarksLayerProps,
 } from "./chip-bubble-daymarks-svg";
 
 afterEach(() => cleanup());
@@ -120,11 +121,11 @@ describe("layoutDayMarks — 標籤分級(SC-4 三態)", () => {
     return slots[0]!.labelMode;
   };
 
-  it("欄寬 120(≥96)→ beside(開 / 收貼在各自 y 兩側)", () => {
+  it("欄寬 120(≥112)→ beside(開 / 收貼在各自 y 兩側)", () => {
     expect(tierAt(120)).toBe("beside");
   });
 
-  it("欄寬 60(50–96)→ stacked(堆疊在底部日期上方)", () => {
+  it("欄寬 60(50–112)→ stacked(堆疊在底部日期上方)", () => {
     expect(tierAt(60)).toBe("stacked");
   });
 
@@ -132,11 +133,48 @@ describe("layoutDayMarks — 標籤分級(SC-4 三態)", () => {
     expect(tierAt(30)).toBe("none");
   });
 
-  it("邊界:96 → beside、95.9 → stacked、50 → stacked、49.9 → none", () => {
-    expect(tierAt(96)).toBe("beside");
-    expect(tierAt(95.9)).toBe("stacked");
+  // [review F4] 門檻自 96 抬到 112:96–104px 下四位數股價的「收 1234」與下一欄
+  // 「開 1234」會相撞。
+  it("邊界:112 → beside、111.9 → stacked、50 → stacked、49.9 → none", () => {
+    expect(tierAt(112)).toBe("beside");
+    expect(tierAt(111.9)).toBe("stacked");
     expect(tierAt(50)).toBe("stacked");
     expect(tierAt(49.9)).toBe("none");
+  });
+});
+
+// [review F4] beside 門檻的實際依據:相鄰兩欄的價格標籤不得重疊。
+// 四位數價格的 0.6875rem 文字約 40px 寬(半寬 20px);保守取半寬 40px 仍要留白。
+describe("layoutDayMarks — beside 門檻下相鄰欄標籤不重疊(review F4)", () => {
+  const HALF_W = 40;
+
+  it("slotW=112 / 5 欄:第 i 欄「收」右緣 + 40 < 第 i+1 欄「開」左緣 − 40", () => {
+    const slotW = 112;
+    const { container } = render(
+      <svg>
+        <DayMarksLayer
+          {...base}
+          chartWidth={slotW * 5}
+          dates={dates5}
+          candles={full5}
+          height={300}
+          paddingBottom={32}
+        />
+      </svg>,
+    );
+    const groups = Array.from(container.querySelectorAll("[data-date]"));
+    expect(groups).toHaveLength(5);
+    const xOf = (g: Element, prefix: string): number => {
+      const t = Array.from(g.querySelectorAll("text"))
+        .find((el) => (el.textContent ?? "").startsWith(prefix));
+      if (!t) throw new Error(`no ${prefix} label`);
+      return Number(t.getAttribute("x"));
+    };
+    for (let i = 0; i < groups.length - 1; i++) {
+      const closeX = xOf(groups[i]!, "收");
+      const openX = xOf(groups[i + 1]!, "開");
+      expect(closeX + HALF_W).toBeLessThan(openX - HALF_W);
+    }
   });
 });
 
@@ -150,21 +188,51 @@ describe("layoutDayMarks — showDate 稀疏步長", () => {
     expect(slots.every((s) => s.showDate)).toBe(true);
   });
 
-  it("欄寬 30 → k = ceil(50/30) = 2,標 index 0,2,4…", () => {
+  // [review F5] 末欄永遠標,且與前一個標記欄不足 stride 時刪「前一個」:
+  // 10 欄 stride 2 → 0,2,4,6,8 + 末欄 9 只差 1 → 刪 8,標 0,2,4,6,9。
+  it("欄寬 30 → k = ceil(50/30) = 2,末欄必標且吸收掉相鄰的前一個", () => {
     const slots = layoutDayMarks({
       ...base, chartWidth: 300, dates: dates10, candles: [],
     });
     expect(slots.map((s) => s.showDate)).toEqual([
-      true, false, true, false, true, false, true, false, true, false,
+      true, false, true, false, true, false, true, false, false, true,
     ]);
   });
 
-  it("欄寬 12 → k = ceil(50/12) = 5,首欄必標", () => {
+  it("欄寬 12 → k = ceil(50/12) = 5,首欄與末欄必標", () => {
     const slots = layoutDayMarks({
       ...base, chartWidth: 120, dates: dates10, candles: [],
     });
     expect(slots[0]!.showDate).toBe(true);
+    expect(slots[9]!.showDate).toBe(true);
     expect(slots.filter((s) => s.showDate)).toHaveLength(2);
+  });
+
+  // [review F5] 主證:末欄漏標 = 看不出視窗右端到哪一天(pickDateTicks 首末規則)。
+  it("20 日 / 欄寬 30:末欄必標,且任兩個標記欄的間距 ≥ stride", () => {
+    const dates20 = Array.from(
+      { length: 20 },
+      (_, i) => `2026-06-${String(i + 1).padStart(2, "0")}`,
+    );
+    const slotW = 30;
+    const stride = Math.ceil(50 / slotW); // 2
+    const slots = layoutDayMarks({
+      ...base, chartWidth: slotW * 20, dates: dates20, candles: [],
+    });
+    expect(slots.every((s) => s.slotW === slotW)).toBe(true);
+    const marked = slots.flatMap((s, i) => (s.showDate ? [i] : []));
+    expect(marked[0]).toBe(0);
+    expect(marked[marked.length - 1]).toBe(19);
+    for (let k = 1; k < marked.length; k++) {
+      expect(marked[k]! - marked[k - 1]!).toBeGreaterThanOrEqual(stride);
+    }
+  });
+
+  it("單欄(n=1)→ 該欄必標", () => {
+    const slots = layoutDayMarks({
+      ...base, chartWidth: 10, dates: ["2026-06-22"], candles: [],
+    });
+    expect(slots[0]!.showDate).toBe(true);
   });
 });
 
@@ -208,7 +276,8 @@ describe("DayMarksLayer — render", () => {
     expect(Array.from(groups).every((g) => g.getAttribute("data-oob") === "false")).toBe(true);
   });
 
-  it("越界欄:data-oob=true、只有日期文字,無 K 身 rect 也無價格標籤", () => {
+  // [review F6] 日期標籤已搬到 DayMarksDateLabels(泡泡之後畫),背景層不再有它。
+  it("越界欄:data-oob=true、無 K 身 rect 也無任何文字(日期已移出本層)", () => {
     const { container } = renderLayer({
       dates: ["2026-06-22"],
       candles: [mkCandle("2026-06-22", 100, 200)],
@@ -218,29 +287,25 @@ describe("DayMarksLayer — render", () => {
     expect(g.getAttribute("data-oob")).toBe("true");
     expect(g.querySelectorAll("rect")).toHaveLength(0);
     expect(g.querySelectorAll("line")).toHaveLength(0);
-    const texts = Array.from(g.querySelectorAll("text")).map((t) => t.textContent);
-    expect(texts).toEqual(["6/22"]);
+    expect(g.querySelectorAll("text")).toHaveLength(0);
   });
 
-  it("缺 candle 的欄:只有日期文字,不畫 K 身", () => {
+  it("缺 candle 的欄:不畫 K 身,本層亦無文字", () => {
     const { container } = renderLayer({
       dates: ["2026-06-22"], candles: [], chartWidth: 500,
     });
     const g = container.querySelector("[data-date]")!;
     expect(g.getAttribute("data-oob")).toBe("false");
     expect(g.querySelectorAll("rect")).toHaveLength(0);
-    expect(Array.from(g.querySelectorAll("text")).map((t) => t.textContent)).toEqual(["6/22"]);
+    expect(g.querySelectorAll("text")).toHaveLength(0);
   });
 
-  it("日期文字置底(y = height − paddingBottom − 4)、置中、ink-dim", () => {
+  it("[review F6] 背景層不再畫日期文字(避免與泡泡搶 z-order)", () => {
     const { container } = renderLayer({ dates: ["2026-06-22"], chartWidth: 500 });
-    const t = Array.from(container.querySelectorAll("[data-date] text"))
-      .find((el) => /^\d+\/\d+$/.test(el.textContent ?? ""))!;
-    expect(t.getAttribute("y")).toBe(String(300 - 32 - 4));
-    expect(t.getAttribute("x")).toBe("306"); // 56 + 500/2
-    expect(t.getAttribute("text-anchor")).toBe("middle");
-    expect(t.getAttribute("fill")).toBe(CHIP.inkDim);
-    expect(t.getAttribute("font-size")).toBe("0.6875rem");
+    const texts = Array.from(container.querySelectorAll("text"))
+      .map((t) => t.textContent ?? "");
+    expect(texts.some((t) => /^\d+\/\d+$/.test(t))).toBe(false);
+    expect(container.querySelector('[data-testid="bubble-day-marks-dates"]')).toBeNull();
   });
 
   it("漲 / 跌 / 平 K 身色:bull 紅 / bear 綠 / ink-dim,opacity 0.6", () => {
@@ -302,13 +367,73 @@ describe("DayMarksLayer — render", () => {
     expect(close.getAttribute("text-anchor")).toBe("middle");
   });
 
-  it("none 分級:只有 K 身 + 稀疏日期,無價格標籤(edge 2)", () => {
+  it("none 分級:只有 K 身,無價格標籤(edge 2)", () => {
     const { container } = renderLayer({
       dates: dates5, chartWidth: 150, // slotW 30 → none + k=2
     });
     const texts = Array.from(container.querySelectorAll("text")).map((t) => t.textContent ?? "");
     expect(texts.some((t) => t.startsWith("開") || t.startsWith("收"))).toBe(false);
-    expect(texts).toEqual(["6/22", "6/24", "6/26"]);
     expect(container.querySelectorAll("[data-date] rect")).toHaveLength(5);
+  });
+});
+
+// [review F6] 日期標籤獨立層 — 由 BubbleChartSvg 畫在泡泡之後,不被最低價
+// 附近的泡泡蓋住。
+describe("DayMarksDateLabels — render", () => {
+  const renderDates = (over: Partial<DayMarksLayerProps> = {}) =>
+    render(
+      <svg>
+        <DayMarksDateLabels
+          dates={dates5}
+          candles={full5}
+          height={300}
+          paddingBottom={32}
+          {...base}
+          {...over}
+        />
+      </svg>,
+    );
+
+  it("外層 group 帶 testid 與 pointer-events none", () => {
+    const { container } = renderDates();
+    const g = container.querySelector('[data-testid="bubble-day-marks-dates"]')!;
+    expect(g).not.toBeNull();
+    expect(g.getAttribute("pointer-events")).toBe("none");
+  });
+
+  it("每個 showDate 的欄一個 <text data-date>,內容為 M/D", () => {
+    const { container } = renderDates();
+    const texts = Array.from(
+      container.querySelectorAll('[data-testid="bubble-day-marks-dates"] text'),
+    );
+    expect(texts.map((t) => t.textContent)).toEqual(
+      ["6/22", "6/23", "6/24", "6/25", "6/26"],
+    );
+    expect(texts.map((t) => t.getAttribute("data-date"))).toEqual(dates5);
+  });
+
+  it("日期文字置底(y = height − paddingBottom − 4)、置中、ink-dim", () => {
+    const { container } = renderDates({ dates: ["2026-06-22"], chartWidth: 500 });
+    const t = container.querySelector(
+      '[data-testid="bubble-day-marks-dates"] text',
+    )!;
+    expect(t.getAttribute("y")).toBe(String(300 - 32 - 4));
+    expect(t.getAttribute("x")).toBe("306"); // 56 + 500/2
+    expect(t.getAttribute("text-anchor")).toBe("middle");
+    expect(t.getAttribute("fill")).toBe(CHIP.inkDim);
+    expect(t.getAttribute("font-size")).toBe("0.6875rem");
+  });
+
+  it("稀疏步長下只畫 showDate 的欄(slotW 30 → 首末含)", () => {
+    const { container } = renderDates({ dates: dates5, chartWidth: 150 });
+    const texts = Array.from(
+      container.querySelectorAll('[data-testid="bubble-day-marks-dates"] text'),
+    ).map((t) => t.textContent);
+    expect(texts).toEqual(["6/22", "6/24", "6/26"]);
+  });
+
+  it("dates 為空 → render null", () => {
+    const { container } = renderDates({ dates: [] });
+    expect(container.querySelector('[data-testid="bubble-day-marks-dates"]')).toBeNull();
   });
 });

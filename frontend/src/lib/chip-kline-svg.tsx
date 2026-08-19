@@ -63,6 +63,8 @@ interface DateAxisProps {
 }
 
 const AXIS_TICK_FONT = "0.6875rem";
+/** [review F9] 首末刻度改邊緣對齊後的內縮距離,避免文字貼死 svg 邊界。 */
+const EDGE_TICK_INSET = 2;
 const HOVER_CHIP_W = 72;
 const HOVER_CHIP_H = 15;
 
@@ -103,21 +105,36 @@ function DateAxisSvgImpl({ dates, width, height, hoverIndex }: DateAxisProps) {
         x1={0} y1={0.5} x2={width} y2={0.5}
         stroke={t.line} strokeWidth={1}
       />
-      {tickIdxs.map((i) => (
-        <text
-          key={i}
-          data-testid="kline-date-axis-tick"
-          x={clampX(centerX(i))}
-          y={12}
-          textAnchor="middle"
-          fill={t.inkDim}
-          fontSize={AXIS_TICK_FONT}
-          fontFamily={t.font}
-          style={{ fontVariantNumeric: "tabular-nums" }}
-        >
-          {formatTickDate(dates[i]!)}
-        </text>
-      ))}
+      {tickIdxs.map((i, k) => {
+        // [review F9] 首末刻度置中對齊會半截被 svg 邊界切掉(手機窄寬下實測
+        // 「4/13」左半消失)。首刻度改左對齊、末刻度改右對齊並各留 2px 內縮;
+        // 中間刻度維持置中 + 與 candle 中心逐字同式。
+        const isFirst = k === 0;
+        const isLast = k === tickIdxs.length - 1;
+        const cx = centerX(i);
+        const anchor = isFirst && !isLast ? "start" : isLast && !isFirst ? "end" : "middle";
+        const x =
+          anchor === "start"
+            ? Math.max(cx, EDGE_TICK_INSET)
+            : anchor === "end"
+              ? Math.min(cx, width - EDGE_TICK_INSET)
+              : clampX(cx);
+        return (
+          <text
+            key={i}
+            data-testid="kline-date-axis-tick"
+            x={x}
+            y={12}
+            textAnchor={anchor}
+            fill={t.inkDim}
+            fontSize={AXIS_TICK_FONT}
+            fontFamily={t.font}
+            style={{ fontVariantNumeric: "tabular-nums" }}
+          >
+            {formatTickDate(dates[i]!)}
+          </text>
+        );
+      })}
       {hoverChip && (
         <g data-testid="kline-date-axis-hover">
           <rect

@@ -693,13 +693,27 @@ export function ChipBubbleView({
               {/* SC-2(mod/kline-date-bubble-days-ux):光禿的 1/2/3/4/5/10/20 不自明,
                   左側加「連續天數」標籤、整組帶動態 title 補完整語意。標籤與 selector
                   同一 inline-flex,只加寬統計行的 ml-auto 區,不動 header 三欄 grid(W6)。 */}
+              {/* [review F10] (a) title 掛在不可聚焦的 wrapper 上 = 只有滑鼠
+                  hover 讀得到,鍵盤 / 螢幕閱讀器完全拿不到 → 同一句話另以
+                  sr-only span 提供,並用 aria-describedby 綁到 selector 的
+                  role=group 上。(b) wrapper 去掉 shrink-0、改
+                  flex-wrap + justify-end:中欄被壓窄時整組(標籤 + selector)
+                  換行到下一列,而不是溢出撐破 header 三欄 grid;標籤本身仍
+                  nowrap,不會被逐字折成直排。 */}
               {onDaysChange && (
                 <div
-                  className="ml-auto inline-flex shrink-0 items-center gap-1.5"
-                  title={`累計最近 ${days} 個交易日的分點成交(1 = 僅當日)`}
+                  className="ml-auto inline-flex flex-wrap justify-end items-center gap-1.5"
+                  title={BUBBLE_DAYS_HINT(days)}
                 >
                   <span className="text-xs text-ink-dim whitespace-nowrap">連續天數</span>
-                  <BubbleDaysSelector value={days} onChange={onDaysChange} />
+                  <BubbleDaysSelector
+                    value={days}
+                    onChange={onDaysChange}
+                    describedById={BUBBLE_DAYS_HINT_ID}
+                  />
+                  <span id={BUBBLE_DAYS_HINT_ID} className="sr-only">
+                    {BUBBLE_DAYS_HINT(days)}
+                  </span>
                 </div>
               )}
             </div>
@@ -1038,17 +1052,26 @@ function DetailPanel({
 // 已占用「設為 N 日」,1/10/20 三值否則會撞名(design §3 R3)。
 const BUBBLE_DAYS_PRESETS: readonly number[] = [1, 2, 3, 4, 5, 10, 20] as const;
 
+/** [review F10] 天數視窗的說明句 — hover title 與 sr-only 描述同一份文案。 */
+const BUBBLE_DAYS_HINT = (days: number): string =>
+  `累計最近 ${days} 個交易日的分點成交(1 = 僅當日)`;
+const BUBBLE_DAYS_HINT_ID = "bubble-days-hint";
+
 function BubbleDaysSelector({
   value,
   onChange,
+  describedById,
 }: {
   value: number;
   onChange: (d: number) => void;
+  /** 指向可見文字外的說明元素 id(hover title 的鍵盤 / SR 等價物)。 */
+  describedById?: string;
 }) {
   return (
     <div
       role="group"
       aria-label="泡泡圖天數視窗"
+      aria-describedby={describedById}
       data-testid="bubble-days-selector"
       className="shrink-0 inline-flex items-stretch border border-line-strong rounded overflow-hidden"
     >

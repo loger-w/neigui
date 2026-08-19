@@ -552,3 +552,56 @@ describe("SC-3 頂欄「重新整理」鈕 spinner 插槽常駐", () => {
     expect(btn.getAttribute("aria-busy")).toBe("true");
   });
 });
+
+// [review F8] SC-1 的 18px 日期軸列從疊圖高度扣走後,<lg 堆疊版面的
+// min-h clamp(260px)下每個子圖只剩 ~28px,標籤 descender 被切掉 → 抬到 280px。
+// jsdom 無 matchMedia(useMediaQuery feature-detect 後回 false)→ 桌面分支;
+// 本測試補上 matchMedia stub 才走得到 mobile 分支。
+describe("F8 mobile 堆疊版面的 K 線最小高度", () => {
+  const mockMatchMedia = (matches: boolean) => {
+    const original = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: (query: string) => ({
+        matches,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }),
+    });
+    return () => {
+      if (original) {
+        Object.defineProperty(window, "matchMedia", {
+          configurable: true, writable: true, value: original,
+        });
+      } else {
+        delete (window as unknown as Record<string, unknown>).matchMedia;
+      }
+    };
+  };
+
+  it("mobile(max-width:1023px 命中)→ K 線容器 min-h-[280px]", () => {
+    const restore = mockMatchMedia(true);
+    try {
+      render(<App />);
+      const kline = screen.getByTestId("kline-chart");
+      const box = kline.parentElement!;
+      expect(box.className).toContain("h-[45vh]");
+      expect(box.className).toContain("min-h-[280px]");
+    } finally {
+      restore();
+    }
+  });
+
+  it("桌面(未命中)→ 不套 45vh / min-h clamp(三欄 grid 分支)", () => {
+    const restore = mockMatchMedia(false);
+    try {
+      render(<App />);
+      const box = screen.getByTestId("kline-chart").parentElement!;
+      expect(box.className).not.toContain("min-h-[280px]");
+    } finally {
+      restore();
+    }
+  });
+});

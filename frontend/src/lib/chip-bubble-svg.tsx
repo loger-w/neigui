@@ -9,7 +9,7 @@ import {
 import type { BrokerTrade, DailyCandle, IntradayPoint } from "./chip-data";
 import { aggregateByPrice } from "./chip-data";
 import { CHIP } from "./chip-theme";
-import { DayMarksLayer } from "./chip-bubble-daymarks-svg";
+import { DayMarksDateLabels, DayMarksLayer } from "./chip-bubble-daymarks-svg";
 import { IntradayLineLayer } from "./chip-intraday-line-svg";
 
 // ---------------------------------------------------------------------------
@@ -706,6 +706,25 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
     width, height,
   };
 
+  // [review F6] 每日開收層拆兩段畫:K 身 / 刻度 / 價格標籤留在背景(泡泡之前),
+  // 底部日期標籤上浮到泡泡之後 —— 最低價附近的泡泡原本會整片蓋掉日期。
+  // 兩段共用同一組 props(spread 出去仍是純量,memo 淺比對照舊生效)。
+  const dayMarksProps =
+    days > 1 && dayMarks && dayMarks.dates.length > 0
+      ? {
+          dates: dayMarks.dates,
+          candles: dayMarks.candles,
+          yLow,
+          yHigh,
+          paddingLeft: PADDING.left,
+          paddingTop: PADDING.top,
+          chartWidth: cW,
+          chartHeight: cH,
+          height,
+          paddingBottom: PADDING.bottom,
+        }
+      : null;
+
   return (
     <svg
       width={width}
@@ -803,21 +822,9 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
       })}
 
       {/* SC-4 每日開 / 收背景標示 — 多日視窗才畫。z-order:volume profile 之後、
-          分時線 / close 虛線 / 泡泡之前;pointer-events none 不參與 hit test。 */}
-      {days > 1 && dayMarks && dayMarks.dates.length > 0 && (
-        <DayMarksLayer
-          dates={dayMarks.dates}
-          candles={dayMarks.candles}
-          yLow={yLow}
-          yHigh={yHigh}
-          paddingLeft={PADDING.left}
-          paddingTop={PADDING.top}
-          chartWidth={cW}
-          chartHeight={cH}
-          height={height}
-          paddingBottom={PADDING.bottom}
-        />
-      )}
+          分時線 / close 虛線 / 泡泡之前;pointer-events none 不參與 hit test。
+          底部日期標籤不在這層(見下方 DayMarksDateLabels,review F6)。 */}
+      {dayMarksProps && <DayMarksLayer {...dayMarksProps} />}
 
       {/* Background intraday close-price line — Y reuse sY price scale,
           X 軸獨立(時間 09:00→13:30)。pointer-events: none,不擋互動。
@@ -867,6 +874,10 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           />
         ))}
       </g>
+
+      {/* [review F6] 每日日期標籤 — 泡泡之後畫,最低價附近的泡泡不再蓋住日期。
+          pointer-events none;欄數的 e2e 錨點仍是背景層的 bubble-day-marks。 */}
+      {dayMarksProps && <DayMarksDateLabels {...dayMarksProps} />}
 
       {/* Empty-state hint — 分點過濾 or price-range filter 打空時顯示。
           C10 (🔴 Item 3): priceRange 疊加後可能 0 bubble,需 fallback 提示。 */}

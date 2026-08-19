@@ -443,7 +443,10 @@ export function ChipKlineChart({
   const gap = 6;
   const totalParts = 3.5 + 6; // K 線 + 6 subchart 常數
   const subCount = 6;
-  const availH = totalH - LOADING_BAR_H - gap - DATE_AXIS_H;
+  // [review F7] 極小容器(totalH < 26)下扣完固定 row 會變負數,klineH / subH
+  // 跟著負,style.height 吃到負值 = 版面炸開。clamp 到 0:各 row 都退成 0 高,
+  // 內部的 `> 0` 守衛自然不畫 svg。
+  const availH = Math.max(0, totalH - LOADING_BAR_H - gap - DATE_AXIS_H);
   const klineH = Math.round(availH * (3.5 / totalParts));
   const subH = Math.floor((availH - klineH) / subCount);
   const lastSubH = availH - klineH - subH * (subCount - 1);

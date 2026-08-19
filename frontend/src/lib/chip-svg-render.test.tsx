@@ -408,7 +408,7 @@ describe("DateAxisSvg", () => {
     Array.from({ length: n }, (_, i) =>
       new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10));
 
-  it("第 i 個 tick 的 x = KLINE_PAD_L + slotW * i + slotW / 2", () => {
+  it("中間 tick 的 x = KLINE_PAD_L + slotW * i + slotW / 2(置中對齊)", () => {
     const dates = mkDates(90);
     const width = 800;
     const { container } = render(
@@ -420,13 +420,50 @@ describe("DateAxisSvg", () => {
       container.querySelectorAll("[data-testid=kline-date-axis-tick]"),
     );
     expect(ticks.length).toBe(idxs.length);
-    expect(ticks.length).toBeGreaterThan(0);
-    ticks.forEach((t, k) => {
+    expect(ticks.length).toBeGreaterThan(2);
+    ticks.slice(1, -1).forEach((t, k) => {
+      expect(t.getAttribute("text-anchor")).toBe("middle");
       expect(Number(t.getAttribute("x"))).toBeCloseTo(
-        KLINE_PAD_L + slotW * idxs[k]! + slotW / 2,
+        KLINE_PAD_L + slotW * idxs[k + 1]! + slotW / 2,
         6,
       );
     });
+  });
+
+  // [review F9] 首末刻度置中會半截被 svg 邊界切掉(手機窄寬實測「4/13」左半
+  // 消失)→ 首刻度左對齊、末刻度右對齊,x 一律落在 [0, width] 內。
+  it("首刻度 textAnchor=start、末刻度 textAnchor=end,x 都在 [0, width] 內", () => {
+    for (const width of [800, 360, 240]) {
+      cleanup();
+      const dates = mkDates(90);
+      const { container } = render(
+        <DateAxisSvg dates={dates} width={width} height={18} hoverIndex={null} />,
+      );
+      const ticks = Array.from(
+        container.querySelectorAll("[data-testid=kline-date-axis-tick]"),
+      );
+      expect(ticks.length).toBeGreaterThan(1);
+      const first = ticks[0]!;
+      const last = ticks[ticks.length - 1]!;
+      expect(first.getAttribute("text-anchor")).toBe("start");
+      expect(last.getAttribute("text-anchor")).toBe("end");
+      for (const t of [first, last]) {
+        const x = Number(t.getAttribute("x"));
+        expect(x).toBeGreaterThanOrEqual(0);
+        expect(x).toBeLessThanOrEqual(width);
+      }
+    }
+  });
+
+  it("單一日期 → 唯一刻度仍置中(不誤判為首 / 末邊緣對齊)", () => {
+    const { container } = render(
+      <DateAxisSvg dates={mkDates(1)} width={800} height={18} hoverIndex={null} />,
+    );
+    const ticks = Array.from(
+      container.querySelectorAll("[data-testid=kline-date-axis-tick]"),
+    );
+    expect(ticks).toHaveLength(1);
+    expect(ticks[0]!.getAttribute("text-anchor")).toBe("middle");
   });
 
   it("刻度文字是 M/D(不帶年,且不出現斜線年月日 — E5 契約)", () => {

@@ -708,6 +708,26 @@ describe("ChipKlineChart — SC-1 疊圖高度顯式配平", () => {
     )!;
     expect(bar.className).toContain("h-0.5");
   });
+
+  // [review F7] 容器高小於固定 row 總和(2 + 6 + 18 = 26)時 availH 會變負,
+  // klineH / subH / lastSubH 一起負 → style.height 吃到負值。
+  // jsdom 會直接丟掉不合法的 `height: -1px`(style.height 變空字串),所以
+  // 「有寫 height 但讀不到值」= 該 row 拿到負高。
+  it("極小容器(height 20)→ 每個 row 的 style.height 都是 ≥ 0 的數值", () => {
+    sizeState.height = 20;
+    const { container } = renderChart();
+    const rows = [
+      ...Array.from(container.querySelectorAll("[data-testid=kline-sub-row]")),
+      container.querySelector("[data-testid=chip-broker-row]")!,
+      container.querySelector("[data-testid=kline-date-axis-row]")!,
+    ];
+    expect(rows).toHaveLength(7);
+    for (const r of rows) {
+      const h = pxHeight(r);
+      expect(Number.isNaN(h)).toBe(false);
+      expect(h).toBeGreaterThanOrEqual(0);
+    }
+  });
 });
 
 // SC-1(pack D 🟢):日期軸掛進疊圖底部 — 刻度存在、hover 顯 YYYY-MM-DD。
