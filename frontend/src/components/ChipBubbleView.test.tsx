@@ -2461,3 +2461,45 @@ describe("ChipBubbleView — SC-3 工具列三鈕常駐 disabled", () => {
     expect(sheetBtn(container)).toBeNull();
   });
 });
+
+// SC-4:dayMarks 透傳 — View 只負責把 App 算好的 dates + candles 交給 svg,
+// 「畫不畫」的判準(days>1)在 svg 層,不在這裡重複實作。
+describe("ChipBubbleView — SC-4 dayMarks 透傳", () => {
+  const dates = ["2026-06-23", "2026-06-24", "2026-06-25"];
+  const candles = dates.map((date) => ({
+    date, open: 100.5, high: 102, low: 100, close: 101.5, volume: 1000,
+  }));
+
+  it("days=5 + dayMarks → 圖面出現 bubble-day-marks 且欄數 = dates 長度", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(trades)}
+        days={5}
+        dayMarks={{ dates, candles }}
+      />,
+    );
+    const g = container.querySelector('[data-testid="bubble-day-marks"]');
+    expect(g).not.toBeNull();
+    expect(g!.querySelectorAll("[data-date]")).toHaveLength(3);
+  });
+
+  it("days=1 + dayMarks → 不畫(W2)", () => {
+    const { container } = render(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(trades)}
+        days={1}
+        dayMarks={{ dates, candles }}
+      />,
+    );
+    expect(container.querySelector('[data-testid="bubble-day-marks"]')).toBeNull();
+  });
+
+  it("未傳 dayMarks → 不畫(現行為)", () => {
+    const { container } = render(
+      <ChipBubbleView symbol="2330" bubbleData={mkData(trades)} days={5} />,
+    );
+    expect(container.querySelector('[data-testid="bubble-day-marks"]')).toBeNull();
+  });
+});

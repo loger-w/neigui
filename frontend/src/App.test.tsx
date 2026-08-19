@@ -21,17 +21,30 @@ const spies = vi.hoisted(() => ({
   brokersWindowCalls: [] as { symbol: string; date: string; days: number }[],
   bubbleRefresh: vi.fn(),
   intradayRefresh: vi.fn(),
+  // SC-4:dayMarks 組裝要看得到「windowMeta.tradingDates × history.candles」兩個
+  // 輸入的交集結果 → 兩個來源都做成可控 state(預設值 = 既有 mock 行為)。
+  bubbleWindowMeta: null as
+    | { windowDays: number; actualDays: number; tradingDates: string[] }
+    | null,
+  chipHistory: null as { candles: { date: string; open: number; high: number; low: number; close: number; volume: number }[] } | null,
 }));
 
 vi.mock("./components/ChipBubbleView", () => ({
   ChipBubbleView: ({
     days,
     onDaysChange,
+    dayMarks,
   }: {
     days?: number;
     onDaysChange?: (d: number) => void;
+    dayMarks?: { dates: string[]; candles: { date: string }[] } | null;
   }) => (
-    <div data-testid="chip-bubble" data-days={String(days)}>
+    <div
+      data-testid="chip-bubble"
+      data-days={String(days)}
+      data-daymarks={dayMarks ? String(dayMarks.dates.length) : "null"}
+      data-daymark-candles={dayMarks ? dayMarks.candles.map((c) => c.date).join(",") : ""}
+    >
       <button onClick={() => onDaysChange?.(5)}>stub-days-5</button>
     </div>
   ),
@@ -113,7 +126,7 @@ vi.mock("./components/VersionBadge", () => ({
 }));
 vi.mock("./hooks/useChipData", () => ({
   useChipData: () => ({
-    history: null, loading: false, majorLoading: false,
+    history: spies.chipHistory, loading: false, majorLoading: false,
     majorFetching: false, majorCoverageStart: null, ensureMajorCoverage: vi.fn(),
     error: null, refresh: vi.fn(),
   }),
@@ -122,7 +135,7 @@ vi.mock("./hooks/useChipBubble", () => ({
   useChipBubble: (symbol: string, date: string, days?: number) => {
     spies.bubbleCalls.push({ symbol, date, days });
     return {
-      data: null, windowMeta: null, loading: false, error: null,
+      data: null, windowMeta: spies.bubbleWindowMeta, loading: false, error: null,
       refresh: spies.bubbleRefresh,
     };
   },
@@ -152,6 +165,8 @@ beforeEach(() => {
   spies.brokersWindowCalls.length = 0;
   spies.bubbleRefresh.mockClear();
   spies.intradayRefresh.mockClear();
+  spies.bubbleWindowMeta = null;
+  spies.chipHistory = null;
 });
 afterEach(() => {
   cleanup();
@@ -444,5 +459,67 @@ describe("App mode persistence (SC-4)", () => {
     await waitFor(() => {
       expect(screen.queryByTestId("kline-chart")).toBeTruthy();
     });
+  });
+});
+
+// SC-4(mod/kline-date-bubble-days-ux):每日開收標示的資料組裝在 App —— 視窗的
+// trading_dates 與 K 線 history.candles 的交集。兩個來源缺一(尤其 history 尚未
+// 回)一律退回 null,ChipBubbleView 端等同現行為(W2/R18)。
+describe("App — SC-4 bubbleDayMarks 組裝", () => {
+  const mkCandle = (date: string) => ({
+    date, open: 100, high: 102, low: 99, close: 101, volume: 1000,
+  });
+
+  async function openBubbleTab() {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "sym-pick-2330" }));
+    fireEvent.click(screen.getByRole("button", { name: "泡泡圖" }));
+    await waitFor(() => {
+      expect(screen.queryByTestId("chip-bubble")).toBeTruthy();
+    });
+  }
+
+  it("windowMeta + history 皆有 → dates 全帶、candles 只留 trading_dates 命中的日", async () => {
+    spies.bubbleWindowMeta = {
+      windowDays: 5, actualDays: 3,
+      tradingDates: ["2026-06-23", "2026-06-24", "2026-06-25"],
+    };
+    spies.chipHistory = {
+      candles: [
+        mkCandle("2026-06-22"),
+        mkCandle("2026-06-23"),
+        mkCandle("2026-06-25"),
+      ],
+    };
+    await openBubbleTab();
+    fireEvent.click(screen.getByRole("button", { name: "stub-days-5" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
+    });
+    const el = screen.getByTestId("chip-bubble");
+    // 欄位數 = trading_dates(缺 candle 的 6/24 仍算一欄)
+    expect(el.getAttribute("data-daymarks")).toBe("3");
+    // candles 濾掉視窗外的 6/22,缺的 6/24 不補
+    expect(el.getAttribute("data-daymark-candles")).toBe("2026-06-23,2026-06-25");
+  });
+
+  it("history 尚未回 → dayMarks 為 null(退回現行為)", async () => {
+    spies.bubbleWindowMeta = {
+      windowDays: 5, actualDays: 5, tradingDates: ["2026-06-23", "2026-06-24"],
+    };
+    spies.chipHistory = null;
+    await openBubbleTab();
+    fireEvent.click(screen.getByRole("button", { name: "stub-days-5" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("chip-bubble").getAttribute("data-days")).toBe("5");
+    });
+    expect(screen.getByTestId("chip-bubble").getAttribute("data-daymarks")).toBe("null");
+  });
+
+  it("windowMeta 為 null(單日 / 視窗未回)→ dayMarks 為 null", async () => {
+    spies.bubbleWindowMeta = null;
+    spies.chipHistory = { candles: [mkCandle("2026-06-23")] };
+    await openBubbleTab();
+    expect(screen.getByTestId("chip-bubble").getAttribute("data-daymarks")).toBe("null");
   });
 });
