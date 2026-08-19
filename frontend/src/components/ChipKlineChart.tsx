@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BrokerDaily, ChipHistory } from "../lib/chip-data";
 import {
   KlineChartSvg,
+  DateAxisSvg,
   rollingMean,
   calcBollinger,
   KLINE_PAD_L,
@@ -294,6 +295,13 @@ export function ChipKlineChart({
       shortBalance: fullDerived.shortBalance.slice(start, end + 1),
     };
   }, [fullDerived, windowRange]);
+
+  // SC-1:底部日期軸的槽位日期。抽 useMemo(必須在 early return 之前)讓
+  // DateAxisSvg 的 memo 在只有 hoverIndex 變動時仍能只重算 hover chip。
+  const axisDates = useMemo(
+    () => derived?.candles.map((c) => c.date) ?? [],
+    [derived],
+  );
 
   // BB / MA 用 FULL history 算,再切到視窗範圍 — 這樣 zoom 視窗左邊界已是有
   // 足夠 history 的 candle 時,MA20 / BB(20,2) 就能延伸到第一根 candle,
@@ -652,7 +660,14 @@ export function ChipKlineChart({
         data-testid="kline-date-axis-row"
         className="shrink-0"
         style={{ height: DATE_AXIS_H }}
-      />
+      >
+        <DateAxisSvg
+          dates={axisDates}
+          width={w}
+          height={DATE_AXIS_H}
+          hoverIndex={hoverIndex}
+        />
+      </div>
     </div>
   );
 }
