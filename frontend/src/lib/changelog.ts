@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.48.2",
+    date: "2026-08-19",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "從大盤或券差頁點股票跳到籌碼分析後,頂部現在會顯示股票名稱,不再只有代號",
+      },
+    ],
+  },
+  {
     version: "0.48.1",
     date: "2026-08-18",
     changes: [
