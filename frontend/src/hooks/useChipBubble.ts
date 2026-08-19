@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { api } from "../lib/api";
 import type { ChipBubbleData, ChipBubbleWindowData } from "../lib/chip-data";
 import { useForceRefreshQuery } from "./useForceRefreshQuery";
@@ -18,9 +19,11 @@ export function useChipBubble(symbol: string, date: string, days: number = 1) {
     enabled: symbol !== "",
   });
 
-  return {
-    data: data ?? null,
-    windowMeta:
+  // [review F1] windowMeta 必須是 referentially stable:App 的 bubbleDayMarks
+  // useMemo 以它為依賴,每 render 重建物件會讓那層 memo 永遠 miss,連帶
+  // BubbleChartSvg 的 memo 也每次重繪(brush 拖曳每幀都吃)。值本身不變。
+  const windowMeta = useMemo(
+    () =>
       data && days > 1 && "window_days" in data
         ? {
             windowDays: data.window_days,
@@ -29,6 +32,12 @@ export function useChipBubble(symbol: string, date: string, days: number = 1) {
             tradingDates: data.trading_dates,
           }
         : null,
+    [data, days],
+  );
+
+  return {
+    data: data ?? null,
+    windowMeta,
     loading: isFetching,
     error: error ? error.message : null,
     refresh,

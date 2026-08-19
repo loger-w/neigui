@@ -18,6 +18,7 @@ import {
   formatTickDate,
 } from "./chip-kline-svg";
 import { InstBarSvg, MarginLineSvg } from "./chip-inst-bar-svg";
+import { CHIP } from "./chip-theme";
 import type { DailyCandle } from "./chip-data";
 
 describe("BrokerAggBarSvg", () => {
@@ -455,6 +456,16 @@ describe("DateAxisSvg", () => {
     expect(hover).toBeTruthy();
     expect(hover.textContent).toContain(dates[3]!);
     expect(hover.textContent).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  // [review F3] chip 底色走 CHIP.bgDeep token + fillOpacity,不再寫死 rgba()。
+  it("hover chip 底色用 CHIP.bgDeep token(不寫死 rgba)", () => {
+    const { container } = render(
+      <DateAxisSvg dates={mkDates(30)} width={800} height={18} hoverIndex={3} />,
+    );
+    const rect = container.querySelector("[data-testid=kline-date-axis-hover] rect")!;
+    expect(rect.getAttribute("fill")).toBe(CHIP.bgDeep);
+    expect(rect.getAttribute("fill-opacity")).toBe("0.85");
   });
 
   it("hoverIndex 越界 → 不畫 hover chip", () => {

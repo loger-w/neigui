@@ -428,9 +428,11 @@ export function ChipBubbleView({
     // 也是 svg(無 width/height attr),裸 querySelector("svg") 在載入視窗期
     // 會誤抓 spinner 去轉圖。
     const svg = bubbleRef.current?.querySelector<SVGSVGElement>("svg[width][height]");
-    // `!bubbleData` 在此純為型別收窄(下面要讀 bubbleData.date)—— 截圖鈕本身
-    // 由 `bubbleData &&` gate 住,執行期不會是 null。真正會踩到這條的是
-    // `!svg`(ResizeObserver 尚未回報尺寸的視窗期)。
+    // [review F2] 截圖鈕自 SC-3 起改為常駐 + `disabled={!bubbleData}`(不再由
+    // `bubbleData &&` gate 渲染)。`!bubbleData` 在此是第二道防線 —— disabled
+    // 只擋滑鼠,鍵盤 / 程式化 click 仍可能在無資料時進來 —— 兼作型別收窄
+    // (下面要讀 bubbleData.date),兩個理由都成立,不要拿掉。實務上最常踩到
+    // 的仍是 `!svg`(ResizeObserver 尚未回報尺寸的視窗期)。
     if (!svg || !bubbleData) {
       // [R24] 有資料但容器尺寸未回報(ResizeObserver 視窗期)也不靜默。
       setScreenshotNotice("圖表尚未就緒,請稍候再試");
