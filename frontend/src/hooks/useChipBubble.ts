@@ -22,7 +22,12 @@ export function useChipBubble(symbol: string, date: string, days: number = 1) {
     data: data ?? null,
     windowMeta:
       data && days > 1 && "window_days" in data
-        ? { windowDays: data.window_days, actualDays: data.actual_days }
+        ? {
+            windowDays: data.window_days,
+            actualDays: data.actual_days,
+            // SC-4:每日開 / 收標示的槽位定義(App 用它與 history.candles 取交集)。
+            tradingDates: data.trading_dates,
+          }
         : null,
     loading: isFetching,
     error: error ? error.message : null,

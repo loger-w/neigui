@@ -6,9 +6,10 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { BrokerTrade, IntradayPoint } from "./chip-data";
+import type { BrokerTrade, DailyCandle, IntradayPoint } from "./chip-data";
 import { aggregateByPrice } from "./chip-data";
 import { CHIP } from "./chip-theme";
+import { DayMarksLayer } from "./chip-bubble-daymarks-svg";
 import { IntradayLineLayer } from "./chip-intraday-line-svg";
 
 // ---------------------------------------------------------------------------
@@ -181,6 +182,11 @@ export interface BubbleChartProps {
    *  並 reorder 至最後 render(重合時不被其他選中框遮蓋)。hitTest 用的
    *  bubblesRef 維持原序(平手判定不變)。不傳 / null = 現行為。 */
   soloBrokerId?: string | null;
+  /** SC-4(mod/kline-date-bubble-days-ux):多日視窗的每日開 / 收背景標示。
+   *  `dates` = 視窗的 trading_dates(槽位定義,缺 candle 的日仍佔一欄),
+   *  `candles` = 已濾到視窗內的 K 線。null / undefined 或 days<=1 → 不畫
+   *  (單日行為 bit-for-bit)。 */
+  dayMarks?: { dates: string[]; candles: DailyCandle[] } | null;
 }
 
 // C7 A1 (🟢): Y 軸 brush drag min threshold(px)。防手誤與單擊誤觸。
@@ -219,6 +225,7 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
   priceRange,
   days = 1,
   soloBrokerId,
+  dayMarks,
 }: BubbleChartProps) {
   // --- All hooks MUST be called before any conditional return ---
 
@@ -794,6 +801,23 @@ export const BubbleChartSvg = memo(function BubbleChartSvg({
           </g>
         );
       })}
+
+      {/* SC-4 每日開 / 收背景標示 — 多日視窗才畫。z-order:volume profile 之後、
+          分時線 / close 虛線 / 泡泡之前;pointer-events none 不參與 hit test。 */}
+      {days > 1 && dayMarks && dayMarks.dates.length > 0 && (
+        <DayMarksLayer
+          dates={dayMarks.dates}
+          candles={dayMarks.candles}
+          yLow={yLow}
+          yHigh={yHigh}
+          paddingLeft={PADDING.left}
+          paddingTop={PADDING.top}
+          chartWidth={cW}
+          chartHeight={cH}
+          height={height}
+          paddingBottom={PADDING.bottom}
+        />
+      )}
 
       {/* Background intraday close-price line — Y reuse sY price scale,
           X 軸獨立(時間 09:00→13:30)。pointer-events: none,不擋互動。

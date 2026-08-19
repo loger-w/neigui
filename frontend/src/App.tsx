@@ -341,6 +341,19 @@ export default function App() {
     [],
   );
 
+  // SC-4:每日開 / 收標示的資料組裝 —— 槽位由視窗的 trading_dates 定義,
+  // candles 只留視窗命中的日(缺 candle 的日仍佔一欄,由 svg 層留空)。
+  // history 尚未回 → null,泡泡圖等同現行為(W2/R18)。
+  const bubbleDayMarks = useMemo(() => {
+    const meta = bubbleHook.windowMeta;
+    if (!meta || !history) return null;
+    const set = new Set(meta.tradingDates);
+    return {
+      dates: meta.tradingDates,
+      candles: history.candles.filter((c) => set.has(c.date)),
+    };
+  }, [bubbleHook.windowMeta, history]);
+
   const closePrice = useMemo(() => {
     const c = history?.candles.find((c) => c.date === date);
     return c?.close ?? history?.candles?.[history.candles.length - 1]?.close;
@@ -587,6 +600,7 @@ export default function App() {
               days={bubbleDays}
               onDaysChange={setBubbleDays}
               windowMeta={bubbleHook.windowMeta}
+              dayMarks={bubbleDayMarks}
             />
           </Suspense>
         </div>
