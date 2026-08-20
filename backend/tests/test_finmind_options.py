@@ -705,6 +705,37 @@ async def test_fetch_strike_volume_writes_cache_and_returns_shape():
     assert (chip_cache_dir() / "TXO202607_2026-06-23_strike_vol.json").exists()
 
 
+@pytest.mark.asyncio
+async def test_fetch_strike_volume_concurrent_refresh_does_not_dedup_into_non_refresh():
+    """Regression guard(next-time 收割,perf/options-market-load review P2):
+    mirrors the oi_lt guard — a concurrent refresh=True caller MUST NOT await an
+    in-flight refresh=False task, or the explicit refresh silently gets the
+    non-refresh result. Locked by `_r{int(refresh)}` in the _run_once key."""
+    import asyncio
+    from services.finmind import FinMindClient
+    d = "2025-01-15"
+    by_date = {d: [_od_row(d, "202501", "call", 22000, 100, 300)]}
+
+    async def fake_get(url, params=None, **_kw):
+        # Yield once so both callers race through _run_once before either resolves.
+        await asyncio.sleep(0)
+        return _fm_resp(by_date.get((params or {}).get("start_date", ""), []))
+
+    mc = AsyncMock()
+    mc.get = AsyncMock(side_effect=fake_get)
+    fm = FinMindClient()
+    fm._http = mc
+    contract = {"option_id": "TXO", "contract_date": "202501", "contract_type": "202501"}
+
+    # 8-calendar-day per-day fan-out. Shared key → only one fan-out (8 calls);
+    # separate keys → both run (16 calls).
+    await asyncio.gather(
+        fm.fetch_strike_volume(contract, d, refresh=False),
+        fm.fetch_strike_volume(contract, d, refresh=True),
+    )
+    assert mc.get.await_count == 16
+
+
 # ---------------------------------------------------------------------------
 # Task 3: parse_spot (台指期 spot from TaiwanFuturesDaily)
 # ---------------------------------------------------------------------------
