@@ -479,7 +479,9 @@ export function ChipBubbleView({
   const priceAggs = useMemo(() => {
     if (selected.length === 0) return allPriceAggs;
     const filtered = rangeTrades.filter((t) => effectiveIds.has(t.broker_id));
-    if (filtered.length === 0) return allPriceAggs;
+    // 單看分點自 trades 消失(refetch)→ 不回落全體:badge / totals 已是單分點
+    // 語意,price bar 同步顯零值,三者退化方向一致(BF-3)。多選空集維持回落。
+    if (filtered.length === 0 && !activeSolo) return allPriceAggs;
     const filteredAggs = aggregateByPrice(filtered);
     const filteredPrices = new Set(filteredAggs.map((a) => a.price));
     return allPriceAggs.map((a) =>
@@ -487,7 +489,7 @@ export function ChipBubbleView({
         ? filteredAggs.find((f) => f.price === a.price)!
         : { price: a.price, buy: 0, sell: 0 },
     );
-  }, [rangeTrades, selected.length, effectiveIds, allPriceAggs]);
+  }, [rangeTrades, selected.length, effectiveIds, allPriceAggs, activeSolo]);
 
   // Bug fix: filter must precede the top-N slice. Building the rows then
   // slicing drops every row that fell behind the global top-200 cap, which
@@ -1013,7 +1015,11 @@ function DetailPanel({
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Price bar sub-chart */}
-      <div ref={priceBarRef} className="h-[180px] shrink-0 border-b border-line">
+      <div
+        ref={priceBarRef}
+        data-testid="bubble-price-bar"
+        className="h-[180px] shrink-0 border-b border-line"
+      >
         {priceBarSize.width > 0 && priceAggs.length > 0 && (
           <PriceBarSvg data={priceAggs} width={priceBarSize.width} height={180} />
         )}

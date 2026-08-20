@@ -1373,6 +1373,29 @@ describe("ChipBubbleView — 單看模式 (SC-3/4/5)", () => {
     expect(soloBadge(container)).toBeNull();
   });
 
+  // next-time 收割(bubble-chart-ux-polish 自評 BF-3):單看分點在 refetch 後自
+  // trades 消失 → 舊邏輯 priceAggs 空集 fallback 回全體聚合,但 badge 仍顯「單看」、
+  // totals 顯 0 — 三者退化方向不一致。單看時不走 fallback,price bar 顯零值。
+  it("單看分點 refetch 後消失 → badge / totals / price bar 一致顯示單分點空值", async () => {
+    const { container, rerender } = await setupTwoSelected();
+    await clickCircle(container, "AL1");
+    await waitFor(() => expect(soloBadge(container)).toBeTruthy());
+    const priceBarRects = () =>
+      container.querySelectorAll('[data-testid="bubble-price-bar"] rect').length;
+    expect(priceBarRects()).toBeGreaterThan(0);
+    // 同 symbol refetch:Alpha 不在新 trades 裡
+    rerender(
+      <ChipBubbleView
+        symbol="2330"
+        bubbleData={mkData(namedTrades.filter((t) => t.broker_id !== "AL1"))}
+        onJumpToOverview={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(priceBarRects()).toBe(0));
+    expect(soloBadge(container)).toBeTruthy();
+    expect(totalsText(container)).not.toContain("15");
+  });
+
   // 痛點(SC-4):加選意圖 = 擴組合,不得打斷進行中的單看。
   it("單看中搜尋加選第三分點 → 加選成功、單看維持", async () => {
     const { container } = await setupTwoSelected();
