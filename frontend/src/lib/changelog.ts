@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.49.2",
+    date: "2026-08-21",
+    changes: [
+      {
+        kind: "fix",
+        scope: "global",
+        text: "個股頁與券差頁的「重新整理」鈕縮回原寬:先前為了放轉圈圖示加寬 20px,導致手機(375 寬)與 1280 開側欄時整顆鈕掉到第二行、下方圖區整個下移;現在轉圈改疊在鈕內左側不佔位",
+      },
+    ],
+  },
+  {
     version: "0.49.1",
     date: "2026-08-20",
     changes: [

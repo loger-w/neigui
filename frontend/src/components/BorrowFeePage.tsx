@@ -59,13 +59,13 @@ export function BorrowFeePage({ onSymbolPick }: Props = {}): ReactElement {
             disabled={loading}
             aria-label={loading ? "資料載入中" : "重新整理"}
             aria-busy={loading || undefined}
-            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 pointer-coarse:min-h-11 text-sm border border-line text-ink-muted hover:text-ink hover:border-accent disabled:opacity-50 disabled:cursor-default transition-colors cursor-pointer"
+            className="relative ml-auto inline-flex items-center px-2.5 py-1.5 pointer-coarse:min-h-11 text-sm border border-line text-ink-muted hover:text-ink hover:border-accent disabled:opacity-50 disabled:cursor-default transition-colors cursor-pointer"
           >
             {/* 常駐插槽(對齊 App.tsx):spinner 只在 loading 填入,鈕寬載入前後恆等 */}
             <span
               data-testid="refresh-spinner-slot"
               aria-hidden="true"
-              className="inline-flex size-3.5 shrink-0 items-center justify-center"
+              className="absolute left-0 top-1/2 -translate-y-1/2 inline-flex size-2.5 items-center justify-center"
             >
               {loading && (
                 <svg
@@ -73,7 +73,7 @@ export function BorrowFeePage({ onSymbolPick }: Props = {}): ReactElement {
                   viewBox="0 0 24 24"
                   fill="none"
                   aria-hidden="true"
-                  className="size-3.5 animate-spin text-accent motion-reduce:animate-none"
+                  className="size-2.5 animate-spin text-accent motion-reduce:animate-none"
                 >
                   <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
                   <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />

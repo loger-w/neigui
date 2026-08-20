@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
   });
 
-  it("最新版本是 v0.49.1(分點搜尋 dash query 修復)", () => {
-    expect(CHANGELOG[0]?.version).toBe("0.49.1");
+  it("最新版本是 v0.49.2(重新整理鈕寬度回復)", () => {
+    expect(CHANGELOG[0]?.version).toBe("0.49.2");
   });
 
   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
