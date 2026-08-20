@@ -40,10 +40,21 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-chromium-v1.49.0
+          key: playwright-${{ runner.os }}-chromium-${{ hashFiles('e2e/package-lock.json') }}
       - run: pip install -r backend/requirements.txt  # prod deps 足夠 — 不需 pytest
       - run: cd frontend && npm ci
-      - run: cd e2e && npm ci && npx playwright install --with-deps chromium
+      - run: cd e2e && npm ci
+      # --with-deps 內部跑 apt-get update;2026-08-19 azure mirror 無回應卡滿 15 分鐘
+      # 被 job timeout 砍 — 每次嘗試上限 150s、最多 3 次,讓 mirror flake 失敗得快且可重試
+      - name: Install Playwright chromium + OS deps
+        timeout-minutes: 8
+        run: |
+          cd e2e
+          for i in 1 2 3; do
+            timeout 150 npx playwright install --with-deps chromium && exit 0
+            echo "attempt $i failed, retrying"; sleep 10
+          done
+          exit 1
       - run: cd e2e && npm test
         env:
           FAKE_FINMIND: "1"
