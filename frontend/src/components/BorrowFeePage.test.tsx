@@ -91,6 +91,21 @@ describe("BorrowFeePage", () => {
     expect(hookState.refresh).toHaveBeenCalledTimes(1);
   });
 
+  // next-time 收割(mod/kline-date-bubble-days-ux):spinner 條件 render 讓鈕在
+  // 載入時變寬位移;沿 App.tsx 的 refresh-spinner-slot 常駐插槽(鈕寬恆等)。
+  it("idle:鈕內常駐 refresh-spinner-slot 且無 spinner;loading:spinner 掛在同一插槽", () => {
+    const { unmount } = render(<BorrowFeePage />);
+    const idle = screen.getByRole("button", { name: "重新整理" });
+    expect(idle.querySelector('[data-testid="refresh-spinner-slot"]')).toBeTruthy();
+    expect(idle.querySelector('[data-testid="refresh-spinner"]')).toBeNull();
+    unmount();
+    hookState.loading = true;
+    render(<BorrowFeePage />);
+    const busy = screen.getByRole("button", { name: "資料載入中" });
+    const slot = busy.querySelector('[data-testid="refresh-spinner-slot"]');
+    expect(slot?.querySelector('[data-testid="refresh-spinner"]')).toBeTruthy();
+  });
+
   it("整頁(header + 副行 + 表格)無方向性文案", () => {
     hookState.data = { ...DATA, partial: ["tpex"], no_trading_day: true };
     hookState.noTradingDay = true;

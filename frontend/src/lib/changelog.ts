@@ -53,6 +53,11 @@ export const CHANGELOG: VersionEntry[] = [
         scope: "equity",
         text: "泡泡圖單看某分點時按重新整理,若該分點當日已無成交,價格分布圖先前會跳回全體分點的長條,現在會和上方統計一致顯示為空",
       },
+      {
+        kind: "fix",
+        scope: "global",
+        text: "券差頁「重新整理」鈕載入時不再因轉圈圖示出現而變寬位移",
+      },
     ],
   },
   {
