@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.49.1",
+    date: "2026-08-20",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "泡泡圖分點搜尋:照「凱基-台北」這種帶連字號的格式輸入時,先前會查不到任何分點,現在會正常命中",
+      },
+    ],
+  },
+  {
     version: "0.49.0",
     date: "2026-08-19",
     changes: [

@@ -112,14 +112,16 @@ export function BrokerSearch({ trades, selectedIds, onPick, onOpenChange }: Prop
   }, [trades]);
 
   const filtered = useMemo(() => {
-    const q = debounced.trim().toLowerCase();
+    // SC-7 + dash-insensitive:query 與 raw name / label 雙邊走 normalizeBrokerQuery
+    // (broker-name.ts 契約)。prod 的 daily report raw name 本就無 dash,query 若照
+    // directory 格式帶 dash 必須仍命中;fixture 含 dash 的情境由 label 側覆蓋。
+    const q = normalizeBrokerQuery(debounced);
     if (!q) return aggregates.slice(0, 50);
-    // SC-7:比對接受原始名稱(含 dash)與 formatted label(= id + 去dash名)
     return aggregates
       .filter(
         (b) =>
-          b.broker.toLowerCase().includes(q) ||
-          b.label.toLowerCase().includes(q),
+          normalizeBrokerQuery(b.broker).includes(q) ||
+          normalizeBrokerQuery(b.label).includes(q),
       )
       .slice(0, 50);
   }, [aggregates, debounced]);

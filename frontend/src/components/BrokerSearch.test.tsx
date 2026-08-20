@@ -73,6 +73,27 @@ describe("BrokerSearch", () => {
     });
   });
 
+  // next-time 收割(2026-07-28 發現):prod 的 bubble trades 來自 daily report,
+  // raw name 全數無 dash(2330 實測 814/814),但 query 若照 directory 格式帶 dash
+  // 輸入,plain includes 對不上 → 全空。fixture 用真實 shape 鎖住。
+  it("raw name 無 dash(prod 真實 shape)時,帶 dash 的 query 仍命中", async () => {
+    const prodShape: BrokerTrade[] = [
+      { broker: "凱基台北", broker_id: "9201A", price: 100, buy: 200, sell: 100 },
+      { broker: "凱基板橋", broker_id: "9201B", price: 100, buy: 50, sell: 80 },
+    ];
+    render(<BrokerSearch trades={prodShape} selectedIds={noneSelected} onPick={vi.fn()} />);
+    const input = screen.getByPlaceholderText("搜尋分點...");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "凱基-台北" } });
+    await waitFor(() => {
+      const texts = screen
+        .getAllByTestId("broker-search-item")
+        .map((it) => it.textContent ?? "");
+      expect(texts.some((t) => t.includes("凱基台北"))).toBe(true);
+      expect(texts.some((t) => t.includes("凱基板橋"))).toBe(false);
+    });
+  });
+
   it("以 broker_id 搜尋也命中", async () => {
     render(<BrokerSearch trades={trades} selectedIds={noneSelected} onPick={vi.fn()} />);
     const input = screen.getByPlaceholderText("搜尋分點...");
