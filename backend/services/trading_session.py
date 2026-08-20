@@ -10,11 +10,14 @@ design.md §5.4
 from __future__ import annotations
 
 import logging
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, time
+
+from services.clock import TAIPEI
 
 logger = logging.getLogger(__name__)
 
-TPE_TZ = timezone(timedelta(hours=8))
+# 單一真源在 services.clock(2026-08-20 收斂);保留舊名供 finmind_realtime / 測試沿用。
+TPE_TZ = TAIPEI
 SESSION_OPEN = time(9, 0)
 SESSION_CLOSE = time(13, 30)
 MAX_LAG_SECONDS_IN_SESSION = 60
