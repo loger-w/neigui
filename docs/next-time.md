@@ -20,9 +20,11 @@
 
 ## From 🔴 fix(backend) clock 時區修復(2026-08-11)
 
-- **+08:00 時區常數兩份**(`services/clock.py::TAIPEI` 新增 vs `services/trading_session.py:17::TPE_TZ` 既有,值相同):realtime / trading_session 改吃 `clock.TAIPEI` 即可收斂,純 refactor(2026-08-20 grep 確認仍只兩份)。觸發:下次動 trading_session 或 finmind_realtime 時順手;或第三份 +08:00 常數出現時必收。
+- (原「+08:00 時區常數兩份」條目已於 2026-08-20 收割刪除:`trading_session.TPE_TZ = clock.TAIPEI` 別名,定義只剩一份)
 
 ## From react-doctor 掃描(2026-08-11;error ×5 + 安全 warning 批已同日修畢,49→61 分,餘下列)
+
+> 2026-08-20 重掃:**62 分,0 error / 74 warning**,主體與下列裁定一致。前次未列的小類(待裁,皆非 bug):`js-combine-iterations ×4`(WarrantSelector:47/70、WatchlistSidebar:284、chip-bubble-daymarks-svg:166)、`no-reset-all-state-on-prop-change ×2`(WarrantFlowPanel:44、RangeSelector:54)、`rerender-state-only-in-handlers`(WarrantColumnMenu:17)、`no-derived-useState`(WatchlistSidebar:54)、`useSessionState.ts:38` 被算進 pass-data-to-parent(hook 設計本意,判誤報)。`no-adjust-state-on-prop-change` 從 13 → 17(新增 BorrowFeeStockFilter:38 / BrokerSearch:131 / WarrantFlowPanel:44 / ChipBubbleView:469)。
 
 - **ChipBubbleView prop→state 同步鏈**(no-adjust-state-on-prop-change ×13 集中 118–170 行 + no-derived-state ×2 + no-effect-chain):symbol reset effect + focusRequest effect 的既有設計,行為有測試鎖住;重構屬 /refactor 級(state 派生化 or key-based remount)。觸發:該區再出 stale-state bug、或 ChipBubbleView 下次大改時一併評。
 - **effect 回推資料給 parent**(`BrokerSearch.tsx:135` / `ChipKlineChart.tsx:258`,no-pass-data-to-parent 系):反轉資料流 anti-pattern,改法 = state 提升或 callback 在事件點直呼。觸發:任一處要加新回推欄位時先還債。
@@ -109,7 +111,7 @@
 
 ## From /mod warrant-ux-feedback(2026-07-15)
 
-- **Popover 面板骨架第 2 份複本**(BrokerFilterPopover / WarrantColumnMenu:Root+Trigger+Portal+Content+scroll 列表+footer 同構):第三份 popover 出現時抽共用 wrapper。觸發重評估:第三個 popover 面板出現時
+- (原「Popover 面板骨架第 2 份複本」條目已於 2026-08-20 標 moot 移除:`ui/PopoverPanel.tsx` 已存在且 BrokerFilterPopover / WarrantColumnMenu / BubbleBlocklistPopover 三者皆用,條件早已成立並完成)
 - **number spinner 隱藏 CSS 第 2 份複本**(RangeSelector / ui/NumberField 的 `[appearance:textfield]` 三連 class):第三份出現時抽共用 className util。觸發重評估:第三處要隱藏原生 spinner 時
 
 ## From /feat daytrade-borrow-fee(2026-07-11)
@@ -118,7 +120,7 @@
 
 ## From /mod borrow-fee-stock-filter(2026-07-11)
 
-- **combobox pattern 第二份複本**(SymbolSearch 全市場版 vs BorrowFeeStockFilter 當日名單版,下拉/鍵盤/blur-timer 同構):第三處需要時抽共用 combobox。觸發重評估:第三個 combobox 出現時
+- **combobox pattern 已 4 份**(SymbolSearch / BorrowFeeStockFilter / BrokerSearch / BrokerFlowsPanel,2026-08-20 grep `role="listbox"`):「第三個出現」門檻已成立,但抽共用是 M 級 /refactor(四者鍵盤語意、截斷提示列、aria-activedescendant 各異,e2e E37 鎖 BrokerSearch),非順手活。觸發:下次動任一 combobox 行為時以 /refactor 立案,或第 5 個出現時必做
 
 ## From brainstorm 券差查詢 / 權證選擇器(2026-07-08)
 
@@ -137,7 +139,7 @@ review 產生項。4 條 [緩] 各帶「事故再發」觸發條件,再發時依
 
 - (原「`parse_institutional` 的 `day_change` 欄位恆 0」條目已由 chore/next-time-harvest 解決刪除,2026-07-20:紅測試(欄位不得存在)先行,backend parser + options-types.ts InstitutionalSide + 兩側測試 fixture 同步移除;前端自 options-page-v2 起即零讀取者)
 - (原「`finmind_realtime._run_once` 測試層跨 event loop 污染」條目已由 fix/test-finmind-realtime-flake 解決刪除,2026-07-19;其「_inflight 自清 fixture 分散 5 處集中 conftest」留尾巴亦由 chore/next-time-harvest 收割,2026-07-20:實收 8 模組(warrant*/daytrade_fee/industry_chain/warrant_flow 含 setattr({}) 回魂 pattern 一併消除),「新增模組級 task registry 必掛進 conftest fixture」規則已寫進 conftest docstring)
-- **fmtSigned 兩份行為真不同,不可直接合併**(refactor/options-p2-reuse 2026-07-19 拍板踢出:OptionsNetTable 版全數字 `+12,345`、options-range-svg 版 ≥1000 縮寫 `+12.3k`,合併必動一邊顯示 = mod 不是 refactor)。要合併需先拍板統一成哪種顯示(或帶 abbrev 參數合併,兩 call site 各帶模式)。觸發重評估:第三份 fmtSigned 出現、或想統一 OI± 顯示格式時(其餘 4 條 P2 reuse 已由該分支收割:fmtPct → lib/options-format、距現價 → maxPainDistance、futures 聚合 → institutions 參數、RangeMapSvg hoist)
+- **fmtSigned 已 3 份、三種格式**(2026-08-20 grep 觸發成立):OptionsNetTable `+12,345` / `−12,345`(Unicode minus、0 → "0")、options-range-svg ≥1000 縮寫 `+12.3k`、**ChipKlineChart.tsx:363 區域 arrow** `+12,345` / `-12,345`(ASCII 負號、0 → "0" 無號、`en-US` locale)。合併必動至少一邊顯示(負號字元 / 縮寫)= mod 不是 refactor;需先拍板:統一負號字元(Unicode vs ASCII)與是否縮寫,再抽 `lib/format.ts` 帶 `{abbrev}` 參數。觸發:user 拍板格式、或第 4 份出現時(其餘 4 條 P2 reuse 已由該分支收割:fmtPct → lib/options-format、距現價 → maxPainDistance、futures 聚合 → institutions 參數、RangeMapSvg hoist)
 
 ## From /perf cold-start(2026-07-07)
 
@@ -228,9 +230,11 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 
 - **secid_agg 缺「最後交易日」的非當天情境**:修復只補 `clock.today()`;若 FinMind
   `taiwan_stock_trading_daily_report_secid_agg` 的發布是「T+1 交易日」而非「隔日早上」,
-  週末 / 假日看盤時前一交易日的分點柱仍會缺(當天 summary 為空、不會補)。需先 probe 上游
-  發布時程(週六早上跑 `probe_secid.py`,看週五是否已入 secid_agg)再決定要不要改成
-  「補最後 candle 日」。觸發:user 反映週末看不到週五的分點柱、或下次動 broker_history。
+  週末 / 假日看盤時前一交易日的分點柱仍會缺。**probe 已工具化 `backend/scripts/probe_secid.py`**
+  (2026-08-20,`python -m scripts.probe_secid`,逐日對照 price vs secid_agg,結尾直接判
+  「補 today 足夠 / 應改補最後 candle 日」);週四 16:49 實跑 price 有 08-20、secid 停 08-19
+  (當日 EOD lag,已覆蓋)。**待 2026-08-22(六)早上跑一次**看週五是否入庫,再決定改不改。
+  觸發:週六 probe 結果顯示落後、或 user 反映週末看不到週五的分點柱。
 
 ## From /bug cross-mode-symbol-name(2026-08-19)
 
