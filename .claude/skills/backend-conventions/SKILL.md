@@ -20,4 +20,5 @@ description: Backend Python 風格與 IO 慣例(neigui 專案特化)。寫改 ba
 - **async**:`httpx.AsyncClient(timeout=30.0)` + `await`。同步阻塞函式不要混進 route handler。
 - **錯誤處理**:catch 要具體(`httpx.HTTPStatusError, httpx.ConnectError, httpx.TimeoutException`),不裸 `except`。`except Exception` 只在 route 邊界 + 一定要 `logger.exception` + 轉 502。
 - **測試**:`asyncio_mode = "auto"`,async test 不用 `@pytest.mark.asyncio`。Mock 走 `monkeypatch`,不 `unittest.mock`。
+- **時間一律走 `services.clock`**(`clock.today()` / `clock.now()`,tz-aware +08:00;FAKE_TODAY 可凍):service 與**測試 fixture 都不用裸 `date.today()` / `datetime.now()`** — CI 跑 UTC,naive 戳記被 `_is_stale` 當台北時間、差 8h 即 stale,5 條 freshness 測試本機綠 CI 紅(2026-08-20 教訓,08-11 clock 修復遺漏測試側)。本機重現法:`TZ=UTC python -m pytest`。
 - Ruff:line-length 100。Format 跟既有檔對齊,不順手重排既存格式。

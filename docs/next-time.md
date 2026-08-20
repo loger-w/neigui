@@ -20,7 +20,7 @@
 
 ## From 🔴 fix(backend) clock 時區修復(2026-08-11)
 
-- **+08:00 時區常數兩份**(`services/clock.py::TAIPEI` 新增 vs `services/trading_session.py:17::TPE_TZ` 既有,值相同):realtime / trading_session 改吃 `clock.TAIPEI` 即可收斂,純 refactor。觸發:下次動 trading_session 或 finmind_realtime 時順手;或第三份 +08:00 常數出現時必收。
+- **+08:00 時區常數兩份**(`services/clock.py::TAIPEI` 新增 vs `services/trading_session.py:17::TPE_TZ` 既有,值相同):realtime / trading_session 改吃 `clock.TAIPEI` 即可收斂,純 refactor(2026-08-20 grep 確認仍只兩份)。觸發:下次動 trading_session 或 finmind_realtime 時順手;或第三份 +08:00 常數出現時必收。
 
 ## From react-doctor 掃描(2026-08-11;error ×5 + 安全 warning 批已同日修畢,49→61 分,餘下列)
 
@@ -37,7 +37,7 @@
 
 ## From /mod batch-ui-polish(2026-07-21)
 
-- **E25/E10 型負載 flake — 殘餘面收斂到 SymbolSearch option 步**(2026-07-21 收割更新):badge 時序 race 已由 chore/next-time-harvest-0721 根治(route 固定 1500ms delay 改事件同步 gate,badge 可見窗不再受機器負載影響;無負載 repeat×5 綠)。今日兩紅實際失敗點都在 `getByRole("option")` 15s 0 筆 — 發生於並行跑全套 gate 的高負載窗,無負載即綠,與 E10 既有「SymbolSearch dropdown 高負載」記錄同根。觸發重評估:非自造負載情境下再紅時,查 `/api/symbols/all` query 在 vite dev proxy 高負載下的 resolve 時序(app 層 prefetch 或 spec 層等 dropdown loading 態收斂)。
+- **E25/E10 型負載 flake — 殘餘面收斂到 SymbolSearch option 步**(2026-07-21 收割更新):badge 時序 race 已由 chore/next-time-harvest-0721 根治(route 固定 1500ms delay 改事件同步 gate,badge 可見窗不再受機器負載影響;無負載 repeat×5 綠)。今日兩紅實際失敗點都在 `getByRole("option")` 15s 0 筆 — 發生於並行跑全套 gate 的高負載窗,無負載即綠,與 E10 既有「SymbolSearch dropdown 高負載」記錄同根。2026-08-20 無負載 `equity.spec.ts --repeat-each=5` 215 passed 全綠,結論不變。觸發重評估:非自造負載情境下再紅時,查 `/api/symbols/all` query 在 vite dev proxy 高負載下的 resolve 時序(app 層 prefetch 或 spec 層等 dropdown loading 態收斂)。
 - **自選歸組選單長清單底部裁切**(Phase 5 review P2-2):watchlist-assign-menu absolute top-full 在 overflow 容器內,底部項目選單被裁;短清單常態不受影響。觸發重評估:user 回報或清單普遍 >15 檔時,改 bottom-full 翻轉或 portal 定位。
 
 - **自選分組 rename**:管理分組面板只有建立/刪除;rename 需資料層新函式(watchlist.ts 無)+ UI。觸發重評估:user 抱怨改名要刪掉重建時。
@@ -61,9 +61,9 @@
 
 ## From /perf options-market-load(2026-07-20)
 
-- **窗外孤兒 txo_daily_* 殘檔**:raw→slim 遷移只涵蓋當前 250 日 window 內的日子;更舊的 raw 檔(本機實測 33 檔 ~45MB)永不被讀也不被刪(舊設計本來就會累積,非本次退化)。txo_sv_* 與 txo_slim_* 同樣隨日子累積無 retention。觸發重評估:cache 目錄體積被質疑、或第三個 per-day cache prefix 需要統一 retention 策略時(參考 warrant_flow `_cleanup_flow_caches` 樣板)
+- **窗外孤兒 txo_daily_* 殘檔 + cache 目錄整體無 retention**:raw→slim 遷移只涵蓋當前 250 日 window;更舊 raw 檔永不被讀也不被刪。**2026-08-20 本機量測**:目錄共 22,589 檔 / 498MB — 檔數由 20,719 個 `<symbol>_<date>_major.json`(合計僅 1.5MB)撐起,體積由 210 個 `<symbol>_<date>_bubble.json`(225MB)撐起;txo_daily 孤兒 33 檔 27MB、txo_slim 250 檔 21MB。檔數已破 5k(`_cleanup_flow_caches` iterdir 條目的觸發門檻同時成立,但實測 6 個 flow 檔、冷聚合頻率低,仍不值得節流)。觸發重評估:prd 磁碟被質疑、或第三個 per-day prefix 需統一 retention 時(參考 warrant_flow `_cleanup_flow_caches` 樣板;bubble per-day 是第一優先)
 - **pcr per-day 預聚合 / window in-memory memo**(S1+S2 達標後不做):再往下砍要動 parse 函式簽名或吃記憶體。觸發重評估:prd 實測 stale wall 仍 >2s、或 window 拉長超過 250 日時
-- **review P2×2(0 P0/P1,接受入庫)**:(1) 歷史日若被永凍為「有 rows 但全零 OI」(僅單次早晨到訪且當日不再被訪問才會發生),slim 下該日從 hit_rate 的 `oi_by_trading_day` 消失 → t_minus_1 回溯改抓 T-2(raw 版是 parse 回 None 丟樣本)— 兩者皆既有降級路徑,差異限單一 hit_rate 樣本;觸發重評估:hit_rate 數字被質疑、或加「全零日 sentinel」慣例時。(2) strike_volume 的 `_r{refresh}` dedup key 無併發 regression test(oi_lt 有);觸發:任何人再動 sv 的 dedup/refresh 語意時先補
+- **review P2×2(0 P0/P1,接受入庫)**:(1) 歷史日若被永凍為「有 rows 但全零 OI」(僅單次早晨到訪且當日不再被訪問才會發生),slim 下該日從 hit_rate 的 `oi_by_trading_day` 消失 → t_minus_1 回溯改抓 T-2(raw 版是 parse 回 None 丟樣本)— 兩者皆既有降級路徑,差異限單一 hit_rate 樣本;觸發重評估:hit_rate 數字被質疑、或加「全零日 sentinel」慣例時。(2) 已於 2026-08-20 補 `test_fetch_strike_volume_concurrent_refresh_does_not_dedup_into_non_refresh`(mutation 拔 `_r{}` 實測轉紅)
 
 ## From /bug prd-cancel-propagation(2026-07-17)
 
@@ -97,7 +97,7 @@
 
 ## From /refactor run-once-dedup(2026-07-21)
 
-- **date query 驗證嚴格度/錯誤碼字面統一(/mod 候選)**:`parse_date_param` 現以參數保留三處歷史差異 — warrants strict+`bad_date`、daytrade_fee 寬鬆+`bad_date`(接受 `20260721` ISO 變體)、broker_flows 寬鬆+`invalid_date`。統一(全 strict + 單一錯誤碼)= 對外行為改動,要同步前端 `lib/api.ts` 錯誤處理與 contract tests。觸發重評估:任一 date 參數 endpoint 新增時、或前端要對 date 錯誤做特化文案時
+- **date query 驗證嚴格度/錯誤碼字面統一(/mod 候選)**:`parse_date_param` 現以參數保留三處歷史差異。2026-08-20 FAKE 環境實打對照(`20260721` / `2026-13-01` / `2026-7-1` / `abc`):warrants flow 全 400 `bad_date`;daytrade-fee 後三者 400 `bad_date`、**`20260721` 原 503 洩漏 ValueError 字串 → 已修**(route 驗完丟原始字串給 service,`target[:7]` 切壞;改傳正規化 isoformat,現 200 as_of 2026-07-21);broker daily-flows 後三者 400 `invalid_date`、`20260721` 正常進 service(start 以 parsed date 算,無切片)。統一(全 strict + 單一錯誤碼)= 對外行為改動,要同步前端 `lib/api.ts` 與 contract tests。觸發重評估:任一 date 參數 endpoint 新增時、或前端要對 date 錯誤做特化文案時
 
 ## From /mod warrant-iv-redesign(2026-07-16)
 
@@ -203,7 +203,7 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 ## From /mod broker-label-search-only-id(2026-07-22)
 
 - (原「BrokerSearch highlightMatch 對去dash label 的高亮缺口」條目已由 fix/broker-search-highlight-dash 解決刪除,2026-07-28:normalizeBrokerQuery 雙邊對齊 + char-level index map 回推原始區間,vitest 紅先行 ×2 鎖住;real-env 驗證時發現 prod 該路徑實不可達,見下條)
-- **BrokerSearch filter 對 query 不去 dash → dash query 在 prod 全空**(2026-07-28 收割上條時實測發現):bubble 的 trades 來自 daily report,raw name 全數無 dash(2330 實測 814/814),filter 是 plain `includes`(SC-7 比對 raw + label 但 query 不 normalize)→ 輸入「凱基-台」什麼都查不到(fixture 名含 dash 所以測試看不出來)。broker-name.ts 的 normalizeBrokerQuery 契約寫明「query 與名稱雙邊過此函式再比對」,filter 未跟上。修法 = filter 雙邊 normalizeBrokerQuery(行為改動,需紅測試 + fixture 名對齊真實 shape 檢討)。觸發重評估:user 反映分點搜尋照 directory 格式(含 dash)輸入查不到時
+- (原「BrokerSearch filter 對 query 不去 dash → dash query 在 prod 全空」條目已於 2026-08-20 收割刪除:filter 雙邊 normalizeBrokerQuery,紅測試 fixture 改 prod 真實 shape(raw name 無 dash),changelog 0.49.1)
 
 ## 2026-07-26 harness /feat 改版的後續(user 指示本輪只動 /feat)
 - (原「/mod /bug /perf /refactor 同步 2026-07-26 實證改版」條目已由 2026-07-27 四 command 同步批解決刪除:round JSON 落檔義務落 review-protocol C 節 + mod.md Phase 5;/mod Phase 3 輪數採 /feat 07-26 制(預設 1 輪 + P0 限縮加輪 — 無 /mod 側 JSON 實證,落檔義務同批補上、日後可實證覆核);graphify query 接入 mod Phase 1 / bug Phase 2 / refactor Phase 5。詳 RATIONALE /mod 節)
@@ -222,7 +222,7 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 - **BrokerSearch 下拉 買/賣欄固定 44px 大數字溢位**:grid-cols-[12px_1fr_50px_44px_44px],≥6 位數(含千分位)會擠壓相鄰欄。user 未點名,獨立小修。觸發:下拉數字視覺被反映時
 - **單看時「查看於籌碼總覽」鈕暫隱** — 若要補「單看單跳」(查看該分點於籌碼總覽),入口與 payload(activeSolo.id)已就緒,只差 UI 決策。觸發:user 在單看中找跳轉鈕時
 - **hover tooltip 補該分點當日總買賣超**(brainstorm 拍板未採選項 B,單看模式已覆蓋主需求)。觸發:user 反映 hover 就想看總量、不想點擊時
-- **solo 空集時 price bar 回落全體聚合**(自評 BF-3,窄 edge):單看分點在 refetch 後自 trades 消失 → priceAggs `filtered.length===0` fallback 回 allPriceAggs,badge 仍顯「單看」、totals 顯 0 — 三者退化方向不一致。修法 = activeSolo 時不走 fallback(顯零值 aggs)。觸發:refresh 後單看畫面被反映怪異時
+- (原「solo 空集時 price bar 回落全體聚合」條目已於 2026-08-20 收割刪除:activeSolo 時不 fallback 顯零值,price bar 容器加 `data-testid="bubble-price-bar"`,vitest 以同 symbol rerender 模擬 refetch 鎖住)
 
 ## From /bug broker-net-bar-today-missing(2026-08-18)
 
@@ -241,8 +241,9 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 
 ## From /mod kline-date-bubble-days-ux(2026-08-19)
 
-- **BorrowFeePage「重新整理」鈕同型 spinner 變寬**:`{loading && <svg>}` 條件 render + `ml-auto`,載入時鈕變寬會位移;沿用 App.tsx 的 `refresh-spinner-slot` 常駐插槽。觸發:券差頁載入時鈕位移被反映時。
+- (原「BorrowFeePage 重新整理鈕 spinner 變寬」條目已於 2026-08-20 收割刪除:套 App.tsx 常駐插槽,vitest 鎖兩態;但見上方「頂欄鈕 1280 常態換行」— 同樣板在頂欄有副作用,券差頁待視覺確認)
 - **泡泡圖 header 中欄在 1280 + 自選側欄下僅 ~90px**:chips / 統計行多行換行、selector 溢出(pre-existing,R15 事故同型);可考慮 <1400px 時搜尋欄 360px → 280px 或把天數 selector 移右工具欄。觸發:1280 螢幕開側欄看泡泡圖被反映擠壓時。
 - **多日泡泡圖每日標示只有開 / 收**:高 / 低與成交量未標(out of scope);`/bubble_window` 無逐日成交 meta,`actual_days < window_days` 時無法淡化無成交欄(change-spec §8 edge 8)。觸發:user 要每日高低或「實際 X 日」欄位區分時。
 - **K 線 sel-cursor 日期 chip 被右上 zoom HUD 遮半截**(1600 寬實測「2026-08-19」被「90 日」HUD 蓋住,pre-existing)。觸發:動 K 線 HUD 時順手。
-- **`e2e-update-snapshots` workflow 2026-08-19 連兩次在 `npx playwright install --with-deps chromium` 步驟超過 15 分鐘被 timeout 取消**(07-21 同 workflow 成功);V1 / V4 baseline(K 線日期軸)因此尚未重生,CI e2e 的 @visual 會紅到重生為止。處置候選:`timeout-minutes` 15 → 30、或 cache key 對齊 lockfile 實際 playwright 版本(`^1.49.0` 可能已解析到更新版 → cache miss 全量下載)。觸發:下次 push 看到 visual 紅、或任何人要跑 baseline 重生時。
+- (原「`e2e-update-snapshots` workflow 超時」條目已於 2026-08-20 收割刪除:根因非 Chromium 下載(兩次皆命中 cache)而是 `--with-deps` 內 `apt-get update` 撞 azure mirror 無回應 14 分鐘;兩 workflow 改每次嘗試 150s + 3 次重試、cache key 改 lockfile hash。順帶揪出 CI pytest 自 08-11 起必紅:5 條 freshness 測試用裸 now/today,UTC 下差 8h 判 stale,已改 `services.clock`。重生 workflow 成功開 **PR #75**(equity-2330 desktop / mobile 兩張),**未 merge,待 user 人眼**:新圖除預期的日期軸外,1280 寬**頂欄「重新整理」鈕常態掉到第二行** — 見下條)
+- **頂欄「重新整理」鈕在 1280 寬常態換行**(2026-08-20 比對 PR #75 新舊 baseline 發現):`05f12d1` 的 spinner 常駐插槽讓鈕恆寬 +20px,1280 視窗(e2e 預設)下頂欄 flex-wrap 從「載入時才換行」變「永遠換行」,tabs 與圖區常態下移 42px — 原修復把間歇位移換成常態位移。候選:插槽改 `absolute` 疊在文字上不佔寬、或 1280 下壓縮天數 preset 組 / 搜尋欄寬。券差頁 2026-08-20 套了同插槽(#18 收割),元素少應不換行,驗視覺時一併看。觸發:merge PR #75 前必決。
