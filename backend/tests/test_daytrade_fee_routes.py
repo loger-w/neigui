@@ -55,6 +55,24 @@ def test_params_passthrough(monkeypatch, client):
     assert seen == {"date": "2026-07-08", "refresh": True}
 
 
+def test_iso_variant_date_normalized_before_service(monkeypatch, client):
+    """next-time 收割(refactor/run-once-dedup 遺留):strict=False 放行
+    `20260721` 這類 fromisoformat 變體後,route 原本把**原始字串**丟給 service,
+    get_day 的 `target[:7]` 切出 `2026072` → 下游 fromisoformat 炸 ValueError →
+    中央 handler 503 並洩漏例外字串。寬鬆契約 = 接受變體,故 route 必須傳
+    正規化 YYYY-MM-DD。"""
+    seen = {}
+
+    async def fake_get_day(date_str, refresh=False):
+        seen["date"] = date_str
+        return {"as_of_date": date_str, "rows": [], "month_counts": {}}
+
+    monkeypatch.setattr(df, "get_day", fake_get_day)
+    r = client.get("/api/daytrade-fee", params={"date": "20260721"})
+    assert r.status_code == 200
+    assert seen["date"] == "2026-07-21"
+
+
 def test_bad_date_400(client):
     r = client.get("/api/daytrade-fee", params={"date": "07/08/2026"})
     assert r.status_code == 400

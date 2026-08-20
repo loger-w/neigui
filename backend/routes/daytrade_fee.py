@@ -23,8 +23,10 @@ async def get_daytrade_fee(
     refresh: bool = False,
 ) -> dict:
     if date is not None:
-        # strict=False 保留收斂前僅 fromisoformat 的寬鬆行為(F-3 零行為差異)
-        parse_date_param(date, strict=False)
+        # strict=False 保留收斂前僅 fromisoformat 的寬鬆行為(F-3 零行為差異);
+        # 傳正規化字串給 service — 放行的 ISO 變體(`20260721`)若原樣下傳,
+        # get_day 的 `target[:7]` 切片會產生非法月份而 503。
+        date = parse_date_param(date, strict=False).isoformat()
     try:
         # run_with_disconnect:對齊 chip/options/market 全部 upstream-IO route 慣例;
         # client 斷線即 cancel handler,service _run_once 的 shield+refcount 才有
