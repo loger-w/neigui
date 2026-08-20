@@ -13,10 +13,7 @@
   preset 降檔救不了(10 日仍超標),正解 = payload slim(候選:trades 改 columnar
   arrays(欄名不逐 row 重複,估 -60%)/ 後端依 (price) 截 top-N broker)。
   觸發重評估:user 抱怨多日切換慢、或行動網路場景反映、或第二個大 payload 端點出現時。
-- **1280px 泡泡圖 header 中欄文字折行**(P2 視覺,功能無損):lg grid 中欄在 1280 寬
-  只剩 ~79px,「點泡泡或搜尋分點加入比較」與「近 N 日共 X 個分點」各折 2 行,header
-  106px(vs 1440 的 82px);圖區仍有 63% 視高。候選 = 中欄文字在窄寬時縮短 / preset
-  鈕再緊湊。觸發重評估:user 在 1280 級螢幕反映 header 佔高、或下次動 bubble header 佈局時。
+- **1280px 泡泡圖 header 中欄文字折行**(P2 視覺,功能無損;2026-08-20 real-env 重量,見 `docs/specs/next-time-visual-0820/`):側欄 210 開:header **125px**、中欄 79px、提示 2 行、「今日共 810 個分點」**3 行**、連續天數選擇器整組掉第二列;側欄收合:header 79px、中欄 257px、提示 1 行(差 46px)。候選 = 中欄文字在窄寬時縮短 / preset 鈕再緊湊 / <1400 時搜尋欄 360 → 280px。觸發重評估:user 在 1280 級螢幕反映 header 佔高、或下次動 bubble header 佈局時。
 
 ## From 🔴 fix(backend) clock 時區修復(2026-08-11)
 
@@ -221,7 +218,7 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 
 ## From /mod bubble-chart-ux-polish(2026-07-28)
 
-- **BrokerSearch 下拉 買/賣欄固定 44px 大數字溢位**:grid-cols-[12px_1fr_50px_44px_44px],≥6 位數(含千分位)會擠壓相鄰欄。user 未點名,獨立小修。觸發:下拉數字視覺被反映時
+- **BrokerSearch 下拉 買/賣欄固定 44px 大數字溢位**:grid-cols-[12px_1fr_50px_44px_44px]。2026-08-20 real-env 量測:5 位 `12,345` 剛好;6 位 `123,456` 需 46px(貼齊相鄰欄零間距);7 位需 56px(重疊 12px)。2330 單日最大 4 位數;多日累計(20 日)高量股可能到 6 位。修法 = 44 → 52px 或 `minmax(44px,auto)`。觸發:下拉數字視覺被反映時
 - **單看時「查看於籌碼總覽」鈕暫隱** — 若要補「單看單跳」(查看該分點於籌碼總覽),入口與 payload(activeSolo.id)已就緒,只差 UI 決策。觸發:user 在單看中找跳轉鈕時
 - **hover tooltip 補該分點當日總買賣超**(brainstorm 拍板未採選項 B,單看模式已覆蓋主需求)。觸發:user 反映 hover 就想看總量、不想點擊時
 - (原「solo 空集時 price bar 回落全體聚合」條目已於 2026-08-20 收割刪除:activeSolo 時不 fallback 顯零值,price bar 容器加 `data-testid="bubble-price-bar"`,vitest 以同 symbol rerender 模擬 refetch 鎖住)
@@ -246,8 +243,8 @@ Defer 的 3 個 review finding(皆 PLAUSIBLE — pushed back,各帶重評估條�
 ## From /mod kline-date-bubble-days-ux(2026-08-19)
 
 - (原「BorrowFeePage 重新整理鈕 spinner 變寬」條目已於 2026-08-20 收割刪除:套 App.tsx 常駐插槽,vitest 鎖兩態;但見上方「頂欄鈕 1280 常態換行」— 同樣板在頂欄有副作用,券差頁待視覺確認)
-- **泡泡圖 header 中欄在 1280 + 自選側欄下僅 ~90px**:chips / 統計行多行換行、selector 溢出(pre-existing,R15 事故同型);可考慮 <1400px 時搜尋欄 360px → 280px 或把天數 selector 移右工具欄。觸發:1280 螢幕開側欄看泡泡圖被反映擠壓時。
+- (原「泡泡圖 header 中欄在 1280 + 自選側欄下僅 ~90px」條目已於 2026-08-20 併入上方 bubble-streak-screenshot 節同題條目,量測數字在該處)
 - **多日泡泡圖每日標示只有開 / 收**:高 / 低與成交量未標(out of scope);`/bubble_window` 無逐日成交 meta,`actual_days < window_days` 時無法淡化無成交欄(change-spec §8 edge 8)。觸發:user 要每日高低或「實際 X 日」欄位區分時。
-- **K 線 sel-cursor 日期 chip 被右上 zoom HUD 遮半截**(1600 寬實測「2026-08-19」被「90 日」HUD 蓋住,pre-existing)。觸發:動 K 線 HUD 時順手。
+- **K 線 sel-cursor 日期 chip 被右上 zoom HUD 遮半截**(2026-08-20 real-env 1600 量測:chip 文字 59×14 @ y161、HUD 47×22 @ y166,重疊 **51%**;**預設 sel-cursor = 最新 K 就重疊,不需 hover**;chip 右端另被圖區邊緣切掉,見 `next-time-visual-0820/screenshots/03b`)。候選:HUD 下移到 chip 下方、或 chip 在最右 N 根時改左側對齊。觸發:動 K 線 HUD 時順手;或 user 反映看不到最新日期。
 - (原「`e2e-update-snapshots` workflow 超時」條目已於 2026-08-20 收割刪除:根因非 Chromium 下載(兩次皆命中 cache)而是 `--with-deps` 內 `apt-get update` 撞 azure mirror 無回應 14 分鐘;兩 workflow 改每次嘗試 150s + 3 次重試、cache key 改 lockfile hash。順帶揪出 CI pytest 自 08-11 起必紅:5 條 freshness 測試用裸 now/today,UTC 下差 8h 判 stale,已改 `services.clock`。重生 workflow 成功開 **PR #75**(equity-2330 desktop / mobile 兩張),**未 merge,待 user 人眼**:新圖除預期的日期軸外,1280 寬**頂欄「重新整理」鈕常態掉到第二行** — 見下條)
-- **頂欄「重新整理」鈕在 1280 寬常態換行**(2026-08-20 比對 PR #75 新舊 baseline 發現):`05f12d1` 的 spinner 常駐插槽讓鈕恆寬 +20px,1280 視窗(e2e 預設)下頂欄 flex-wrap 從「載入時才換行」變「永遠換行」,tabs 與圖區常態下移 42px — 原修復把間歇位移換成常態位移。候選:插槽改 `absolute` 疊在文字上不佔寬、或 1280 下壓縮天數 preset 組 / 搜尋欄寬。券差頁 2026-08-20 套了同插槽(#18 收割),元素少應不換行,驗視覺時一併看。觸發:merge PR #75 前必決。
+- **頂欄「重新整理」鈕常態換行(1280 邊緣 / 375 mobile 必發)**(2026-08-20 PR #75 比對發現,real-env 量測見 `docs/specs/next-time-visual-0820/verification.md`):`05f12d1` 插槽讓鈕 82 → 102px。Windows Chrome 1280 + 側欄 210 不換行但餘裕僅 24px、**1256 即換行**(tabs +42px),側欄拖寬或 Linux 字型即觸發;**375 mobile 鈕獨佔一行**(舊寬可同行)。券差頁同插槽(#18)實測 idle / busy 皆 102px 無位移,該頁元素少不換行。候選:插槽改 `absolute` 疊在文字上不佔寬(鈕回 82px)、或 1280 以下壓縮 preset 組。觸發:**merge PR #75 前必修**,修完重跑 e2e-update-snapshots。
