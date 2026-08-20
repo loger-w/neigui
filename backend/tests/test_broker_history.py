@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import date, datetime, timedelta
+from datetime import timedelta
 from unittest.mock import AsyncMock
 
 import httpx
@@ -249,7 +249,7 @@ async def test_fetch_broker_history_merges_with_existing_cache(
     client, monkeypatch, tmp_path,
 ):
     """Selecting a new broker must NOT evict previously-cached brokers."""
-    today = date.today().isoformat()
+    today = clock.today().isoformat()
     seed = {
         "_cache_version": 3, "symbol": "2330",
         "fetched_at": "2026-06-20T10:00:00",
@@ -278,10 +278,10 @@ async def test_fetch_broker_history_fresh_cache_subset_skips_fetch(
 ):
     """When all requested ids are in a fresh today-dated cache, no SecIdAgg
     call is made."""
-    today = date.today().isoformat()
+    today = clock.today().isoformat()
     cache_payload = {
         "_cache_version": 3, "symbol": "2330",
-        "fetched_at": datetime.now().isoformat(timespec="seconds"),
+        "fetched_at": clock.now().isoformat(timespec="seconds"),
         "last_date": today,
         "brokers": {"9800": [{"date": today, "buy": 5, "sell": 0, "net": 5}]},
     }
@@ -301,8 +301,8 @@ async def test_fetch_broker_history_refetches_when_cache_stale_today(
 ):
     """Stale (older than 15-min TTL) today-dated cache must refetch on a plain
     GET — browser F5 sends refresh=false but still expects fresh data."""
-    today = date.today().isoformat()
-    stale = (datetime.now() - timedelta(hours=1)).isoformat(timespec="seconds")
+    today = clock.today().isoformat()
+    stale = (clock.now() - timedelta(hours=1)).isoformat(timespec="seconds")
     cache_payload = {
         "_cache_version": 3, "symbol": "2330",
         "fetched_at": stale, "last_date": today,
@@ -367,7 +367,7 @@ async def test_fetch_broker_history_days_separates_cache(
 ):
     """days==90 寫舊路徑 `2330_broker_history.json`(W10);
     其他 days 寫 `2330_broker_history_{days}d.json`,互不污染。"""
-    today = date.today().isoformat()
+    today = clock.today().isoformat()
 
     async def fake_secid(symbol, start, end, trader_id):
         return [_row(trader_id, today, 1000)]

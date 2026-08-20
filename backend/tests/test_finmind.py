@@ -1,10 +1,12 @@
 """Tests for services/finmind.py — FinMind API client."""
 
 import json
-from datetime import date, datetime, timedelta
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from services import clock
 
 
 def _fm_response(data: list, status: int = 200):
@@ -386,8 +388,8 @@ async def test_fetch_chip_history_cache_hit_when_fresh_and_today(tmp_path):
     """Fresh cache (within TTL) for today is served — no FinMind call."""
     from services.finmind import FinMindClient, _CACHE_VERSION
 
-    today = date.today().isoformat()
-    fresh = datetime.now().isoformat(timespec="seconds")
+    today = clock.today().isoformat()
+    fresh = clock.now().isoformat(timespec="seconds")
     cached = {
         "_cache_version": _CACHE_VERSION,
         "symbol": "2330",
@@ -418,8 +420,8 @@ async def test_fetch_chip_history_refetches_when_stale_and_today(tmp_path):
     next-day rollover."""
     from services.finmind import FinMindClient, _CACHE_VERSION
 
-    today = date.today().isoformat()
-    stale_fetched_at = (datetime.now() - timedelta(hours=1)).isoformat(
+    today = clock.today().isoformat()
+    stale_fetched_at = (clock.now() - timedelta(hours=1)).isoformat(
         timespec="seconds",
     )
     cached = {
@@ -472,7 +474,7 @@ async def test_fetch_chip_history_serves_stale_cache_when_upstream_fails(tmp_pat
     from services.finmind import FinMindClient, _CACHE_VERSION
     import httpx
 
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    yesterday = (clock.today() - timedelta(days=1)).isoformat()
     cached_payload = {
         "_cache_version": _CACHE_VERSION,
         "symbol": "2330",
@@ -552,8 +554,8 @@ async def test_fetch_chip_history_cache_hit_when_pre_today(tmp_path):
     we need the new day's bar. (Same gate as before the TTL fix.)"""
     from services.finmind import FinMindClient, _CACHE_VERSION
 
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
-    fresh = datetime.now().isoformat(timespec="seconds")
+    yesterday = (clock.today() - timedelta(days=1)).isoformat()
+    fresh = clock.now().isoformat(timespec="seconds")
     cached = {
         "_cache_version": _CACHE_VERSION,
         "symbol": "2330",
@@ -605,8 +607,8 @@ async def test_fetch_chip_history_days_separates_cache(tmp_path):
     其他 days 寫 `{symbol}_history_{days}d.json` — 互不污染。"""
     from services.finmind import FinMindClient, _CACHE_VERSION
 
-    today = date.today().isoformat()
-    fresh = datetime.now().isoformat(timespec="seconds")
+    today = clock.today().isoformat()
+    fresh = clock.now().isoformat(timespec="seconds")
 
     # 預先放一個 days==90 的 cache(舊路徑)
     cached_90 = {
@@ -715,11 +717,11 @@ async def test_fetch_chip_history_base_serves_from_full_cache(tmp_path):
 
     cached = {
         "symbol": "2330",
-        "fetched_at": datetime.now().isoformat(timespec="seconds"),
-        "last_date": date.today().isoformat(),
+        "fetched_at": clock.now().isoformat(timespec="seconds"),
+        "last_date": clock.today().isoformat(),
         "candles": [
             {
-                "date": date.today().isoformat(),
+                "date": clock.today().isoformat(),
                 "open": 1,
                 "high": 1,
                 "low": 1,
@@ -729,7 +731,7 @@ async def test_fetch_chip_history_base_serves_from_full_cache(tmp_path):
         ],
         "institutional": [],
         "margin": [],
-        "major": [{"date": date.today().isoformat(), "major_net": 999}],
+        "major": [{"date": clock.today().isoformat(), "major_net": 999}],
         "_cache_version": 3,
     }
     atomic_write_json(chip_cache_dir() / "2330_history_540d.json", cached)
@@ -817,8 +819,8 @@ async def test_fetch_chip_history_major_serves_from_full_cache(tmp_path):
 
     cached = {
         "symbol": "2330",
-        "fetched_at": datetime.now().isoformat(timespec="seconds"),
-        "last_date": date.today().isoformat(),
+        "fetched_at": clock.now().isoformat(timespec="seconds"),
+        "last_date": clock.today().isoformat(),
         "candles": [],
         "institutional": [],
         "margin": [],
@@ -1028,7 +1030,7 @@ async def test_fetch_chip_intraday_today_cache_refetches_when_stale():
     key = f"2330_{today}_intraday"
     cached = client._read_cache(key)
     assert cached is not None
-    cached["fetched_at"] = (datetime.now() - timedelta(minutes=31)).isoformat(timespec="seconds")
+    cached["fetched_at"] = (clock.now() - timedelta(minutes=31)).isoformat(timespec="seconds")
     client._write_cache(key, cached)
 
     await client.fetch_chip_intraday("2330", today)
