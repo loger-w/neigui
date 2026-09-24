@@ -82,6 +82,15 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
     saveSavedBrokers(saved);
   }, [saved]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setDebounced(query.trim()), 200);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [query]);
+
   // 查詢日期:null = 最新模式(不帶 date,W1);跨 mode 還原(Q3),換分點不重置(Q4)
   const [flowsDate, setFlowsDate] = useSessionState<string | null>(
     "neigui.session.flows-date",
@@ -97,14 +106,6 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
     return () => clearTimeout(t);
   }, [dateDraft, setFlowsDate]);
 
-  useEffect(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setDebounced(query.trim()), 200);
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [query]);
-
   // review V1:選定後 query = formatted label echo,refocus 時不得拿 echo 去查
   // (必然 0 命中 → 誤導性「查無符合分點」+ 白燒一次目錄查詢)。
   // SC-7(R6):echo 與 pickTrader 的 setQuery 必須同走 formatBrokerLabel,
@@ -119,6 +120,8 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
     flows.error === "broker_flows_unavailable" && flowsDate !== null
       ? PICKED_DATE_UNAVAILABLE
       : flows.error && (ERROR_TEXT[flows.error] ?? flows.error);
+  // 點列跳個股頁時帶的日期(Q5):只有使用者指定過日期才帶該筆實際資料日
+  const pickDate = flowsDate !== null && flows.data ? flows.data.as_of_date : null;
 
   const hits = search.data ?? [];
   const truncated = search.total !== null && search.total > hits.length;
@@ -378,7 +381,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
               emptyText="無買超"
               testId="broker-flows-buy"
               brokerId={flows.data.broker_id}
-              pickDate={flowsDate !== null ? flows.data.as_of_date : null}
+              pickDate={pickDate}
               onPickStock={onPickStock}
             />
             <FlowTable
@@ -388,7 +391,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
               emptyText="無賣超"
               testId="broker-flows-sell"
               brokerId={flows.data.broker_id}
-              pickDate={flowsDate !== null ? flows.data.as_of_date : null}
+              pickDate={pickDate}
               onPickStock={onPickStock}
             />
           </div>
