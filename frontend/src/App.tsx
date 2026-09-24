@@ -331,18 +331,18 @@ export default function App() {
   // 分點反查跳轉(SC-5):跨 mode 跳回 equity 總覽 + 設股票 + 預選該分點
   // (handlePick 會 reset selectedBrokerIds,預選必須在其後)→ K 線 overlay
   // 顯示該分點買賣超歷史。名稱顯示限制見 design v3 §3.5(不在 top list 退 id)。
-  // 分點反查已選日期時帶 date(該筆資料日)→ 個股頁同步到那天;handlePick 會
-  // 清 userPickedDate,指定日期須在其後標回 true(視同使用者選日,不被 auto-snap
-  // 改寫)。最新模式 date = null → 日期不動(mod/broker-flows-date-picker Q5)。
+  // 分點反查已選日期時帶 flowsAsOf(該筆資料日)→ 個股頁同步到那天;handlePick
+  // 會清 userPickedDate,指定日期須在其後標回 true(視同使用者選日,不被
+  // auto-snap 改寫)。最新模式 = null → 日期不動(mod/broker-flows-date-picker Q5)。
   const handleFlowStockPick = useCallback(
-    (sid: string, name: string | null, brokerId: string, date: string | null) => {
+    (sid: string, name: string | null, brokerId: string, flowsAsOf: string | null) => {
       setMode("equity");
       setTab("overview");
       handlePick(sid, name);
       setSelectedBrokerIds(new Set([brokerId]));
-      if (date) {
+      if (flowsAsOf) {
         userPickedDate.current = true;
-        setDate(date);
+        setDate(flowsAsOf);
       }
     },
     [],
