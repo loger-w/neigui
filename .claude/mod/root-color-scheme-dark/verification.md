@@ -46,4 +46,6 @@ Console:選擇權頁無 error。
 
 預期可見變化(已列 changelog):number 上下鈕轉深、預設焦點框更明顯、開頁不閃白。
 Visual baseline:CI 不比對(`--grep-invert @visual`);merge 後觸發 `e2e-update-snapshots` 重產,diff 由 user 審。
+〔追記 2026-09-25〕run 36044930682 已完成:Linux 重產 V1–V6 與既有 baseline **完全相同**(create-pull-request:
+`Branch 'e2e/refresh-visual-baselines' is not ahead of base 'main'`,未開 PR)→ 無 visual diff,無需 user 審 baseline。
 Migration:無;可逆:revert 即回。
