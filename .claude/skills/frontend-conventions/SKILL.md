@@ -21,6 +21,7 @@ description: 前端 stack / 元件 / 版面與響應式慣例。寫改任何 fro
 - **`hidden` attribute > 條件 render(tab 層級)**:tab 切換用 `<div hidden={tab !== "x"}>` 保留 DOM 避免重渲染(看 `App.tsx` overview / bubble)。**mode 層級例外**:App.tsx 的 mode 切換是 ternary(避免多頁同時 mount 抓資料,e2e N4 鎖死),加新 mode 見 skill `market-pipeline`。**需要跨 mode 切換保留的 UI 狀態不改 ternary,改掛 `hooks/useSessionState`**(sessionStorage-backed,2026-07-21 SC-8;樣板 BrokerFlowsPanel selected / MarketSectorRotation expanded)。
 
 - **`DateField` 直接驅動 fetch 時必加草稿防護**(2026-09-24 mod/broker-flows-date-picker):原生 date input 逐位輸入年份會依序送出 `0002-`/`0020-`/`0202-` 中間值,直接接 queryKey = 每鍵一發請求(backend 候選日回退還會乘上 FinMind 請求數)。無交易日清單可 snap 時,樣板 = `BrokerFlowsPanel`:草稿 state 只在編輯中存在(null = 未編輯)、`下限 ≤ 值 ≤ 今天` 才提交、300ms debounce、blur 還原;「今天」一律 render 時現算,不存進 state(頁面開過午夜會過期)。有交易日清單時用 `snapToDates`(App 個股頁)。Trigger:新增日期欄位且值直接進 query 時。
+- **原生日期欄位的可控外觀邊界**(2026-09-24 mod/date-field-dark-calendar,Chromium 149 實測):月曆彈窗由瀏覽器依 `color-scheme` 繪製 → `.date-field-input { color-scheme: dark }`(只掛欄位,不放 `:root` 以免連帶改捲軸 / `<select>`);dark 下月曆圖示改畫淺色,`::-webkit-calendar-picker-indicator` 的 `invert()` 要反算(0.65→0.35 收合外觀逐像素不變)。**鍵盤編輯中的選取段反白、彈窗內選取格作者 CSS 改不動**(pseudo `:focus` / `!important` / `accent-color` / `::selection` 皆無效)— 要全面吃專案配色只能自製元件。驗這類 CSS 用 Playwright 截圖 + 頁內 canvas 取像素,先算「疊色理論值」再比,並排除同畫面其他同色系元素(本案曾把 focus ring 的 accent/40 誤認成反白)。Trigger:改日期欄位外觀、或 user 要求原生控制項吃專案配色時。
 
 ## 分點名稱顯示(2026-07-27 自專案 CLAUDE.md §4 移入)
 
