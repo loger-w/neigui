@@ -35,6 +35,24 @@
       "price": 200.0,
       "buy": 50000,
       "sell": 0
+    },
+    {
+      "securities_trader": "富邦",
+      "securities_trader_id": "9600",
+      "stock_id": "2317",
+      "date": "2026-06-25",
+      "price": 210.0,
+      "buy": 1234000,
+      "sell": 0
+    },
+    {
+      "securities_trader": "富邦",
+      "securities_trader_id": "9600",
+      "stock_id": "2454",
+      "date": "2026-06-25",
+      "price": 1480.0,
+      "buy": 0,
+      "sell": 321000
     }
   ]
 }
