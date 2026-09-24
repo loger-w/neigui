@@ -93,12 +93,13 @@ describe("BrokerFlowsPanel", () => {
     expect(within(buyTable).getAllByText("0050").length).toBeGreaterThan(0);
   });
 
-  it("點買超列 → onPickStock(stock_id, name, broker_id);空名轉 null(R9)", async () => {
+  it("點買超列 → onPickStock(stock_id, name, broker_id, date);空名轉 null(R9)", async () => {
     const { onPickStock } = await pickFubon();
     fireEvent.click(within(screen.getByTestId("broker-flows-buy")).getByText("台積電"));
-    expect(onPickStock).toHaveBeenCalledWith("2330", "台積電", "9600");
+    // 該變 assertion(mod/broker-flows-date-picker Q5):第 4 參數 = 最新模式 null
+    expect(onPickStock).toHaveBeenCalledWith("2330", "台積電", "9600", null);
     fireEvent.click(within(screen.getByTestId("broker-flows-buy")).getAllByText("0050")[0]!);
-    expect(onPickStock).toHaveBeenCalledWith("0050", null, "9600");
+    expect(onPickStock).toHaveBeenCalledWith("0050", null, "9600", null);
   });
 
   it("sell_top 空 → 「無賣超」空狀態(edge 1)", async () => {
@@ -450,6 +451,17 @@ describe("BrokerFlowsPanel 日期選擇", () => {
     expect(dateInput().value).toBe("2026-07-15");
     await waitFor(() => expect(again).toHaveBeenCalled());
     expect(again.mock.calls[0]?.[1]).toBe("2026-07-15");
+  });
+
+  it("已選日期 → 點列 onPickStock 第 4 參數 = 實際資料日(回退時非查詢日,Q5)", async () => {
+    const { onPickStock, flowsSpy } = await pickFubon();
+    flowsSpy.mockResolvedValue(
+      mk({ requested_date: "2026-07-19", as_of_date: "2026-07-17", no_trading_day: true }),
+    );
+    pickDate("2026-07-19"); // 週日 → backend 回退 07-17
+    await screen.findByText(/2026-07-19 尚無資料,顯示 2026-07-17/, undefined, { timeout: 3000 });
+    fireEvent.click(within(screen.getByTestId("broker-flows-buy")).getByText("台積電"));
+    expect(onPickStock).toHaveBeenCalledWith("2330", "台積電", "9600", "2026-07-17");
   });
 
   it("已選日期 + broker_flows_unavailable → 「所選日期前後無分點資料」(Q6)", async () => {

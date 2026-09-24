@@ -6,6 +6,11 @@
 
 ---
 
+## From /mod broker-flows-date-picker(2026-09-24)
+
+- **FinMind 分點反查(trader-only 專用 path)歷史深度未知**:2026-09-24 想 probe 時帳號 `user_info` 回 **Free(level 1)**,專用 path 對任何日期(含 09-23)都回 400「Your level is register」→ 無法 probe,正式環境分點反查整條不可用。日期選擇因此不設資料下限(Q7),超出範圍靠「所選日期前後無分點資料」文案兜底。觸發:帳號回 Sponsor 後 probe 9600 在 2021 / 2023 / 2025 年初各一日,若有明確下限 → 考慮給日期欄位設 `min`。
+- **`todayStr()` 本地日期字串已 3 份**(App.tsx / OptionsPage.tsx / BrokerFlowsPanel.tsx,逐字同義):rule-of-three 成立,抽 `lib/` 屬 /refactor 小活。觸發:第 4 份出現、或任一份要改時區語意時一併收。
+
 ## From /feat bubble-streak-screenshot(2026-08-13)
 
 - **bubble_window payload slim 化**:高量股(3481)days=20 未壓縮 18.1MB / 206k rows、

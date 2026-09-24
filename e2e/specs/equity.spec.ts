@@ -318,6 +318,12 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(sell).toContainText("聯發科");
     await expect(sell).toContainText("-321");
     await expect(sell).toContainText("-4.75億");
+    // Q5:已選日期下點列跳個股頁 → 個股頁日期同步為該資料日(未同步 = 停在
+    // browser 今天 06-26 → 紅)
+    await buy.getByRole("button", { name: /檢視 鴻海/ }).click();
+    await expect(page.getByRole("heading", { name: "籌碼分析" })).toBeVisible();
+    await expect(page.locator("header")).toContainText("2317");
+    await expect(page.getByLabel("選擇日期")).toHaveValue("2026-06-25");
   });
 
   test("E10: 無權證標的空狀態(SC-7)", async ({ page }) => {
