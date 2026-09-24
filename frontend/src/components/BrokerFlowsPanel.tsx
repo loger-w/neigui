@@ -96,12 +96,16 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
     "neigui.session.flows-date",
     null,
   );
-  // 欄位草稿:合格且停手 300ms 才提交;選回今天 = 回最新模式(Q2)
-  const [dateDraft, setDateDraft] = useState(() => flowsDate ?? todayStr());
+  // 欄位草稿只在編輯中存在(null = 未編輯):合格且停手 300ms 才提交並清空;
+  // 選回今天 = 回最新模式(Q2)。未編輯時欄位顯示值每次 render 現算 —
+  // 最新模式下頁面開過午夜,欄位跟著新的今天走(review Spec-4 / US3)。
+  const [dateDraft, setDateDraft] = useState<string | null>(null);
+  const shownDate = dateDraft ?? flowsDate ?? todayStr();
   useEffect(() => {
-    if (!isCommittableDate(dateDraft)) return;
+    if (dateDraft === null || !isCommittableDate(dateDraft)) return;
     const t = setTimeout(() => {
       setFlowsDate(dateDraft === todayStr() ? null : dateDraft);
+      setDateDraft(null);
     }, DATE_COMMIT_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [dateDraft, setFlowsDate]);
@@ -287,14 +291,14 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
           </span>
         )}
         <DateField
-          value={dateDraft}
+          value={shownDate}
           aria-label="選擇日期"
           min={DATE_FLOOR}
           max={todayStr()}
           onChange={(e) => setDateDraft(e.target.value)}
           onBlur={() => {
             // 半成品 / 越界草稿不留在欄位上 — 還原為實際查詢中的日期
-            if (!isCommittableDate(dateDraft)) setDateDraft(flowsDate ?? todayStr());
+            if (dateDraft !== null && !isCommittableDate(dateDraft)) setDateDraft(null);
           }}
         />
         {flows.data && (

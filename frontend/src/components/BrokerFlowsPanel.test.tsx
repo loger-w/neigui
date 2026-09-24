@@ -436,6 +436,43 @@ describe("BrokerFlowsPanel 日期選擇", () => {
     expect(dateInput().value).toBe("2026-07-15");
   });
 
+  it("已選日期下按重新整理 → 同日 + refresh=true(US17 / W6)", async () => {
+    const { flowsSpy } = await pickFubon();
+    pickDate("2026-07-15");
+    await waitFor(() => expect(lastFlowsCall(flowsSpy)?.[1]).toBe("2026-07-15"));
+    await screen.findByTestId("broker-flows-buy", undefined, { timeout: 3000 });
+    fireEvent.click(screen.getByRole("button", { name: "重新整理分點資料" }));
+    await waitFor(() => expect(lastFlowsCall(flowsSpy)?.[2]).toBe(true));
+    expect(lastFlowsCall(flowsSpy)?.[1]).toBe("2026-07-15");
+  });
+
+  it("常用分點 chip 帶入沿用已選日期(US9)", async () => {
+    localStorage.setItem(
+      "neigui.saved-brokers.v1",
+      JSON.stringify([{ id: "9604", name: "富邦-陽明" }]),
+    );
+    vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+    const flowsSpy = vi.spyOn(api, "brokerDailyFlows").mockResolvedValue(mk());
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    pickDate("2026-07-15");
+    await new Promise((r) => setTimeout(r, 450));
+    fireEvent.click(
+      within(screen.getByTestId("saved-brokers-row")).getByRole("button", { name: "富邦陽明" }),
+    );
+    await waitFor(() => expect(flowsSpy).toHaveBeenCalled());
+    expect(flowsSpy.mock.calls[0]?.slice(0, 2)).toEqual(["9604", "2026-07-15"]);
+  });
+
+  it("最新模式跨午夜:欄位顯示跟著新的今天走(US3)", async () => {
+    await pickFubon();
+    expect(dateInput().value).toBe("2026-07-20");
+    vi.setSystemTime(new Date(2026, 6, 21, 0, 5, 0)); // 頁面開著過了午夜
+    fireEvent.focus(screen.getByLabelText("搜尋分點")); // 任一 state 變動觸發 re-render
+    expect(dateInput().value).toBe("2026-07-21");
+  });
+
   it("unmount 後 remount:已選日期自 sessionStorage 還原(Q3)", async () => {
     const { flowsSpy } = await pickFubon();
     pickDate("2026-07-15");
