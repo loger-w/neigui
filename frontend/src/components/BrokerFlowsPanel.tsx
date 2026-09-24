@@ -24,7 +24,14 @@ import {
 
 interface Props {
   active: boolean;
-  onPickStock: (stockId: string, stockName: string | null, brokerId: string) => void;
+  // date:已選日期時 = 該筆 payload 的 as_of_date(回退時為實際資料日),
+  // 最新模式 = null(Q5:個股頁只在使用者指定過日期時同步)
+  onPickStock: (
+    stockId: string,
+    stockName: string | null,
+    brokerId: string,
+    date: string | null,
+  ) => void;
 }
 
 // detail.error code → 繁中(review C1/P2SUM-2;未知 code 原樣顯示,對齊
@@ -371,6 +378,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
               emptyText="無買超"
               testId="broker-flows-buy"
               brokerId={flows.data.broker_id}
+              pickDate={flowsDate !== null ? flows.data.as_of_date : null}
               onPickStock={onPickStock}
             />
             <FlowTable
@@ -380,6 +388,7 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
               emptyText="無賣超"
               testId="broker-flows-sell"
               brokerId={flows.data.broker_id}
+              pickDate={flowsDate !== null ? flows.data.as_of_date : null}
               onPickStock={onPickStock}
             />
           </div>
@@ -404,6 +413,7 @@ function FlowTable({
   emptyText,
   testId,
   brokerId,
+  pickDate,
   onPickStock,
 }: {
   title: string;
@@ -412,6 +422,7 @@ function FlowTable({
   emptyText: string;
   testId: string;
   brokerId: string;
+  pickDate: string | null;
   onPickStock: Props["onPickStock"];
 }) {
   return (
@@ -447,13 +458,15 @@ function FlowTable({
                   role="button"
                   tabIndex={0}
                   aria-label={`檢視 ${r.stock_name || r.stock_id} 籌碼總覽`}
-                  onClick={() => onPickStock(r.stock_id, r.stock_name || null, brokerId)}
+                  onClick={() =>
+                    onPickStock(r.stock_id, r.stock_name || null, brokerId, pickDate)
+                  }
                   onKeyDown={(e) => {
                     // role=button 要 Enter 與 Space 都能啟動;Space 需
                     // preventDefault 擋住頁面捲動的預設行為。
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      onPickStock(r.stock_id, r.stock_name || null, brokerId);
+                      onPickStock(r.stock_id, r.stock_name || null, brokerId, pickDate);
                     }
                   }}
                   className="border-b border-line cursor-pointer hover:bg-accent/[0.06] focus:bg-accent/[0.06] focus:outline-none"

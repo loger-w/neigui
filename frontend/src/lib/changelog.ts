@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.50.0",
+    date: "2026-09-24",
+    changes: [
+      {
+        kind: "feature",
+        scope: "global",
+        text: "分點反查可以選日期了:回看某分點在任一天買賣超了哪些股票(選到休市日會標示實際顯示的是哪一天);從結果點股票跳到個股頁時,個股頁也會自動切到同一天",
+      },
+    ],
+  },
+  {
     version: "0.49.2",
     date: "2026-08-21",
     changes: [
