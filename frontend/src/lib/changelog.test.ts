@@ -79,8 +79,8 @@ describe("CHANGELOG invariants", () => {
     expect(CHANGELOG.length).toBeGreaterThanOrEqual(14);
   });
 
-  it("最新版本是 v0.50.0(分點反查日期選擇)", () => {
-    expect(CHANGELOG[0]?.version).toBe("0.50.0");
+  it("最新版本是 v0.50.1(日期月曆深色)", () => {
+    expect(CHANGELOG[0]?.version).toBe("0.50.1");
   });
 
   it("CHANGELOG 任一 entry 包含『版本資訊面板』相關條目", () => {
