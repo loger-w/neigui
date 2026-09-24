@@ -7,10 +7,12 @@ import { snapToTradingDay } from "@/lib/trading-days";
  *
  * Keeps the OS calendar picker (no custom popover) for keyboard parity and
  * timezone correctness, but matches the project's `bg-deep` / `line` /
- * `ink` palette. The `.date-field-input` marker class is targeted by an
- * `::-webkit-calendar-picker-indicator` rule in `index.css` to recolor
- * the Chrome/Edge picker glyph; Firefox/Safari fall back to their default
- * glyph (acceptable per spec out-of-scope).
+ * `ink` palette. The `.date-field-input` marker class is targeted in
+ * `index.css` by (1) `color-scheme: dark`, so the browser draws the native
+ * calendar popup dark instead of white, and (2) an
+ * `::-webkit-calendar-picker-indicator` rule to recolor the Chrome/Edge
+ * picker glyph; Firefox/Safari fall back to their default glyph (acceptable
+ * per spec out-of-scope).
  *
  * `snapToDates` (optional) — when provided AND non-empty, any onChange value
  * not in the list is replaced with the latest trading day <= target (or the
