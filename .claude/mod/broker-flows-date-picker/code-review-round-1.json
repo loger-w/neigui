@@ -1,0 +1,29 @@
+{
+  "fixed_point": "8d9c5a6 (merge-base main)",
+  "reviewed_head": "21c8d44",
+  "whitelist_attached": "W1-W10 (change-spec.md Further Notes) 附進兩個 sub-agent prompt",
+  "standards": [
+    "1. [JUDGEMENT] 釘版本號的斷言在實作期才標「該變」:changelog.test.ts 的 0.49.2 → 0.50.0。依據 user-global E 條原文要求「事前」標為該變;change-spec Testing Decisions 第 3 項寫明是「實作期追記」,照字面算違反。不列 HARD 是因為這個斷言本來就是每次發版都要改的版本釘(前例 95fb533),沒有拿改斷言來遮住錯誤。建議 /mod 模板把這個版本斷言列成固定的事前項。",
+    "2. [JUDGEMENT] 第 3 份 todayStr()(BrokerFlowsPanel.tsx:53),轉記 next-time 的處置可以接受。依據 frontend-conventions:20「new Date() 只放在 App.tsx 的 todayStr() 等邊界」,OptionsPage 已有同樣先例。這次要抽共用就得動 App / OptionsPage,違反 B 條 scope 紀律,所以記進 next-time 合理。小意見:rule-of-three 已經成立,觸發條件寫「第 4 份出現」偏鬆,建議改成「下次動任一份時」。",
+    "3. [JUDGEMENT] 參數名遮蔽 state + 同一組兩行重複出現。參數名:App.tsx:338 回呼參數 date 蓋掉同作用域的 state date(App.tsx:129),名稱看不出是「反查資料日」,建議改名 flowsAsOf。重複:userPickedDate.current = true; setDate(x) 這兩行現在有 4 處(344 / 394 / 400 / 453),抽成一個 helper,「避免 auto-snap 改寫日期」的規則就只留在一個地方。",
+    "4. [JUDGEMENT] BrokerFlowsPanel.tsx 兩處小重複與插入位置:pickDate={flowsDate !== null ? flows.data.as_of_date : null} 在 381 / 391 行各寫一次,可以先抽成一個 const;新增的日期 state 插在 timerRef(84)和使用它的搜尋 debounce effect(100)中間,把同一組搜尋邏輯切開了,建議挪到後面。",
+    "5. [JUDGEMENT] 觸控目標尺寸。依據 frontend-conventions:32「新增可互動元件」要加 pointer-coarse:min-h-11;現況標頭列的 DateField 是 h-8,同一列的重新整理鈕(312 行)有加。不列 HARD 是因為 spec 定案「沿用 DateField 不另做樣式」,而且 App.tsx:449 的 DateField 也沒加。建議之後在 DateField 元件本身處理,記進 next-time。",
+    "6. [JUDGEMENT] 共用 fixture 汙染風險(e2e-conventions:37)。在 data_id=\"\" 的 9600 fixture 追加了 2317 / 2454 的 06-25 資料,依 finmind_fake.py:92-99 的 fallback,這些資料會餵給任何查 2317 / 2454 個股分點報表的 FAKE 呼叫。目前無害:E47 自己就會跳到 2317 / 06-25 的個股頁,但只斷言標頭和日期。可接受是因為 MANIFEST _note 已寫明風險,而 FinMind dataset 也用不了「子目錄隔離」那條規則。剩餘風險:以後對 2317 / 2454 做 N 日窗的 spec,窗口會涵蓋到 06-25。",
+    "7. (不屬本軸)change-spec 說 S1 涵蓋 US 9(從常用分點 chip 帶入時沿用日期)和 US 17(選了日期後重新整理只刷該日),但新增的 RTL 區塊沒有這兩條測試。交給 Spec 軸判斷。",
+    "已核對、沒發現問題:commit 分類(🔵 只動 api / hook 和事前標好的索引,[no-e2e] 符合判準表「hook 內部」);api 參數順序和同檔其他方法一致;changelog MINOR 0.50.0 放 index 0、scope global 與過去分點反查條目一致、沒有工程術語;e2e 有痛點註解和資料級斷言,fixture 和 MANIFEST 同一個 commit;沒有吞錯誤、UI 文字是繁中、沒有 emoji;白名單 W1–W10 沒看到規範層面的風險(W1 由 RTL「請求不帶 date」和 E47 toHaveValue(\"2026-06-26\") 鎖住)。"
+  ],
+  "spec": [
+    "驗證:實際跑 npx vitest run 三檔(BrokerFlowsPanel / useBrokerDailyFlows / App),65 passed(baseline 54,新增 11)。",
+    "白名單 W1–W10 核對:沒有發現被破壞的項目。W1 api 只在有 date 時才帶參數;W5 最新模式傳 null,個股頁日期不動;W6 refresh 的 cancelQueries 只比對含 date 的 key,別的日期的查詢不受影響;W7 只有 broker_flows_unavailable 在已選日期時換文案;W8 gate 沒動;W9 後端零改動。",
+    "已確認沒問題的疑點:舊日期的 flows.data 不會帶進跳轉(沒設 placeholderData,資料綁著 queryKey);App 裡先 handlePick、再標 userPickedDate 的順序正確;E47 / N5 的斷言確實分辨得出對錯;FAKE 會依 date 過濾,2317 / 2454 沒被其他 e2e 的個股查詢用到,stock_count == 3 不受影響。",
+    "(a)1.【中】US 17 沒有測試。Spec 寫「Seam S1 … 涵蓋 US 1–10、13–17 的元件面」,但 panel 測試裡完全沒有 refresh 測試,hook 測試也只測最新模式。沒有任何測試鎖住「已選日期時按重新整理,date 和 refresh=true 同時送出」。實作從結構上看是對的,只是 W6 在選日期時沒有保護。",
+    "(a)2.【低】US 9(常用 chip 帶入時沿用日期)沒有測試。目前只測了下拉選分點。chip 和下拉共用 pickTrader,風險低。",
+    "(a)3.【低】W10 / US 18 在 diff 裡沒有 375 寬的驗證證據:沒有截圖,也沒有手機版 e2e。",
+    "(b) Scope creep:沒有。next-time.md 多記一條 todayStr 重複三份,屬於「記下次處理」,符合 B 條。",
+    "(c)4.【低】跨午夜時欄位顯示的「今天」會過期。dateDraft 只在 mount 時算一次今天,頁面放過午夜後,最新模式的欄位仍顯示昨天,違反 US 3「日期欄位在未選時顯示今天」。這時想選「昨天」也選不到,因為值沒變,onChange 不會觸發。",
+    "(c)5.【低】Spec 要求「標記『使用者指定日期』…(避免 auto-snap 覆寫)」,但沒有測試分得出這行有沒有作用。auto-snap 只在最後一根 K 線早於 date 時才會往回跳;FAKE 下 2317 沒有 K 線,E47 碰不到這個情況。把 userPickedDate.current = true 刪掉,所有測試仍會綠燈。",
+    "(c)6.【低,spec 本身的缺口】用日期跳轉過一次後,個股頁日期會停在歷史日。之後在最新模式再跳轉時,依 W5「個股頁日期不動」,個股頁仍顯示舊日期,和分點反查的最新資料不一致。實作照 spec 寫,但這個情境值得請 user 確認。",
+    "(c)7.【低】changelog 寫「回看某分點在任一天」,說得太滿。Spec Out of Scope 寫明「資料下限 min date(FinMind 深度未知)」,next-time 也記了歷史深度不明。建議改成「過去交易日」。"
+  ],
+  "disposition": "Std-1 接受(流程瑕疵,記 ~/.claude/feat-improvements.md;斷言本身屬 repo 發版慣例,已於 change-spec 追記)。Std-2 接受:next-time 觸發改「下次動任一份時」(3a3b03e)。Std-3a 接受:參數改名 flowsAsOf(cc46df6)。Std-3b 不採納:另 3 處為既有 code 不在 scope,2 行模式抽 helper 收益低。Std-4 接受:pickDate 抽 const、日期 state 移到搜尋區塊後(cc46df6)。Std-5 本次不動(spec 定案沿用 DateField;個股頁同款),next-time 記元件層統一處理(3a3b03e)。Std-6 已於 MANIFEST _note 載明,不動。Std-7 = Spec-1/2。Spec-1/2 接受:補 RTL「已選日期下重新整理 → 同日 + refresh=true」「常用 chip 沿用日期」(44210a6;行為本已正確,直接綠)。Spec-3 由真實環境 SC-7(375×812,scrollWidth 375 ≤ 375,表頭折 3 行)補證據。Spec-4 接受、確認為真 bug:草稿改為只在編輯中存在、顯示值每次 render 現算今天;紅先行 RTL「最新模式跨午夜」先紅後綠(44210a6)。Spec-5 保留不加測試:語意與既有手動選日(handlePickDate / stepper)一致、spec 議定不開 App seam、交易當日必有 K 線故 auto-snap 實務不觸發。Spec-6 為 spec 層決策,收尾回報請 user 拍板(不自行改 W5)。Spec-7 接受:changelog 改「過去交易日」(3a3b03e)。增量 21c8d44..HEAD 由 main agent 機械快篩:App 純改名;panel 新草稿模型 null 守門 / 提交後清空 / blur 還原 null,三條路徑皆有 RTL 覆蓋,無新發現。"
+}
