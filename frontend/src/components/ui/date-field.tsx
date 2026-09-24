@@ -70,6 +70,10 @@ export function DateField({
   const needsWrap = shouldSnap || onValueChange !== undefined;
   // 輸入中的不完整值(null = 無草稿,顯示已提交的 value)
   const [draft, setDraft] = React.useState<string | null>(null);
+  // 外部改了 value(如個股頁 K 線回來後自動對齊日期)→ 外部值優先,丟草稿
+  React.useEffect(() => {
+    setDraft(null);
+  }, [value]);
   const handleChange = needsWrap
     ? (e: React.ChangeEvent<HTMLInputElement>) => {
         const raw = e.target.value;

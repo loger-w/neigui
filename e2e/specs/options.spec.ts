@@ -72,13 +72,26 @@ test.describe("options mode", () => {
     // 完整日期查詢,欄位顯示完整日期。
     const field = page.getByLabel("選擇日期");
     await expect(field).toBeVisible();
+    const box = (await field.boundingBox())!;
+    const clickFirstSegment = () => page.mouse.click(box.x + 14, box.y + box.height / 2);
+    // 段序跟 Chromium 程序語系走(Playwright locale 管不到;review Std-1):第一段
+    // 按 ↑ 看哪段變了判斷是否為年份;不是則年份在第三段(月/日/年、日/月/年)。
+    await clickFirstSegment();
+    const before = await field.inputValue();
+    await page.keyboard.press("ArrowUp");
+    const yearFirst = (await field.inputValue()).slice(0, 4) !== before.slice(0, 4);
+    await page.keyboard.press("ArrowDown");
+    await expect(field).toHaveValue(before);
     await page.waitForLoadState("networkidle");
     const urls: string[] = [];
     page.on("request", (r) => {
       if (r.url().includes("/api/options")) urls.push(r.url());
     });
-    const box = (await field.boundingBox())!;
-    await page.mouse.click(box.x + 14, box.y + box.height / 2); // 年份段
+    await clickFirstSegment();
+    if (!yearFirst) {
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Tab");
+    }
     for (const k of ["2", "0", "2", "5"]) {
       await page.keyboard.press(k);
       await page.waitForTimeout(300);
