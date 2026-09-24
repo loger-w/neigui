@@ -40,6 +40,22 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.50.3",
+    date: "2026-09-25",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "個股頁日期欄位按「清除」或用鍵盤逐位輸入年份時,不再跳到約一年前的日期;年份可以正常打完",
+      },
+      {
+        kind: "fix",
+        scope: "options",
+        text: "選擇權頁日期欄位用鍵盤逐位輸入年份時,不再每按一鍵就用還沒打完的日期重抓整頁資料",
+      },
+    ],
+  },
+  {
     version: "0.50.2",
     date: "2026-09-25",
     changes: [

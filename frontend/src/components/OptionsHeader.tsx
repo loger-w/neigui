@@ -54,7 +54,7 @@ export function OptionsHeader({
       <DateField
         value={date}
         aria-label="選擇日期"
-        onChange={(e) => onDateChange(e.target.value)}
+        onValueChange={onDateChange}
       />
       <button
         type="button"

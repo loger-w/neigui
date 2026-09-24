@@ -26,9 +26,19 @@ import { snapToTradingDay } from "@/lib/trading-days";
  * callers. Receives the post-snap value directly without wrapping in a
  * SyntheticEvent. Both `onChange` and `onValueChange` fire when present.
  *
- * Pure-native path (W2 OptionsHeader): when both `snapToDates` and
- * `onValueChange` are omitted, the rendered input behaves identically to a
- * raw `<input type="date">` — no event wrapping, no DOM mutation.
+ * Committable guard (wrapped path only, fix/date-field-partial-input): the
+ * native input emits empty values (clear button / Backspace) and half-typed
+ * years (0002-/0020-/0202-…) while the user edits segment by segment. Only a
+ * complete `YYYY-MM-DD` within [`min` ?? 2000-01-01, `max`] is snapped and
+ * reported via `onValueChange`; anything else is kept as an internal draft so
+ * the field keeps showing what the user is typing (a controlled input would
+ * otherwise be reset to `value`, making the year segment untypeable), and the
+ * draft is dropped on blur. `onChange` still receives every raw event.
+ *
+ * Pure-native path: when both `snapToDates` and `onValueChange` are omitted,
+ * the rendered input behaves identically to a raw `<input type="date">` — no
+ * event wrapping, no DOM mutation, no guard (callers such as
+ * BrokerFlowsPanel run their own draft guard on top of it).
  */
 export type DateFieldProps = Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
@@ -39,19 +49,36 @@ export type DateFieldProps = Omit<
   onValueChange?: (value: string) => void;
 };
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DEFAULT_MIN = "2000-01-01";
+
+function isCommittableDate(raw: string, min?: string, max?: string): boolean {
+  return DATE_RE.test(raw) && raw >= (min || DEFAULT_MIN) && (!max || raw <= max);
+}
+
 export function DateField({
   className,
   ref,
   snapToDates,
   onValueChange,
   onChange,
+  onBlur,
+  value,
   ...props
 }: DateFieldProps) {
   const shouldSnap = snapToDates !== undefined && snapToDates.length > 0;
   const needsWrap = shouldSnap || onValueChange !== undefined;
+  // 輸入中的不完整值(null = 無草稿,顯示已提交的 value)
+  const [draft, setDraft] = React.useState<string | null>(null);
   const handleChange = needsWrap
     ? (e: React.ChangeEvent<HTMLInputElement>) => {
         const raw = e.target.value;
+        if (!isCommittableDate(raw, toStr(props.min), toStr(props.max))) {
+          setDraft(raw);
+          onChange?.(e);
+          return;
+        }
+        setDraft(null);
         const finalValue = shouldSnap ? snapToTradingDay(raw, snapToDates!) : raw;
         if (shouldSnap && finalValue !== raw) {
           // In-place DOM mutation: React diff would otherwise bail out when
@@ -64,12 +91,20 @@ export function DateField({
         onChange?.(e);
       }
     : onChange;
+  const handleBlur = needsWrap
+    ? (e: React.FocusEvent<HTMLInputElement>) => {
+        setDraft(null);
+        onBlur?.(e);
+      }
+    : onBlur;
 
   return (
     <input
       ref={ref}
       type="date"
+      value={needsWrap && draft !== null ? draft : value}
       onChange={handleChange}
+      onBlur={handleBlur}
       className={cn(
         "date-field-input",
         "h-8 px-2.5",
@@ -85,4 +120,8 @@ export function DateField({
       {...props}
     />
   );
+}
+
+function toStr(v: string | number | undefined): string | undefined {
+  return v === undefined ? undefined : String(v);
 }
