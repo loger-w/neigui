@@ -1,6 +1,7 @@
 # Verification — mod/broker-flows-date-picker(2026-09-24)
 
-證據目錄:`evidence/`。自動化指令來源:`.claude/harness.json`(4 gate)+ e2e(判準表「需要」:flows UI + FAKE fixture)。
+證據目錄:`evidence/`(gate log、API 證據);真實環境截圖(SC-*)〔更正 2026-09-25〕依專案 CLAUDE.md §6
+已移至 `docs/specs/broker-flows-date-picker/screenshots/`。自動化指令來源:`.claude/harness.json`(4 gate)+ e2e(判準表「需要」:flows UI + FAKE fixture)。
 `react-doctor` 不在 frontend devDependencies → 該 gate 不適用。
 
 ## 自動化 gate
