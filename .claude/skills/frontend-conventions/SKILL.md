@@ -20,6 +20,8 @@ description: 前端 stack / 元件 / 版面與響應式慣例。寫改任何 fro
 - **Date 用 `YYYY-MM-DD` 字串** 在 API + state 流動;`new Date()` 只在 `App.tsx` 的 `todayStr()` 等邊界。
 - **`hidden` attribute > 條件 render(tab 層級)**:tab 切換用 `<div hidden={tab !== "x"}>` 保留 DOM 避免重渲染(看 `App.tsx` overview / bubble)。**mode 層級例外**:App.tsx 的 mode 切換是 ternary(避免多頁同時 mount 抓資料,e2e N4 鎖死),加新 mode 見 skill `market-pipeline`。**需要跨 mode 切換保留的 UI 狀態不改 ternary,改掛 `hooks/useSessionState`**(sessionStorage-backed,2026-07-21 SC-8;樣板 BrokerFlowsPanel selected / MarketSectorRotation expanded)。
 
+- **`DateField` 直接驅動 fetch 時必加草稿防護**(2026-09-24 mod/broker-flows-date-picker):原生 date input 逐位輸入年份會依序送出 `0002-`/`0020-`/`0202-` 中間值,直接接 queryKey = 每鍵一發請求(backend 候選日回退還會乘上 FinMind 請求數)。無交易日清單可 snap 時,樣板 = `BrokerFlowsPanel`:草稿 state 只在編輯中存在(null = 未編輯)、`下限 ≤ 值 ≤ 今天` 才提交、300ms debounce、blur 還原;「今天」一律 render 時現算,不存進 state(頁面開過午夜會過期)。有交易日清單時用 `snapToDates`(App 個股頁)。Trigger:新增日期欄位且值直接進 query 時。
+
 ## 分點名稱顯示(2026-07-27 自專案 CLAUDE.md §4 移入)
 
 - **一律走 `lib/broker-name.ts`**(兩個 FinMind dataset 名稱格式不同,前端統一;2026-07-22 mod/broker-label-search-only-id 分工):搜尋框情境(input echo + combobox dropdown)用 `formatBrokerLabel`(「id 去dash名」,例 `9801 元大松江`);其他顯示點用 `formatBrokerName`(只顯去dash名,名稱缺 fallback id)— **只動顯示字串**,selection / API / callback 契約仍以 `broker_id`(或原始 name,如 BrokerSearch)為 key。新分點顯示點不准直接印 raw name。
@@ -49,6 +51,7 @@ description: 前端 stack / 元件 / 版面與響應式慣例。寫改任何 fro
 
 - **devtools MCP 截圖 close-up 用 PIL crop 整頁截圖,不用 `body.style.zoom`**:zoom 會污染 useContainerSize 量測(ResizeObserver 以 zoom 後幾何重排,拍完 reset 也可能留下爆版 layout)。Trigger:real-env 要 panel 級 close-up 證據時。
 - **<500px 窄視窗驗證用 `emulate` viewport,且 emulate 會整頁重載**(2026-08-13 bubble-streak-screenshot):`resize_page` 下限 = Chrome 視窗 500px,拍 430px 手機寬必走 `emulate`;emulate 重載會清掉 symbol / tab / 天數等全部 state,呼叫後要重走選股流程再驗。Trigger:real-env 拍行動版截圖時。
+- **devtools MCP `fill` 對 `<input type="date">` 不觸發 React onChange**(2026-09-24 real-env 實測):DOM value 變了但 React 沒收到事件 → 不發請求、看似「功能壞了」。改用真鍵盤:點月 / 日段輸入數字(如 `0720`)或 ArrowUp/ArrowDown。Playwright 的 `fill` 會派送事件,不受影響。Trigger:real-env 截圖驗證要操作日期欄位時。
 - **long task 效能量測必用真實 input 派送,禁在 `evaluate_script` 內 `.click()`**(2026-08-13 實測):注入 script 的 click 會把「注入函式續段 + React 同步渲染 + GC」併成同一個 task,量出 1129ms 假 long task;改真實 input 事件後同互動實為 17ms 級。Trigger:任何以 DevTools trace 量互動 blocking time 時。
 
 ## 色彩語意(2026-07-11 /feat warrant-selector 沉澱)
