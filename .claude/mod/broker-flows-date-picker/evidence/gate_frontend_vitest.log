@@ -1,0 +1,13 @@
+
+> neigui-frontend@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.9 C:/side-project/neigui/.claude/worktrees/mod-broker-flows-date-picker/frontend
+
+
+ Test Files  102 passed (102)
+      Tests  1202 passed (1202)
+   Start at  16:58:07
+   Duration  17.46s (transform 9.82s, setup 0ms, import 34.22s, tests 56.06s, environment 104.02s)
+

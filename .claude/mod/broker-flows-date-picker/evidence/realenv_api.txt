@@ -1,0 +1,19 @@
+== happy: 已選過去日期(本機 cache)
+GET http://127.0.0.1:5175/api/broker/daily-flows?broker_id=9600&date=2026-07-20
+HTTP 200
+{'broker_id': '9600', 'requested_date': '2026-07-20', 'as_of_date': '2026-07-20', 'no_trading_day': False, 'stock_count': 1012, 'buy_top[:2]': [('3189', '景碩', 1184168807), ('2330', '台積電', 1148571880)]}
+
+== edge: 非法日曆日
+GET http://127.0.0.1:5175/api/broker/daily-flows?broker_id=9600&date=2026-02-31
+HTTP 400
+{'detail': {'error': 'invalid_date'}}
+
+== edge: 未快取的過去日(FinMind Free 400)
+GET http://127.0.0.1:5175/api/broker/daily-flows?broker_id=9600&date=2026-07-10
+HTTP 502
+{'detail': {'error': 'finmind_error'}}
+
+== regression: 最新模式不帶 date
+GET http://127.0.0.1:5175/api/broker/daily-flows?broker_id=9600
+HTTP 502
+{'detail': {'error': 'finmind_error'}}

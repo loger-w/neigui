@@ -1,0 +1,68 @@
+﻿node.exe : [WebServer] INFO:     Started server process [19180]
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([WebServer] INF...process [19180]:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[WebServer] INFO:     Waiting for application startup.
+[WebServer] INFO:     Application startup complete.
+[WebServer] INFO:     Uvicorn running on http://127.0.0.1:8011 (Press CTRL+C to quit)
+[WebServer] (node:18944) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 3 tests using 1 worker
+
+(node:17416) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › specs\equity.spec.ts:779:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E34: 自選清單 — 加入當前 → 換股 → 點清單項切回 + reload 持久(WL-1) (1.3s)
+(node:31856) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✘  2 [chromium] › specs\equity.spec.ts:779:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E34: 自選清單 — 加入當前 → 換股 → 點清單項切回 + reload 持久(WL-1) (15.8s)
+(node:1932) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  3 [chromium] › specs\equity.spec.ts:779:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E34: 自選清單 — 加入當前 → 換股 → 點清單項切回 + reload 持久(WL-1) (950ms)
+
+
+  1) [chromium] › specs\equity.spec.ts:779:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E34: 自選清單 — 加入當前 → 換股 → 點清單項切回 + reload 持久(WL-1) 
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  getByRole('option')
+    Expected: 1
+    Received: 0
+    Timeout:  15000ms
+
+    Call log:
+      - Expect "toHaveCount" with timeout 15000ms
+      - waiting for getByRole('option')
+        33 × locator resolved to 0 elements
+           - unexpected value "0"
+
+
+      788 |     // 換到另一檔(E25 同款 Enter 路徑)
+      789 |     await page.getByPlaceholder(/搜尋代號/).fill("2412");
+    > 790 |     await expect(page.getByRole("option")).toHaveCount(1, { timeout: 15000 });
+          |                                            ^
+      791 |     await page.getByPlaceholder(/搜尋代號/).press("Enter");
+      792 |     await expect(page.locator("header")).toContainText("2412");
+      793 |
+        at C:\side-project\neigui\e2e\specs\equity.spec.ts:790:44
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\equity-equity-mode-—-泡泡圖-籌-85755-換股-→-點清單項切回-reload-持久-WL-1--chromium-repeat1\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\equity-equity-mode-—-泡泡圖-籌-85755-換股-→-點清單項切回-reload-持久-WL-1--chromium-repeat1\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    test-results\equity-equity-mode-—-泡泡圖-籌-85755-換股-→-點清單項切回-reload-持久-WL-1--chromium-repeat1\trace.zip
+    Usage:
+
+        npx playwright show-trace test-results\equity-equity-mode-—-泡泡圖-籌-85755-換股-→-點清單項切回-reload-持久-WL-1--chromium-repeat1\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › specs\equity.spec.ts:779:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E34: 自選清單 — 加入當前 → 換股 → 點清單項切回 + reload 持久(WL-1) 
+  2 passed (21.7s)
