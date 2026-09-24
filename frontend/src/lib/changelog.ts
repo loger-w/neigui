@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.50.1",
+    date: "2026-09-24",
+    changes: [
+      {
+        kind: "fix",
+        scope: "global",
+        text: "日期欄位點開的月曆改為深色,不再在深色頁面上彈出白底月曆(個股、選擇權、分點反查三頁一致)",
+      },
+    ],
+  },
+  {
     version: "0.50.0",
     date: "2026-09-24",
     changes: [

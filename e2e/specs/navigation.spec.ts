@@ -11,6 +11,19 @@ test.describe("navigation & persistence", () => {
     await installFixtureClock(page);
   });
 
+  test("N7: 三頁日期欄位走深色 color-scheme — 原生月曆彈窗不再白底(mod/date-field-dark-calendar)", async ({ page }) => {
+    // 痛點:原生月曆彈窗由瀏覽器依 color-scheme 繪製,頁面截圖拍不到;沒宣告
+    // dark 時 Chrome 在深色頁面彈白底月曆。鎖真 browser computed 值(非原始碼),
+    // 三個 DateField caller 逐頁驗 — 有人拿掉 CSS、或新頁面繞過 DateField 即紅。
+    await page.goto("/");
+    for (const role of [ROLES.modeSwitchEquity, ROLES.modeSwitchOptions, ROLES.modeSwitchFlows]) {
+      await page.getByRole(role.role, { name: role.name }).click();
+      const field = page.getByLabel("選擇日期");
+      await expect(field).toBeVisible();
+      expect(await field.evaluate((el) => getComputedStyle(el).colorScheme)).toBe("dark");
+    }
+  });
+
   test("N1: 五 mode toggle active style aria-current(SC-6 case 1)", async ({ page }) => {
     // 痛點:F10 — ModeSwitch 用 aria-current='page' (不是 data-state),
     // 改 attr name 雙端必雙改。本 test 鎖死 attr,refactor 立即抓。
