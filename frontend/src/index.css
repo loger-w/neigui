@@ -28,22 +28,24 @@
   html { font-size: 125%; }
 }
 
+/* 整站只有深色主題 → root 宣告 dark(mod/root-color-scheme-dark):瀏覽器繪製的
+ * 原生控制項(日期月曆彈窗、<select> 展開清單、number 上下鈕)隨之轉深。
+ * color-scheme 為繼承屬性,各元件不必再各自宣告;index.html 另有同義 meta,
+ * CSS 載入前即生效。捲軸不受影響:下方 * 已明確指定 scrollbar-color。 */
+:root {
+  color-scheme: dark;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--color-line-strong) transparent;
 }
 
-/* DateField 原生月曆彈窗走深色(mod/date-field-dark-calendar):彈窗由瀏覽器依
- * color-scheme 繪製,未宣告時 Chrome 在深色頁面彈白底月曆。只作用在日期欄位,
- * 不放 :root(會連帶改捲軸 / <select> 等其他原生控制項)。 */
-.date-field-input {
-  color-scheme: dark;
-}
-
 /* DateField picker-indicator (Chrome/Edge only). Firefox/Safari use their
  * own default glyph — acceptable per the spec's out-of-scope list.
- * dark scheme 下圖示改畫淺色 → invert 由 0.65 反算為 0.35,收合外觀與改前
- * 逐像素相同(Playwright Chromium 實測,change-spec 附紀錄)。 */
+ * dark scheme 下圖示為淺色 → invert 取 0.35(對淺色圖示 = 原 light scheme 黑色
+ * 圖示套 0.65 的結果),收合外觀與 light 時代逐像素相同。實測紀錄:
+ * .claude/mod/date-field-dark-calendar/change-spec.md。 */
 .date-field-input::-webkit-calendar-picker-indicator {
   cursor: pointer;
   filter: invert(0.35) sepia(0.2);
