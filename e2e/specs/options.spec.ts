@@ -65,6 +65,30 @@ test.describe("options mode", () => {
     await expect(maxPainCard).toBeVisible();
   });
 
+  test("O7: 日期欄位逐位打年份不送出半成品日期請求(fix/date-field-partial-input)", async ({ page }) => {
+    // 痛點:原生 date input 在年份段每按一鍵就送出 0002-/0020-/0202- 中間值;
+    // 選擇權頁曾把它直接進所有查詢,一鍵打出 9 支帶 date=0002-… 的 API 請求。
+    // 真鍵盤才重現得出分段輸入(jsdom 模擬不了),故鎖在 e2e;打完四位後才以
+    // 完整日期查詢,欄位顯示完整日期。
+    const field = page.getByLabel("選擇日期");
+    await expect(field).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const urls: string[] = [];
+    page.on("request", (r) => {
+      if (r.url().includes("/api/options")) urls.push(r.url());
+    });
+    const box = (await field.boundingBox())!;
+    await page.mouse.click(box.x + 14, box.y + box.height / 2); // 年份段
+    for (const k of ["2", "0", "2", "5"]) {
+      await page.keyboard.press(k);
+      await page.waitForTimeout(300);
+    }
+    await expect(field).toHaveValue("2025-06-26");
+    await page.waitForLoadState("networkidle");
+    expect(urls.filter((u) => /[?&]date=0/.test(u))).toEqual([]);
+    expect(urls.some((u) => u.includes("date=2025-06-26"))).toBe(true);
+  });
+
   test("O6: RangeMap OI/成交量 toggle 切換(SC-7)", async ({ page }) => {
     // 痛點:toggle 是普通 button role=tab;預設 OI,點成交量後 aria-selected 轉移。
     const oiTab = page.getByRole("tab", { name: "OI" });

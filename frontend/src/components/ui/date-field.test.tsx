@@ -201,4 +201,58 @@ describe("DateField", () => {
     fireEvent.change(input, { target: { value: "2026-06-27" } });
     expect(onValueChange).toHaveBeenCalledWith("2026-06-27");
   });
+
+  // --- fix/date-field-partial-input:原生 date input 清除 / 逐位打年份會送出
+  // 空值與 0002-/0020-/0202- 半成品;snap 路徑曾把它們夾到清單最早日並回呼
+  // (個股頁跳到約一年前),純回呼路徑則直接送出半成品(選擇權頁打出錯誤請求)。
+  const DAYS = ["2025-07-01", "2025-07-02", "2026-06-25", "2026-06-26"];
+  for (const raw of ["", "0002-06-26", "0020-06-26", "0202-06-26"]) {
+    it(`不完整輸入 ${JSON.stringify(raw)}:不 snap、不回呼、欄位保留輸入中的內容`, () => {
+      const onValueChange = vi.fn();
+      const { container } = render(
+        <DateField value="2026-06-26" snapToDates={DAYS} onValueChange={onValueChange} />,
+      );
+      const input = container.querySelector("input") as HTMLInputElement;
+      fireEvent.change(input, { target: { value: raw } });
+      expect(onValueChange).not.toHaveBeenCalled();
+      expect(input.value).toBe(raw);
+    });
+  }
+
+  it("不完整輸入(無 snapToDates 的回呼路徑)也不回呼", () => {
+    const onValueChange = vi.fn();
+    const { container } = render(
+      <DateField value="2026-06-26" onValueChange={onValueChange} />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "0002-06-26" } });
+    expect(onValueChange).not.toHaveBeenCalled();
+  });
+
+  it("逐位打完年份才回呼一次;失焦時未完成的輸入還原為已提交值", () => {
+    const onValueChange = vi.fn();
+    const { container } = render(
+      <DateField value="2026-06-26" snapToDates={DAYS} onValueChange={onValueChange} />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    for (const v of ["0002-06-25", "0020-06-25", "0202-06-25", "2026-06-25"]) {
+      fireEvent.change(input, { target: { value: v } });
+    }
+    expect(onValueChange).toHaveBeenCalledTimes(1);
+    expect(onValueChange).toHaveBeenCalledWith("2026-06-25");
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.blur(input);
+    expect(input.value).toBe("2026-06-26");
+  });
+
+  it("早於下限(預設 2000-01-01)或超過 max 的完整日期不回呼", () => {
+    const onValueChange = vi.fn();
+    const { container } = render(
+      <DateField value="2026-06-26" max="2026-06-26" onValueChange={onValueChange} />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "1999-12-31" } });
+    fireEvent.change(input, { target: { value: "2026-06-27" } });
+    expect(onValueChange).not.toHaveBeenCalled();
+  });
 });
