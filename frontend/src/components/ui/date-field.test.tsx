@@ -99,9 +99,11 @@ describe("DateField", () => {
     expect(captured).toBe("2026-06-27");
   });
 
-  it("does not wrap onChange when snapToDates is undefined (W2: OptionsHeader)", () => {
-    // W2 — without snapToDates DateField must remain pure-native;
-    // OptionsHeader depends on this to keep its raw onChange contract.
+  it("does not wrap onChange when snapToDates is undefined (W2: pure-native path)", () => {
+    // W2 — without snapToDates / onValueChange DateField must remain pure-native;
+    // BrokerFlowsPanel depends on this raw onChange contract (it runs its own
+    // draft guard). OptionsHeader moved to onValueChange in
+    // fix/date-field-partial-input.
     let captured: string | undefined;
     const onChange = vi.fn((e: React.ChangeEvent<HTMLInputElement>) => {
       captured = e.target.value;
@@ -243,6 +245,30 @@ describe("DateField", () => {
     fireEvent.change(input, { target: { value: "" } });
     fireEvent.blur(input);
     expect(input.value).toBe("2026-06-26");
+  });
+
+  it("有草稿時外部 value 變動(如個股頁 K 線回來後自動對齊日期)→ 丟草稿顯示新值", () => {
+    const onValueChange = vi.fn();
+    const { container, rerender } = render(
+      <DateField value="2026-06-26" snapToDates={DAYS} onValueChange={onValueChange} />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "0002-06-26" } });
+    expect(input.value).toBe("0002-06-26");
+    rerender(<DateField value="2026-06-25" snapToDates={DAYS} onValueChange={onValueChange} />);
+    expect(input.value).toBe("2026-06-25");
+  });
+
+  it("純原生路徑(無 snapToDates / onValueChange)不套防護:不完整值原樣交給 onChange", () => {
+    // 分點反查(BrokerFlowsPanel)在此路徑上自帶草稿防護,依賴收到每個原始值
+    const seen: string[] = [];
+    const { container } = render(
+      <DateField value="2026-06-26" onChange={(e) => seen.push(e.target.value)} />,
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.change(input, { target: { value: "0002-06-26" } });
+    expect(seen).toEqual(["", "0002-06-26"]);
   });
 
   it("早於下限(預設 2000-01-01)或超過 max 的完整日期不回呼", () => {
