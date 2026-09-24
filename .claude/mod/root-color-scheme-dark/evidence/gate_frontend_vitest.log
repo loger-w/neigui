@@ -1,0 +1,13 @@
+
+> neigui-frontend@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.9 C:/side-project/neigui/.claude/worktrees/mod-root-color-scheme-dark/frontend
+
+
+ Test Files  102 passed (102)
+      Tests  1205 passed (1205)
+   Start at  02:52:48
+   Duration  18.29s (transform 7.53s, setup 0ms, import 29.26s, tests 55.78s, environment 96.12s)
+

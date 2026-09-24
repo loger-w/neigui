@@ -1,0 +1,26 @@
+{
+  "fixed_point": "1cf66c9 (merge-base main)",
+  "reviewed_head": "b34bb08",
+  "whitelist_attached": "W1-W6 (change-spec.md) 附進兩個 sub-agent prompt",
+  "standards": [
+    "合規項:🔴 與 chore(skills) 分開 commit,沒有混類;changelog 0.50.2 用 PATCH / fix / global、排在 index 0、日期正確(符合 CLAUDE.md §7);兩處斷言變更(changelog.test.ts、N7 標題)都已在 change-spec 事前標「該變」;skill 條目是就地翻新而非往上疊(§8);N7 有痛點註解(e2e-conventions「Spec 撰寫紀律」);無 emoji。未發現 [HARD] 違規。",
+    "[JUDGEMENT] 1. .claude/skills/frontend-conventions/SKILL.md:24、frontend/src/components/ui/date-field.tsx:14-15 寫了「Firefox/Safari 圖示隨 dark 轉淺色」。這句來自上一輪 reviewer 的推論(.claude/mod/date-field-dark-calendar/code-review-round-1.json:24),e2e/playwright.config.ts 也沒有 firefox project,等於沒實測過。它卻放在「Chromium 149 實測」標頭下,應改標「未驗證」。",
+    "[JUDGEMENT] 2. frontend/src/lib/changelog.ts 的「開啟頁面時也不再閃一下白底」目前沒有前後對照證據(evidence/ 只有 gate log)。另外「白底元件」依 changelog-conventions:33 宜改「介面元件」或直接省略。",
+    "[JUDGEMENT] 3. e2e-conventions 判準表的「視覺」列:OptionsHeader.tsx:38 的 <select> 在 V2/V5 baseline 畫面內,W2 已預期箭頭會轉色,但 change-spec 沒處理 @visual baseline,應註明豁免或刷新。evidence/ 也還沒有 gate_e2e.log,而 N7 改過,屬必跑。",
+    "[JUDGEMENT] 4. N7 標題寫到「下拉清單 / 數字上下鈕」,斷言卻只鎖 html 和日期欄位,標題講得比測到的多,建議收斂(Mysterious Name)。",
+    "[JUDGEMENT] 5. 「整站只有深色」這個決策分散在 index.html 的 class=\"dark\"、meta 和 :root 三處。meta 那邊沒有註解回指 index.css(輕度 Duplicated Knowledge)。",
+    "[JUDGEMENT] 6. skill 條目的 Trigger 沒涵蓋「新增原生 select/number 控制項」或「改 :root color-scheme」的情境。",
+    "截圖位置:這次 diff 沒有截圖。若要補,注意 CLAUDE.md §6 寫的是 docs/specs/<feature>/screenshots/,但 closeout.md:29 與先例 1cf66c9 都放 evidence/,需擇一。"
+  ],
+  "spec": [
+    "(a) 中:spec 寫「W5 …文字反白色需實測記錄」,但 evidence/ 只有 pytest、vitest、build 三份 log。反白紀錄、W1–W6 的實測截圖、ruff 都沒有;N7 已改動、依規定必跑的 e2e log 也沒有。可能只是還沒走到真實環境驗證那一步,收尾前要補。",
+    "(a) 中:盤點漏了「瀏覽器預設的鍵盤焦點框」。Chromium 對 outline: auto 的焦點框會隨 color-scheme 換色,深色下由近黑框變成淺藍 #99C8FF 系。這是依 Chromium 行為推論,需實測確認。全站約 36 檔有 button 或 tabIndex,只有 16 檔自帶焦點樣式,所以 ModeSwitch、OptionsHeader、WarrantSelector 等處的鍵盤焦點外觀會全站改變。盤點表、白名單、changelog 都沒提。",
+    "(a) 低:頁面一般文字的反白預設色可能也跟著 color-scheme 變,W5 只列了輸入框。",
+    "(a) 低:Safari 不支援 scrollbar-color,在 Safari 上捲軸會轉深,W1 不成立。skill 新文字「捲軸不受影響」只在 Chromium 和 Firefox 成立。",
+    "(b) 範圍外改動:沒有實質問題。date-field JSDoc 多補一句「選取段反白改不動」,只是文件,可以接受。",
+    "(c) 低:N7 沒鎖 meta,刪掉 meta 測試仍會綠。spec 說 meta「消除白閃」,changelog 也寫「不再閃一下白底」,但沒有實測佐證。",
+    "(c) 低:N7 標題寫涵蓋「下拉清單 / 數字上下鈕」,實際只斷言 html 和三個日期欄位,下拉和數字欄位只靠繼承間接涵蓋。若有人在 select 上加 scheme-light 蓋掉,測試抓不到。",
+    "確認沒問題:N7 的 html 斷言能分辨改動前後(改動前 computed 是 normal,會紅);移除 .date-field-input { color-scheme: dark } 是安全的(全 repo 沒有其他 color-scheme 或 scheme-* 覆寫,portal 都掛在 body 底下);meta 與 :root 都宣告 dark,一致;body 有明確的底色與字色,表單控制項由 preflight 設成透明底、字色繼承,ui/input.tsx 沒有任何地方使用,所以沒有其他元素依賴系統預設的 Canvas / CanvasText 顏色。"
+  ],
+  "disposition": "Std-1 接受:skill / change-spec 標 Firefox 圖示、Safari 捲軸為「未實測」(43889b3;date-field JSDoc 為行為描述,保留)。Std-2 接受:白閃以 Playwright 擋 script/stylesheet 實測 before 白 (255,255,255) / after 深 (18,18,18)(evidence/preCSS_canvas_*.png);changelog 用詞改寫(43889b3)。Std-3 接受:e2e 全套 73 passed(evidence/gate_e2e.log);visual baseline CI 不比對(--grep-invert @visual),merge 後觸發 e2e-update-snapshots 重產,diff 留 user 審。Std-4 / Spec-c N7 標題:接受,收斂(c18c2ab)。Std-5 接受:meta 註解(c18c2ab)。Std-6 接受:skill Trigger 擴充(43889b3)。截圖位置:依專案 CLAUDE.md §6(專案層覆寫 closeout 預設)放 docs/specs/root-color-scheme-dark/screenshots/(d59f70f)。Spec-a 中 evidence 缺:已補(gate log、ruff、真實環境截圖、實驗圖)。Spec-a 中 焦點框:實測證實會變,但非淺藍 — Chromium 預設框為黑白雙層,light 黑外圈為主 → dark 白外圈為主,在深色頁面更明顯(evidence/focus_ring_before_after.png);補列盤點 / changelog。Spec-a 低 文字反白:實測兩 scheme 同 (4,55,160),不變。Spec-a 低 Safari 捲軸:本機無 Safari,標未驗證。Spec-c 低 N7 未鎖 meta:接受,補斷言(c18c2ab)。另自查修正:<select> 展開清單實測改前即深色(沿用 select 自身 bg),只有選中列配色變(對比 5.37→6.43:1,未降)— changelog / 註解 / skill 原宣稱「清單轉深」為誤述,已更正(c18c2ab、43889b3;evidence/controls_before_after.png)。增量 b34bb08..HEAD 由 main agent 快篩:文字 / 註解 / 測試加強,無新發現。"
+}
