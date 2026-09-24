@@ -29,7 +29,8 @@
 }
 
 /* 整站只有深色主題 → root 宣告 dark(mod/root-color-scheme-dark):瀏覽器繪製的
- * 原生控制項(日期月曆彈窗、<select> 展開清單、number 上下鈕)隨之轉深。
+ * 原生控制項(日期月曆彈窗、number 上下鈕、預設焦點框、<select> 清單選中列)隨之
+ * 走深色配色(<select> 清單底色沿用 select 自身 bg,本就是深色)。
  * color-scheme 為繼承屬性,各元件不必再各自宣告;index.html 另有同義 meta,
  * CSS 載入前即生效。捲軸不受影響:下方 * 已明確指定 scrollbar-color。 */
 :root {
