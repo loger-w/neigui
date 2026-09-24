@@ -1,6 +1,7 @@
 # Verification — mod/date-field-dark-calendar(2026-09-24)
 
-證據目錄:`evidence/`。自動化指令來源 `.claude/harness.json` + e2e(判準表:跨 mode 視覺 → navigation.spec N#)。
+證據目錄:`evidence/`(gate log、像素實驗圖);真實環境截圖(SC-*)〔更正 2026-09-25〕依專案 CLAUDE.md §6
+已移至 `docs/specs/date-field-dark-calendar/screenshots/`。自動化指令來源 `.claude/harness.json` + e2e(判準表:跨 mode 視覺 → navigation.spec N#)。
 
 ## 自動化 gate
 | Gate | 指令 | cwd | exit | 結果 | log |
@@ -12,11 +13,16 @@
 | e2e(全套,HEAD aea12c2) | `npm test`(ports 8010/5183) | e2e | **1** | 72 passed / **1 failed = E34** | `gate_e2e.log` |
 
 frontend gate 跑於 32cd9cc;其後 aea12c2 只動 e2e spec 與 JSDoc 註解(行為不變),build 由 pre-push 再覆核。
+〔更正 2026-09-25〕pre-push 在 push 時確有跑過(vitest 1205 passed、build 成功),但輸出只出現在 session,
+**未存進 evidence**;最終 HEAD 的 vitest / build 因此沒有檔案證據,本條原寫法有欠精確。
 
 **E34 失敗 = 既有 flake**:同一步 SymbolSearch `getByRole("option")` 15s 0 筆;前一個分支
 (mod/broker-flows-date-picker)已以 merge-base 8d9c5a6 主樹同指令重現(1/3 紅,
 `.claude/mod/broker-flows-date-picker/evidence/gate_e2e_E34_baseline_main.log`)。本分支只改 CSS,
 未觸 SymbolSearch;N7 在全套內為綠。未 skip、未改 assertion。
+〔更正 2026-09-25〕上述重現**不是在本分支的 base(f2d7e56)上做的**,而是借用前一分支的證據。8d9c5a6 早於
+#77 / #78 兩者,仍足以排除這兩個 PR 造成;之後 mod/root-color-scheme-dark(73 passed)與
+fix/date-field-partial-input(74 passed)的全套 e2e 中 E34 皆綠,與「間歇 flake」一致。
 
 TDD:N7 紅先行(computed `normal` → 改 CSS 後 `dark`);`toHaveCSS` 改寫後變異檢查(拿掉
 color-scheme → 紅 `normal`)。版本釘選斷言事前標「該變」後先紅再改 changelog。
@@ -24,6 +30,9 @@ color-scheme → 紅 `normal`)。版本釘選斷言事前標「該變」後先�
 ## 像素實驗(Playwright Chromium,#0e0c08 底)
 - 收合狀態:`W1_closed_A_current.png` 與 `W1_closed_C_dark_inv035.png` 逐像素相同(diff bbox None);
   `W1_closed_B_dark_nofilter.png` 圖示變亮(peak 128→183)→ 需反算 invert 0.35。
+  〔更正 2026-09-25〕B 是「dark + **完全拿掉** filter」,不是「dark + 保留原 invert(0.65)」;183 ≈ 0.7×255 + 0.3×14
+  正是無 filter 的值。真正的反事實(dark + invert 0.65)沒有量過,推算:淺色圖示套 invert(0.65) → 約 0.35 灰,
+  乘 opacity 0.7 疊 #0e0c08 最亮約 66,會**變暗到幾乎看不見**(而非變亮)。反算 0.35 的結論不變,但原述理由記錯方向。
 - 鍵盤編輯選取段:`W2_focus_segment_before_after.png`(上:改前系統藍白字;下:dark 淺藍黑字)。
 - 選取段改專案色可行性:Chromium 149 五種作者 CSS 全無效(見 change-spec 實作期追記)→ user 決定維持。
 
@@ -44,6 +53,6 @@ Console:僅預期 502 / favicon 404。
 | W3 | e2e 全套 equity spec 除既有 E34 flake 外全綠;DateField / App 的 TS 邏輯零改動(diff 僅 JSDoc) |
 | W4 | E47 / N5 綠;BrokerFlowsPanel 零改動 |
 | W5 | SC-3 |
-| W6 | 收合逐像素不變 → baseline 預期無 diff(Linux baseline 本機無法比對,CI 覆核) |
+| W6 | 收合逐像素不變 → baseline 預期無 diff(Linux baseline 本機無法比對,CI 覆核)〔更正 2026-09-25:**CI 不比對 visual** — `e2e.yml` 跑 `npm test` = `--grep-invert "@visual"`,只有手動的 `e2e-update-snapshots` 會跑且為重產。實證改由 run 36044930682(mod/root-color-scheme-dark merge 後觸發)在 Linux 重產 V1–V6,結果與既有 baseline **完全相同**(`Branch … is not ahead of base 'main'`,未開 PR)→ 本 mod 與 root 宣告皆無 visual diff。〕 |
 
 Migration:無;可逆:revert 即回白底原生月曆。

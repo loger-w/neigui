@@ -16,6 +16,8 @@
 - 深色 scheme 下 Chrome 圖示改畫淺色 → filter 反算為 `invert(0.35) sepia(0.2)`。
   實驗(Playwright Chromium,#0e0c08 底):現況 A 與「dark + invert(0.35)」C **整個欄位逐像素相同**
   (diff bbox None);dark 不改 filter 的 B 圖示變亮(peak 128→183)。
+  〔更正 2026-09-25〕B 實為「dark + 完全拿掉 filter」;「dark + 保留 invert(0.65)」未量,推算會**變暗**
+  (最亮約 66,近乎看不見)。詳見 verification.md 同條更正。
 - 月曆彈窗本身為瀏覽器原生外觀(字型 / 選取色不一定吃專案 token),Firefox / Safari 各異 — user 已知悉。
 
 ## 測試 seam(user 議定)
