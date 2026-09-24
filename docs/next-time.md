@@ -11,6 +11,7 @@
 - **FinMind 分點反查(trader-only 專用 path)歷史深度未知**:2026-09-24 想 probe 時帳號 `user_info` 回 **Free(level 1)**,專用 path 對任何日期(含 09-23)都回 400「Your level is register」→ 無法 probe,正式環境分點反查整條不可用。日期選擇因此不設資料下限(Q7),超出範圍靠「所選日期前後無分點資料」文案兜底。觸發:帳號回 Sponsor 後 probe 9600 在 2021 / 2023 / 2025 年初各一日,若有明確下限 → 考慮給日期欄位設 `min`。
 - **`todayStr()` 本地日期字串已 3 份**(App.tsx / OptionsPage.tsx / BrokerFlowsPanel.tsx,逐字同義):rule-of-three 成立,抽 `lib/` 屬 /refactor 小活。觸發:下次動任一份時一併收(review Std-2 收緊)。
 - **`DateField` 無觸控放大**(review Std-5):元件固定 `h-8`,未套 frontend-conventions「可互動元件加 `pointer-coarse:min-h-11`」;個股頁 / 選擇權頁 / 分點反查三處共用同一元件,應在元件層統一處理而非各 caller 補。觸發:手機觸控體驗被反映、或下次動 `date-field.tsx` 時。
+- **DateField 原生外觀的天花板**(mod/date-field-dark-calendar,2026-09-24):月曆彈窗已靠 `color-scheme: dark` 轉深色,但仍是瀏覽器中性灰(#3b3b3b)+ 淺藍選取格;鍵盤編輯中的**選取段反白固定淺藍 #99c8ff 黑字,作者 CSS 改不動**(Chromium 149 實驗 pseudo `:focus` / `!important` / `accent-color` / `::selection` 全無效)。要全面吃專案配色只能改自製日期元件(輸入段 + 月曆,三頁共用,需自補鍵盤 / 無障礙 / 時區)。user 2026-09-24 決定先收。觸發:user 再提日期欄位風格、或第 4 個頁面要日期欄位時,以 /feat 立案(先 grilling)。
 
 ## From /feat bubble-streak-screenshot(2026-08-13)
 
