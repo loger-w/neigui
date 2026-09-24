@@ -1,0 +1,13 @@
+
+> neigui-frontend@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.9 C:/side-project/neigui/.claude/worktrees/mod-date-field-dark-calendar/frontend
+
+
+ Test Files  102 passed (102)
+      Tests  1205 passed (1205)
+   Start at  17:32:27
+   Duration  18.73s (transform 9.11s, setup 0ms, import 30.45s, tests 59.18s, environment 105.50s)
+

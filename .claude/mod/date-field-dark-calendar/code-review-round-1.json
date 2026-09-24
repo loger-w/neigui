@@ -1,0 +1,29 @@
+{
+  "fixed_point": "f2d7e56 (merge-base main)",
+  "reviewed_head": "32cd9cc",
+  "whitelist_attached": "W1-W6 (change-spec.md 既有行為白名單) 附進兩個 sub-agent prompt",
+  "standards": [
+    "沒有 [HARD] 違規。",
+    "e2e/specs/navigation.spec.ts(N7)[JUDGEMENT] 痛點註解把覆蓋範圍講大了。註解寫「新頁面繞過 DateField 即紅」,但迴圈只跑三個既有 mode,而且依賴的 \"選擇日期\" 是呼叫端自己帶的 aria-label(App.tsx:451、OptionsHeader.tsx:56、BrokerFlowsPanel.tsx:295)。之後新增第四頁不會變紅。依據:e2e-conventions:46,痛點註解要對應真實的設計理由。",
+    "e2e/specs/navigation.spec.ts(N7)[JUDGEMENT] 斷言寫法和 repo 既有寫法不一致。現在是 expect(await field.evaluate(...colorScheme)).toBe(\"dark\"),equity.spec.ts:160 已經用 web-first 的 toHaveCSS。建議改成 await expect(field).toHaveCSS(\"color-scheme\", \"dark\")。",
+    "e2e/specs/navigation.spec.ts(N7)[JUDGEMENT] N7 插在 N1 前面,但 N5、N6 都接在檔尾,排序不一致。",
+    "frontend/src/index.css [JUDGEMENT] 註解寫「change-spec 附紀錄」,但 .claude/mod/date-field-dark-calendar/ 目前還沒進版控。repo 慣例是另外 commit artifacts(見 8f9f35c)。merge 前沒補上的話,這個引用會找不到檔案。其他沒問題:只在 .date-field-input 宣告,不放 :root,W5 不受影響。invert 0.65→0.35 對純黑、純白圖示算出來的顏色相同,和 hover 時的 opacity 無關。",
+    "frontend/src/components/ui/date-field.tsx:10-13(diff 間接造成的文件過時)[JUDGEMENT] JSDoc 列出 .date-field-input 被哪些 CSS 規則使用,只寫了 picker-indicator,沒提新加的 color-scheme 規則。",
+    "changelog.ts / changelog.test.ts:符合規範。PATCH、kind fix、scope global(CLAUDE.md §7、changelog-conventions:41-44)。0.50.0 已經在 origin/main,所以另開一個 entry 是對的。text 是使用者看得懂的描述。版本釘選斷言事前已在 change-spec:25 標「該變」。",
+    "commit:🔴 fix(frontend) 只有一類改動,符合 §6。",
+    "白名單風險 [JUDGEMENT,未驗證] W2:dark scheme 可能改變逐段輸入時被選取那一段的反白色(瀏覽器預設的 Highlight 色)。逐像素實驗只驗了收合狀態(change-spec:17),V 系列 baseline 也沒有 focus 日期欄位,所以這點沒被驗到。建議在真實環境 focus 一次目測確認。",
+    "程式碼壞味道:沒有找到。invert 值和 color-scheme 互相依賴,但兩條規則放在一起而且有註解,不算 Shotgun Surgery。"
+  ],
+  "spec": [
+    "結論:沒有「高」嚴重度的發現。三項規格要求都有做到:只作用在日期欄位的 color-scheme: dark、invert 從 0.65 改成 0.35、changelog 0.50.1(fix / global)。",
+    "(a) 中:規格寫「彈窗外觀本身頁面截圖拍不到 → user 點開過目驗收」。N7 只驗 computed 值,確實能擋掉 CSS 被拿掉、或頁面繞過 DateField 的情況。但這次改動的真正目的(彈窗變深色)在 evidence/ 裡沒有任何驗收紀錄。",
+    "(a) 低:規格把 N7 列為 test seam,evidence/ 卻沒有 e2e 的執行 log。只有 e2e/test-results/.last-run.json 顯示 passed(17:32),看不出跑了哪些測試。",
+    "(a) 低:W6(「visual baseline…不應產生 diff」)的 baseline 只在 Linux 跑,Win32 會 skip,所以本機無法驗證。目前靠的是規格裡「diff bbox None」的實驗摘要,原始資料沒放進 evidence。CSS 註解寫「change-spec 附紀錄」,但 change-spec 只有文字摘要。",
+    "(b) Scope creep:沒有。",
+    "(c) 低:W1 的逐像素實驗只拍了未聚焦的欄位。依我對 Chromium 的了解(沒實測):日期逐段輸入時,被選中的那一段用系統色 highlight / highlighttext 標示,在 dark scheme 下預期會從藍底白字變成淺藍底深字。這個變化沒列入白名單,也沒驗證過。",
+    "(c) 低:Firefox 不支援 ::-webkit-calendar-picker-indicator,filter 不會生效,原生圖示會跟著 color-scheme: dark 變成淺色。所以 W1 的「圖示色」只在 Chromium 成立。規格只說彈窗「Firefox / Safari 各異」,沒提到圖示。",
+    "(c) 低:N7 擋不住有人把宣告移到 :root,那會違反 W5,但 N7 照樣是綠的。這不是議定的 seam,列出來只是備忘。",
+    "已確認沒問題:只有 DateField 帶 date-field-input class;全 repo 沒有其他 type=\"date\"、month、time 之類的原生日期控制項;三個頁面一次只掛一個 DateField(App 用三元判斷切換頁面),getByLabel(\"選擇日期\") 不會同時對到多個元素;反算公式 invert(p) 作用在白色 = 1−p 作用在黑色,0.35 和 0.65 數學上一致;W2 到 W4 沒碰任何 TypeScript 邏輯,行為不變。"
+  ],
+  "disposition": "Std-N7 三條全接受:註解收斂為「拿掉 color-scheme 或既有三頁改用非 DateField 欄位即紅」、改 toHaveCSS、移至檔尾(aea12c2;變異檢查拿掉 color-scheme → 紅 normal)。Std-index.css 引用 change-spec:artifacts 於 merge 前 commit(本檔同批),不改 code。Std-JSDoc 接受(aea12c2)。Std-W2 / Spec-(c) 選取段反白:實測證實 dark 下由系統藍白字 → 淺藍黑字(evidence/W2_focus_segment_before_after.png),上呈 user;user 選改專案強調色 → 實作 ::-webkit-datetime-edit-*-field:focus 無效,Chromium 149 實驗 5 種作者 CSS 全無效(原生欄位做不到),再上呈 → user 決定維持原生淡藍、本次收尾,自製元件記 next-time;未生效規則與 N8 撤回未進版控。Spec-(a) 中 彈窗無驗收紀錄:real-env SC-2 已拍到原生月曆彈窗且為深色(evidence/SC-2_popup_attempt.png,底 #3b3b3b 白字)。Spec-(a) 低 e2e log:全套 e2e log 落 evidence/gate_e2e.log。Spec-(a) 低 W6 原始資料:實驗圖落 evidence/W1_closed_*.png(A/C 逐像素相同、B 圖示變亮)。Spec-(c) Firefox 圖示:接受為已知(Firefox 無該 pseudo-element,原生圖示隨 dark 轉淺色,於深底上可讀),記 skill 條目。Spec-(c) N7 擋不住移到 :root:非議定 seam,real-env SC-3 已驗 html / <select> 為 normal,不加測試。增量 32cd9cc..aea12c2 由 main agent 快篩:N7 純重寫 + JSDoc,無新發現。"
+}
