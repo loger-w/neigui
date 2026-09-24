@@ -132,14 +132,14 @@ test.describe("navigation & persistence", () => {
     await expect(page.getByLabel("搜尋分點")).toHaveValue("9600 富邦");
   });
 
-  test("N7: 整站宣告深色 color-scheme — 原生月曆 / 下拉清單 / 數字上下鈕不再白底(mod/root-color-scheme-dark)", async ({ page }) => {
-    // 痛點:原生控制項(月曆彈窗、<select> 展開清單、number 上下鈕)由瀏覽器依
-    // color-scheme 繪製;整站只有深色主題,未在 root 宣告時 Chrome 以 light 繪製。
-    // 鎖真 browser computed 值(非原始碼):root 為 dark,且三個 DateField caller
-    // (個股 / 選擇權 / 分點反查)的日期欄位繼承為 dark — 有人拿掉 root 宣告、
-    // 或某頁用 scheme-light 蓋掉即紅。
+  test("N7: 整站宣告深色 color-scheme — root + meta + 三頁日期欄位(mod/root-color-scheme-dark)", async ({ page }) => {
+    // 痛點:原生控制項(月曆彈窗、number 上下鈕、預設焦點框)由瀏覽器依
+    // color-scheme 繪製;整站只有深色主題,未在 root 宣告時 Chrome 以 light 繪製。鎖:root computed = dark(真 browser 值)、meta color-scheme = dark
+    // (CSS 載入前的畫布底色靠它,拿掉會回到白閃)、三個 DateField caller 的日期欄位
+    // 繼承為 dark。select / number 只靠繼承間接覆蓋,不在本斷言範圍。
     await page.goto("/");
     await expect(page.locator("html")).toHaveCSS("color-scheme", "dark");
+    await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute("content", "dark");
     for (const role of [ROLES.modeSwitchEquity, ROLES.modeSwitchOptions, ROLES.modeSwitchFlows]) {
       await page.getByRole(role.role, { name: role.name }).click();
       await expect(page.getByLabel("選擇日期")).toHaveCSS("color-scheme", "dark");
