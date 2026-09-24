@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.50.2",
+    date: "2026-09-25",
+    changes: [
+      {
+        kind: "fix",
+        scope: "global",
+        text: "下拉選單展開的清單、數字欄位的上下調整鈕也改為深色,不再在深色頁面上出現白底元件;開啟頁面時也不再閃一下白底",
+      },
+    ],
+  },
+  {
     version: "0.50.1",
     date: "2026-09-24",
     changes: [
