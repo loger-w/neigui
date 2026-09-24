@@ -67,9 +67,10 @@ describe("useBrokerDailyFlows", () => {
       wrapper: makeQueryWrapper(),
     });
     await waitFor(() => expect(result.current.data).not.toBeNull());
-    expect(spy.mock.calls[0]?.[1]).toBe(false);
+    // api 參數順序對齊 sibling (id, date?, refresh?, options?) — refresh 在 [2]
+    expect(spy.mock.calls[0]?.[2]).toBe(false);
     result.current.refresh();
-    await waitFor(() => expect(spy.mock.calls.at(-1)?.[1]).toBe(true));
+    await waitFor(() => expect(spy.mock.calls.at(-1)?.[2]).toBe(true));
   });
 
   it("API 失敗 → error 終態", async () => {
