@@ -5,11 +5,17 @@ import { useForceRefreshQuery } from "./useForceRefreshQuery";
 // 分點反查:切到 tab 且選定分點才抓(active gate,useWarrantFlow 同構);
 // per (broker, day) cache 在 backend,前端 session cache 由 queryKey 承擔。
 // noTradingDay 對齊跨檔契約(CLAUDE.md §4)— 回退日時 UI 顯示標註(SC-6)。
-export function useBrokerDailyFlows(brokerId: string, active: boolean) {
+// date = null → 最新模式(不帶 date,backend 以今日起算候選日)。
+export function useBrokerDailyFlows(
+  brokerId: string,
+  active: boolean,
+  date: string | null = null,
+) {
   const { data, isFetching, error, refresh } = useForceRefreshQuery<BrokerFlowsPayload>({
-    queryKey: ["broker-flows", brokerId],
+    queryKey: ["broker-flows", brokerId, date],
     enabled: active && !!brokerId,
-    queryFn: async (force, { signal }) => api.brokerDailyFlows(brokerId, force, { signal }),
+    queryFn: async (force, { signal }) =>
+      api.brokerDailyFlows(brokerId, date ?? undefined, force, { signal }),
   });
 
   return {

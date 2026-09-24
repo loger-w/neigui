@@ -256,9 +256,10 @@ export const api = {
     return get(`${BASE}/broker/traders`, { search }, options);
   },
   brokerDailyFlows(
-    brokerId: string, refresh?: boolean, options?: RequestOptions,
+    brokerId: string, date?: string, refresh?: boolean, options?: RequestOptions,
   ): Promise<BrokerFlowsPayload> {
     const params: Record<string, string> = { broker_id: brokerId };
+    if (date) params.date = date;
     if (refresh) params.refresh = "true";
     return get(`${BASE}/broker/daily-flows`, params, options);
   },
