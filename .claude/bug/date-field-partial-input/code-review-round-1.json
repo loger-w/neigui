@@ -1,0 +1,21 @@
+{
+  "fixed_point": "bc70b7a (merge-base main)",
+  "reviewed_head": "7585838",
+  "whitelist_attached": "DateField 既有行為(純原生路徑 / snap / [] 放行 / e.target / DOM 強制 / onValueChange raw)+ stepper + NTD1 附進兩個 sub-agent prompt",
+  "standards": [
+    "沒有發現違反文件化規範的 [HARD] 問題,已逐一確認:commit 只含 🔴 一類,格式符合 §6;changelog 從 0.50.2 升到 0.50.3,屬 PATCH(§7),text 沒有工程術語,scope 值合法(changelog-conventions:41-44);版本 pin 已在 diagnosis.md:39-40 事前標「該變」;O7 有 // 痛點: 註解(e2e-conventions「痛點註解強制」);測試照 frontend-testing:11 的寫法(fireEvent 加 toBeTruthy 風格),有 pragma 和 cleanup;程式碼沒有 emoji,也沒有新增 UI 文字;防護寫在 DateField 本體,不是在 caller 加 if 規避(H4 已明確不採),沒有吞錯誤;白名單逐條推演都保留:snapToDates=[] 搭 onChange 仍走純原生,NTD1 的週六是完整日期,會放行。",
+    "[JUDGEMENT] 1. e2e/specs/options.spec.ts:78,O7 的點擊座標寫死 box.x + 14,假設年份是第一段。Playwright 的 locale「預設跟系統 locale」(e2e/node_modules/playwright-core/types/types.d.ts:10360);playwright.config.ts 沒設 locale,CI 跑在 ubuntu-latest(.github/workflows/e2e.yml);en-US 的 Chromium 日期欄位順序是 mm/dd/yyyy(這點是推論,未在 CI 實跑),那樣會點到「月」段,O7 很可能只在本機(推測是 zh-TW)才綠。建議 test.use({ locale: \"zh-TW\" })。另外 waitForTimeout 和 networkidle 在 Playwright 文件中都被標為不建議使用(types.d.ts:5172、3172);這裡是否定斷言,需要等請求收斂,我判斷可以接受。",
+    "[JUDGEMENT] 2. date-field.test.tsx:102-104 的測試標題和註解已經過時。仍寫「OptionsHeader 依賴純原生路徑」,但 OptionsHeader 已改走包裝路徑,現在依賴純原生路徑的是 BrokerFlowsPanel。只改標題和註解,不動斷言。",
+    "[JUDGEMENT] 3. Duplicated Code:同一套判斷寫在兩處。date-field.tsx:52-57 和 BrokerFlowsPanel.tsx:49-63 都有 DATE_RE、2000-01-01 下限、同名的 isCommittableDate。這次不合併我認為可以接受:分點反查多了 300ms debounce 和 render 時現算的「今天」上限,合併等於另一個 🔴 或 🔵 改動。但 docs/next-time.md 還沒有這一條(grep 無結果),diagnosis.md:47-48 提到的「逐位打日也會多查一次」也還沒寫進去。收尾時要補,並寫上觸發條件。",
+    "[JUDGEMENT] 4. frontend-conventions/SKILL.md:23 已過時,而且會誤導。它仍要新 caller 照 BrokerFlowsPanel 自己寫草稿防護,並暗示有交易日清單時用 snapToDates 就夠。後者正是這次的 bug。closeout.md §5 沉澱時要改寫成「日期值直接進查詢時用 onValueChange(DateField 已內建防護)」,照 CLAUDE.md §8 的「翻新舊條目」處理。"
+  ],
+  "spec": [
+    "(c) 高 — O7 綁定 zh-TW 欄位順序,CI 上極可能變紅。對應 diagnosis:「options.spec.ts O7(L2 轉正,真鍵盤 + 網路症狀)」。測試用 box.x + 14 點擊,假設第一段是年份。我在 scratchpad 寫了 probe,用 Chromium --lang=en-US 跑同樣的點擊加 2,0,2,5,結果 input 事件序列是 [\"2026-02-26\",\"\",\"2026-02-02\",\"0005-02-02\"],最後停在 0005-02-02,所以 toHaveValue(\"2025-06-26\") 會失敗。Playwright context 的 locale 改不了欄位順序(zh-TW 與 en-US 兩個 context 結果相同),只有 --lang 有效。e2e.yml 在 ubuntu-latest 跑,沒設語系,預設極可能是 en-US。本機會過只因為 Windows 是 zh-TW。",
+    "(c) 低 — 草稿只在 blur 時清除,外部改 value 時不清。滑鼠點或 Tab 到 stepper、點圖表,都會先觸發 blur,所以這幾條路徑安全。例外是 App 的 auto-snap effect:使用者還沒提交任何日期前(userPickedDate=false)手上有草稿,這時 history 回來,setDate(lastCandle) 會被草稿遮住,要等 blur 才顯示。會自行恢復,可以考慮在 value 變動時一併清草稿。",
+    "(c) 低 — date-field.test.tsx:102 的註解過時,純原生路徑也少一條鎖定測試。註解仍寫「OptionsHeader depends on raw onChange」,但現在真正依賴純原生路徑的是 BrokerFlowsPanel。另外,純原生路徑下 \"\"/0002-… 原樣傳遞沒有測試鎖住,而白名單正依賴這個行為。",
+    "(b) 低 — 選擇權頁「清除」不再抓最新資料。diagnosis 自己寫了空日期不是 bug:「options-api.ts 對空日期不帶 date 參數(= 重抓最新)」。現在空值被擋下,blur 後還原,等於移除了一條不是 bug 的路徑,但沒列進「事前標該變」,changelog 也沒提,需要 user 確認。",
+    "(a) 低 — changelog scope 分拆。diagnosis 寫「0.50.3(PATCH,fix / global)」,實作拆成 equity 與 options 兩條。內容合理,只是與 diagnosis 不同。",
+    "白名單逐項確認,皆通過:純原生路徑等價(value/onBlur 改成顯式傳入,效果相同;BrokerFlowsPanel 的 min/max 是字串,且不經過防護);可提交的日期仍照舊 snap 到前一交易日,[] 原樣傳遞,DOM 仍強制寫成 snap 後的值(既有測試 70/89/164 還在);stepper 與外部 value 變動仍會反映到欄位,前提是當下沒有草稿;NTD1 用 fill 填完整週六日期,會正常回呼,仍顯示無交易日;合約切換沒碰到;2000-01-01 下限對所有 caller 都安全(K 線約 360 天,選擇權頁沒有 min);「今天」:兩個包裝路徑的 caller 都沒傳 max,所以會提交;「清除」會進草稿,blur 後還原;O7 確實能區分修正前後(修正前原始值 0002 會直接送出 date=0002 請求)。"
+  ],
+  "disposition": "Std-1 / Spec 高 O7 語系:接受問題、不採 reviewer 建議的 test.use({locale}) — 實測 locale:'en-US' 下舊寫法仍綠,證實 Playwright locale 管不到段序(與 Spec 結論一致);改為段序偵測(第一段 ↑ 看哪段變,非年份 Tab 兩次),以暫存 config 加 --lang=en-US 實跑綠、本機 repeat×3 綠(fd16003)。Std-2 接受:W2 測試標題 / 註解更正,斷言未動(fd16003)。Std-3 接受:next-time 補「日期草稿防護兩份」「逐位打日多查一輪」並附觸發條件(c3777de)。Std-4 接受:frontend-conventions DateField 條目翻新為「用 onValueChange,禁用 onChange 原始值設查詢」(c3777de)。Spec 低 草稿遮外部 value:接受,value 變動即丟草稿,紅先行(fd16003)。Spec 低 純原生路徑鎖定測試:接受,補 characterization(fd16003)。Spec 低 選擇權頁「清除」行為改變:列 diagnosis 追記,收尾回報請 user 確認。Spec 低 changelog scope:以實作(equity / options 兩條)為準,diagnosis 追記。增量 7585838..HEAD 由 main agent 快篩:useEffect([value]) 清草稿不影響提交路徑(提交時已 setDraft(null));O7 偵測段使用 ↑/↓ 產生的兩次合法日期請求發生在開始記錄前,無新發現。"
+}

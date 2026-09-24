@@ -1,0 +1,13 @@
+
+> neigui-frontend@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.9 C:/side-project/neigui/.claude/worktrees/fix-date-field-partial-input/frontend
+
+
+ Test Files  102 passed (102)
+      Tests  1214 passed (1214)
+   Start at  03:16:12
+   Duration  18.15s (transform 8.19s, setup 0ms, import 29.14s, tests 54.93s, environment 94.01s)
+

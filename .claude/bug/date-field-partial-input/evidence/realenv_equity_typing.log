@@ -1,0 +1,33 @@
+﻿
+node.exe : [WebServer] INFO:     Started server process [11852]
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([WebServer] INF...process [11852]:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+[WebServer] INFO:     Waiting for application startup.
+[WebServer] INFO:     Application startup complete.
+[WebServer] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+
+[WebServer] (node:16416) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+
+
+(node:16172) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[1/1] [chromium] › specs\zz-realenv-equity-date.spec.ts:5:1 › realenv A1:個股頁逐位打年份 / Backspace 清空不跳最早日、不發錯誤日期請求
+[chromium] › specs\zz-realenv-equity-date.spec.ts:5:1 › realenv A1:個股頁逐位打年份 / Backspace 清空不跳最早日、不發錯誤日期請求
+typing values: ["0002-06-26","0020-06-26","0202-06-26","2026-06-26"]
+
+after backspace: ""
+
+after blur: "2026-06-26"
+
+requests: []
+
+  1 passed (6.6s)
