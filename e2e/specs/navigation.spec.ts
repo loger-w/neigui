@@ -100,6 +100,14 @@ test.describe("navigation & persistence", () => {
     await page.getByRole(ROLES.modeSwitchFlows.role, { name: ROLES.modeSwitchFlows.name }).click();
     await expect(page.getByLabel("搜尋分點")).toHaveValue("9600 富邦");
     await expect(page.getByTestId("broker-flows-buy")).toBeVisible();
+    // mod/broker-flows-date-picker Q3:已選日期同走 sessionStorage 還原 —
+    // 選 06-25 → 切 market → 切回,日期與該日資料仍在(不是退回最新日)
+    await page.getByLabel("選擇日期").fill("2026-06-25");
+    await expect(page.getByText("資料日 06-25")).toBeVisible();
+    await page.getByRole(ROLES.modeSwitchMarket.role, { name: ROLES.modeSwitchMarket.name }).click();
+    await page.getByRole(ROLES.modeSwitchFlows.role, { name: ROLES.modeSwitchFlows.name }).click();
+    await expect(page.getByLabel("選擇日期")).toHaveValue("2026-06-25");
+    await expect(page.getByText("資料日 06-25")).toBeVisible();
     // 切回 market:鑽取展開仍在
     await page.getByRole(ROLES.modeSwitchMarket.role, { name: ROLES.modeSwitchMarket.name }).click();
     await expect(page.getByTestId("sub-row-半導體業-晶圓代工")).toBeVisible();

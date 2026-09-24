@@ -9,6 +9,7 @@ import {
 } from "../lib/broker-flows-data";
 import { cn } from "../lib/utils";
 import { formatBrokerLabel, formatBrokerName } from "../lib/broker-name";
+import { DateField } from "./ui/date-field";
 import {
   addSavedBroker,
   loadSavedBrokers,
@@ -33,6 +34,26 @@ const ERROR_TEXT: Record<string, string> = {
   broker_not_found: "找不到該分點",
   broker_directory_unavailable: "分點目錄暫時無法取得",
 };
+// 選了過去日期時「尚未上料 21:00」不成立(連假 / 超出資料範圍),換文案(Q6)
+const PICKED_DATE_UNAVAILABLE = "所選日期前後無分點資料(休市或超出資料範圍)";
+
+// 日期草稿防護(Q9):原生 date input 逐位輸入年份會送出 0002-/0020-/0202-
+// 中間值 — 下限只擋這類半成品,不是資料下限;上限 = 今天。
+const DATE_FLOOR = "2000-01-01";
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DATE_COMMIT_DEBOUNCE_MS = 300;
+
+function todayStr(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function isCommittableDate(v: string): boolean {
+  return DATE_RE.test(v) && v >= DATE_FLOOR && v <= todayStr();
+}
 
 export function BrokerFlowsPanel({ active, onPickStock }: Props) {
   // SC-8:mode 切換 unmount(N4 契約)後 remount,已選分點自 sessionStorage
@@ -54,6 +75,20 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
     saveSavedBrokers(saved);
   }, [saved]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 查詢日期:null = 最新模式(不帶 date,W1);跨 mode 還原(Q3),換分點不重置(Q4)
+  const [flowsDate, setFlowsDate] = useSessionState<string | null>(
+    "neigui.session.flows-date",
+    null,
+  );
+  // 欄位草稿:合格且停手 300ms 才提交;選回今天 = 回最新模式(Q2)
+  const [dateDraft, setDateDraft] = useState(() => flowsDate ?? todayStr());
+  useEffect(() => {
+    if (!isCommittableDate(dateDraft)) return;
+    const t = setTimeout(() => {
+      setFlowsDate(dateDraft === todayStr() ? null : dateDraft);
+    }, DATE_COMMIT_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [dateDraft, setFlowsDate]);
 
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -72,7 +107,11 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
     : "";
   const dropdownActive = open && !!debounced && debounced !== selectedEcho;
   const search = useTraderSearch(dropdownActive ? debounced : "");
-  const flows = useBrokerDailyFlows(selected?.broker_id ?? "", active);
+  const flows = useBrokerDailyFlows(selected?.broker_id ?? "", active, flowsDate);
+  const flowsErrorText =
+    flows.error === "broker_flows_unavailable" && flowsDate !== null
+      ? PICKED_DATE_UNAVAILABLE
+      : flows.error && (ERROR_TEXT[flows.error] ?? flows.error);
 
   const hits = search.data ?? [];
   const truncated = search.total !== null && search.total > hits.length;
@@ -237,6 +276,17 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
             })()}
           </span>
         )}
+        <DateField
+          value={dateDraft}
+          aria-label="選擇日期"
+          min={DATE_FLOOR}
+          max={todayStr()}
+          onChange={(e) => setDateDraft(e.target.value)}
+          onBlur={() => {
+            // 半成品 / 越界草稿不留在欄位上 — 還原為實際查詢中的日期
+            if (!isCommittableDate(dateDraft)) setDateDraft(flowsDate ?? todayStr());
+          }}
+        />
         {flows.data && (
           <span className="text-xs text-ink-dim">資料日 {flows.data.as_of_date.slice(5)}</span>
         )}
@@ -301,9 +351,9 @@ export function BrokerFlowsPanel({ active, onPickStock }: Props) {
           {flows.data.requested_date} 尚無資料,顯示 {flows.data.as_of_date}
         </div>
       )}
-      {flows.error && (
+      {flowsErrorText && (
         <div className="shrink-0 px-4 py-2 text-sm text-accent bg-accent/[0.06] border-b border-line">
-          {ERROR_TEXT[flows.error] ?? flows.error}
+          {flowsErrorText}
         </div>
       )}
 

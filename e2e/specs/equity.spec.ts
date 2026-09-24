@@ -296,6 +296,30 @@ test.describe("equity mode — 權證 tab(feat/warrant-selector)", () => {
     await expect(page.locator("#trader-search-option-9604")).toHaveAttribute("role", "option");
   });
 
+  test("E47: 分點反查日期選擇 — 選 06-25 → 該日雙表資料級(mod/broker-flows-date-picker)", async ({ page }) => {
+    // 痛點:date 若沒一路傳到 backend(api / hook / queryKey 任一環漏接),畫面
+    // 仍是最新日 06-26 的雙表 — visibility-only 會假綠。鎖 06-25 獨特值(2317
+    // 1,234 張 / 2.59億、2454 -321 張 / -4.75億),且 06-26 的台積電不得出現。
+    await page.getByRole("button", { name: "分點反查" }).click();
+    await page.getByLabel("搜尋分點").fill("富邦");
+    await page.getByRole("option", { name: "9600 富邦" }).click();
+    await expect(page.getByText("資料日 06-26")).toBeVisible();
+    const dateField = page.getByLabel("選擇日期");
+    await expect(dateField).toHaveValue("2026-06-26"); // 最新模式顯示今天(W1)
+    await dateField.fill("2026-06-25");
+    await expect(page.getByText("資料日 06-25")).toBeVisible();
+    await expect(page.getByText(/尚無資料/)).toHaveCount(0);
+    const buy = page.getByTestId("broker-flows-buy");
+    await expect(buy).toContainText("鴻海");
+    await expect(buy).toContainText("1,234");
+    await expect(buy).toContainText("2.59億");
+    await expect(buy).not.toContainText("台積電");
+    const sell = page.getByTestId("broker-flows-sell");
+    await expect(sell).toContainText("聯發科");
+    await expect(sell).toContainText("-321");
+    await expect(sell).toContainText("-4.75億");
+  });
+
   test("E10: 無權證標的空狀態(SC-7)", async ({ page }) => {
     // 痛點:2412 不在權證 fixture 的標的內 → 空 list → 繁中空狀態;
     // 若 backend 空標的誤回 404/500,這裡會看到 error 而非空狀態文案。

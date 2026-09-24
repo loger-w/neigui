@@ -348,3 +348,134 @@ describe("BrokerFlowsPanel", () => {
     ).toBeTruthy();
   });
 });
+
+// mod/broker-flows-date-picker(change-spec Q2/Q3/Q4/Q6/Q9):日期欄位 —
+// 未選 = 最新模式(不帶 date);草稿防護 + 300ms debounce 才提交;
+// sessionStorage 跨 remount 保留、換分點保留;選日期後 503 換文案。
+describe("BrokerFlowsPanel 日期選擇", () => {
+  // 只凍 Date(今天 = 2026-07-20 Mon),setTimeout 走真時鐘(debounce / waitFor 照常)
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 6, 20, 10, 0, 0));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  const dateInput = () => screen.getByLabelText("選擇日期") as HTMLInputElement;
+  const lastFlowsCall = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls.at(-1);
+  const pickDate = (v: string) => fireEvent.change(dateInput(), { target: { value: v } });
+
+  it("預設最新模式:欄位顯示今天,請求不帶 date(W1)", async () => {
+    const { flowsSpy } = await pickFubon();
+    expect(dateInput().value).toBe("2026-07-20");
+    expect(flowsSpy.mock.calls[0]?.[1]).toBeUndefined();
+  });
+
+  it("選過去日期 → debounce 後以該日查詢", async () => {
+    const { flowsSpy } = await pickFubon();
+    pickDate("2026-07-15");
+    await waitFor(() => expect(lastFlowsCall(flowsSpy)?.[1]).toBe("2026-07-15"));
+    expect(lastFlowsCall(flowsSpy)?.[0]).toBe("9600");
+  });
+
+  it("選回今天 → 回最新模式(不帶 date)", async () => {
+    const { flowsSpy } = await pickFubon();
+    pickDate("2026-07-15");
+    await waitFor(() => expect(lastFlowsCall(flowsSpy)?.[1]).toBe("2026-07-15"));
+    const before = flowsSpy.mock.calls.length;
+    pickDate("2026-07-20");
+    await waitFor(() => expect(flowsSpy.mock.calls.length).toBeGreaterThan(before));
+    expect(lastFlowsCall(flowsSpy)?.[1]).toBeUndefined();
+  });
+
+  it("不合格草稿(打到一半的年份 / 未來日)不提交,失焦還原為已提交值", async () => {
+    const { flowsSpy } = await pickFubon();
+    pickDate("0002-07-15");
+    await new Promise((r) => setTimeout(r, 450)); // 過 debounce 窗
+    pickDate("2026-07-21"); // 明天
+    await new Promise((r) => setTimeout(r, 450));
+    const dates = flowsSpy.mock.calls.map((c) => c[1]);
+    expect(dates).not.toContain("0002-07-15");
+    expect(dates).not.toContain("2026-07-21");
+    fireEvent.blur(dateInput());
+    expect(dateInput().value).toBe("2026-07-20");
+  });
+
+  it("debounce 窗內連續改值 → 只以最後一值查詢", async () => {
+    const { flowsSpy } = await pickFubon();
+    pickDate("2026-07-01");
+    pickDate("2026-07-15");
+    await waitFor(() => expect(lastFlowsCall(flowsSpy)?.[1]).toBe("2026-07-15"));
+    await new Promise((r) => setTimeout(r, 450));
+    expect(flowsSpy.mock.calls.map((c) => c[1])).not.toContain("2026-07-01");
+  });
+
+  it("先選日期再選分點 → 首發即帶該日", async () => {
+    vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+    const flowsSpy = vi.spyOn(api, "brokerDailyFlows").mockResolvedValue(mk());
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    pickDate("2026-07-15");
+    await new Promise((r) => setTimeout(r, 450));
+    fireEvent.change(screen.getByLabelText("搜尋分點"), { target: { value: "富邦" } });
+    fireEvent.mouseDown(await screen.findByText("9600 富邦", undefined, { timeout: 3000 }));
+    await waitFor(() => expect(flowsSpy).toHaveBeenCalled());
+    expect(flowsSpy.mock.calls[0]?.[1]).toBe("2026-07-15");
+  });
+
+  it("換分點保留已選日期(Q4)", async () => {
+    const { flowsSpy } = await pickFubon();
+    pickDate("2026-07-15");
+    await waitFor(() => expect(lastFlowsCall(flowsSpy)?.[1]).toBe("2026-07-15"));
+    const input = screen.getByLabelText("搜尋分點");
+    fireEvent.change(input, { target: { value: "陽明" } });
+    fireEvent.mouseDown(await screen.findByText("9604 富邦陽明", undefined, { timeout: 3000 }));
+    await waitFor(() => expect(lastFlowsCall(flowsSpy)?.[0]).toBe("9604"));
+    expect(lastFlowsCall(flowsSpy)?.[1]).toBe("2026-07-15");
+    expect(dateInput().value).toBe("2026-07-15");
+  });
+
+  it("unmount 後 remount:已選日期自 sessionStorage 還原(Q3)", async () => {
+    const { flowsSpy } = await pickFubon();
+    pickDate("2026-07-15");
+    await waitFor(() => expect(lastFlowsCall(flowsSpy)?.[1]).toBe("2026-07-15"));
+    cleanup();
+    vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+    // 同一方法重複 spyOn 會拿回同一個 mock — 清掉 remount 前的呼叫紀錄
+    const again = vi.spyOn(api, "brokerDailyFlows").mockResolvedValue(mk());
+    again.mockClear();
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    expect(dateInput().value).toBe("2026-07-15");
+    await waitFor(() => expect(again).toHaveBeenCalled());
+    expect(again.mock.calls[0]?.[1]).toBe("2026-07-15");
+  });
+
+  it("已選日期 + broker_flows_unavailable → 「所選日期前後無分點資料」(Q6)", async () => {
+    const { flowsSpy } = await pickFubon();
+    flowsSpy.mockRejectedValue(new Error("broker_flows_unavailable"));
+    pickDate("2026-02-17");
+    expect(
+      await screen.findByText("所選日期前後無分點資料(休市或超出資料範圍)", undefined, {
+        timeout: 5000,
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/尚未上料/)).toBeNull();
+  });
+
+  it("最新模式 + broker_flows_unavailable → 維持「尚未上料」文案(W7)", async () => {
+    vi.spyOn(api, "brokerTraders").mockResolvedValue(HITS);
+    vi.spyOn(api, "brokerDailyFlows").mockRejectedValue(new Error("broker_flows_unavailable"));
+    render(<BrokerFlowsPanel active={true} onPickStock={vi.fn()} />, {
+      wrapper: makeQueryWrapper(),
+    });
+    fireEvent.change(screen.getByLabelText("搜尋分點"), { target: { value: "富邦" } });
+    fireEvent.mouseDown(await screen.findByText("9600 富邦", undefined, { timeout: 3000 }));
+    expect(
+      await screen.findByText("分點資料尚未上料(每交易日約 21:00 更新)", undefined, {
+        timeout: 5000,
+      }),
+    ).toBeTruthy();
+  });
+});

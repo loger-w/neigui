@@ -96,7 +96,7 @@
   "taiwan_stock_trading_daily_report_trader_9600_2026-06-26.json": {
     "dataset": "taiwan_stock_trading_daily_report",
     "data_id": "",
-    "_note": "broker-daily-flows 分點反查(trader-only 查詢,FAKE _get 靠 securities_trader_id 過濾);手算基準:2330 買500張/賣100張 net_amount 400,500,000、2412 獨特值 -7777 張(data_id fallback 汙染防護,design R5)、0050 僅買 50 張。與 per-stock 檔 (dataset, \"2330\") 不撞 key"
+    "_note": "broker-daily-flows 分點反查(trader-only 查詢,FAKE _get 靠 securities_trader_id 過濾);手算基準:2330 買500張/賣100張 net_amount 400,500,000、2412 獨特值 -7777 張(data_id fallback 汙染防護,design R5)、0050 僅買 50 張。與 per-stock 檔 (dataset, \"2330\") 不撞 key。另含 2026-06-25(Thu)一日供日期選擇(mod/broker-flows-date-picker):2317 買 1,234 張 @210 → 259,140,000(2.59億)、2454 賣 321 張 @1480 → -475,080,000(-4.75億);股號刻意避開其他 e2e 個股查詢(本檔兼 universe fixture,data_id fallback 會依 stock_id 餵給個股查詢)"
   },
   "taiwan_securities_trader_info.json": {
     "dataset": "TaiwanSecuritiesTraderInfo",
