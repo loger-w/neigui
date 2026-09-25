@@ -206,6 +206,61 @@ describe("SymbolSearch", () => {
     expect(screen.queryByText("台積電")).toBeNull();
   });
 
+  // 失焦後 150ms 關閉計時器:150ms 內回來(focus / 打字)必須取消它,否則下拉
+  // 開了又被舊計時器關掉(fix/e34-symbolsearch-option-flake,E34 flake 根因)。
+  describe("blur-close timer", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("stays open when refocused and retyped within the close delay", async () => {
+      vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
+      renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
+      await flushLoad();
+      vi.useFakeTimers();
+
+      const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
+      fireEvent.change(input, { target: { value: "23" } });
+      fireEvent.blur(input);
+      act(() => vi.advanceTimersByTime(10));
+      fireEvent.focus(input);
+      fireEvent.change(input, { target: { value: "2330" } });
+      act(() => vi.advanceTimersByTime(200));
+
+      expect(screen.getByText("台積電")).toBeTruthy();
+    });
+
+    it("stays open when refocused (no typing) within the close delay", async () => {
+      vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
+      renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
+      await flushLoad();
+      vi.useFakeTimers();
+
+      const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
+      fireEvent.change(input, { target: { value: "2330" } });
+      fireEvent.blur(input);
+      act(() => vi.advanceTimersByTime(10));
+      fireEvent.focus(input);
+      act(() => vi.advanceTimersByTime(200));
+
+      expect(screen.getByText("台積電")).toBeTruthy();
+    });
+
+    it("still closes when focus does not come back", async () => {
+      vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
+      renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
+      await flushLoad();
+      vi.useFakeTimers();
+
+      const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
+      fireEvent.change(input, { target: { value: "2330" } });
+      fireEvent.blur(input);
+      act(() => vi.advanceTimersByTime(200));
+
+      expect(screen.queryByText("台積電")).toBeNull();
+    });
+  });
+
   it("Enter with no results is a no-op", async () => {
     vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
     const onPick = vi.fn();
