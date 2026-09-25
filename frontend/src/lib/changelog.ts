@@ -40,6 +40,17 @@ export function semverGt(a: string, b: string): boolean {
 // (per git-cliff zero-preservation 慣例,保留 leading 0 表 API 未穩定)。
 export const CHANGELOG: VersionEntry[] = [
   {
+    version: "0.50.4",
+    date: "2026-09-25",
+    changes: [
+      {
+        kind: "fix",
+        scope: "equity",
+        text: "個股搜尋框點到別處後馬上點回來打字,搜尋結果清單不再自己消失",
+      },
+    ],
+  },
+  {
     version: "0.50.3",
     date: "2026-09-25",
     changes: [

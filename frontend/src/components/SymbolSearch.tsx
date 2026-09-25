@@ -34,8 +34,16 @@ export function SymbolSearch({ onPick, placeholder = "搜尋代號或名稱..." 
     setHighlightIdx(0);
   }, [results]);
 
+  // 失焦後 150ms 才關(讓 option 的 mousedown 先跑);使用者在此之前回到輸入框
+  // 必須取消,否則剛打開的下拉會被舊計時器關掉。
+  const cancelPendingClose = () => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
+    cancelPendingClose();
     setQuery(v);
     setOpen(v.trim().length > 0);
   };
@@ -92,7 +100,10 @@ export function SymbolSearch({ onPick, placeholder = "搜尋代號或名稱..." 
         value={query}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        onFocus={() => results.length > 0 && setOpen(true)}
+        onFocus={() => {
+          cancelPendingClose();
+          if (results.length > 0) setOpen(true);
+        }}
         onBlur={() => {
           if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
           closeTimerRef.current = setTimeout(() => setOpen(false), 150);
