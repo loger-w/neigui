@@ -105,7 +105,7 @@ export function SymbolSearch({ onPick, placeholder = "搜尋代號或名稱..." 
           if (results.length > 0) setOpen(true);
         }}
         onBlur={() => {
-          if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+          cancelPendingClose();
           closeTimerRef.current = setTimeout(() => setOpen(false), 150);
         }}
         placeholder={placeholder}
