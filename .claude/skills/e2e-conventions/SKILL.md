@@ -50,6 +50,8 @@ description: Playwright E2E 框架慣例(FAKE_FINMIND 三層架構、clock 凍�
 - **loading 態 assertion 用 route gate 事件同步,不用固定 delay**(2026-07-21 E25 收割):`page.route` 固定 `setTimeout` delay 給 loading UI 的可見窗是上限不是下限 — 高負載下前置步驟吃光窗口,`toBeVisible` 撲空偶紅。改 gate promise:route handler `await gate`,assertion 完成後才 `release()` 放行 response,時序 race 消除且更快(E25 樣板,repeat×5 19.2s→9.1s)。Trigger:任何「loading 指示出現後消失」型 spec。
   - **「載入期不跑版」型 assertion 也走同一 gate**(2026-08-19 E43):切天數 / 換參數後在 gate 扣住期間量控制項 bbox 與 `toBeDisabled()`,release 後再量穩態;不 gate 的版本在 FAKE fixture 秒回下量到的是穩態,對「載入瞬間卸載 / 換行」零鑑別力(E43 初版即此假綠,加 gate 後才抓到頂欄 refresh 鈕換行 42px)。取樣完必 `page.unroute`,gate 不殘留到同 test 後段。
 
+- **「元素偶發 0 筆 / 一閃即逝」型 flake 先排除產品端開關競態,不延 timeout、不改操作路徑繞過**(2026-09-25 fix/e34-symbolsearch-option-flake):`toHaveCount` / `toBeVisible` 看到一次就過,會掩蓋「出現後被關」型 bug,只在主執行緒忙到連一瞬都沒看到時才紅 → 表象像負載 flake(E10/E25/E34 option 步曾歸因「高負載」數月,實為 SymbolSearch 失焦計時器未取消)。診斷法:scratch spec 對「前一動作 → fill」間隔掃 delay(峰值即競態窗)+ 「出現後再等 N ms 仍在」hold 斷言,可把 23% flake 變成 20/20 確定紅;再改計時器常數看關閉時點是否跟著移動定因。Trigger:任何 e2e 斷言「元素出現」偶發紅、且失敗快照顯示輸入已到位時。
+
 ## Fixture rotation
 
 - 政策:**距現行基準日 ≥ 90 天,或 release 前 → 必 rotate**(判定:今天 − 基準日 ≥ 90 天即逾期,不需猜季界)。現行 fixture 基準日:trading day = 2026-06-26 (Fri)、no-trading-day = 2026-06-27 (Sat)(**rotation 後更新本行**)。
