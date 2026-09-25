@@ -1,0 +1,4 @@
+final vitest exit=0
+final build exit=0
+final e2e exit=0
+final e34x30 exit=0

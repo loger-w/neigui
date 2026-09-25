@@ -1,0 +1,10 @@
+== A2 (修前 20/20 紅)
+  20 passed (25.5s)
+== A1 (修前 19/20 紅)
+  20 passed (28.5s)
+== headingdelay d=10 (修前 18/30 紅)
+  30 passed (32.8s)
+== E34 原 spec (修前 7/30 紅)
+  30 passed (40.5s)
+
+[exited with code 0]

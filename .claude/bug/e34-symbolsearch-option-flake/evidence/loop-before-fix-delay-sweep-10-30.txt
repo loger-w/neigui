@@ -1,0 +1,14 @@
+== d=10
+  12 failed
+  8 passed (1.0m)
+== d=15
+  3 failed
+  17 passed (36.4s)
+== d=25
+  1 failed
+  19 passed (25.9s)
+== d=30
+  2 failed
+  18 passed (28.8s)
+
+[exited with code 0]

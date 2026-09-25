@@ -1,0 +1,6 @@
+  7 failed
+  23 passed (54.2s)
+== nowl
+  30 passed (30.4s)
+
+[exited with code 0]

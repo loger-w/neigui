@@ -1,0 +1,88 @@
+
+> neigui-e2e@0.1.0 test
+> playwright test --grep-invert="@live|@visual" --reporter=line
+
+
+[WebServer] INFO:     Started server process [35440]
+
+[WebServer] INFO:     Waiting for application startup.
+[WebServer] INFO:     Application startup complete.
+[WebServer] INFO:     Uvicorn running on http://127.0.0.1:8010 (Press CTRL+C to quit)
+
+Running 74 tests using 1 worker
+
+[1/74] [chromium] › specs\borrow-fee.spec.ts:22:3 › borrow fee mode › BF1: 表格有料、費率降序、高費率標色(SC-2/3 資料級 assertion)
+[2/74] [chromium] › specs\borrow-fee.spec.ts:41:3 › borrow fee mode › BF3: 單檔篩選 — 選定只剩該檔、清除回全表(mod/borrow-fee-stock-filter SC-2/3)
+[3/74] [chromium] › specs\borrow-fee.spec.ts:57:3 › borrow fee mode › BF4: 選股加總 summary — 本日合計 + 本月累計資料級(feat/borrow-fee-totals SC-3/4)
+[4/74] [chromium] › specs\borrow-fee.spec.ts:78:3 › borrow fee mode › BF5: 本日借券統計常駐右表 — 免搜尋可見、張數 desc、不受篩選連動(mod/borrow-fee-layout SC-1/2/3)
+[5/74] [chromium] › specs\borrow-fee.spec.ts:101:3 › borrow fee mode › BF6: 統計列點擊連動篩選 + 看籌碼跳 equity(mod/borrow-fee-polish SC-3/4)
+[6/74] [chromium] › specs\borrow-fee.spec.ts:127:3 › borrow fee mode › BF2: reload 後 borrow mode 持久化(SC-1)
+[7/74] [chromium] › specs\equity.spec.ts:15:3 › equity mode › E1: 首頁 default render(SC-3 case 1)
+[8/74] [chromium] › specs\equity.spec.ts:23:3 › equity mode › E2: 搜尋 2330 → 三大法人 + brokers + K 線 visible(SC-3 case 2)
+[9/74] [chromium] › specs\equity.spec.ts:34:3 › equity mode › E3: 籌碼總覽 / 泡泡圖 tab 切換(SC-3 case 3)
+[10/74] [chromium] › specs\equity.spec.ts:47:3 › equity mode › E4: refresh button 啟用 → 點擊 → spinner appear(SC-3 case 5)
+[11/74] [chromium] › specs\equity.spec.ts:61:3 › equity mode › E5: K 線 chart resize handle visible(SC-3 case 4)
+[12/74] [chromium] › specs\equity.spec.ts:69:3 › equity mode › E31: windowDays 窗聚合 HUD + 子圖 hover 十字軸(mod/batch-ui-update CH-2/3)
+[13/74] [chromium] › specs\equity.spec.ts:89:3 › equity mode › E46: K 線疊圖底部日期軸 — 稀疏 M/D 刻度 + hover 日期 chip(mod/kline-date-bubble-days-ux SC-1)
+[14/74] [chromium] › specs\equity.spec.ts:120:3 › equity mode — mobile viewport › E6: 375px 搜尋 2330 → K 線 + 面板堆疊、無水平溢出、resize handle 不存在
+[15/74] [chromium] › specs\equity.spec.ts:145:3 › equity mode — 權證 tab(feat/warrant-selector) › E8: 權證 tab 表格資料級 assertion(SC-1/SC-2)
+[16/74] [chromium] › specs\equity.spec.ts:170:3 › equity mode — 權證 tab(feat/warrant-selector) › E35: 評分欄存在 + 預設評分降序 + toggle 升序(WA-2)
+[17/74] [chromium] › specs\equity.spec.ts:204:3 › equity mode — 權證 tab(feat/warrant-selector) › E9: 認售 toggle 篩選(SC-4)
+[18/74] [chromium] › specs\equity.spec.ts:217:3 › equity mode — 權證 tab(feat/warrant-selector) › E14: 權證分點 tab 資料級 assertion + 展開明細(warrant-broker-flow SC-1/SC-2/SC-3)
+[19/74] [chromium] › specs\equity.spec.ts:247:3 › equity mode — 權證 tab(feat/warrant-selector) › E22: 外部淨額時序區塊已整刪(WF-1 mod/batch-ui-update)
+[20/74] [chromium] › specs\equity.spec.ts:256:3 › equity mode — 權證 tab(feat/warrant-selector) › E30: 分點反查 tab — 搜尋選分點 → 雙表資料級 → 點列跳轉總覽(broker-daily-flows SC-4/5/7)
+[21/74] [chromium] › specs\equity.spec.ts:283:3 › equity mode — 權證 tab(feat/warrant-selector) › E37: 分點搜尋 combobox a11y — activedescendant 跟隨鍵盤導航(a11y 收割)
+[22/74] [chromium] › specs\equity.spec.ts:299:3 › equity mode — 權證 tab(feat/warrant-selector) › E47: 分點反查日期選擇 — 選 06-25 → 該日雙表資料級(mod/broker-flows-date-picker)
+[23/74] [chromium] › specs\equity.spec.ts:329:3 › equity mode — 權證 tab(feat/warrant-selector) › E10: 無權證標的空狀態(SC-7)
+[24/74] [chromium] › specs\equity.spec.ts:344:3 › equity mode — 權證 tab(feat/warrant-selector) › E18: 欄位選單 — 隱藏/拖曳調序/reload 持久(mod warrant-ux-feedback SC-6)
+[25/74] [chromium] › specs\equity.spec.ts:375:3 › equity mode — 權證 tab(feat/warrant-selector) › E19: 重製篩選一鍵回預設(mod warrant-ux-feedback item 3)
+[26/74] [chromium] › specs\equity.spec.ts:389:3 › equity mode — 權證 tab(feat/warrant-selector) › E20: 發行商下拉篩選(mod warrant-selector-table SC-2)
+[27/74] [chromium] › specs\equity.spec.ts:406:3 › equity mode — 權證 tab(feat/warrant-selector) › E12: IV趨勢欄 drift 標記(warrant-iv-drift SC-6)
+[28/74] [chromium] › specs\equity.spec.ts:417:3 › equity mode — 權證 tab(feat/warrant-selector) › E13: 權證表無展開鈕(WA-1 mod/batch-ui-update 引波展開整刪)
+[29/74] [chromium] › specs\equity.spec.ts:427:3 › equity mode — 泡泡圖提示 › E7: 桌面泡泡圖顯示價格軸拖曳篩選提示
+[30/74] [chromium] › specs\equity.spec.ts:452:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E23: 泡泡圖選分點 → 「查看於籌碼總覽」跳轉 + 已選帶入(A2)
+[31/74] [chromium] › specs\equity.spec.ts:470:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E42: 泡泡圖每價位量能分布背景層 — 資料級 rect 對 fixture 價位(feat/bubble-volume-profile SC-5)
+[32/74] [chromium] › specs\equity.spec.ts:489:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E43: 泡泡圖多日聚合 — 切 5 日後明細張數 = 單日 ×5 + 累計 badge(feat/bubble-streak-screenshot SC-6)
+[33/74] [chromium] › specs\equity.spec.ts:564:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E44: 泡泡圖截圖鈕 → 真實下載 PNG(feat/bubble-streak-screenshot SC-8)
+[34/74] [chromium] › specs\equity.spec.ts:582:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E45: 多日模式截圖 → 檔名帶 _w5 且 annotation 分支真的跑得完(feat/bubble-streak-screenshot SC-8)
+[35/74] [chromium] › specs\equity.spec.ts:608:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E24: 泡泡圖選分點 → 總買/賣張與金額資料級 assertion(A3)
+[36/74] [chromium] › specs\equity.spec.ts:623:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E38: 泡泡圖多選分點 — 下拉連續加選 2 個 → chips + 合併明細/統計資料級(bubble-multi-broker SC-1/3/4/7)
+[37/74] [chromium] › specs\equity.spec.ts:679:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E39: 泡泡圖單看模式 — 點已選泡泡切單分點統計、組合不動;點空白兩段式(mod/bubble-chart-ux-polish SC-3/5)
+[38/74] [chromium] › specs\equity.spec.ts:727:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E41: 搜尋下拉開啟時點圖表 = 只關下拉,篩選組合不動(mod/bubble-dropdown-dismiss-guard SC-1/2)
+[39/74] [chromium] › specs\equity.spec.ts:755:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E40: header 空間預留 — 搜尋下拉開啟時買賣統計完整可見不被遮擋(SC-1/2)
+[40/74] [chromium] › specs\equity.spec.ts:784:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E25: 換股載入時泡泡圖 loading badge 出現後消失(A5)
+[41/74] [chromium] › specs\equity.spec.ts:809:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E34: 自選清單 — 加入當前 → 換股 → 點清單項切回 + reload 持久(WL-1)
+[42/74] [chromium] › specs\equity.spec.ts:834:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E36: 自選清單群組 — 管理面板建組 → 快選直加入該組(SC-1 mod/batch-ui-polish)
+[43/74] [chromium] › specs\equity.spec.ts:853:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E33: 前 15 大列表「看泡泡圖」鈕 → 切 tab + 該分點自動聚焦(CH-1)
+[44/74] [chromium] › specs\equity.spec.ts:879:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E32: 泡泡圖過濾清單 — 排除分點後泡泡/統計消失 + reload 持久(BB-1)
+[45/74] [chromium] › specs\equity.spec.ts:909:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E26: 籌碼總覽 chip bar 容器常駐 + 未選 placeholder(B2)
+[46/74] [chromium] › specs\equity.spec.ts:917:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E27: K 線下 broker row 容器常駐 + 未選 placeholder(B3)
+[47/74] [chromium] › specs\equity.spec.ts:926:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E28: 分點 row 整列可點 + checkbox 不 double-toggle(B1)
+[48/74] [chromium] › specs\equity.spec.ts:940:3 › equity mode — 泡泡圖/籌碼總覽 UX(mod bubble-chip-ux) › E29: Y 軸 brush 拖曳 → summary → 篩選跳轉籌碼總覽(A1 端到端)
+[49/74] [chromium] › specs\equity.spec.ts:973:3 › equity mode — 主力線階梯補抓(mod chip-major-lazy-window) › E20: 初載只發一筆 major days=150,無自動 540(SC-1)
+[50/74] [chromium] › specs\equity.spec.ts:989:3 › equity mode — 主力線階梯補抓(mod chip-major-lazy-window) › E21: 滾輪出界 → 發 days=300 補抓 + 缺料區段 overlay 出現後消失(SC-2)
+[51/74] [chromium] › specs\market.spec.ts:15:3 › market mode › M10: 漲跌家數 + 量比排行 + 扣除台積電 資料級(MK-1/5/6/7 mod/batch-ui-update)
+[52/74] [chromium] › specs\market.spec.ts:33:3 › market mode › M1: 經典檢視(heatmap/leaderboard)已整刪(MK-4 mod/batch-ui-update)
+[53/74] [chromium] › specs\market.spec.ts:42:3 › market mode › M4: 今日三卡渲染不 crash(mod/market-today-only)
+[54/74] [chromium] › specs\market.spec.ts:52:3 › market mode › M9: 今日三卡 populated 資料級 assertion(mod/market-today-only)
+[55/74] [chromium] › specs\market.spec.ts:133:3 › market mode › M11: 族群成員列點擊 → 跳 equity 並帶入該股(SC-5 mod/batch-ui-polish)
+[56/74] [chromium] › specs\market.spec.ts:147:3 › market mode › M12: 量比排行點欄位標題排序,toggle 鈕退役(SC-6 mod/batch-ui-polish)
+[57/74] [chromium] › specs\market.spec.ts:174:3 › market mode @1440x900 › M7: 1440x900 新主視圖無 scroll — grid bottom ≤ viewport(SC-9)
+[58/74] [chromium] › specs\market.spec.ts:197:3 › market mode — mobile viewport › M8: 375px 下 v2 grid 可見且無水平溢出
+[59/74] [chromium] › specs\navigation.spec.ts:14:3 › navigation & persistence › N1: 五 mode toggle active style aria-current(SC-6 case 1)
+[60/74] [chromium] › specs\navigation.spec.ts:32:3 › navigation & persistence › N2: reload 後 mode 維持(SC-6 case 2)
+[61/74] [chromium] › specs\navigation.spec.ts:42:3 › navigation & persistence › N3: chip_window_days localStorage roundtrip(SC-6 case 3)
+[62/74] [chromium] › specs\navigation.spec.ts:54:3 › navigation & persistence › N4: mode 切換時對應 mode 元件實際被 unmount(SC-6 case 4 — R2-P2-2)
+[63/74] [chromium] › specs\navigation.spec.ts:85:3 › navigation & persistence › N5: 返回狀態保留 — flows 已選分點 / market 鑽取展開跨 mode 切換保留(SC-8 mod/batch-ui-polish)
+[64/74] [chromium] › specs\navigation.spec.ts:116:3 › navigation & persistence › N6: 常用分點 — 星號儲存 → reload 後 chips 仍在 → 一鍵帶入(SC-9 mod/batch-ui-polish)
+[65/74] [chromium] › specs\navigation.spec.ts:135:3 › navigation & persistence › N7: 整站宣告深色 color-scheme — root + meta + 三頁日期欄位(mod/root-color-scheme-dark)
+[66/74] [chromium] › specs\no-trading-day.spec.ts:9:1 › NTD2: warrant flow 顯式週六 date → no_trading_day flag + 回退資料日(warrant-broker-flow SC-8)
+[67/74] [chromium] › specs\no-trading-day.spec.ts:20:1 › NTD1: options page 選 Sat 日期 → 顯示無交易日
+[68/74] [chromium] › specs\options.spec.ts:21:3 › options mode › O1: 首屏四層 root 全 visible(SC-6/7/8/9)
+[69/74] [chromium] › specs\options.spec.ts:30:3 › options mode › O2: 結論列生成句子且溫度計四格有判讀(SC-6/8 anti-tautology)
+[70/74] [chromium] › specs\options.spec.ts:41:3 › options mode › O3: RangeMap 牆標記非空(SC-7 anti-tautology + 後端權威值)
+[71/74] [chromium] › specs\options.spec.ts:50:3 › options mode › O4: 進階統計展開 → 四卡 + NET 對照表 + refresh 可點(SC-9)
+[72/74] [chromium] › specs\options.spec.ts:68:3 › options mode › O7: 日期欄位逐位打年份不送出半成品日期請求(fix/date-field-partial-input)
+[73/74] [chromium] › specs\options.spec.ts:105:3 › options mode › O6: RangeMap OI/成交量 toggle 切換(SC-7)
+[74/74] [chromium] › specs\options.spec.ts:120:3 › options mode — mobile viewport › O5: 375px 下首屏 root 可見且無水平溢出
+  74 passed (59.7s)

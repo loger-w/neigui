@@ -1,0 +1,22 @@
+    Error: expect(locator).toHaveCount(expected) failed
+        at C:\side-project\neigui\.claude\worktrees\fix-e34-symbolsearch-option-flake\e2e\specs\equity.spec.ts:820:44
+    test-results-r30\equity-equity-mode-—-泡泡圖-籌-85755-換股-→-點清單項切回-reload-持久-WL-1--chromium-repeat6\test-failed-1.png
+    Error: expect(locator).toHaveCount(expected) failed
+        at C:\side-project\neigui\.claude\worktrees\fix-e34-symbolsearch-option-flake\e2e\specs\equity.spec.ts:820:44
+    test-results-r30\equity-equity-mode-—-泡泡圖-籌-85755-換股-→-點清單項切回-reload-持久-WL-1--chromium-repeat7\test-failed-1.png
+    Error: expect(locator).toHaveCount(expected) failed
+        at C:\side-project\neigui\.claude\worktrees\fix-e34-symbolsearch-option-flake\e2e\specs\equity.spec.ts:820:44
+    test-results-r30\equity-equity-mode-—-泡泡圖-籌-85755-換股-→-點清單項切回-reload-持久-WL-1--chromium-repeat13\test-failed-1.png
+    Error: expect(locator).toHaveCount(expected) failed
+        at C:\side-project\neigui\.claude\worktrees\fix-e34-symbolsearch-option-flake\e2e\specs\equity.spec.ts:820:44
+    test-results-r30\equity-equity-mode-—-泡泡圖-籌-85755-換股-→-點清單項切回-reload-持久-WL-1--chromium-repeat14\test-failed-1.png
+    Error: expect(locator).toHaveCount(expected) failed
+        at C:\side-project\neigui\.claude\worktrees\fix-e34-symbolsearch-option-flake\e2e\specs\equity.spec.ts:820:44
+    test-results-r30\equity-equity-mode-—-泡泡圖-籌-85755-換股-→-點清單項切回-reload-持久-WL-1--chromium-repeat16\test-failed-1.png
+    Error: expect(locator).toHaveCount(expected) failed
+        at C:\side-project\neigui\.claude\worktrees\fix-e34-symbolsearch-option-flake\e2e\specs\equity.spec.ts:820:44
+    test-results-r30\equity-equity-mode-—-泡泡圖-籌-85755-換股-→-點清單項切回-reload-持久-WL-1--chromium-repeat25\test-failed-1.png
+  7 failed
+  23 passed (2.4m)
+
+[exited with code 0]

@@ -1,0 +1,17 @@
+{
+  "fixed_point": "86593f0 (merge-base origin/main)",
+  "reviewed_head": "3bdabb2",
+  "spec_source": ".claude/bug/e34-symbolsearch-option-flake/diagnosis.md(Phase 5 決策)",
+  "standards": [
+    "沒有找到 [HARD] 違規。已檢查且符合:§6 三類分開 commit(9d5fd60 🔴 修正 + 回歸測試 + changelog,與前例 8d7e2e4 配置一致;3bdabb2 只動文件,scope bug-<name> 同 1eb725b 前例);§7 版號 PATCH 0.50.4;changelog-conventions(kind fix / scope equity 合法,text 為使用者體感無工程術語);user-global E(changelog.test.ts 版本斷言已於 commit message 與 diagnosis Phase 5 標「該變」— git 只看得到 diagnosis 在修正之後才 commit,無法確認標記早於修改);frontend-testing(jsdom pragma、fireEvent + toBeTruthy/toBeNull、cleanup/restoreAllMocks、內層 useRealTimers;需推進 setTimeout 故開完整 fake timers,不適用「只凍日期」);user-global C(測試在 user 核可的 SymbolSearch.test.tsx 層);user-global B(同病 3 元件記 next-time 未動);next-time 條目皆有觸發條件;命名 cancelPendingClose 清楚,其餘 baseline smell 未見。",
+    "[JUDGEMENT] 1. Duplicated Code:onBlur 沒改用新 helper。frontend/src/components/SymbolSearch.tsx:107-109 onBlur 仍內嵌 `if (closeTimerRef.current) clearTimeout(closeTimerRef.current);`,與 cancelPendingClose()(39-42)第一行相同,可換成 cancelPendingClose(); 讓取消計時器只寫一處。不違反 repo 規範,選配。",
+    "[JUDGEMENT] 2. Duplicated Code:三條 blur-close timer 測試前置相同(SymbolSearch.test.tsx:216-261,spyOn → renderWithQuery → flushLoad → useFakeTimers → getByPlaceholderText → change → blur)。測試檔原本就每條自寫前置,一致性比抽共用函式重要。不建議改,僅完整呈現。"
+  ],
+  "spec": [
+    "沒有高或中嚴重度問題。逐項查過無問題:修法只動 SymbolSearch、diff 未碰 e2e、scratch spec 已刪;同病 3 元件未動且 next-time 描述與現況一致(BrokerSearch / BorrowFeeStockFilter onFocus 只 setOpen(true);BrokerFlowsPanel:193 timer 未存 ref);changelog 0.50.4 / fix / equity 與版本斷言事前標註一致;回歸測試在原 bug 上確實會紅;根因能對上 E34 流程;舊計時器其他路徑(timer 已排入佇列時 clearTimeout 依 HTML spec 仍中止、Enter/Esc/方向鍵不失焦、點 option 後排的計時器無害且重新 focus 會取消、視窗失焦再回來會觸發 focus、unmount 時 setState 為 no-op 屬既有行為)皆無殘留風險;自跑 vitest 16/16。",
+    "1. 低|handleChange 取消計時器沒有測試能單獨鎖住。Spec:「修法:onFocus 與 handleChange 取消待觸發的關閉計時器」。兩條 stays open 測試都先 fireEvent.focus 再打字,單靠 onFocus 即綠;拿掉 handleChange 的 cancelPendingClose() 仍 16/16 綠。建議(選做)補「blur → 10ms 後直接 change(不 focus)→ 過 200ms 下拉仍開」。",
+    "2. 低|E34 repeat×30 的結果 diagnosis 沒有記錄。Spec:「E34 不改,以 repeat×30 作 e2e 確認」。「修後 30/30 綠」只寫在 docs/next-time.md;evidence/ 只有 pytest / ruff / vitest / build gate 輸出,沒有 e2e repeat 原始輸出。建議補進 diagnosis 或 evidence。",
+    "3. 低|next-time.md E25/E10 條目追加「2026-09-25 更新」不在 Phase 5 決策清單。內容只是文件,用詞保留(推測同根…未在負載下驗證),與 E34 直接相關,放在 chore commit 未混到行為改動 — 判斷可接受。"
+  ],
+  "disposition": "Std-1 接受 → 034dd3e 🔵 onBlur 改用 cancelPendingClose(行為不變,17/17、tsc 0)。Std-2 不採納(審查者本身建議不改;沿檔內既有每條自寫前置慣例)。Spec-1 接受 → 57c6227 補「失焦後不經 focus 直接輸入」測試;紅先行驗證:拿掉 handleChange 的 cancelPendingClose → 該條紅(1 failed / 16 passed),還原 → 17/17。Spec-2 接受 → diagnosis 補 Phase 6 修前修後對照表 + 反向驗證紀錄,evidence/ 補 loop-*.txt 原始輸出與 final-e34-x30.txt。Spec-3 維持(審查者判可接受)。增量 diff(57c6227、034dd3e)= 上述兩項建議的直接落實,main agent 機械快篩:diff 各 1 處、與建議一致、無其他改動。附註:Spec 軸敘述「beforeEach 用 Enter 選股」與實際不符(該 describe 的 beforeEach 以 option click 選股),不影響其結論 — 失焦計時器由之後的「加入當前」點擊排下。"
+}

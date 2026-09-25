@@ -50,6 +50,18 @@ assertion 看到前就被關,才從「出現後消失」變成「從未出現」
 - changelog:0.50.4(PATCH,fix / equity)。
 - **事前標「該變」的斷言**:`changelog.test.ts:82-83`「最新版本是 v0.50.3」→ 0.50.4(版本釘選,隨 bump 必變)。
 
+## Phase 6 — 修後驗證 + 反向驗證(fix = 9d5fd60)
+| 迴圈 | 修前紅 | 修後紅 |
+|---|---|---|
+| A2(不選股、d=10、hold=300) | 20/20 | 0/20 |
+| A1(選股、d=10、hold=300) | 19/20 | 0/20 |
+| 最小重現 headingdelay d=10 | 18/30 | 0/30 |
+| **E34 原 spec repeat×30** | **7/30** | **0/30** |
+
+反向驗證(只 `git apply -R` 元件修正、測試保留):SymbolSearch vitest 2 條紅回來(16 中 2 failed)、
+A2 10/10 紅 → `git checkout` 還原 → 16/16 綠。原始輸出見 `evidence/loop-*.txt`
+(A1/A2/A3/B1/B2 與 nopick、d=5、d=10×30 為前景執行,數字即上表與 Phase 2/4 表)。
+
 ## 同病結構(blast radius)
 同一「失焦計時器不取消」寫法另見:`BrokerSearch.tsx:177-181`、`BorrowFeeStockFilter.tsx:96-99`、
 `BrokerFlowsPanel.tsx:192-193`(後者連 ref 都沒存)。SymbolSearch 唯一 caller = `App.tsx:434`。

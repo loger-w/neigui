@@ -1,0 +1,43 @@
+E34 SymbolSearch 失焦計時器 fix — 真實環境驗證(2026-09-25)
+工具:Playwright chromium headless(Node script,scratchpad/realenv/run.js),viewport 1280x720,每個 SC / 每次 run 用 fresh browser context
+建置:fixed = http://127.0.0.1:5175(worktree,badge v0.50.4);pre-fix = http://127.0.0.1:5176(main tree,badge v0.50.3);backend :8020 真 FinMind(Free tier)
+總耗時:26.7s(主 script)
+
+== 判定 ==
+SC-1  PASS  fixed :5175 下拉仍開且含 2412 = 10/10;pre-fix :5176 = 1/10 開、9/10 被舊計時器關掉(bug 重現、fix 後消失)  SC-1_fixed.png / SC-1_prefix.png
+SC-2  PASS  fill "23" 後 20 個 option;點標題 400ms 後 listbox = 0(不回來仍會關)          SC-2_closes.png
+SC-3  PASS  滑鼠點 2317 option → header 顯示 "2317鴻海",listbox 關閉,input = "2317"     SC-3_mouse_pick.png
+SC-4  PASS  fill "2412" + Enter → header 顯示 "2412中華電",listbox 關閉                   SC-4_enter_pick.png
+U-1   PASS  個股→選擇權(看到「選擇權籌碼」標題)→個股 → fill 2330 出現 1 個 option     U-1_mode_switch.png
+U-2   PASS  選 2330 → 加入當前 → watchlist-item "2330台積電×";搜 2412 Enter → header 2412;點清單項 → header "2330台積電"  U-2_watchlist.png
+
+== SC-1 步驟 ==
+fill 2330 → 點第一個 option → 點標題「籌碼分析」→ 等 10ms → fill 2412 → 等 500ms → 數 role=option / role=listbox
+
+== Console / 網路錯誤 ==
+全部 SC 的 unexpected = 0。
+已知 Free tier 基礎設施錯誤(歸為 known,不算失敗):
+  - HTTP 502 /api/chip/<symbol>(finmind_error)+ 對應 console "Failed to load resource ... 502 (Bad Gateway)"
+  - HTTP 503 /api/chip/<symbol>/brokers_window + 對應 console "Failed to load resource ... 503 (Service Unavailable)"
+  (dump.js 單次選 2330 後的完整錯誤清單就只有上面這 4 條;沒有 pageerror、沒有 React warning)
+known 計數:SC-1 fixed 68 / SC-1 pre-fix 66(10 次 run 合計)、SC-2 0、SC-3 4、SC-4 4、U-1 0、U-2 4
+
+== Raw output(run.js)==
+SC-1 fixed(:5175): dropdown open with 2412 in 10/10 (closed 0/10); screenshot=evidence\SC-1_fixed.png
+  run1..run10: open=true listbox=1 options=1 texts=["2412中華電"](10 次完全相同)
+SC-1 prefix(:5176): dropdown open with 2412 in 1/10 (closed 9/10); screenshot=evidence\SC-1_prefix.png
+  run1: open=false listbox=0 options=0
+  run2: open=false listbox=0 options=0
+  run3: open=false listbox=0 options=0
+  run4: open=false listbox=0 options=0
+  run5: open=false listbox=0 options=0
+  run6: open=false listbox=0 options=0
+  run7: open=true  listbox=1 options=1 texts=["2412中華電"]
+  run8: open=false listbox=0 options=0
+  run9: open=false listbox=0 options=0
+  run10: open=false listbox=0 options=0
+SC-2: PASS options-before-blur=20, listbox-after-400ms=0
+SC-3: PASS header-symbol-text="2317鴻海", listbox-after-pick=0, input="2317"
+SC-4: PASS header-symbol-text="2412中華電", listbox-after-enter=0
+U-1: PASS options-heading-seen=1, options-after-fill-2330=1
+U-2: PASS watchlist-item="2330台積電×", header-after-2412="2412中華電", header-after-item-pick="2330台積電"
