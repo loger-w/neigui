@@ -6,6 +6,10 @@
 
 ---
 
+## From /bug e34-symbolsearch-option-flake(2026-09-25)
+
+- **失焦關閉計時器不取消 — 同病 3 元件**:SymbolSearch 已修(focus / change 時 `clearTimeout`,根因與實驗見 `.claude/bug/e34-symbolsearch-option-flake/diagnosis.md`)。同寫法仍在 `BrokerSearch.tsx`(泡泡圖搜尋分點,onFocus/onChange 皆未清)、`BorrowFeeStockFilter.tsx`(券差單檔篩選)、`BrokerFlowsPanel.tsx`(分點反查分點選單,`onBlur={() => setTimeout(...)}` 連 ref 都沒存,無法取消)— 失焦後 150ms 內點回輸入框 / 打字,下拉會被舊計時器關掉。修法照 SymbolSearch `cancelPendingClose`,各補一條假時鐘 vitest。觸發:user 反映任一下拉「自己消失」、或下次動這三個元件的輸入框時(一次 /bug 收三個)。
+
 ## From /mod broker-flows-date-picker(2026-09-24)
 
 - **FinMind 分點反查(trader-only 專用 path)歷史深度未知**:2026-09-24 想 probe 時帳號 `user_info` 回 **Free(level 1)**,專用 path 對任何日期(含 09-23)都回 400「Your level is register」→ 無法 probe,正式環境分點反查整條不可用。日期選擇因此不設資料下限(Q7),超出範圍靠「所選日期前後無分點資料」文案兜底。觸發:帳號回 Sponsor 後 probe 9600 在 2021 / 2023 / 2025 年初各一日,若有明確下限 → 考慮給日期欄位設 `min`。
@@ -46,7 +50,7 @@
 
 ## From /mod batch-ui-polish(2026-07-21)
 
-- **E25/E10 型負載 flake — 殘餘面收斂到 SymbolSearch option 步**(2026-07-21 收割更新):badge 時序 race 已由 chore/next-time-harvest-0721 根治(route 固定 1500ms delay 改事件同步 gate,badge 可見窗不再受機器負載影響;無負載 repeat×5 綠)。今日兩紅實際失敗點都在 `getByRole("option")` 15s 0 筆 — 發生於並行跑全套 gate 的高負載窗,無負載即綠,與 E10 既有「SymbolSearch dropdown 高負載」記錄同根。2026-08-20 無負載 `equity.spec.ts --repeat-each=5` 215 passed 全綠,結論不變。**2026-09-24 反證「無負載即綠」**(mod/broker-flows-date-picker 收尾):E34(WL-1)`getByRole("option")` 15s 0 筆,在無並行 gate 下單獨 `-g E34 --repeat-each=3` 分支 2/3 紅、**merge-base 8d9c5a6 主樹同指令 1/3 紅**(同一步;該分支未碰 SymbolSearch)→ 既有 flake,非負載專屬,頻率已高到會擋 pre-merge 全綠。觸發重評估:非自造負載情境下再紅時,查 `/api/symbols/all` query 在 vite dev proxy 高負載下的 resolve 時序(app 層 prefetch 或 spec 層等 dropdown loading 態收斂)。
+- **E25/E10 型負載 flake — 殘餘面收斂到 SymbolSearch option 步**(2026-07-21 收割更新):badge 時序 race 已由 chore/next-time-harvest-0721 根治(route 固定 1500ms delay 改事件同步 gate,badge 可見窗不再受機器負載影響;無負載 repeat×5 綠)。今日兩紅實際失敗點都在 `getByRole("option")` 15s 0 筆 — 發生於並行跑全套 gate 的高負載窗,無負載即綠,與 E10 既有「SymbolSearch dropdown 高負載」記錄同根。2026-08-20 無負載 `equity.spec.ts --repeat-each=5` 215 passed 全綠,結論不變。**2026-09-24 反證「無負載即綠」**(mod/broker-flows-date-picker 收尾):E34(WL-1)`getByRole("option")` 15s 0 筆,在無並行 gate 下單獨 `-g E34 --repeat-each=3` 分支 2/3 紅、**merge-base 8d9c5a6 主樹同指令 1/3 紅**(同一步;該分支未碰 SymbolSearch)→ 既有 flake,非負載專屬,頻率已高到會擋 pre-merge 全綠。觸發重評估:非自造負載情境下再紅時,查 `/api/symbols/all` query 在 vite dev proxy 高負載下的 resolve 時序(app 層 prefetch 或 spec 層等 dropdown loading 態收斂)。**2026-09-25 更新(fix/e34-symbolsearch-option-flake)**:E34 根因已確認並修復 — 非 symbols query 時序,而是 SymbolSearch 失焦的 150ms 關閉計時器在重新 focus / 輸入時未取消,把剛開的下拉關掉;選股後畫圖佔主執行緒使下拉「從未被 assertion 看到」(修前 E34 7/30 紅 → 修後 30/30 綠,實驗見該 diagnosis)。E25/E10 高負載下同步驟的紅**推測同根**(負載拉長主執行緒阻塞,讓選 option 時的失焦計時器與下一次 fill 重疊)但**未在負載下驗證**。觸發重評估:修復後 E25/E10 的 option 步再紅時,先查失焦計時器以外的原因。
 - **自選歸組選單長清單底部裁切**(Phase 5 review P2-2):watchlist-assign-menu absolute top-full 在 overflow 容器內,底部項目選單被裁;短清單常態不受影響。觸發重評估:user 回報或清單普遍 >15 檔時,改 bottom-full 翻轉或 portal 定位。
 
 - **自選分組 rename**:管理分組面板只有建立/刪除;rename 需資料層新函式(watchlist.ts 無)+ UI。觸發重評估:user 抱怨改名要刪掉重建時。
