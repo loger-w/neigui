@@ -1,0 +1,9 @@
+== wlnoexpect
+  30 passed (31.5s)
+== clickheading
+  2 failed
+  28 passed (38.6s)
+== wait
+  30 passed (34.6s)
+
+[exited with code 0]

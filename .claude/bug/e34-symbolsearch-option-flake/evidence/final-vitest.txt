@@ -1,0 +1,13 @@
+
+> neigui-frontend@0.1.0 test
+> vitest run
+
+
+ RUN  v4.1.9 C:/side-project/neigui/.claude/worktrees/fix-e34-symbolsearch-option-flake/frontend
+
+
+ Test Files  102 passed (102)
+      Tests  1218 passed (1218)
+   Start at  14:57:11
+   Duration  18.11s (transform 7.45s, setup 0ms, import 28.40s, tests 54.72s, environment 91.32s)
+

@@ -1,0 +1,16 @@
+== d=20
+  6 failed
+  14 passed (41.2s)
+== d=40
+  1 failed
+  19 passed (26.3s)
+== d=60
+  20 passed (23.5s)
+== d=80
+  20 passed (23.8s)
+== d=100
+  20 passed (24.0s)
+== d=120
+  20 passed (24.6s)
+
+[exited with code 0]
