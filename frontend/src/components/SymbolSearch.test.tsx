@@ -246,6 +246,23 @@ describe("SymbolSearch", () => {
       expect(screen.getByText("台積電")).toBeTruthy();
     });
 
+    it("stays open when typed without a focus event within the close delay", async () => {
+      // 輸入事件未伴隨 focus 事件的路徑(如瀏覽器自動填入)由 handleChange 取消計時器
+      vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
+      renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
+      await flushLoad();
+      vi.useFakeTimers();
+
+      const input = screen.getByPlaceholderText(/搜尋代號或名稱/);
+      fireEvent.change(input, { target: { value: "23" } });
+      fireEvent.blur(input);
+      act(() => vi.advanceTimersByTime(10));
+      fireEvent.change(input, { target: { value: "2330" } });
+      act(() => vi.advanceTimersByTime(200));
+
+      expect(screen.getByText("台積電")).toBeTruthy();
+    });
+
     it("still closes when focus does not come back", async () => {
       vi.spyOn(api, "symbolsAll").mockResolvedValue(ALL);
       renderWithQuery(<SymbolSearch onPick={vi.fn()} />);
